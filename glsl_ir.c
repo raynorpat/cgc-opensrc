@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "glsl_ir.h"
 
 static const int defaultNameIdentity = 0;
+static const int defaultNameNamespace = 0;
 
 static const char *reservedNames[] = {
     "asm", "attribute", "bool", "break", "bvec2", "bvec3", "bvec4",
@@ -94,14 +95,18 @@ static const char *GlslDuplicate(GlslModule *module, const char *string)
     return copy;
 }
 
-static GlslName *GlslFindName(const GlslModule *module, const void *identity,
-    const char *source)
+static GlslName *GlslFindName(const GlslModule *module,
+    const void *nameSpace, const void *identity, const char *source)
 {
     GlslName *current;
 
     for (current = module->names; current != NULL; current = current->next) {
-        if (current->identity == identity && !strcmp(current->source, source))
+        if (current->nameSpace == nameSpace &&
+            current->identity == identity &&
+            !strcmp(current->source, source))
+        {
             return current;
+        }
     }
     return NULL;
 }
@@ -239,8 +244,8 @@ static const char *GlslBuildSuffixedName(GlslModule *module,
     return name;
 }
 
-static const char *GlslAllocate(GlslModule *module, const void *identity,
-    const char *source)
+static const char *GlslAllocate(GlslModule *module, const void *nameSpace,
+    const void *identity, const char *source)
 {
     const char *base;
     const char *emitted;
@@ -262,6 +267,8 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
     inUse = 0;
     nameCount = 0;
     for (current = module->names; current != NULL; current = current->next) {
+        if (current->nameSpace != nameSpace)
+            continue;
         if (!strcmp(current->emitted, base))
             inUse = 1;
         if (nameCount == (size_t) -1)
@@ -280,7 +287,8 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
             return NULL;
         memset(occupied, 0, nameCount + 2);
         for (current = module->names; current != NULL; current = current->next) {
-            if (GlslSuffixValue(current->emitted, base, &suffixValue) &&
+            if (current->nameSpace == nameSpace &&
+                GlslSuffixValue(current->emitted, base, &suffixValue) &&
                 suffixValue <= limit)
                 occupied[suffixValue] = 1;
         }
@@ -303,6 +311,7 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
     sourceCopy = GlslDuplicate(module, source);
     if (sourceCopy == NULL)
         return NULL;
+    name->nameSpace = nameSpace;
     name->identity = identity;
     name->source = sourceCopy;
     name->emitted = emitted;
@@ -328,31 +337,46 @@ const char *GlslAllocateName(GlslModule *module, const char *source)
 
     if (module == NULL || source == NULL)
         return NULL;
-    name = GlslFindName(module, &defaultNameIdentity, source);
+    name = GlslFindName(module, &defaultNameNamespace,
+                        &defaultNameIdentity, source);
     if (name != NULL)
         return name->emitted;
-    return GlslAllocate(module, &defaultNameIdentity, source);
+    return GlslAllocate(module, &defaultNameNamespace,
+                        &defaultNameIdentity, source);
 }
 
 const char *GlslAllocateSymbolName(GlslModule *module, const void *identity,
     const char *source)
 {
+    return GlslAllocateScopedSymbolName(module, &defaultNameNamespace,
+                                        identity, source);
+}
+
+const char *GlslAllocateScopedSymbolName(GlslModule *module,
+    const void *nameSpace, const void *identity, const char *source)
+{
     GlslName *name;
 
-    if (identity == NULL)
-        return GlslAllocateName(module, source);
-    if (module == NULL || source == NULL)
+    if (module == NULL || nameSpace == NULL || source == NULL)
         return NULL;
+    if (identity == NULL) {
+        name = GlslFindName(module, nameSpace, &defaultNameIdentity,
+                            source);
+        if (name != NULL)
+            return name->emitted;
+        return GlslAllocate(module, nameSpace, &defaultNameIdentity,
+                            source);
+    }
     for (name = module->names; name != NULL; name = name->next) {
-        if (name->identity == identity)
+        if (name->nameSpace == nameSpace && name->identity == identity)
             return name->emitted;
     }
-    return GlslAllocate(module, identity, source);
+    return GlslAllocate(module, nameSpace, identity, source);
 }
 
 const char *GlslAllocateDistinctName(GlslModule *module, const char *source)
 {
-    return GlslAllocate(module, NULL, source);
+    return GlslAllocate(module, &defaultNameNamespace, NULL, source);
 }
 
 GlslType GlslNumericType(GlslBase base, int len)

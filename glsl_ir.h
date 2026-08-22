@@ -82,6 +82,7 @@ typedef struct GlslType_Rec {
 
 typedef struct GlslName_Rec {
     struct GlslName_Rec *next;
+    const void *nameSpace;
     const void *identity;
     const char *source;
     const char *emitted;
@@ -252,6 +253,8 @@ void GlslInitModule(GlslModule *module, GlslStage stage,
 const char *GlslAllocateName(GlslModule *module, const char *source);
 const char *GlslAllocateSymbolName(GlslModule *module, const void *identity,
     const char *source);
+const char *GlslAllocateScopedSymbolName(GlslModule *module,
+    const void *nameSpace, const void *identity, const char *source);
 const char *GlslAllocateDistinctName(GlslModule *module, const char *source);
 GlslType GlslNumericType(GlslBase base, int len);
 GlslType GlslMatrixType(int size);

@@ -401,8 +401,11 @@ static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
     profile = (const GlslProfileDesc *) Cg->theHAL->localData;
     GlslInitModule(&module, profile->stage, GlslCompilerAlloc,
                    CurrentScope->pool);
-    if (!GlslLowerProgram(&module, profile, loc, scope, program))
+    if (!GlslLowerProgram(&module, profile, loc, scope, program)) {
+        SemanticError(&program->loc, ERROR_S_UNSUPPORTED_PROFILE_OP,
+                      "GLSL 1.10 program");
         return 0;
+    }
     return GlslWriteModule(Cg->options.outfd, &module);
 }
 

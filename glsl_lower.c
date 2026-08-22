@@ -191,7 +191,7 @@ static void GlslInsertDecl(GlslDecl **list, GlslDecl *decl)
 }
 
 static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
-                                   Symbol *symbol)
+                                   Symbol *symbol, const void *nameSpace)
 {
     GlslDecl *decl;
     GlslType type;
@@ -201,7 +201,8 @@ static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
     if (!GlslLowerType(context, symbol->type, &type))
         return NULL;
     sourceName = GetAtomString(atable, symbol->name);
-    name = sourceName;
+    name = GlslAllocateScopedSymbolName(context->module, nameSpace,
+                                        symbol, sourceName);
     if (name == NULL)
         return NULL;
     decl = GlslNewDecl(context->module, GLSL_STORAGE_NONE, type, name);
@@ -212,22 +213,22 @@ static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
     return decl;
 }
 
-static int GlslCollectMembers(GlslLowerContext *context, Symbol *symbol,
-                              GlslDecl **members)
+static int GlslCollectMembers(GlslLowerContext *context, Scope *memberScope,
+                              Symbol *symbol, GlslDecl **members)
 {
     GlslDecl *decl;
 
     if (symbol == NULL)
         return 1;
-    if (!GlslCollectMembers(context, symbol->left, members))
+    if (!GlslCollectMembers(context, memberScope, symbol->left, members))
         return 0;
     if (symbol->kind == VARIABLE_S) {
-        decl = GlslNewSourceDecl(context, symbol);
+        decl = GlslNewSourceDecl(context, symbol, memberScope);
         if (decl == NULL)
             return 0;
         GlslInsertDecl(members, decl);
     }
-    if (!GlslCollectMembers(context, symbol->right, members))
+    if (!GlslCollectMembers(context, memberScope, symbol->right, members))
         return 0;
     return 1;
 }
@@ -258,7 +259,8 @@ static int GlslBuildEntryStruct(GlslLowerContext *context, Type *type)
     decl->identity = tag;
     GlslSetLoc(&decl->loc, &type->str.loc);
     GlslAppendDecl(&context->module->structs, decl);
-    if (!GlslCollectMembers(context, type->str.members->symbols,
+    if (!GlslCollectMembers(context, type->str.members,
+                            type->str.members->symbols,
                             &decl->members))
     {
         return 0;
@@ -273,7 +275,8 @@ static int GlslCollectFormals(GlslLowerContext *context, Symbol *formal)
     for (; formal != NULL; formal = formal->next) {
         if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM)
             return 0;
-        decl = GlslNewSourceDecl(context, formal);
+        decl = GlslNewSourceDecl(context, formal,
+                                 context->function->identity);
         if (decl == NULL)
             return 0;
         GlslInsertDecl(&context->function->locals, decl);
@@ -296,7 +299,8 @@ static int GlslCollectLocals(GlslLowerContext *context, Symbol *symbol)
         name = GetAtomString(atable, symbol->name);
         if (name == NULL || name[0] == '$')
             return 0;
-        decl = GlslNewSourceDecl(context, symbol);
+        decl = GlslNewSourceDecl(context, symbol,
+                                 context->function->identity);
         if (decl == NULL)
             return 0;
         GlslInsertDecl(&context->function->locals, decl);

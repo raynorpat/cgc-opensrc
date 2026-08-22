@@ -12,8 +12,8 @@ attribute vec4 cg_ATTRIB0;
 void main()
 {
     vec4 position;
-    VertexOut output;
+    VertexOut cg_output;
     position = cg_ATTRIB0;
-    output.position = position;
-    gl_Position = output.position;
+    cg_output.position = position;
+    gl_Position = cg_output.position;
 }

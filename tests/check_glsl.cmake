@@ -50,3 +50,22 @@ if(NOT actual_text STREQUAL expected_text)
     message(FATAL_ERROR
         "GLSL differs from ${EXPECTED}; actual: ${ACTUAL}.normalized")
 endif()
+
+find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
+if(PROFILE STREQUAL "glslv")
+    set(validator_stage vert)
+elseif(PROFILE STREQUAL "glslf")
+    set(validator_stage frag)
+endif()
+if(GLSLANG_VALIDATOR AND DEFINED validator_stage)
+    execute_process(
+        COMMAND "${GLSLANG_VALIDATOR}" -S "${validator_stage}" "${ACTUAL}"
+        RESULT_VARIABLE validator_result
+        OUTPUT_VARIABLE validator_stdout
+        ERROR_VARIABLE validator_stderr
+    )
+    if(NOT validator_result EQUAL 0)
+        message(FATAL_ERROR
+            "glslang rejected ${ACTUAL}:\n${validator_stdout}${validator_stderr}")
+    endif()
+endif()

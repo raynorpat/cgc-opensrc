@@ -79,6 +79,7 @@ int main(void)
     GlslModule countModule;
     GlslModule gapModule;
     GlslModule overflowModule;
+    GlslModule scopedModule;
     GlslType type;
     GlslDecl *decl;
     GlslDecl *secondDecl;
@@ -94,6 +95,8 @@ int main(void)
     const char *emitted;
     int firstIdentity;
     int secondIdentity;
+    int localNamespace;
+    int memberNamespace;
     int index;
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
@@ -118,6 +121,28 @@ int main(void)
         "value"));
     assert(!strcmp(GlslAllocateSymbolName(&module, &secondIdentity, "value"),
         "value_1"));
+
+    GlslInitModule(&scopedModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
+                   &localNamespace, &firstIdentity, "position"),
+                   "position"));
+    assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
+                   &memberNamespace, &secondIdentity, "position"),
+                   "position"));
+    assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
+                   &localNamespace, &secondIdentity, "output"),
+                   "cg_output"));
+    assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
+                   &localNamespace, &secondIdentity, "other"),
+                   "cg_output"));
+    assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
+                   &localNamespace, &localNamespace, "output"),
+                   "cg_output_1"));
+    assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
+                   &memberNamespace, NULL, "member"), "member"));
+    assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
+                   &memberNamespace, NULL, "otherMember"),
+                   "otherMember"));
     assert(!strcmp(GlslAllocateSymbolName(&module, &secondIdentity, "value"),
         "value_1"));
     assert(GlslIsReservedName("attribute"));

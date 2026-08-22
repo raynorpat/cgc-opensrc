@@ -95,6 +95,17 @@ add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.expected)
 
 add_test(
+    NAME glslv_unsupported_lowering
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/vp_unsupported_multiply.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_unsupported_lowering.glsl
+        -DCODE=5508
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+
+add_test(
     NAME glslv_semantics
     COMMAND cgc -quiet -nocode -profile glslv
         ${CMAKE_CURRENT_SOURCE_DIR}/glsl/semantics/vp_semantics.cg
