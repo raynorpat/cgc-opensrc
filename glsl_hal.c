@@ -397,16 +397,34 @@ static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
 {
     const GlslProfileDesc *profile;
     GlslModule module;
+    SourceLoc failureLoc;
+    const char *failureReason;
+    int errorCount;
 
     profile = (const GlslProfileDesc *) Cg->theHAL->localData;
     GlslInitModule(&module, profile->stage, GlslCompilerAlloc,
                    CurrentScope->pool);
     if (!GlslLowerProgram(&module, profile, loc, scope, program)) {
-        SemanticError(&program->loc, ERROR_S_UNSUPPORTED_PROFILE_OP,
-                      "GLSL 1.10 program");
+        failureLoc = program->loc;
+        if (module.errorLoc.file != 0 || module.errorLoc.line != 0) {
+            failureLoc.file = (unsigned short) module.errorLoc.file;
+            failureLoc.line = (unsigned short) module.errorLoc.line;
+        }
+        failureReason = module.errorReason != NULL ? module.errorReason :
+                        "GLSL 1.10 program";
+        SemanticError(&failureLoc, ERROR_S_UNSUPPORTED_PROFILE_OP,
+                      failureReason);
         return 0;
     }
-    return GlslWriteModule(Cg->options.outfd, &module);
+    errorCount = GetErrorCount();
+    if (!GlslWriteModule(Cg->options.outfd, &module)) {
+        if (GetErrorCount() == errorCount) {
+            SemanticError(&program->loc, ERROR_S_UNSUPPORTED_PROFILE_OP,
+                          "GLSL 1.10 module writer");
+        }
+        return 0;
+    }
+    return 1;
 }
 
 int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile)

@@ -24,6 +24,7 @@ endfunction()
 
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
+    ${PROJECT_SOURCE_DIR}/glsl_codegen.c
     glsl_ir_test.c
 )
 
@@ -94,6 +95,18 @@ add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.cg
     tests/glsl/profile/vp_passthrough.expected)
 
+add_glsl_fixture(glslv_formal_interface_collision glslv
+    tests/glsl/profile/vp_formal_interface_collision.cg
+    tests/glsl/profile/vp_formal_interface_collision.expected)
+
+add_glsl_fixture(glslv_type_local_collision glslv
+    tests/glsl/profile/vp_type_local_collision.cg
+    tests/glsl/profile/vp_type_local_collision.expected)
+
+add_glsl_fixture(glslv_function_local_collision glslv
+    tests/glsl/profile/vp_function_local_collision.cg
+    tests/glsl/profile/vp_function_local_collision.expected)
+
 add_test(
     NAME glslv_unsupported_lowering
     COMMAND ${CMAKE_COMMAND}
@@ -102,6 +115,8 @@ add_test(
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/vp_unsupported_multiply.cg
         -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_unsupported_lowering.glsl
         -DCODE=5508
+        -DEXPECTED_LINE=8
+        -DREASON=multiply
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
 )
 

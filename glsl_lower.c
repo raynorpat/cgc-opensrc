@@ -55,6 +55,7 @@ typedef struct GlslLowerContext_Rec {
     const GlslProfileDesc *profile;
     Scope *scope;
     GlslFunction *function;
+    SourceLoc statementLoc;
 } GlslLowerContext;
 
 static void GlslSetLoc(GlslLoc *target, const SourceLoc *source)
@@ -69,6 +70,32 @@ static int GlslLowerError(GlslLowerContext *context)
 {
     context->module->errors++;
     return 0;
+}
+
+static void GlslRecordFailure(GlslLowerContext *context,
+                              const char *reason)
+{
+    if (context->module->errorReason != NULL)
+        return;
+    context->module->errorLoc.file = context->statementLoc.file;
+    context->module->errorLoc.line = context->statementLoc.line;
+    context->module->errorReason = reason;
+}
+
+static const char *GlslUnsupportedExprReason(const expr *source)
+{
+    if (source != NULL && source->common.kind == BINARY_N) {
+        switch (source->bin.op) {
+        case MUL_OP:
+        case MUL_V_OP:
+        case MUL_SV_OP:
+        case MUL_VS_OP:
+            return "multiply (*)";
+        default:
+            break;
+        }
+    }
+    return "GLSL 1.10 expression";
 }
 
 static GlslDecl *GlslFindDeclList(GlslDecl *list, const void *identity)
@@ -201,8 +228,12 @@ static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
     if (!GlslLowerType(context, symbol->type, &type))
         return NULL;
     sourceName = GetAtomString(atable, symbol->name);
-    name = GlslAllocateScopedSymbolName(context->module, nameSpace,
-                                        symbol, sourceName);
+    if (nameSpace != NULL) {
+        name = GlslAllocateScopedSymbolName(context->module, nameSpace,
+                                            symbol, sourceName);
+    } else {
+        name = GlslAllocateSymbolName(context->module, symbol, sourceName);
+    }
     if (name == NULL)
         return NULL;
     decl = GlslNewDecl(context->module, GLSL_STORAGE_NONE, type, name);
@@ -275,8 +306,7 @@ static int GlslCollectFormals(GlslLowerContext *context, Symbol *formal)
     for (; formal != NULL; formal = formal->next) {
         if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM)
             return 0;
-        decl = GlslNewSourceDecl(context, formal,
-                                 context->function->identity);
+        decl = GlslNewSourceDecl(context, formal, NULL);
         if (decl == NULL)
             return 0;
         GlslInsertDecl(&context->function->locals, decl);
@@ -299,8 +329,7 @@ static int GlslCollectLocals(GlslLowerContext *context, Symbol *symbol)
         name = GetAtomString(atable, symbol->name);
         if (name == NULL || name[0] == '$')
             return 0;
-        decl = GlslNewSourceDecl(context, symbol,
-                                 context->function->identity);
+        decl = GlslNewSourceDecl(context, symbol, NULL);
         if (decl == NULL)
             return 0;
         GlslInsertDecl(&context->function->locals, decl);
@@ -395,8 +424,10 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
     GlslType type;
     Symbol *member;
 
-    if (source == NULL || !GlslLowerType(context, source->common.type, &type))
+    if (source == NULL || !GlslLowerType(context, source->common.type, &type)) {
+        GlslRecordFailure(context, "GLSL 1.10 expression type");
         return NULL;
+    }
     if (source->common.kind == SYMB_N && source->sym.op == VARIABLE_OP) {
         decl = GlslFindDecl(context, source->sym.symbol);
         if (decl == NULL)
@@ -462,6 +493,7 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
         }
         return target;
     }
+    GlslRecordFailure(context, GlslUnsupportedExprReason(source));
     return NULL;
 }
 
@@ -470,9 +502,11 @@ static int GlslLowerStatements(GlslLowerContext *context, stmt *source)
     GlslStmt *target;
 
     for (; source != NULL; source = source->commonst.next) {
+        context->statementLoc = source->commonst.loc;
         if (source->commonst.kind != EXPR_STMT ||
             source->exprst.exp == NULL)
         {
+            GlslRecordFailure(context, "GLSL 1.10 statement");
             return 0;
         }
         target = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
@@ -494,6 +528,7 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     GlslFunction *function;
     GlslType voidType;
     Type *result;
+    const char *functionName;
 
     if (module == NULL || profile == NULL || scope == NULL ||
         program == NULL || program->kind != FUNCTION_S ||
@@ -507,11 +542,14 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     context.module = module;
     context.profile = profile;
     context.scope = scope;
+    functionName = GlslAllocateSymbolName(module, program, "main");
+    if (functionName == NULL)
+        return GlslLowerError(&context);
     result = program->type->fun.rettype;
     if (!GlslBuildEntryStruct(&context, result))
         return GlslLowerError(&context);
     voidType = GlslNumericType(GLSL_BASE_VOID, 0);
-    function = GlslNewFunction(module, voidType, "main");
+    function = GlslNewFunction(module, voidType, functionName);
     if (function == NULL)
         return GlslLowerError(&context);
     function->identity = program;

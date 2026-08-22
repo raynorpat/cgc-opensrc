@@ -50,6 +50,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "slglobals.h"
@@ -70,6 +71,9 @@ Scope *CurrentScope = NULL;
 
 static int semanticErrorCount;
 static int lastSemanticError;
+static int lowerProgramResult;
+static int writeModuleResult;
+static int writeModuleDiagnostic;
 
 static const GlslSemanticDesc vertexSemantics[] = {
     { "ATTRIB",       "ATTRIB",       0, 16, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_ATTRIBUTE },
@@ -601,6 +605,48 @@ static void CheckFragment(void)
     assert(!hal.BindVaryingUnbound(NULL, NULL, 0, 0, NULL, 1));
 }
 
+static void CheckGenerateCodeWriterFailure(void)
+{
+    slHAL hal;
+    Scope scope;
+    Symbol program;
+    SourceLoc loc;
+    FILE *out;
+
+    InitStage(&hal, 1);
+    memset(&scope, 0, sizeof(scope));
+    memset(&program, 0, sizeof(program));
+    memset(&loc, 0, sizeof(loc));
+    loc.line = 41;
+    program.loc.line = 37;
+    CurrentScope = &scope;
+    out = tmpfile();
+    assert(out != NULL);
+    Cg->options.outfd = out;
+    lowerProgramResult = 1;
+    writeModuleResult = 0;
+    semanticErrorCount = 0;
+    assert(!hal.GenerateCode(&loc, &scope, &program));
+    if (semanticErrorCount != 1 || lastSemanticError != 5508) {
+        fprintf(stderr,
+                "writer failure produced %d diagnostics, last C%04d\n",
+                semanticErrorCount, lastSemanticError);
+        exit(1);
+    }
+    semanticErrorCount = 0;
+    writeModuleDiagnostic = 1;
+    assert(!hal.GenerateCode(&loc, &scope, &program));
+    if (semanticErrorCount != 1 || lastSemanticError != 5508) {
+        fprintf(stderr,
+                "accounted writer failure produced %d diagnostics, last C%04d\n",
+                semanticErrorCount, lastSemanticError);
+        exit(1);
+    }
+    writeModuleDiagnostic = 0;
+    assert(!fclose(out));
+    CurrentScope = NULL;
+}
+
 int main(void)
 {
     int result;
@@ -610,6 +656,7 @@ int main(void)
     assert(result);
     CheckVertex();
     CheckFragment();
+    CheckGenerateCodeWriterFailure();
     FreeAtomTable(atable);
     return 0;
 }
@@ -617,12 +664,24 @@ int main(void)
 int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
                      SourceLoc *loc, Scope *scope, Symbol *program)
 {
-    return 0;
+    return lowerProgramResult;
 }
 
 int GlslWriteModule(FILE *out, const GlslModule *module)
 {
-    return 0;
+    SourceLoc loc;
+
+    if (writeModuleDiagnostic) {
+        memset(&loc, 0, sizeof(loc));
+        SemanticError(&loc, ERROR_S_UNSUPPORTED_PROFILE_OP,
+                      "test writer");
+    }
+    return writeModuleResult;
+}
+
+int GetErrorCount(void)
+{
+    return semanticErrorCount;
 }
 
 slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id)

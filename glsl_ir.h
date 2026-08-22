@@ -245,6 +245,8 @@ typedef struct GlslModule_Rec {
     GlslFunction *functions;
     GlslFunction *entry;
     GlslBinding *bindings;
+    GlslLoc errorLoc;
+    const char *errorReason;
     int errors;
 } GlslModule;
 

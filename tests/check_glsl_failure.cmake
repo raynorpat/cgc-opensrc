@@ -1,4 +1,4 @@
-foreach(required CGC PROFILE SOURCE ACTUAL CODE)
+foreach(required CGC PROFILE SOURCE ACTUAL CODE EXPECTED_LINE REASON)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} must be defined")
     endif()
@@ -30,6 +30,15 @@ endif()
 if(NOT diagnostics MATCHES "not supported by this profile")
     message(FATAL_ERROR
         "${PROFILE} did not explain the lowering failure:\n${diagnostics}")
+endif()
+get_filename_component(source_name "${SOURCE}" NAME)
+if(NOT diagnostics MATCHES "${source_name}\\(${EXPECTED_LINE}\\)")
+    message(FATAL_ERROR
+        "${PROFILE} reported the wrong source line:\n${diagnostics}")
+endif()
+if(NOT diagnostics MATCHES "${REASON}")
+    message(FATAL_ERROR
+        "${PROFILE} did not identify ${REASON}:\n${diagnostics}")
 endif()
 if(NOT EXISTS "${ACTUAL}")
     message(FATAL_ERROR "cgc did not create ${ACTUAL}")

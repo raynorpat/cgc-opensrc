@@ -44,10 +44,16 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // glsl_ir_test.c
 //
 
+#if defined(NDEBUG)
+#undef NDEBUG
+#endif
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "glsl_ir.h"
+
+int GlslWriteModule(FILE *out, const GlslModule *module);
 
 static void *TestAlloc(void *arg, size_t size)
 {
@@ -80,6 +86,7 @@ int main(void)
     GlslModule gapModule;
     GlslModule overflowModule;
     GlslModule scopedModule;
+    GlslModule visibleModule;
     GlslType type;
     GlslDecl *decl;
     GlslDecl *secondDecl;
@@ -97,7 +104,12 @@ int main(void)
     int secondIdentity;
     int localNamespace;
     int memberNamespace;
+    int functionIdentity;
+    int typeIdentity;
+    int globalIdentity;
+    int localIdentity;
     int index;
+    FILE *writer;
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!strcmp(GlslAllocateName(&module, "position"), "position"));
@@ -121,6 +133,18 @@ int main(void)
         "value"));
     assert(!strcmp(GlslAllocateSymbolName(&module, &secondIdentity, "value"),
         "value_1"));
+
+    GlslInitModule(&visibleModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(!strcmp(GlslAllocateSymbolName(&visibleModule,
+                   &functionIdentity, "main"), "main"));
+    assert(!strcmp(GlslAllocateSymbolName(&visibleModule,
+                   &typeIdentity, "main"), "main_1"));
+    assert(!strcmp(GlslAllocateSymbolName(&visibleModule,
+                   &globalIdentity, "cg_ATTRIB0"), "cg_ATTRIB0"));
+    assert(!strcmp(GlslAllocateSymbolName(&visibleModule,
+                   &localIdentity, "cg_ATTRIB0"), "cg_ATTRIB0_1"));
+    assert(!strcmp(GlslAllocateSymbolName(&visibleModule,
+                   &globalIdentity, "renamed"), "cg_ATTRIB0"));
 
     GlslInitModule(&scopedModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!strcmp(GlslAllocateScopedSymbolName(&scopedModule,
@@ -368,5 +392,12 @@ int main(void)
     assert(functions == function);
     assert(functions->next == secondFunction);
     assert(secondFunction->next == NULL);
+
+    GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &module));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
     return 0;
 }
