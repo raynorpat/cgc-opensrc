@@ -44,6 +44,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // glsl_ir.c
 //
 
+#include <limits.h>
 #include <string.h>
 #include "glsl_ir.h"
 
@@ -90,17 +91,6 @@ static const char *GlslDuplicate(GlslModule *module, const char *string)
     if (copy != NULL)
         memcpy(copy, string, size);
     return copy;
-}
-
-static int GlslNameInUse(const GlslModule *module, const char *name)
-{
-    const GlslName *current;
-
-    for (current = module->names; current != NULL; current = current->next) {
-        if (!strcmp(current->emitted, name))
-            return 1;
-    }
-    return 0;
 }
 
 static GlslName *GlslFindName(const GlslModule *module, const void *identity,
@@ -178,6 +168,76 @@ static const char *GlslLegalizeName(GlslModule *module, const char *source)
     return name;
 }
 
+static int GlslSuffixValue(const char *name, const char *base, int *value)
+{
+    const char *current;
+    int digit;
+    int result;
+
+    current = name;
+    if (!strcmp(base, "gl")) {
+        if (strncmp(current, "cg_gl_", 6))
+            return 0;
+        current += 6;
+    } else {
+        while (*base != '\0' && *current == *base) {
+            base++;
+            current++;
+        }
+        if (*base != '\0')
+            return 0;
+        if (current > name && current[-1] != '_') {
+            if (*current != '_')
+                return 0;
+            current++;
+        }
+    }
+    if (*current < '1' || *current > '9')
+        return 0;
+    result = 0;
+    while (*current != '\0') {
+        if (*current < '0' || *current > '9')
+            return 0;
+        digit = *current - '0';
+        if (result > (INT_MAX - digit) / 10)
+            return -1;
+        result = result * 10 + digit;
+        current++;
+    }
+    *value = result;
+    return 1;
+}
+
+static const char *GlslBuildSuffixedName(GlslModule *module,
+    const char *base, int suffix)
+{
+    const char *prefix;
+    char *name;
+    size_t length;
+    int separator;
+
+    if (!strcmp(base, "gl")) {
+        prefix = "cg_gl_";
+        separator = 0;
+    } else {
+        prefix = base;
+        separator = base[strlen(base) - 1] != '_';
+    }
+    length = strlen(prefix);
+    name = (char *) GlslAlloc(module,
+        length + separator + GlslDecimalLength(suffix) + 1);
+    if (name == NULL)
+        return NULL;
+    memcpy(name, prefix, length);
+    if (separator) {
+        name[length] = '_';
+        GlslWriteDecimal(name + length + 1, suffix);
+    } else {
+        GlslWriteDecimal(name + length, suffix);
+    }
+    return name;
+}
+
 static const char *GlslAllocate(GlslModule *module, const void *identity,
     const char *source)
 {
@@ -185,36 +245,38 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
     const char *emitted;
     const char *sourceCopy;
     GlslName *name;
-    char *candidate;
-    size_t length;
-    int separator;
+    GlslName *current;
+    int inUse;
+    int maximumSuffix;
     int suffix;
+    int suffixValue;
+    int suffixResult;
 
     if (module == NULL || source == NULL)
         return NULL;
     base = GlslLegalizeName(module, source);
     if (base == NULL)
         return NULL;
-    emitted = base;
-    suffix = 1;
-    length = strlen(base);
-    while (GlslNameInUse(module, emitted)) {
-        separator = base[length - 1] != '_';
-        candidate = (char *) GlslAlloc(module,
-            length + GlslDecimalLength(suffix) + separator + 1);
-        if (candidate == NULL)
+    inUse = 0;
+    maximumSuffix = 0;
+    for (current = module->names; current != NULL; current = current->next) {
+        if (!strcmp(current->emitted, base))
+            inUse = 1;
+        suffixResult = GlslSuffixValue(current->emitted, base, &suffixValue);
+        if (suffixResult < 0)
             return NULL;
-        memcpy(candidate, base, length);
-        if (separator) {
-            candidate[length] = '_';
-            GlslWriteDecimal(candidate + length + 1, suffix);
-        } else {
-            GlslWriteDecimal(candidate + length, suffix);
-        }
-        emitted = GlslLegalizeName(module, candidate);
+        if (suffixResult > 0 && suffixValue > maximumSuffix)
+            maximumSuffix = suffixValue;
+    }
+    if (inUse) {
+        if (maximumSuffix == INT_MAX)
+            return NULL;
+        suffix = maximumSuffix + 1;
+        emitted = GlslBuildSuffixedName(module, base, suffix);
         if (emitted == NULL)
             return NULL;
-        suffix++;
+    } else {
+        emitted = base;
     }
     name = (GlslName *) GlslAlloc(module, sizeof(GlslName));
     if (name == NULL)
@@ -302,11 +364,14 @@ const char *GlslTypeName(const GlslType *type)
     static const char *boolNames[] = { "bool", "bvec2", "bvec3", "bvec4" };
     static const char *matrixNames[] = { "mat2", "mat3", "mat4" };
 
-    if (type == NULL || type->arraySize < 0)
+    if (type == NULL || type->arraySize < 0 || type->elementType != NULL)
+        return NULL;
+    if (type->base != GLSL_BASE_STRUCT && type->structName != NULL)
         return NULL;
     switch (type->base) {
     case GLSL_BASE_VOID:
-        if (type->len == 0 && type->rows == 0 && type->cols == 0)
+        if (type->len == 0 && type->rows == 0 && type->cols == 0 &&
+            type->arraySize == 0)
             return "void";
         break;
     case GLSL_BASE_FLOAT:

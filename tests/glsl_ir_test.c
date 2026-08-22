@@ -54,6 +54,14 @@ static void *TestAlloc(void *arg, size_t size)
     return calloc(1, size);
 }
 
+static int allocationCount;
+
+static void *CountingAlloc(void *arg, size_t size)
+{
+    allocationCount++;
+    return calloc(1, size);
+}
+
 static void *DirtyAlloc(void *arg, size_t size)
 {
     void *memory;
@@ -68,6 +76,7 @@ int main(void)
     GlslModule module;
     GlslModule dirtyModule;
     GlslModule collisionModule;
+    GlslModule countModule;
     GlslType type;
     GlslDecl *decl;
     GlslDecl *secondDecl;
@@ -83,6 +92,7 @@ int main(void)
     const char *emitted;
     int firstIdentity;
     int secondIdentity;
+    int index;
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!strcmp(GlslAllocateName(&module, "position"), "position"));
@@ -138,6 +148,18 @@ int main(void)
     assert(!strcmp(emitted, "cg_gl_2"));
     assert(!GlslIsReservedName(emitted));
 
+    allocationCount = 0;
+    GlslInitModule(&countModule, GLSL_STAGE_VERTEX, CountingAlloc, NULL);
+    for (index = 0; index < 64; index++) {
+        emitted = GlslAllocateDistinctName(&countModule, "item");
+        if (index == 0)
+            assert(!strcmp(emitted, "item"));
+        if (index == 63)
+            assert(!strcmp(emitted, "item_63"));
+        assert(!GlslIsReservedName(emitted));
+    }
+    assert(allocationCount <= 5 * 64);
+
     type = GlslNumericType(GLSL_BASE_BOOL, 2);
     assert(!strcmp(GlslTypeName(&type), "bvec2"));
     type = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
@@ -153,6 +175,30 @@ int main(void)
     type = GlslNumericType(GLSL_BASE_FLOAT, 5);
     assert(GlslTypeName(&type) == NULL);
     type = GlslMatrixType(5);
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslMatrixType(3);
+    type.cols = 2;
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    type.arraySize = 1;
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    type.structName = "Bad";
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    type.elementType = &type;
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    type.structName = "Bad";
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    type.elementType = &type;
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslNumericType(GLSL_BASE_STRUCT, 0);
+    assert(GlslTypeName(&type) == NULL);
+    type.structName = "";
+    assert(GlslTypeName(&type) == NULL);
+    type = GlslNumericType((GlslBase) 99, 1);
     assert(GlslTypeName(&type) == NULL);
 
     GlslInitModule(&dirtyModule, GLSL_STAGE_FRAGMENT, DirtyAlloc, NULL);
