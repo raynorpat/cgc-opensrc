@@ -48,17 +48,16 @@ the complemented mask to `uintptr_t` pointer values and `size_t` allocation
 sizes. On 64-bit Windows, complementing the 32-bit value zero-extends it during
 the wider expression and clears the upper pointer bits.
 
-`MemoryPool_rec.alignmask` will change from `unsigned` to `uintptr_t`. The mask
-is used in pointer-width allocation arithmetic, so storing it at pointer width
-fixes all affected expressions at their common source without repetitive casts
-or a new alignment abstraction. The public `mem_CreatePool` interface remains
-unchanged, and 32-bit behavior is preserved because `uintptr_t` remains 32 bits
-there.
+The allocator will cast the complemented alignment mask to `uintptr_t` for
+pointer expressions and to `size_t` for allocation-size expressions. This
+preserves the full width of each value while keeping the stored mask and public
+`mem_CreatePool` interface unchanged. The casts are neutral in 32-bit builds,
+where the participating types are already 32 bits wide.
 
 ## Scope
 
 The change enables CTest in the root build, adds test definitions under the
-`tests` folder, and corrects the memory-pool alignment-mask width in `memory.c`.
+`tests` folder, and corrects alignment-mask promotion in `memory.c`.
 It will not modify either shader, generated parser sources, standard library
 generation, or public compiler interfaces. The existing `cgc` executable
 remains a normal build target and is the executable exercised by both tests.
