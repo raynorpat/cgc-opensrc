@@ -48,6 +48,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -87,6 +88,7 @@ int main(void)
     GlslModule overflowModule;
     GlslModule scopedModule;
     GlslModule visibleModule;
+    GlslModule nonfiniteModule;
     GlslType type;
     GlslDecl *decl;
     GlslDecl *secondDecl;
@@ -110,6 +112,8 @@ int main(void)
     int localIdentity;
     int index;
     FILE *writer;
+    float infinity;
+    float nanValue;
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!strcmp(GlslAllocateName(&module, "position"), "position"));
@@ -392,6 +396,50 @@ int main(void)
     assert(functions == function);
     assert(functions->next == secondFunction);
     assert(secondFunction->next == NULL);
+
+    infinity = FLT_MAX;
+    infinity = infinity * 2.0f;
+    nanValue = infinity - infinity;
+    assert(infinity > FLT_MAX);
+    assert(nanValue != nanValue);
+
+    GlslInitModule(&nonfiniteModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(&nonfiniteModule, type, "main");
+    assert(function != NULL);
+    function->isEntry = 1;
+    nonfiniteModule.entry = function;
+    GlslAppendFunction(&nonfiniteModule.functions, function);
+    stmt = GlslNewStmt(&nonfiniteModule, GLSL_STMT_EXPRESSION);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    expr = GlslNewExpr(&nonfiniteModule, GLSL_EXPR_FLOAT, type);
+    expr->u.literalFloat = infinity;
+    stmt->u.expression = expr;
+    GlslAppendStmt(&function->body, stmt);
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &nonfiniteModule));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+
+    GlslInitModule(&nonfiniteModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(&nonfiniteModule, type, "main");
+    assert(function != NULL);
+    function->isEntry = 1;
+    nonfiniteModule.entry = function;
+    GlslAppendFunction(&nonfiniteModule.functions, function);
+    stmt = GlslNewStmt(&nonfiniteModule, GLSL_STMT_EXPRESSION);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    expr = GlslNewExpr(&nonfiniteModule, GLSL_EXPR_FLOAT, type);
+    expr->u.literalFloat = nanValue;
+    stmt->u.expression = expr;
+    GlslAppendStmt(&function->body, stmt);
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &nonfiniteModule));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     writer = tmpfile();

@@ -163,6 +163,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_D_OUT_PARAM_NOT_SAME_TYPE     1113, "actual parameter #%d must be same type as formal out parameter"
 #define ERROR_S_NON_UNIFORM_PARAM_INIT      1114, "only uniform parameters can be initialized \"%s\""
 #define ERROR_S_NO_COMPAT_OVERLOADED_FUN    1115, "unable to find compatible overloaded function \"%s\""
+#define ERROR_S_JUMP_NOT_IN_LOOP            1116, "\"%s\" statement is not within a loop"
 
 #define ERROR___QSTN_SCALAR_3RD_OPND_EXPECTED   1201, "expected scalar third operand to \"? :\""
 #define ERROR___QSTN_VECTOR_3RD_OPND_EXPECTED   1202, "expected vector third operand to \"? :\""

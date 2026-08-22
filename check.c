@@ -350,6 +350,63 @@ static stmt *CheckForUnsupportedStatements(stmt *fStmt, void *arg1, int arg2)
 } // CheckForUnsupportedStatements
 
 /*
+ * CheckJumpStatements() - Reject loop-control statements outside a loop.
+ *         This is a source-language rule shared by every profile.
+ */
+
+static int CheckJumpStatements(stmt *fStmt, int loopDepth)
+{
+    int count;
+
+    count = 0;
+    for (; fStmt != NULL; fStmt = fStmt->commonst.next) {
+        switch (fStmt->commonst.kind) {
+        case IF_STMT:
+            count += CheckJumpStatements(fStmt->ifst.thenstmt, loopDepth);
+            count += CheckJumpStatements(fStmt->ifst.elsestmt, loopDepth);
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            count += CheckJumpStatements(fStmt->whilest.body,
+                                         loopDepth + 1);
+            break;
+        case FOR_STMT:
+            count += CheckJumpStatements(fStmt->forst.init, loopDepth);
+            count += CheckJumpStatements(fStmt->forst.step, loopDepth);
+            count += CheckJumpStatements(fStmt->forst.body,
+                                         loopDepth + 1);
+            break;
+        case BLOCK_STMT:
+            count += CheckJumpStatements(fStmt->blockst.body, loopDepth);
+            break;
+        case BREAK_STMT:
+            if (loopDepth == 0) {
+                SemanticError(&fStmt->commonst.loc,
+                              ERROR_S_JUMP_NOT_IN_LOOP, "break");
+                count++;
+            }
+            break;
+        case CONTINUE_STMT:
+            if (loopDepth == 0) {
+                SemanticError(&fStmt->commonst.loc,
+                              ERROR_S_JUMP_NOT_IN_LOOP, "continue");
+                count++;
+            }
+            break;
+        case EXPR_STMT:
+        case RETURN_STMT:
+        case DISCARD_STMT:
+        case COMMENT_STMT:
+            break;
+        default:
+            assert(!"bad kind to CheckJumpStatements()");
+            break;
+        }
+    }
+    return count;
+} // CheckJumpStatements
+
+/*
  * BindUnboundUniformMembers() - Bind any members that are currently unbound.  Must be a
  *         uniform pseudo-connector.
  */
@@ -388,6 +445,7 @@ static int CheckFunctionDefinition(Scope *fScope, Symbol *funSymb, int IsProgram
         funSymb->flags = BEING_CHECKED;
         lStmt = funSymb->details.fun.statements;
         CheckParamsAndLocals(funSymb, IsProgram);
+        count += CheckJumpStatements(lStmt, 0);
         if (IsProgram) {
             struct BuildReturnAssignments lstr;
 

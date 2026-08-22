@@ -1,0 +1,50 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+float grouped(float a, float b, float c)
+{
+    float value;
+    value = a + (b - c);
+    value = value + (a + (b + c));
+    value = value + a * (b / c);
+    value = value + a * (b * c);
+    return value;
+}
+
+bool groupedLogic(float a, float b, float c)
+{
+    bool left;
+    bool middle;
+    bool right;
+    left = a < b;
+    middle = b < c;
+    right = c < a;
+    return left == (middle == right) && (left || middle);
+}
+
+float choose(bool left, bool middle, float a, float b, float c)
+{
+    return left ? middle ? a : b : middle ? b : c;
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    float value;
+    bool logic;
+    position = cg_ATTRIB0;
+    value = grouped(position.x, position.y, position.z);
+    logic = groupedLogic(position.x, position.y, position.z);
+    position.x = choose(logic, position.w > 0.0, value, position.y, position.z);
+    cg_output.position = position;
+    gl_Position = cg_output.position;
+}

@@ -46,6 +46,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdio.h>
 #include <string.h>
+#include <float.h>
 
 #include "slglobals.h"
 #include "glsl_hal.h"
@@ -1036,6 +1037,19 @@ static GlslExpr *GlslLowerConstant(GlslLowerContext *context, expr *source,
     GlslExpr *target;
     GlslExpr *item;
     int i;
+
+    if (type->base == GLSL_BASE_FLOAT) {
+        for (i = 0; i < type->len; i++) {
+            if (source->co.val[i].f != source->co.val[i].f ||
+                source->co.val[i].f > FLT_MAX ||
+                source->co.val[i].f < -FLT_MAX)
+            {
+                GlslRecordFailure(context,
+                                  "non-finite floating-point constant");
+                return NULL;
+            }
+        }
+    }
 
     if (type->len == 1) {
         if (type->base == GLSL_BASE_FLOAT)

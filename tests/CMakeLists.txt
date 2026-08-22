@@ -37,6 +37,35 @@ function(add_glsl_failure name source expected_line reason)
     )
 endfunction()
 
+function(add_generic_failure name source expected_line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.txt
+            -DCODE=1116
+            -DEXPECTED_LINE=${expected_line}
+            -DREASON=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_generic_failure.cmake
+    )
+endfunction()
+
+function(add_glsl_common_failure name source expected_line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=glslv
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            -DCODE=1116
+            -DEXPECTED_LINE=${expected_line}
+            -DREASON=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+    )
+endfunction()
+
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
@@ -91,6 +120,12 @@ add_generic_regression(vertexlight vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
 add_generic_regression(vertexlight4 vertexlight4.cg
     5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
+add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
+    07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
+add_generic_failure(generic_break_outside_loop
+    tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
+add_generic_failure(generic_continue_outside_loop
+    tests/glsl/diagnostics/vp_continue_outside_loop.cg 5 continue)
 
 function(add_glsl_registration name)
     add_test(
@@ -129,6 +164,10 @@ add_glsl_fixture(glslv_vector_compare glslv
 add_glsl_fixture(glslv_expression_edges glslv
     tests/glsl/expressions/vp_expression_edges.cg
     tests/glsl/expressions/vp_expression_edges.expected)
+
+add_glsl_fixture(glslv_grouping glslv
+    tests/glsl/expressions/vp_grouping.cg
+    tests/glsl/expressions/vp_grouping.expected)
 
 add_glsl_fixture(glslv_float1_swizzle glslv
     tests/glsl/expressions/vp_float1_swizzle.cg
@@ -170,10 +209,14 @@ add_glsl_failure(glslv_constant_bitwise_or
     tests/glsl/diagnostics/vp_constant_bitwise_or.cg 6 "bitwise or")
 add_glsl_failure(glslv_constant_bitwise_not
     tests/glsl/diagnostics/vp_constant_bitwise_not.cg 6 "bitwise not")
-add_glsl_failure(glslv_break_outside_loop
-    tests/glsl/diagnostics/vp_break_outside_loop.cg 5 "break outside loop")
-add_glsl_failure(glslv_continue_outside_loop
-    tests/glsl/diagnostics/vp_continue_outside_loop.cg 5 "continue outside loop")
+add_glsl_failure(glslv_nonfinite_infinity
+    tests/glsl/diagnostics/vp_nonfinite_infinity.cg 6 non-finite)
+add_glsl_failure(glslv_nonfinite_nan
+    tests/glsl/diagnostics/vp_nonfinite_nan.cg 6 non-finite)
+add_glsl_common_failure(glslv_break_outside_loop
+    tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
+add_glsl_common_failure(glslv_continue_outside_loop
+    tests/glsl/diagnostics/vp_continue_outside_loop.cg 5 continue)
 
 add_test(
     NAME glslv_semantics

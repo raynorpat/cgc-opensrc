@@ -46,6 +46,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdio.h>
 #include <string.h>
+#include <float.h>
 
 #include "glsl_ir.h"
 
@@ -64,6 +65,11 @@ static const char *GlslStorageName(GlslStorage storage)
 static int GlslValidOperator(GlslOperator op)
 {
     return op >= GLSL_OP_ASSIGN && op <= GLSL_OP_LOGICAL_NOT;
+}
+
+static int GlslFiniteFloat(float value)
+{
+    return value == value && value <= FLT_MAX && value >= -FLT_MAX;
 }
 
 static int GlslValidateExpr(const GlslExpr *expr);
@@ -85,9 +91,10 @@ static int GlslValidateExpr(const GlslExpr *expr)
     case GLSL_EXPR_SYMBOL:
         return expr->u.symbol != NULL && expr->u.symbol->name != NULL;
     case GLSL_EXPR_INT:
-    case GLSL_EXPR_FLOAT:
     case GLSL_EXPR_BOOL:
         return 1;
+    case GLSL_EXPR_FLOAT:
+        return GlslFiniteFloat(expr->u.literalFloat);
     case GLSL_EXPR_UNARY:
         return GlslValidOperator(expr->u.unary.op) &&
                expr->u.unary.op >= GLSL_OP_NEGATE &&
@@ -304,7 +311,8 @@ static int GlslWriteFloat(FILE *out, float value)
     char text[64];
     size_t length;
 
-    if (snprintf(text, sizeof(text), "%.9g", value) < 0) return 0;
+    if (!GlslFiniteFloat(value) ||
+        snprintf(text, sizeof(text), "%.9g", value) < 0) return 0;
     if (strchr(text, '.') == NULL && strchr(text, 'e') == NULL &&
         strchr(text, 'E') == NULL)
     {
@@ -324,9 +332,26 @@ static int GlslWriteExprPrec(FILE *out, const GlslExpr *expr,
     int precedence = GlslExprPrecedence(expr);
     int needParens = precedence < parentPrecedence;
 
-    if (rightChild && precedence == parentPrecedence &&
-        (parentOperator == GLSL_OP_SUBTRACT ||
-         parentOperator == GLSL_OP_DIVIDE)) needParens = 1;
+    if (!rightChild && precedence == parentPrecedence &&
+        parentOperator == GLSL_OP_ASSIGN) needParens = 1;
+    if (rightChild && precedence == parentPrecedence) {
+        switch (parentOperator) {
+        case GLSL_OP_EQUAL:
+        case GLSL_OP_NOT_EQUAL:
+        case GLSL_OP_LESS:
+        case GLSL_OP_GREATER:
+        case GLSL_OP_LESS_EQUAL:
+        case GLSL_OP_GREATER_EQUAL:
+        case GLSL_OP_ADD:
+        case GLSL_OP_SUBTRACT:
+        case GLSL_OP_MULTIPLY:
+        case GLSL_OP_DIVIDE:
+            needParens = 1;
+            break;
+        default:
+            break;
+        }
+    }
     if (needParens && fprintf(out, "(") < 0) return 0;
     switch (expr->kind) {
     case GLSL_EXPR_SYMBOL:
