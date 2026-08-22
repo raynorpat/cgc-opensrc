@@ -51,7 +51,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 enum GlslStage_Enum {
     GLSL_STAGE_VERTEX,
-    GLSL_STAGE_FRAGMENT,
+    GLSL_STAGE_FRAGMENT
 };
 
 typedef enum GlslStage_Enum GlslStage;

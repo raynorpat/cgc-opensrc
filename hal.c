@@ -96,11 +96,14 @@ static int GenerateCode_HAL(SourceLoc *loc, Scope *fScope, Symbol *program);
 slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id)
 {
     slProfile *lProfile;
+    char *profileName;
 
     lProfile = (slProfile *) malloc(sizeof(slProfile));
+    profileName = (char *) malloc(strlen(name) + 1);
+    strcpy(profileName, name);
     lProfile->next = Cg->allProfiles;
     lProfile->InitHAL = InitHAL;
-    lProfile->name = name;
+    lProfile->name = profileName;
     lProfile->id = id;
     Cg->allProfiles = lProfile;
     return lProfile;
