@@ -39,6 +39,14 @@ Task 7 constructor arguments are scalar or vector numeric types. Reject array,
 matrix, struct, sampler, or otherwise invalid parameter shapes before helper
 creation.
 
+Mapped floating-point and integer scalar/vector arguments are numeric. Preserve
+their base and width in synthesized helper signatures and parameter
+declarations. Strict GLSL 1.10 matrix constructors perform the final numeric
+conversion to their floating matrix element type; all representative scalar
+and vector forms must pass `glslangValidator`. Boolean arguments are
+nonnumeric for the practical Task 7 subset and remain explicitly unsupported,
+even when the common Cg front end accepts an all-boolean constructor list.
+
 Build a deterministic readable base name from the matrix dimension and
 parameter shapes. Allocate the final function name through the module's shared
 namespace so user functions, types, globals, and generated interfaces cannot
@@ -51,6 +59,8 @@ Add an exact vertex fixture covering:
 - two side-effecting `mat2` constructors sharing one synthesized signature;
 - a user helper colliding with the generated base name;
 - a mixed scalar, `vec2`, and `vec3` side-effecting `mat3` constructor;
+- pure and side-effecting integer scalar/vector matrix arguments, including
+  `mat2`, `mat3`, and `mat4` coverage;
 - a matrix constructor in a helper return that is invoked only inside a
   conditional branch; and
 - exactly one textual occurrence of each original side-effecting call per

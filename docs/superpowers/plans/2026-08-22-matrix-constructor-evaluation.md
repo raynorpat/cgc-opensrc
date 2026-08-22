@@ -29,7 +29,7 @@
 
 - [ ] Add a lowering-private helper descriptor keyed by the requested matrix result type and the full ordered mapped parameter types, with an explicit maximum of sixteen constructor arguments.
 - [ ] Detect side effects across scalar and vector source arguments before direct component rearrangement. Preserve the current direct lowering byte-for-byte when every argument is pure.
-- [ ] Validate impure helper parameters as non-array floating scalar/vector shapes, rejecting invalid shapes before helper creation.
+- [ ] Validate impure helper parameters as non-array numeric scalar/vector shapes, preserving mapped float/int base and width while rejecting boolean and other invalid shapes before helper creation.
 - [ ] Allocate deterministic names such as `cg_construct_mat2_v2_v2` through `GlslAllocateDistinctName`, so user declarations share the same collision domain.
 - [ ] Build one `GlslFunction` definition per signature. Its `argN` parameters are referenced purely, flattened in Cg row order, and rearranged to `matN` column order in a single return statement.
 - [ ] Lower the original constructor arguments once, in source order, as the synthesized call argument list. Remove the old side-effect diagnostic.
@@ -57,3 +57,19 @@
 - [ ] Regenerate `stdlib.c`, verify its hash and worktree diff are unchanged, and restore nothing destructively.
 - [ ] Run direct occurrence-count checks on the exact side-effect output, `git diff --check`, and review the complete diff from `b5193c5` plus the approved design/plan commits.
 - [ ] Commit the implementation as `Preserve matrix constructor evaluation` and report hashes, test counts, RED/GREEN evidence, and regeneration status.
+
+### Task 5: Extend matrix arguments across numeric bases
+
+**Files:**
+- Modify: `glsl_lower.c`
+- Create: `tests/glsl/expressions/vp_matrix_numeric_args.cg`
+- Create: `tests/glsl/expressions/vp_matrix_numeric_args.expected`
+- Create: `tests/glsl/diagnostics/vp_matrix_bool_constructor.cg`
+- Modify: `tests/CMakeLists.txt`
+
+- [ ] Add exact and generic regressions for pure integer `float2x2`, `float3x3`, and `float4x4` constructors; mixed integer/floating arguments; and side-effecting integer scalar and vector-row arguments.
+- [ ] Add an all-boolean constructor source that the generic profile accepts but `glslv` rejects explicitly as a nonnumeric matrix argument.
+- [ ] Capture RED from the current float-only pure and helper parameter checks before changing production lowering.
+- [ ] Generalize matrix scalar/vector validation, component extraction, helper signatures, and helper-name shape tokens across mapped float and int bases while preserving full ordered base and width.
+- [ ] Keep pure constructors direct and readable, preserve exactly-once helper evaluation, and validate every exact success with strict `glslangValidator -S vert`.
+- [ ] Run focused and full Debug/Release tests, all generic hashes, standard-library reproducibility, occurrence counts, and whitespace/worktree checks before the focused commit.
