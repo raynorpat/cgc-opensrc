@@ -408,8 +408,13 @@ Add all GLSL backend sources to `CMakeLists.txt` and `Makefile`. Add
 
 Add profile-guarded sampler and intrinsic declarations to `stdlib.cg`, then
 regenerate and check in synchronized `stdlib.c` using the repository's
-`tokenize` target. No grammar change is planned, so `parser.y`, `parser.c`, and
-`parser.h` remain untouched.
+`tokenize` target.
+
+The scanner already tokenizes `break` and `continue`, but the checked-in grammar
+does not currently accept them. Add the two leaf statement kinds and grammar
+productions needed by the approved control-flow subset, update the existing AST
+walkers for those leaf nodes, and regenerate synchronized `parser.c` and
+`parser.h` from `parser.y`. Record the Bison version used.
 
 `glslangValidator` is an optional test dependency, not a compiler build or
 runtime dependency. CMake detects it with `find_program` and registers shader
