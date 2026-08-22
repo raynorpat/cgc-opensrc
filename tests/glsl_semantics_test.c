@@ -66,6 +66,7 @@ typedef struct ExpectedRegister_Rec {
 
 static CgStruct testCg;
 CgStruct *Cg = &testCg;
+Scope *CurrentScope = NULL;
 
 static int semanticErrorCount;
 static int lastSemanticError;
@@ -479,6 +480,21 @@ static void CheckVertex(void)
            CONNECTOR_IS_USELESS);
     CheckSemanticBoundaries(&hal);
 
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "ATTRIB0"), 0), "ATTRIB0"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "POSITION"), 0), "POSITION0"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "POSITION"), 1), "gl_Position"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "HPOS"), 1), "gl_Position"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "PSIZE"), 1), "gl_PointSize"));
+    assert(GlslCanonicalInterfaceName(profile,
+           AddAtom(atable, "ATTRIB16"), 0) == NULL);
+    assert(GlslCanonicalInterfaceName(profile,
+           AddAtom(atable, "NOT_A_SEMANTIC"), 0) == NULL);
+
     CheckNamedBinding(&hal, "TEXCOORD", 0, TYPE_BASE_FLOAT, 2,
                       "TEXCOORD0", 0);
     CheckNamedBinding(&hal, "POSITION", 0, TYPE_BASE_FLOAT, 4,
@@ -544,6 +560,21 @@ static void CheckFragment(void)
                    NUMELS(fragmentOutput));
     CheckSemanticBoundaries(&hal);
 
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "POSITION"), 0), "gl_FragCoord"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "WPOS"), 0), "gl_FragCoord"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "FACE"), 0), "gl_FrontFacing"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "COLOR"), 1), "gl_FragColor"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "DEPTH"), 1), "gl_FragDepth"));
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "COLOR1"), 0), "COLOR1"));
+    assert(GlslCanonicalInterfaceName(profile,
+           AddAtom(atable, "COLOR1"), 1) == NULL);
+
     CheckNamedBinding(&hal, "COLOR", 0, TYPE_BASE_FLOAT, 4,
                       "COLOR0", 0);
     CheckNamedBinding(&hal, "COLOR", 1, TYPE_BASE_FLOAT, 4,
@@ -580,6 +611,17 @@ int main(void)
     CheckVertex();
     CheckFragment();
     FreeAtomTable(atable);
+    return 0;
+}
+
+int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
+                     SourceLoc *loc, Scope *scope, Symbol *program)
+{
+    return 0;
+}
+
+int GlslWriteModule(FILE *out, const GlslModule *module)
+{
     return 0;
 }
 

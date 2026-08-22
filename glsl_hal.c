@@ -55,6 +55,125 @@ static const GlslProfileDesc *GetProfile_glsl(void)
     return (const GlslProfileDesc *) Cg->theHAL->localData;
 }
 
+static int GlslSemanticParts(const char *name, int *rootLength, int *index)
+{
+    const char *digits;
+    const char *p;
+    int value;
+
+    if (name == NULL || name[0] == '\0')
+        return 0;
+    digits = name + strlen(name);
+    while (digits > name && digits[-1] >= '0' && digits[-1] <= '9')
+        digits--;
+    if (digits == name)
+        return 0;
+    value = 0;
+    for (p = digits; *p != '\0'; p++) {
+        if (value > 1000000)
+            return 0;
+        value = value * 10 + (*p - '0');
+    }
+    *rootLength = (int) (digits - name);
+    *index = value;
+    return 1;
+}
+
+static int GlslSemanticRootEquals(const char *name, int rootLength,
+                                  const char *root)
+{
+    return (int) strlen(root) == rootLength &&
+           !strncmp(name, root, rootLength);
+}
+
+static const char *GlslConnectorName(const GlslProfileDesc *profile,
+                                     const GlslSemanticDesc *semantic,
+                                     int index, int isOutput)
+{
+    ConnectorRegisters *registers;
+    const char *name;
+    int count;
+    int i;
+    int rootLength;
+    int registerIndex;
+
+    if (isOutput) {
+        registers = profile->outputRegs;
+        count = profile->numOutputRegs;
+    } else {
+        registers = profile->inputRegs;
+        count = profile->numInputRegs;
+    }
+    for (i = 0; i < count; i++) {
+        name = registers[i].sname;
+        if (GlslSemanticParts(name, &rootLength, &registerIndex) &&
+            registerIndex == index &&
+            GlslSemanticRootEquals(name, rootLength,
+                                   semantic->canonicalRoot))
+        {
+            return name;
+        }
+    }
+    return NULL;
+}
+
+const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
+                                       int semantic, int isOutput)
+{
+    const GlslSemanticDesc *desc;
+    const char *name;
+    int direction;
+    int i;
+    int index;
+    int rootLength;
+
+    if (profile == NULL || semantic == 0)
+        return NULL;
+    name = GetAtomString(atable, semantic);
+    if (name == NULL)
+        return NULL;
+    for (i = 0; i < profile->numAliases; i++) {
+        if (!strcmp(name, profile->aliases[i].alias)) {
+            name = profile->aliases[i].canonical;
+            break;
+        }
+    }
+    if (!GlslSemanticParts(name, &rootLength, &index))
+        return NULL;
+    direction = isOutput ? SEM_OUT : SEM_IN;
+    for (i = 0; i < profile->numSemanticMap; i++) {
+        desc = &profile->semanticMap[i];
+        if (!(desc->properties & direction) ||
+            !GlslSemanticRootEquals(name, rootLength, desc->root))
+        {
+            continue;
+        }
+        if (index < desc->firstIndex ||
+            index >= desc->firstIndex + desc->count)
+        {
+            return NULL;
+        }
+        switch (desc->interfaceKind) {
+        case GLSL_INTERFACE_POSITION:
+            return "gl_Position";
+        case GLSL_INTERFACE_POINT_SIZE:
+            return "gl_PointSize";
+        case GLSL_INTERFACE_FRAG_COORD:
+            return "gl_FragCoord";
+        case GLSL_INTERFACE_FRONT_FACING:
+            return "gl_FrontFacing";
+        case GLSL_INTERFACE_FRAG_COLOR:
+            return "gl_FragColor";
+        case GLSL_INTERFACE_FRAG_DEPTH:
+            return "gl_FragDepth";
+        case GLSL_INTERFACE_ATTRIBUTE:
+        case GLSL_INTERFACE_VARYING:
+            return GlslConnectorName(profile, desc, index, isOutput);
+        }
+    }
+    return NULL;
+}
+
 static int RegisterNames_glsl(slHAL *hal)
 {
     const GlslProfileDesc *profile;
@@ -269,9 +388,22 @@ static int PrintCodeHeader_glsl(FILE *out)
     return 1;
 }
 
+static void *GlslCompilerAlloc(void *arg, size_t size)
+{
+    return mem_Calloc((MemoryPool *) arg, size, 1);
+}
+
 static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
 {
-    return 1;
+    const GlslProfileDesc *profile;
+    GlslModule module;
+
+    profile = (const GlslProfileDesc *) Cg->theHAL->localData;
+    GlslInitModule(&module, profile->stage, GlslCompilerAlloc,
+                   CurrentScope->pool);
+    if (!GlslLowerProgram(&module, profile, loc, scope, program))
+        return 0;
+    return GlslWriteModule(Cg->options.outfd, &module);
 }
 
 int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile)

@@ -122,5 +122,10 @@ int RegisterProfiles_glsl(void);
 int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile);
 int InitHAL_glslv(slHAL *hal);
 int InitHAL_glslf(slHAL *hal);
+int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
+    SourceLoc *loc, Scope *scope, Symbol *program);
+int GlslWriteModule(FILE *out, const GlslModule *module);
+const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
+    int semantic, int isOutput);
 
 #endif // !defined(__GLSL_HAL_H)

@@ -9,6 +9,19 @@ function(add_generic_regression name source expected_sha256)
     )
 endfunction()
 
+function(add_glsl_fixture name profile source expected)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl.cmake
+    )
+endfunction()
+
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     glsl_ir_test.c
@@ -31,9 +44,11 @@ add_test(
 
 add_executable(glsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_hal.c
     ${PROJECT_SOURCE_DIR}/glslv_hal.c
     ${PROJECT_SOURCE_DIR}/glslf_hal.c
+    ${PROJECT_SOURCE_DIR}/memory.c
     glsl_semantics_test.c
 )
 
@@ -74,6 +89,10 @@ endfunction()
 
 add_glsl_registration(glslv)
 add_glsl_registration(glslf)
+
+add_glsl_fixture(glslv_passthrough glslv
+    tests/glsl/profile/vp_passthrough.cg
+    tests/glsl/profile/vp_passthrough.expected)
 
 add_test(
     NAME glslv_semantics

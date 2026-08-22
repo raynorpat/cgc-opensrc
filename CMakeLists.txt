@@ -22,6 +22,8 @@ add_executable(cgc
     cpp.c
     generic_hal.c
     glsl_ir.c
+    glsl_lower.c
+    glsl_codegen.c
     glsl_hal.c
     glslv_hal.c
     glslf_hal.c

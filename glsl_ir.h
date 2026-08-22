@@ -121,41 +121,118 @@ typedef struct GlslLoc_Rec {
     int line;
 } GlslLoc;
 
-typedef struct GlslExpr_Rec {
-    struct GlslExpr_Rec *next;
+typedef struct GlslDecl_Rec GlslDecl;
+typedef struct GlslExpr_Rec GlslExpr;
+typedef struct GlslStmt_Rec GlslStmt;
+typedef struct GlslFunction_Rec GlslFunction;
+typedef struct GlslBinding_Rec GlslBinding;
+
+struct GlslExpr_Rec {
+    GlslExpr *next;
     GlslExprKind kind;
     GlslType type;
     GlslLoc loc;
-} GlslExpr;
+    union {
+        GlslDecl *symbol;
+        int literalInt;
+        float literalFloat;
+        int literalBool;
+        struct {
+            int op;
+            GlslExpr *operand;
+        } unary;
+        struct {
+            int op;
+            GlslExpr *left;
+            GlslExpr *right;
+        } binary;
+        struct {
+            GlslExpr *condition;
+            GlslExpr *trueExpr;
+            GlslExpr *falseExpr;
+        } conditional;
+        struct {
+            GlslExpr *target;
+            const char *name;
+            GlslExpr *arguments;
+        } call;
+        struct {
+            GlslExpr *arguments;
+        } construct;
+        struct {
+            GlslExpr *object;
+            GlslDecl *decl;
+            const char *name;
+        } member;
+        struct {
+            GlslExpr *object;
+            GlslExpr *index;
+        } index;
+        struct {
+            GlslExpr *object;
+            const char *mask;
+        } swizzle;
+    } u;
+};
 
-typedef struct GlslStmt_Rec {
-    struct GlslStmt_Rec *next;
+struct GlslStmt_Rec {
+    GlslStmt *next;
     GlslStmtKind kind;
     GlslLoc loc;
-} GlslStmt;
+    union {
+        GlslExpr *expression;
+        struct {
+            GlslExpr *condition;
+            GlslStmt *trueBranch;
+            GlslStmt *falseBranch;
+        } ifStmt;
+        struct {
+            GlslExpr *condition;
+            GlslStmt *body;
+        } loop;
+        struct {
+            GlslStmt *init;
+            GlslExpr *condition;
+            GlslStmt *step;
+            GlslStmt *body;
+        } forStmt;
+        GlslStmt *block;
+        GlslExpr *returnExpr;
+    } u;
+};
 
-typedef struct GlslDecl_Rec {
-    struct GlslDecl_Rec *next;
+struct GlslDecl_Rec {
+    GlslDecl *next;
     GlslStorage storage;
     GlslType type;
     const char *name;
     GlslLoc loc;
-} GlslDecl;
+    GlslExpr *initializer;
+    const void *identity;
+    GlslDecl *members;
+    GlslParameterQualifier parameterQualifier;
+};
 
-typedef struct GlslFunction_Rec {
-    struct GlslFunction_Rec *next;
+struct GlslFunction_Rec {
+    GlslFunction *next;
     GlslType result;
     const char *name;
     GlslLoc loc;
-} GlslFunction;
+    const void *identity;
+    GlslDecl *parameters;
+    GlslDecl *locals;
+    GlslStmt *body;
+    int isEntry;
+};
 
-typedef struct GlslBinding_Rec {
-    struct GlslBinding_Rec *next;
+struct GlslBinding_Rec {
+    GlslBinding *next;
     GlslStorage storage;
     const char *name;
     const char *semantic;
     GlslLoc loc;
-} GlslBinding;
+    GlslDecl *declaration;
+};
 
 typedef struct GlslModule_Rec {
     GlslStage stage;
