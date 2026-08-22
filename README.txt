@@ -34,9 +34,11 @@ deal with connector semantics, and finally, generate code.  See
 generic_hal.c for more details. 
 
 The directory contains 4 examples: vertexlight.cg, vertexlight4.cg,
-position.cg, and reflection.cg. After building cgc.exe, you can use
-following command line to compile these: 
-  cgc -profile generic <example_file_name>
+position.cg, and reflection.cg. After building, invoke the produced executable
+with the generic profile. For a single-config generator, use:
+  ./build/cgc -profile generic <example_file_name>
+For a Visual Studio Release build, use:
+  .\build\Release\cgc.exe -profile generic <example_file_name>
 This release prints the output to stdout only.
 
 Developers can download all the latest Cg-related content from the Cg 
