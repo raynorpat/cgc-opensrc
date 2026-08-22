@@ -29,6 +29,29 @@ add_test(
     COMMAND glsl_ir_unit
 )
 
+add_executable(glsl_semantics_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/glsl_hal.c
+    ${PROJECT_SOURCE_DIR}/glslv_hal.c
+    ${PROJECT_SOURCE_DIR}/glslf_hal.c
+    glsl_semantics_test.c
+)
+
+target_include_directories(glsl_semantics_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(glsl_semantics_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME glsl_semantics_unit
+    COMMAND glsl_semantics_unit
+)
+
 add_generic_regression(position position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
 add_generic_regression(reflection reflection.cg
