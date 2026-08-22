@@ -53,10 +53,43 @@ add_glsl_registration(glslv)
 add_glsl_registration(glslf)
 
 add_test(
+    NAME glslv_semantics
+    COMMAND cgc -quiet -nocode -profile glslv
+        ${CMAKE_CURRENT_SOURCE_DIR}/glsl/semantics/vp_semantics.cg
+)
+
+add_test(
+    NAME glslf_semantics
+    COMMAND cgc -quiet -nocode -profile glslf
+        ${CMAKE_CURRENT_SOURCE_DIR}/glsl/semantics/fp_semantics.cg
+)
+
+add_test(
     NAME glslv_unsupported_connector
     COMMAND ${CMAKE_COMMAND}
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/unsupported_connector.cg
+        -DCODE=5001
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/check_diagnostic.cmake
+)
+
+add_test(
+    NAME unbound_input
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/diagnostics/unbound_input.cg
+        -DCODE=5116
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/check_diagnostic.cmake
+)
+
+add_test(
+    NAME glslf_face_vector
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslf
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/diagnostics/face_vector.cg
+        -DCODE=5108
         -P ${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/check_diagnostic.cmake
 )

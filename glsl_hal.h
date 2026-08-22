@@ -73,6 +73,32 @@ typedef struct GlslLimits_Rec {
     int colorOutputs;
 } GlslLimits;
 
+typedef enum GlslInterface_Enum {
+    GLSL_INTERFACE_ATTRIBUTE,
+    GLSL_INTERFACE_VARYING,
+    GLSL_INTERFACE_POSITION,
+    GLSL_INTERFACE_POINT_SIZE,
+    GLSL_INTERFACE_FRAG_COORD,
+    GLSL_INTERFACE_FRONT_FACING,
+    GLSL_INTERFACE_FRAG_COLOR,
+    GLSL_INTERFACE_FRAG_DEPTH
+} GlslInterface;
+
+typedef struct GlslSemanticDesc_Rec {
+    const char *root;
+    const char *canonicalRoot;
+    int firstIndex;
+    int count;
+    int properties;
+    int size;
+    GlslInterface interfaceKind;
+} GlslSemanticDesc;
+
+typedef struct GlslSemanticAlias_Rec {
+    const char *alias;
+    const char *canonical;
+} GlslSemanticAlias;
+
 typedef struct GlslProfileDesc_Rec {
     GlslStage stage;
     const char *name;
@@ -81,8 +107,10 @@ typedef struct GlslProfileDesc_Rec {
     int outputCid;
     ConnectorDescriptor *connectors;
     int numConnectors;
-    SemanticsDescriptor *semantics;
-    int numSemantics;
+    GlslSemanticDesc *semanticMap;
+    int numSemanticMap;
+    GlslSemanticAlias *aliases;
+    int numAliases;
     ConnectorRegisters *inputRegs;
     int numInputRegs;
     ConnectorRegisters *outputRegs;

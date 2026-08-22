@@ -1,0 +1,21 @@
+struct AppData {
+    float4 position : POSITION;
+    float3 normal : NORMAL;
+    float4 color : COLOR0;
+    float2 texcoord : TEXCOORD0;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+    float2 texcoord : TEXCOORD0;
+};
+
+VertexOut main(AppData input)
+{
+    VertexOut output;
+    output.position = input.position;
+    output.color = input.color;
+    output.texcoord = input.texcoord;
+    return output;
+}

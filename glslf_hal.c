@@ -49,10 +49,64 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "glsl_hal.h"
 
+#define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
+#define FLT TYPE_BASE_FLOAT
+#define BOOL TYPE_BASE_BOOLEAN
+
+static ConnectorRegisters inputRegs_glslf[] = {
+    { "COLOR0",    0, FLT,   0, 4, REG_RESERVED | REG_INPUT },
+    { "COLOR1",    0, FLT,   1, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD0", 0, FLT,   2, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD1", 0, FLT,   3, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD2", 0, FLT,   4, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD3", 0, FLT,   5, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD4", 0, FLT,   6, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD5", 0, FLT,   7, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD6", 0, FLT,   8, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD7", 0, FLT,   9, 4, REG_RESERVED | REG_INPUT },
+    { "FOG0",      0, FLT,  10, 1, REG_RESERVED | REG_INPUT },
+    { "POSITION0", 0, FLT,  11, 4, REG_RESERVED | REG_INPUT },
+    { "WPOS0",     0, FLT,  12, 4, REG_RESERVED | REG_INPUT },
+    { "FACE0",     0, BOOL, 13, 1, REG_RESERVED | REG_INPUT }
+};
+
+static ConnectorRegisters outputRegs_glslf[] = {
+    { "COLOR0", 0, FLT, 0, 4, REG_RESERVED | REG_OUTPUT },
+    { "DEPTH0", 0, FLT, 1, 1, REG_RESERVED | REG_OUTPUT }
+};
+
+static ConnectorDescriptor connectors_glslf[] = {
+    { CID_GLSLF_IN_NAME, 0, CID_GLSLF_IN_ID, CONNECTOR_IS_INPUT,
+      NUMELS(inputRegs_glslf), inputRegs_glslf },
+    { CID_GLSLF_OUT_NAME, 0, CID_GLSLF_OUT_ID, CONNECTOR_IS_OUTPUT,
+      NUMELS(outputRegs_glslf), outputRegs_glslf }
+};
+
+static GlslSemanticDesc semanticMap_glslf[] = {
+    { "COLOR",    "COLOR",    0, 2, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_VARYING },
+    { "TEXCOORD", "TEXCOORD", 0, 8, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_VARYING },
+    { "FOG",      "FOG",      0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_VARYING },
+    { "POSITION", "POSITION", 0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
+    { "WPOS",     "WPOS",     0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
+    { "FACE",     "FACE",     0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_FRONT_FACING },
+    { "COLOR",    "COLOR",    0, 1, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COLOR },
+    { "DEPTH",    "DEPTH",    0, 1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_FRAG_DEPTH }
+};
+
+static GlslSemanticAlias aliases_glslf[] = {
+    { "DIFFUSE",  "COLOR0" },
+    { "SPECULAR", "COLOR1" },
+    { "FOGCOORD", "FOG0" }
+};
+
 static GlslProfileDesc profile_glslf = {
     GLSL_STAGE_FRAGMENT, PROFILE_GLSLF_NAME, PROFILE_GLSLF_ID,
     CID_GLSLF_IN_ID, CID_GLSLF_OUT_ID,
-    NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+    connectors_glslf, NUMELS(connectors_glslf),
+    semanticMap_glslf, NUMELS(semanticMap_glslf),
+    aliases_glslf, NUMELS(aliases_glslf),
+    inputRegs_glslf, NUMELS(inputRegs_glslf),
+    outputRegs_glslf, NUMELS(outputRegs_glslf),
     { 0, 64, 32, 2, 1 }
 };
 
