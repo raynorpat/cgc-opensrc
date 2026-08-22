@@ -10,7 +10,11 @@ compiler exits with status zero and fails for any nonzero exit status.
 
 The root `CMakeLists.txt` will include CTest so consumers can control test
 registration through the standard `BUILD_TESTING` option. When testing is
-enabled, it will register two explicit tests:
+enabled, it will add the `tests` subdirectory.
+
+The test definitions will live in `tests/CMakeLists.txt`, keeping test-suite
+configuration separate from the compiler targets. That file will register two
+explicit tests:
 
 - `cgc_vertexlight`
 - `cgc_vertexlight4`
@@ -38,10 +42,11 @@ tree-output comparisons.
 
 ## Scope
 
-The change is limited to CTest registration in the root build. It will not
-modify either shader, compiler behavior, generated parser sources, or standard
-library generation. The existing `cgc` executable remains a normal build
-target and is the executable exercised by both tests.
+The change is limited to enabling CTest in the root build and adding the test
+definitions under the `tests` folder. It will not modify either shader,
+compiler behavior, generated parser sources, or standard library generation.
+The existing `cgc` executable remains a normal build target and is the
+executable exercised by both tests.
 
 ## Verification
 
