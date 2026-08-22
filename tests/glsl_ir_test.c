@@ -79,6 +79,7 @@ int main(void)
     GlslDecl *decls;
     GlslStmt *stmts;
     GlslFunction *functions;
+    const char *emitted;
     int firstIdentity;
     int secondIdentity;
 
@@ -110,7 +111,15 @@ int main(void)
     assert(GlslIsReservedName("gl_Position"));
     assert(GlslIsReservedName("user__name"));
     assert(!GlslIsReservedName("user_name"));
-    assert(!strcmp(GlslAllocateName(&module, "user__name"), "user_name"));
+    emitted = GlslAllocateName(&module, "user__name");
+    assert(!strcmp(emitted, "cg_user_name"));
+    assert(!GlslIsReservedName(emitted));
+    emitted = GlslAllocateDistinctName(&module, "foo_");
+    assert(!strcmp(emitted, "foo_"));
+    assert(!GlslIsReservedName(emitted));
+    emitted = GlslAllocateDistinctName(&module, "foo_");
+    assert(!strcmp(emitted, "foo_1"));
+    assert(!GlslIsReservedName(emitted));
 
     type = GlslNumericType(GLSL_BASE_BOOL, 2);
     assert(!strcmp(GlslTypeName(&type), "bvec2"));

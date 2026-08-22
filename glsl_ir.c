@@ -147,10 +147,12 @@ static const char *GlslSanitizeName(GlslModule *module, const char *source)
     char *name;
     char *output;
     int previousUnderscore;
+    int reserved;
     size_t size;
 
     if (source == NULL)
         return NULL;
+    reserved = GlslIsReservedName(source);
     size = strlen(source) + 4;
     name = (char *) GlslAlloc(module, size);
     if (name == NULL)
@@ -167,7 +169,7 @@ static const char *GlslSanitizeName(GlslModule *module, const char *source)
     *output = '\0';
     if (name[0] == '\0') {
         strcpy(name, "cg_");
-    } else if (GlslIsReservedName(name)) {
+    } else if (reserved) {
         memmove(name + 3, name, strlen(name) + 1);
         memcpy(name, "cg_", 3);
     }
@@ -183,6 +185,7 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
     GlslName *name;
     char *candidate;
     size_t length;
+    int separator;
     int suffix;
 
     if (module == NULL || source == NULL)
@@ -194,13 +197,18 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
     suffix = 1;
     length = strlen(base);
     while (GlslNameInUse(module, emitted)) {
+        separator = base[length - 1] != '_';
         candidate = (char *) GlslAlloc(module,
-            length + GlslDecimalLength(suffix) + 2);
+            length + GlslDecimalLength(suffix) + separator + 1);
         if (candidate == NULL)
             return NULL;
         memcpy(candidate, base, length);
-        candidate[length] = '_';
-        GlslWriteDecimal(candidate + length + 1, suffix);
+        if (separator) {
+            candidate[length] = '_';
+            GlslWriteDecimal(candidate + length + 1, suffix);
+        } else {
+            GlslWriteDecimal(candidate + length, suffix);
+        }
         emitted = candidate;
         suffix++;
     }
