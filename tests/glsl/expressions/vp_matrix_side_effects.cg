@@ -1,0 +1,82 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+float cg_construct_mat2_v2_v2(float value)
+{
+    return value + 100.0;
+}
+
+float2 next_row(inout float value)
+{
+    value = value + 1.0;
+    return float2(value, value + 10.0);
+}
+
+float next_scalar(inout float value)
+{
+    value = value + 2.0;
+    return value;
+}
+
+float3 next_row3(inout float value)
+{
+    value = value + 3.0;
+    return float3(value, value + 10.0, value + 20.0);
+}
+
+float2x2 make2(inout float state0, inout float state1)
+{
+    return float2x2(next_row(state0), next_row(state1));
+}
+
+float2x2 make2_again(inout float state0, inout float state1)
+{
+    return float2x2(next_row(state0), next_row(state1));
+}
+
+float2x2 make2_scalars(inout float state0, inout float state1,
+                       inout float state2, inout float state3)
+{
+    return float2x2(next_scalar(state0), next_scalar(state1),
+                    next_scalar(state2), next_scalar(state3));
+}
+
+float3x3 make3(inout float state0, inout float state1,
+               inout float state2, inout float state3,
+               inout float state4)
+{
+    return float3x3(next_row(state0), next_scalar(state1),
+                    next_row3(state2), next_scalar(state3),
+                    next_row(state4));
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut result;
+    float state0;
+    float state1;
+    float state2;
+    float state3;
+    float state4;
+    float2x2 matrix2;
+    float3x3 matrix3;
+    result.position = position;
+    state0 = 1.0;
+    state1 = 2.0;
+    state2 = 3.0;
+    state3 = 4.0;
+    state4 = 5.0;
+    if (position.x > 0.0) {
+        matrix2 = make2(state0, state1);
+        result.position.xy = mul(matrix2, result.position.xy);
+    }
+    matrix2 = make2_again(state0, state1);
+    matrix2 = make2_scalars(state0, state1, state2, state3);
+    matrix3 = make3(state0, state1, state2, state3, state4);
+    result.position.xy = mul(matrix2, result.position.xy);
+    result.position.xyz = mul(matrix3, result.position.xyz);
+    result.position.x = result.position.x +
+                        cg_construct_mat2_v2_v2(state4);
+    return result;
+}

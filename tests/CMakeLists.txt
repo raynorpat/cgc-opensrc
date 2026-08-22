@@ -125,6 +125,9 @@ add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
 add_generic_regression(matrix_constructors
     tests/glsl/expressions/vp_matrix_constructors.cg
     81aa1a161295604282418efb49977a31a6c0961c4e9bf853db11dacebee69d1f)
+add_generic_regression(matrix_side_effects
+    tests/glsl/expressions/vp_matrix_side_effects.cg
+    c2c21eae0ea60e5ad522d75e1fa43e747124100443bea973a6377e04e056bd83)
 add_generic_failure(generic_break_outside_loop
     tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
 add_generic_failure(generic_continue_outside_loop
@@ -207,6 +210,10 @@ add_glsl_fixture(glslv_numeric_intrinsics glslv
 add_glsl_fixture(glslv_matrix_constructors glslv
     tests/glsl/expressions/vp_matrix_constructors.cg
     tests/glsl/expressions/vp_matrix_constructors.expected)
+
+add_glsl_fixture(glslv_matrix_side_effects glslv
+    tests/glsl/expressions/vp_matrix_side_effects.cg
+    tests/glsl/expressions/vp_matrix_side_effects.expected)
 
 add_glsl_fixture(glslv_float1_swizzle glslv
     tests/glsl/expressions/vp_float1_swizzle.cg

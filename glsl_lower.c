@@ -51,11 +51,23 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "glsl_hal.h"
 
+#define GLSL_MATRIX_MAX_ARGUMENTS 16
+
+typedef struct GlslMatrixHelper_Rec {
+    struct GlslMatrixHelper_Rec *next;
+    GlslFunction *function;
+    GlslType result;
+    GlslType parameters[GLSL_MATRIX_MAX_ARGUMENTS];
+    int parameterCount;
+} GlslMatrixHelper;
+
 typedef struct GlslLowerContext_Rec {
     GlslModule *module;
     const GlslProfileDesc *profile;
     Scope *scope;
     GlslFunction *function;
+    GlslMatrixHelper *matrixHelpers;
+    GlslMatrixHelper *lastMatrixHelper;
     SourceLoc statementLoc;
     int loopDepth;
 } GlslLowerContext;
@@ -1464,6 +1476,206 @@ static GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
     return target;
 }
 
+static int GlslMatrixParameterType(const GlslType *type)
+{
+    return type != NULL && type->base == GLSL_BASE_FLOAT &&
+           type->len >= 1 && type->len <= 4 && type->rows == 0 &&
+           type->cols == 0 && type->arraySize == 0 &&
+           type->structName == NULL && type->elementType == NULL &&
+           type->members == NULL;
+}
+
+static GlslMatrixHelper *GlslFindMatrixHelper(GlslLowerContext *context,
+    const GlslType *result, const GlslType *parameters, int parameterCount)
+{
+    GlslMatrixHelper *helper;
+    int i;
+
+    for (helper = context->matrixHelpers; helper != NULL;
+         helper = helper->next)
+    {
+        if (helper->parameterCount != parameterCount ||
+            !GlslTypesEqual(&helper->result, result)) continue;
+        for (i = 0; i < parameterCount; i++) {
+            if (!GlslTypesEqual(&helper->parameters[i], &parameters[i]))
+                break;
+        }
+        if (i == parameterCount)
+            return helper;
+    }
+    return NULL;
+}
+
+static const char *GlslMatrixHelperName(GlslLowerContext *context,
+    const GlslType *result, const GlslType *parameters, int parameterCount)
+{
+    char candidate[256];
+    char *end;
+    int i;
+
+    if (result == NULL || result->rows < 2 || result->rows > 4 ||
+        result->cols != result->rows || parameterCount < 1 ||
+        parameterCount > GLSL_MATRIX_MAX_ARGUMENTS) return NULL;
+    sprintf(candidate, "cg_construct_mat%d", result->rows);
+    end = candidate + strlen(candidate);
+    for (i = 0; i < parameterCount; i++) {
+        if (!GlslMatrixParameterType(&parameters[i]))
+            return NULL;
+        if (parameters[i].len == 1)
+            sprintf(end, "_f");
+        else
+            sprintf(end, "_v%d", parameters[i].len);
+        end += strlen(end);
+    }
+    return GlslAllocateDistinctName(context->module, candidate);
+}
+
+static GlslExpr *GlslNewParameterComponent(GlslLowerContext *context,
+    GlslDecl *parameter, int componentIndex)
+{
+    GlslExpr *symbol;
+    GlslType scalarType;
+    char mask[2];
+
+    if (parameter == NULL || componentIndex < 0 ||
+        componentIndex >= parameter->type.len) return NULL;
+    symbol = GlslNewExpr(context->module, GLSL_EXPR_SYMBOL,
+                         parameter->type);
+    if (symbol == NULL)
+        return NULL;
+    symbol->u.symbol = parameter;
+    if (parameter->type.len == 1)
+        return symbol;
+    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    mask[0] = "xyzw"[componentIndex];
+    mask[1] = '\0';
+    return GlslNewSwizzle(context, symbol, &scalarType, mask);
+}
+
+static GlslMatrixHelper *GlslCreateMatrixHelper(GlslLowerContext *context,
+    const GlslType *result, const GlslType *parameters, int parameterCount)
+{
+    GlslExpr *components[GLSL_MATRIX_MAX_ARGUMENTS];
+    GlslExpr *component;
+    GlslExpr *constructor;
+    GlslStmt *returnStatement;
+    GlslMatrixHelper *helper;
+    GlslDecl *parameter;
+    const char *functionName;
+    const char *parameterName;
+    char candidate[32];
+    int componentCount;
+    int parameterIndex;
+    int componentIndex;
+    int column;
+    int row;
+
+    functionName = GlslMatrixHelperName(context, result, parameters,
+                                        parameterCount);
+    if (functionName == NULL)
+        return NULL;
+    helper = (GlslMatrixHelper *) context->module->alloc(
+        context->module->allocArg, sizeof(GlslMatrixHelper));
+    if (helper == NULL)
+        return NULL;
+    memset(helper, 0, sizeof(GlslMatrixHelper));
+    helper->function = GlslNewFunction(context->module, *result,
+                                       functionName);
+    if (helper->function == NULL)
+        return NULL;
+    helper->result = *result;
+    helper->parameterCount = parameterCount;
+    componentCount = 0;
+    for (parameterIndex = 0; parameterIndex < parameterCount;
+         parameterIndex++)
+    {
+        helper->parameters[parameterIndex] = parameters[parameterIndex];
+        sprintf(candidate, "arg%d", parameterIndex);
+        parameterName = GlslAllocateScopedSymbolName(context->module,
+            helper->function, NULL, candidate);
+        if (parameterName == NULL)
+            return NULL;
+        parameter = GlslNewDecl(context->module, GLSL_STORAGE_NONE,
+            parameters[parameterIndex], parameterName);
+        if (parameter == NULL)
+            return NULL;
+        GlslAppendDecl(&helper->function->parameters, parameter);
+        for (componentIndex = 0;
+             componentIndex < parameters[parameterIndex].len;
+             componentIndex++)
+        {
+            if (componentCount >= (int) (sizeof(components) /
+                                         sizeof(components[0]))) return NULL;
+            component = GlslNewParameterComponent(context, parameter,
+                                                   componentIndex);
+            if (component == NULL)
+                return NULL;
+            components[componentCount++] = component;
+        }
+    }
+    if (componentCount != result->rows * result->cols)
+        return NULL;
+    constructor = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT,
+                              *result);
+    returnStatement = GlslNewStmt(context->module, GLSL_STMT_RETURN);
+    if (constructor == NULL || returnStatement == NULL)
+        return NULL;
+    for (column = 0; column < result->cols; column++) {
+        for (row = 0; row < result->rows; row++) {
+            GlslAppendExpr(&constructor->u.construct.arguments,
+                           components[row * result->cols + column]);
+        }
+    }
+    returnStatement->u.returnExpr = constructor;
+    helper->function->body = returnStatement;
+    if (context->matrixHelpers == NULL)
+        context->matrixHelpers = helper;
+    else
+        context->lastMatrixHelper->next = helper;
+    context->lastMatrixHelper = helper;
+    return helper;
+}
+
+static GlslExpr *GlslLowerImpureMatrixConstructor(
+    GlslLowerContext *context, GlslExpr *arguments, const GlslType *type)
+{
+    GlslType parameters[GLSL_MATRIX_MAX_ARGUMENTS];
+    GlslMatrixHelper *helper;
+    GlslExpr *argument;
+    GlslExpr *target;
+    int componentCount;
+    int parameterCount;
+
+    componentCount = 0;
+    parameterCount = 0;
+    for (argument = arguments; argument != NULL; argument = argument->next) {
+        if (parameterCount >= GLSL_MATRIX_MAX_ARGUMENTS ||
+            !GlslMatrixParameterType(&argument->type) ||
+            componentCount > type->rows * type->cols - argument->type.len)
+        {
+            return NULL;
+        }
+        parameters[parameterCount++] = argument->type;
+        componentCount += argument->type.len;
+    }
+    if (parameterCount == 0 || componentCount != type->rows * type->cols)
+        return NULL;
+    helper = GlslFindMatrixHelper(context, type, parameters,
+                                  parameterCount);
+    if (helper == NULL) {
+        helper = GlslCreateMatrixHelper(context, type, parameters,
+                                        parameterCount);
+        if (helper == NULL)
+            return NULL;
+    }
+    target = GlslNewExpr(context->module, GLSL_EXPR_CALL, *type);
+    if (target == NULL)
+        return NULL;
+    target->u.call.name = helper->function->name;
+    target->u.call.arguments = arguments;
+    return target;
+}
+
 static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
     expr *source, const GlslType *type)
 {
@@ -1481,11 +1693,28 @@ static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
     int row;
     int column;
     int size;
+    int hasSideEffects;
 
     size = type->rows;
     if (size < 2 || size > 4 || type->cols != size)
         return NULL;
+    hasSideEffects = 0;
+    for (sourceArgument = source->un.arg; sourceArgument != NULL;
+         sourceArgument = sourceArgument->bin.right)
+    {
+        if (sourceArgument->common.kind != BINARY_N ||
+            sourceArgument->bin.op != EXPR_LIST_OP ||
+            sourceArgument->bin.left == NULL) return NULL;
+        if (sourceArgument->bin.left->common.HasSideEffects)
+            hasSideEffects = 1;
+    }
     argument = GlslLowerExprChain(context, source->un.arg, EXPR_LIST_OP);
+    if (argument == NULL)
+        return NULL;
+    /* Keep impure expressions at the constructor call site and use each
+       exactly once; argument evaluation order remains language-defined. */
+    if (hasSideEffects)
+        return GlslLowerImpureMatrixConstructor(context, argument, type);
     sourceArgument = source->un.arg;
     scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
     count = 0;
@@ -1506,11 +1735,8 @@ static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
         } else {
             if (sourceArgument == NULL ||
                 sourceArgument->common.kind != BINARY_N ||
-                sourceArgument->bin.op != EXPR_LIST_OP ||
-                sourceArgument->bin.left->common.HasSideEffects)
+                sourceArgument->bin.op != EXPR_LIST_OP)
             {
-                GlslRecordFailure(context,
-                                  "matrix constructor side effects");
                 return NULL;
             }
             for (componentIndex = 0; componentIndex < componentCount;
@@ -2273,6 +2499,29 @@ static int GlslLowerHelper(GlslLowerContext *context,
     return 1;
 }
 
+static void GlslPrependMatrixHelpers(GlslLowerContext *context)
+{
+    GlslMatrixHelper *helper;
+    GlslFunction *first;
+    GlslFunction *last;
+
+    first = NULL;
+    last = NULL;
+    for (helper = context->matrixHelpers; helper != NULL;
+         helper = helper->next)
+    {
+        if (first == NULL)
+            first = helper->function;
+        else
+            last->next = helper->function;
+        last = helper->function;
+    }
+    if (last != NULL) {
+        last->next = context->module->functions;
+        context->module->functions = first;
+    }
+}
+
 int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
                      SourceLoc *loc, Scope *scope, Symbol *program)
 {
@@ -2337,5 +2586,6 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     {
         return GlslLowerError(&context);
     }
+    GlslPrependMatrixHelpers(&context);
     return module->errors == 0;
 }
