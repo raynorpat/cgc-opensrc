@@ -92,7 +92,8 @@ MemoryPool *mem_CreatePool(size_t chunksize, unsigned align)
     pool->next = 0;
     pool->chunksize = chunksize;
     pool->alignmask = align-1;
-    pool->free = ((uintptr_t)(pool + 1) + pool->alignmask) & ~pool->alignmask;
+    pool->free = ((uintptr_t)(pool + 1) + pool->alignmask)
+               & ~(uintptr_t)pool->alignmask;
     pool->end = (uintptr_t)pool + chunksize;
     pool->cleanup = 0;
     return pool;
@@ -116,12 +117,12 @@ void *mem_Alloc(MemoryPool *pool, size_t size)
 {
     struct chunk *ch;
     void *rv = (void *)pool->free;
-    size = (size + pool->alignmask) & ~pool->alignmask;
+    size = (size + pool->alignmask) & ~(size_t)pool->alignmask;
     if (size <= 0) size = pool->alignmask;
     pool->free += size;
     if (pool->free > pool->end || pool->free < (uintptr_t)rv) {
         size_t minreq = (size + sizeof(struct chunk) + pool->alignmask)
-                      & ~pool->alignmask;
+                      & ~(size_t)pool->alignmask;
         pool->free = (uintptr_t)rv;
         if (minreq >= pool->chunksize) {
             // request size is too big for the chunksize, so allocate it as
@@ -136,7 +137,8 @@ void *mem_Alloc(MemoryPool *pool, size_t size)
         }
         ch->next = pool->next;
         pool->next = ch;
-        rv = (void *)(((uintptr_t)(ch+1) + pool->alignmask) & ~pool->alignmask);
+        rv = (void *)(((uintptr_t)(ch+1) + pool->alignmask)
+                   & ~(uintptr_t)pool->alignmask);
     }
     return rv;
 }
@@ -154,8 +156,8 @@ void *mem_Realloc(MemoryPool *pool, void *old, size_t oldsize, size_t newsize)
     void *new;
     uintptr_t oldfree = 0;
 
-    oldsize = (oldsize + pool->alignmask) & ~pool->alignmask;
-    newsize = (newsize + pool->alignmask) & ~pool->alignmask;
+    oldsize = (oldsize + pool->alignmask) & ~(size_t)pool->alignmask;
+    newsize = (newsize + pool->alignmask) & ~(size_t)pool->alignmask;
     if ((uintptr_t)old + oldsize == pool->free) {
         // this was the last chunk allocated, so deallocate it first
         // but remember in case the later alloc fails...
