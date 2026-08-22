@@ -100,7 +100,7 @@ slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id)
     lProfile = (slProfile *) malloc(sizeof(slProfile));
     lProfile->next = Cg->allProfiles;
     lProfile->InitHAL = InitHAL;
-    lProfile->name = AddAtom(atable, name);
+    lProfile->name = name;
     lProfile->id = id;
     Cg->allProfiles = lProfile;
     return lProfile;
@@ -141,7 +141,7 @@ int InitHAL(const char *profileName, const char *entryName)
     Cg->theHAL->entryName = AddAtom(atable, entryName);
     lProfile = Cg->allProfiles;
     while (lProfile) {
-        if (Cg->theHAL->profileName == lProfile->name) {
+        if (!strcmp(profileName, lProfile->name)) {
             Cg->theHAL->InitHAL = lProfile->InitHAL;
             Cg->theHAL->pid = lProfile->id;
             result = Cg->theHAL->InitHAL(Cg->theHAL);

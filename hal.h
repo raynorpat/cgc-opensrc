@@ -83,7 +83,7 @@ typedef struct slProfile_Rec slProfile;
 struct slProfile_Rec {
     slProfile *next;
     int (*InitHAL)(slHAL *);
-    int name;
+    const char *name;
     int id;
 };
 

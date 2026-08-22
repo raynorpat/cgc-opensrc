@@ -56,9 +56,11 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Profile registration functions:
 
 int RegisterProfiles_generic(void);
+int RegisterProfiles_glsl(void);
 
 static int (*RegistrationFunctions[])(void) = {
     RegisterProfiles_generic,
+    RegisterProfiles_glsl,
 };
 
 int CommandLineArgs(int argc, char **argv, int pass);
@@ -79,6 +81,7 @@ int main(int argc, char **argv)
     }
     if (!InitScanner(Cg))
         return 1;
+    AddAtom(atable, Cg->options.profileString);
     for (ii = 0; ii < sizeof(RegistrationFunctions)/sizeof(RegistrationFunctions[0]); ii++)
         RegistrationFunctions[ii]();
     if (!CommandLineArgs(argc, argv, 1))
@@ -150,7 +153,7 @@ void PrintHelp()
     printf("supported profiles:\n");
     ii = 0;
     while ((lProfile = EnumerateProfiles(ii++)))
-        printf("    \"%s\"\n", GetAtomString(atable, lProfile->name));
+        printf("    \"%s\"\n", lProfile->name);
 } // PrintHelp
 
 int CommandLineArgs(int argc, char **argv, int pass)

@@ -21,6 +21,9 @@ add_executable(cgc
     constfold.c
     cpp.c
     generic_hal.c
+    glsl_hal.c
+    glslv_hal.c
+    glslf_hal.c
     hal.c
     inline.c
     memory.c
