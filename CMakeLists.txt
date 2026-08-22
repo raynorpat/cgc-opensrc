@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.16)
 project(cgc LANGUAGES C)
 
 include(CTest)
+include(CheckIncludeFile)
+
+check_include_file(stdint.h CGC_HAVE_STDINT_H)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)
@@ -47,15 +50,13 @@ set_target_properties(cgc tokenize PROPERTIES
 )
 
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set_source_files_properties(memory.c PROPERTIES
-        COMPILE_DEFINITIONS __STDC99__
-    )
     set_source_files_properties(scanner.c PROPERTIES
         COMPILE_OPTIONS /U_WIN32
     )
 endif()
 
 target_compile_definitions(cgc PRIVATE
+    $<$<BOOL:${CGC_HAVE_STDINT_H}>:CGC_HAVE_STDINT_H>
     $<$<CONFIG:Debug>:CGC_DEBUG_THE_COMPILER>
 )
 

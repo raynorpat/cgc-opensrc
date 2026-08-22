@@ -45,10 +45,10 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef __STDC99__
+#ifdef CGC_HAVE_STDINT_H
 #include <stdint.h>
 #else
-typedef unsigned int uintptr_t;
+typedef size_t uintptr_t;
 #endif
 
 #include "memory.h"

@@ -1,5 +1,5 @@
 
-OBJS=atom.o binding.o cgcmain.o cgstruct.o check.o compile.o constfold.o cpp.o generic_hal.o hal.o ihash.o inline.o memory.o parser.o printutils.o scanner.o semantic.o stdlib.o support.o support_iter.o symbols.o tokens.o
+OBJS=atom.o binding.o cgcmain.o cgstruct.o check.o compile.o constfold.o cpp.o generic_hal.o hal.o inline.o memory.o parser.o printutils.o scanner.o semantic.o stdlib.o support.o support_iter.o symbols.o tokens.o
 
 TOKENIZE_OBJS=atom.o cgstruct.o scanner.o tokenize.o tokens.o
 
