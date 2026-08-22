@@ -40,17 +40,34 @@ but the tests will not compare either stream with golden files. This keeps the
 suite focused on successful generic-profile compilation and avoids brittle
 tree-output comparisons.
 
+## 64-bit Allocator Compatibility
+
+The new smoke tests expose an existing access violation in 64-bit builds. The
+memory-pool allocator stores its alignment mask as an `unsigned`, then applies
+the complemented mask to `uintptr_t` pointer values and `size_t` allocation
+sizes. On 64-bit Windows, complementing the 32-bit value zero-extends it during
+the wider expression and clears the upper pointer bits.
+
+The allocator will cast the complemented alignment mask to `uintptr_t` for
+pointer expressions and to `size_t` for allocation-size expressions. This
+preserves the full width of each value while keeping the stored mask and public
+`mem_CreatePool` interface unchanged. The casts are neutral in 32-bit builds,
+where the participating types are already 32 bits wide.
+
 ## Scope
 
-The change is limited to enabling CTest in the root build and adding the test
-definitions under the `tests` folder. It will not modify either shader,
-compiler behavior, generated parser sources, or standard library generation.
-The existing `cgc` executable remains a normal build target and is the
-executable exercised by both tests.
+The change enables CTest in the root build, adds test definitions under the
+`tests` folder, and corrects alignment-mask promotion in `memory.c`.
+It will not modify either shader, generated parser sources, standard library
+generation, or public compiler interfaces. The existing `cgc` executable
+remains a normal build target and is the executable exercised by both tests.
 
 ## Verification
 
-Verification will configure and build the project with testing enabled, then
-run the two tests through CTest. The acceptance criteria are that CTest
-discovers exactly the two requested vertexlight tests and reports both as
-passed.
+Verification will configure and build 64-bit and Win32 Debug variants with
+testing enabled, then run the two tests through CTest in both build trees. The
+acceptance criteria are that each build discovers exactly the two requested
+vertexlight tests and reports both as passed. Because allocator behavior
+changes, `position.cg` and `reflection.cg` will also be compiled manually with
+the generic profile in both architectures so all four bundled shader inputs
+are covered.
