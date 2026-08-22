@@ -407,9 +407,20 @@ const char *GlslTypeName(const GlslType *type)
     static const char *boolNames[] = { "bool", "bvec2", "bvec3", "bvec4" };
     static const char *matrixNames[] = { "mat2", "mat3", "mat4" };
 
-    if (type == NULL || type->arraySize < 0 || type->elementType != NULL)
+    if (type == NULL || type->arraySize < 0)
         return NULL;
-    if (type->base != GLSL_BASE_STRUCT && type->structName != NULL)
+    if (type->elementType != NULL) {
+        if (type->elementType == type || type->arraySize <= 0 ||
+            type->base != GLSL_BASE_VOID || type->len != 0 ||
+            type->rows != 0 || type->cols != 0 ||
+            type->structName != NULL || type->members != NULL)
+        {
+            return NULL;
+        }
+        return GlslTypeName(type->elementType);
+    }
+    if (type->base != GLSL_BASE_STRUCT &&
+        (type->structName != NULL || type->members != NULL))
         return NULL;
     switch (type->base) {
     case GLSL_BASE_VOID:
@@ -458,6 +469,260 @@ const char *GlslTypeName(const GlslType *type)
         break;
     }
     return NULL;
+}
+
+static int GlslBuiltinNumericType(const GlslType *type, int len)
+{
+    return type != NULL && type->base == GLSL_BASE_FLOAT &&
+           type->len == len && type->rows == 0 && type->cols == 0 &&
+           type->arraySize == 0 && type->structName == NULL &&
+           type->elementType == NULL && type->members == NULL;
+}
+
+static int GlslBuiltinMatrixType(const GlslType *type, int size)
+{
+    return type != NULL && type->base == GLSL_BASE_FLOAT &&
+           type->len == 0 && type->rows == size && type->cols == size &&
+           type->arraySize == 0 && type->structName == NULL &&
+           type->elementType == NULL && type->members == NULL;
+}
+
+static GlslBuiltin GlslBuiltinFromName(const char *name)
+{
+    static const struct {
+        const char *name;
+        GlslBuiltin builtin;
+    } names[] = {
+        { "mul", GLSL_BUILTIN_MUL },
+        { "dot", GLSL_BUILTIN_DOT },
+        { "cross", GLSL_BUILTIN_CROSS },
+        { "normalize", GLSL_BUILTIN_NORMALIZE },
+        { "reflect", GLSL_BUILTIN_REFLECT },
+        { "refract", GLSL_BUILTIN_REFRACT },
+        { "length", GLSL_BUILTIN_LENGTH },
+        { "distance", GLSL_BUILTIN_DISTANCE },
+        { "min", GLSL_BUILTIN_MIN },
+        { "max", GLSL_BUILTIN_MAX },
+        { "clamp", GLSL_BUILTIN_CLAMP },
+        { "abs", GLSL_BUILTIN_ABS },
+        { "sign", GLSL_BUILTIN_SIGN },
+        { "floor", GLSL_BUILTIN_FLOOR },
+        { "ceil", GLSL_BUILTIN_CEIL },
+        { "sqrt", GLSL_BUILTIN_SQRT },
+        { "exp", GLSL_BUILTIN_EXP },
+        { "exp2", GLSL_BUILTIN_EXP2 },
+        { "log", GLSL_BUILTIN_LOG },
+        { "log2", GLSL_BUILTIN_LOG2 },
+        { "sin", GLSL_BUILTIN_SIN },
+        { "cos", GLSL_BUILTIN_COS },
+        { "tan", GLSL_BUILTIN_TAN },
+        { "asin", GLSL_BUILTIN_ASIN },
+        { "acos", GLSL_BUILTIN_ACOS },
+        { "atan", GLSL_BUILTIN_ATAN },
+        { "rsqrt", GLSL_BUILTIN_RSQRT },
+        { "lerp", GLSL_BUILTIN_LERP },
+        { "frac", GLSL_BUILTIN_FRAC },
+        { "saturate", GLSL_BUILTIN_SATURATE },
+        { "tex1D", GLSL_BUILTIN_TEX1D },
+        { "tex2D", GLSL_BUILTIN_TEX2D },
+        { "tex3D", GLSL_BUILTIN_TEX3D },
+        { "texCUBE", GLSL_BUILTIN_TEXCUBE }
+    };
+    int i;
+
+    if (name == NULL)
+        return GLSL_BUILTIN_NONE;
+    for (i = 0; i < (int) (sizeof(names) / sizeof(names[0])); i++) {
+        if (!strcmp(name, names[i].name))
+            return names[i].builtin;
+    }
+    return GLSL_BUILTIN_NONE;
+}
+
+static int GlslBuiltinUnary(GlslBuiltin builtin)
+{
+    switch (builtin) {
+    case GLSL_BUILTIN_NORMALIZE:
+    case GLSL_BUILTIN_ABS:
+    case GLSL_BUILTIN_SIGN:
+    case GLSL_BUILTIN_FLOOR:
+    case GLSL_BUILTIN_CEIL:
+    case GLSL_BUILTIN_SQRT:
+    case GLSL_BUILTIN_EXP:
+    case GLSL_BUILTIN_EXP2:
+    case GLSL_BUILTIN_LOG:
+    case GLSL_BUILTIN_LOG2:
+    case GLSL_BUILTIN_SIN:
+    case GLSL_BUILTIN_COS:
+    case GLSL_BUILTIN_TAN:
+    case GLSL_BUILTIN_ASIN:
+    case GLSL_BUILTIN_ACOS:
+    case GLSL_BUILTIN_ATAN:
+    case GLSL_BUILTIN_RSQRT:
+    case GLSL_BUILTIN_FRAC:
+    case GLSL_BUILTIN_SATURATE:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+GlslBuiltin GlslLookupBuiltin(const char *name, const GlslType *result,
+                              const GlslType *params, int paramCount)
+{
+    GlslBuiltin builtin;
+    int len;
+
+    builtin = GlslBuiltinFromName(name);
+    if (builtin == GLSL_BUILTIN_NONE || result == NULL ||
+        params == NULL || paramCount < 1)
+    {
+        return GLSL_BUILTIN_NONE;
+    }
+    for (len = 1; len <= 4; len++) {
+        if (!GlslBuiltinNumericType(result, len))
+            continue;
+        if (GlslBuiltinUnary(builtin) && paramCount == 1 &&
+            GlslBuiltinNumericType(&params[0], len))
+        {
+            return builtin;
+        }
+        if ((builtin == GLSL_BUILTIN_MIN ||
+             builtin == GLSL_BUILTIN_MAX) && paramCount == 2 &&
+            GlslBuiltinNumericType(&params[0], len) &&
+            GlslBuiltinNumericType(&params[1], len))
+        {
+            return builtin;
+        }
+        if (builtin == GLSL_BUILTIN_CLAMP && paramCount == 3 &&
+            GlslBuiltinNumericType(&params[0], len) &&
+            ((GlslBuiltinNumericType(&params[1], len) &&
+              GlslBuiltinNumericType(&params[2], len)) ||
+             (len > 1 && GlslBuiltinNumericType(&params[1], 1) &&
+              GlslBuiltinNumericType(&params[2], 1))))
+        {
+            return builtin;
+        }
+        if (builtin == GLSL_BUILTIN_LERP && paramCount == 3 &&
+            GlslBuiltinNumericType(&params[0], len) &&
+            GlslBuiltinNumericType(&params[1], len) &&
+            (GlslBuiltinNumericType(&params[2], len) ||
+             (len > 1 && GlslBuiltinNumericType(&params[2], 1))))
+        {
+            return builtin;
+        }
+        if (builtin == GLSL_BUILTIN_REFLECT && paramCount == 2 &&
+            GlslBuiltinNumericType(&params[0], len) &&
+            GlslBuiltinNumericType(&params[1], len))
+        {
+            return builtin;
+        }
+        if (builtin == GLSL_BUILTIN_REFRACT && paramCount == 3 &&
+            GlslBuiltinNumericType(&params[0], len) &&
+            GlslBuiltinNumericType(&params[1], len) &&
+            GlslBuiltinNumericType(&params[2], 1))
+        {
+            return builtin;
+        }
+        if (builtin == GLSL_BUILTIN_MUL && len >= 2 &&
+            paramCount == 2 && GlslBuiltinMatrixType(&params[0], len) &&
+            GlslBuiltinNumericType(&params[1], len))
+        {
+            return builtin;
+        }
+        if (builtin == GLSL_BUILTIN_CROSS && len == 3 &&
+            paramCount == 2 && GlslBuiltinNumericType(&params[0], 3) &&
+            GlslBuiltinNumericType(&params[1], 3))
+        {
+            return builtin;
+        }
+    }
+    if ((builtin == GLSL_BUILTIN_DOT ||
+         builtin == GLSL_BUILTIN_DISTANCE) && paramCount == 2 &&
+        GlslBuiltinNumericType(result, 1))
+    {
+        for (len = 1; len <= 4; len++) {
+            if (GlslBuiltinNumericType(&params[0], len) &&
+                GlslBuiltinNumericType(&params[1], len)) return builtin;
+        }
+    }
+    if (builtin == GLSL_BUILTIN_LENGTH && paramCount == 1 &&
+        GlslBuiltinNumericType(result, 1))
+    {
+        for (len = 1; len <= 4; len++) {
+            if (GlslBuiltinNumericType(&params[0], len)) return builtin;
+        }
+    }
+    return GLSL_BUILTIN_NONE;
+}
+
+const char *GlslBuiltinSpelling(GlslBuiltin builtin)
+{
+    static const char *spellings[] = {
+        NULL,
+        "mul", "dot", "cross", "normalize", "reflect", "refract",
+        "length", "distance", "min", "max", "clamp", "abs", "sign",
+        "floor", "ceil", "sqrt", "exp", "exp2", "log", "log2",
+        "sin", "cos", "tan", "asin", "acos", "atan", "inversesqrt",
+        "mix", "fract", "clamp", "texture1D", "texture2D",
+        "texture3D", "textureCube"
+    };
+
+    if (builtin <= GLSL_BUILTIN_NONE || builtin > GLSL_BUILTIN_TEXCUBE)
+        return NULL;
+    return spellings[builtin];
+}
+
+int GlslTypeComponentCount(const GlslType *type)
+{
+    const GlslDecl *member;
+    int elementCount;
+    int memberCount;
+    int total;
+
+    if (type == NULL)
+        return 0;
+    if (type->elementType != NULL) {
+        if (type->arraySize <= 0)
+            return 0;
+        elementCount = GlslTypeComponentCount(type->elementType);
+        if (elementCount <= 0 || elementCount > INT_MAX / type->arraySize)
+            return 0;
+        return elementCount * type->arraySize;
+    }
+    if (type->arraySize != 0 || type->base == GLSL_BASE_VOID ||
+        type->base == GLSL_BASE_SAMPLER1D ||
+        type->base == GLSL_BASE_SAMPLER2D ||
+        type->base == GLSL_BASE_SAMPLER3D ||
+        type->base == GLSL_BASE_SAMPLERCUBE)
+    {
+        return 0;
+    }
+    if (type->base == GLSL_BASE_STRUCT) {
+        if (type->structName == NULL || type->members == NULL)
+            return 0;
+        total = 0;
+        for (member = type->members; member != NULL; member = member->next) {
+            memberCount = GlslTypeComponentCount(&member->type);
+            if (memberCount <= 0 || total > INT_MAX - memberCount)
+                return 0;
+            total += memberCount;
+        }
+        return total;
+    }
+    if (type->structName != NULL || type->members != NULL)
+        return 0;
+    if (type->rows != 0 || type->cols != 0) {
+        if (type->base != GLSL_BASE_FLOAT || type->rows < 2 ||
+            type->rows != type->cols || type->rows > 4) return 0;
+        return type->rows * type->cols;
+    }
+    if ((type->base == GLSL_BASE_FLOAT || type->base == GLSL_BASE_INT ||
+         type->base == GLSL_BASE_BOOL) && type->len >= 1 && type->len <= 4)
+    {
+        return type->len;
+    }
+    return 0;
 }
 
 int GlslIsReservedName(const char *name)

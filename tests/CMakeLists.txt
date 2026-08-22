@@ -145,6 +145,30 @@ add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.cg
     tests/glsl/profile/vp_passthrough.expected)
 
+add_glsl_fixture(glslv_defaults glslv
+    tests/glsl/uniforms/vp_defaults.cg
+    tests/glsl/uniforms/vp_defaults.expected)
+
+add_glsl_fixture(glslv_uniform_collision glslv
+    tests/glsl/uniforms/vp_uniform_collision.cg
+    tests/glsl/uniforms/vp_uniform_collision.expected)
+
+add_glsl_fixture(glslv_position glslv
+    position.cg
+    tests/glsl/vertex/position.expected)
+
+add_glsl_fixture(glslv_reflection glslv
+    reflection.cg
+    tests/glsl/vertex/reflection.expected)
+
+add_glsl_fixture(glslv_vertexlight glslv
+    vertexlight.cg
+    tests/glsl/vertex/vertexlight.expected)
+
+add_glsl_fixture(glslv_vertexlight4 glslv
+    vertexlight4.cg
+    tests/glsl/vertex/vertexlight4.expected)
+
 add_glsl_fixture(glslv_control glslv
     tests/glsl/expressions/vp_control.cg
     tests/glsl/expressions/vp_control.expected)
@@ -168,6 +192,14 @@ add_glsl_fixture(glslv_expression_edges glslv
 add_glsl_fixture(glslv_grouping glslv
     tests/glsl/expressions/vp_grouping.cg
     tests/glsl/expressions/vp_grouping.expected)
+
+add_glsl_fixture(glslv_builtin_name_helper glslv
+    tests/glsl/expressions/vp_builtin_name_helper.cg
+    tests/glsl/expressions/vp_builtin_name_helper.expected)
+
+add_glsl_fixture(glslv_numeric_intrinsics glslv
+    tests/glsl/expressions/vp_numeric_intrinsics.cg
+    tests/glsl/expressions/vp_numeric_intrinsics.expected)
 
 add_glsl_fixture(glslv_float1_swizzle glslv
     tests/glsl/expressions/vp_float1_swizzle.cg
@@ -213,6 +245,8 @@ add_glsl_failure(glslv_nonfinite_infinity
     tests/glsl/diagnostics/vp_nonfinite_infinity.cg 6 non-finite)
 add_glsl_failure(glslv_nonfinite_nan
     tests/glsl/diagnostics/vp_nonfinite_nan.cg 6 non-finite)
+add_glsl_failure(glslv_nonsquare_matrix
+    tests/glsl/diagnostics/vp_nonsquare_matrix.cg 5 "non-square GLSL matrix")
 add_glsl_common_failure(glslv_break_outside_loop
     tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
 add_glsl_common_failure(glslv_continue_outside_loop

@@ -45,6 +45,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "slglobals.h"
@@ -403,16 +404,134 @@ static int BindVaryingUnbound_glsl(SourceLoc *loc, Symbol *fSymb, int name,
     return 0;
 }
 
-static int CheckInternalFunction_glsl(Symbol *symbol, int *group)
+static int GlslSanitizedAtom(int atom)
 {
-    const char *name;
+    const char *source;
+    const char *input;
+    char *sanitized;
+    char *output;
+    size_t size;
+    int result;
+    int previousUnderscore;
 
-    name = GetAtomString(atable, symbol->name);
-    if (!strcmp(name, "rsqrt")) {
-        *group = 3;
+    source = GetAtomString(atable, atom);
+    if (source == NULL)
+        return 0;
+    if (!GlslIsReservedName(source))
+        return atom;
+    size = strlen(source) + 4;
+    sanitized = (char *) malloc(size);
+    if (sanitized == NULL)
+        return 0;
+    strcpy(sanitized, "cg_");
+    output = sanitized + 3;
+    input = source;
+    previousUnderscore = 1;
+    while (*input != '\0') {
+        if (*input != '_' || !previousUnderscore)
+            *output++ = *input;
+        previousUnderscore = *input == '_';
+        input++;
+    }
+    *output = '\0';
+    result = AddAtom(atable, sanitized);
+    free(sanitized);
+    return result;
+}
+
+static int BindUniformUnbound_glsl(SourceLoc *loc, Symbol *symbol,
+                                   Binding *binding)
+{
+    int name;
+
+    (void) loc;
+    if (symbol == NULL || symbol->type == NULL || binding == NULL)
+        return 0;
+    name = GlslSanitizedAtom(symbol->name);
+    if (name == 0)
+        return 0;
+    binding->none.kind = BK_SEMANTIC;
+    binding->none.properties |= BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+    binding->none.base = GetBase(symbol->type);
+    binding->none.size = symbol->type->co.size;
+    binding->sem.sname = name;
+    binding->sem.sregno = 0;
+    return 1;
+}
+
+static int GlslResolvedType(Type *source, GlslType *target)
+{
+    GlslBase base;
+    int len;
+    int rows;
+    int cols;
+
+    if (source == NULL || target == NULL)
+        return 0;
+    if (IsMatrix(source, &cols, &rows)) {
+        if (GetBase(source) != TYPE_BASE_FLOAT &&
+            GetBase(source) != TYPE_BASE_CFLOAT) return 0;
+        if (rows != cols || rows < 2 || rows > 4)
+            return 0;
+        *target = GlslMatrixType(rows);
+        return 1;
+    }
+    switch (GetBase(source)) {
+    case TYPE_BASE_FLOAT:
+    case TYPE_BASE_CFLOAT:
+        base = GLSL_BASE_FLOAT;
+        break;
+    case TYPE_BASE_INT:
+    case TYPE_BASE_CINT:
+        base = GLSL_BASE_INT;
+        break;
+    case TYPE_BASE_BOOLEAN:
+        base = GLSL_BASE_BOOL;
+        break;
+    default:
+        return 0;
+    }
+    if (IsScalar(source)) {
+        *target = GlslNumericType(base, 1);
+        return 1;
+    }
+    if (IsVector(source, &len) && len >= 1 && len <= 4) {
+        *target = GlslNumericType(base, len);
         return 1;
     }
     return 0;
+}
+
+static int CheckInternalFunction_glsl(Symbol *symbol, int *group)
+{
+    GlslBuiltin builtin;
+    GlslType result;
+    GlslType params[4];
+    TypeList *param;
+    const char *name;
+    int count;
+
+    if (symbol == NULL || symbol->kind != FUNCTION_S ||
+        symbol->type == NULL || group == NULL ||
+        GetCategory(symbol->type) != TYPE_CATEGORY_FUNCTION ||
+        !GlslResolvedType(symbol->type->fun.rettype, &result))
+    {
+        return 0;
+    }
+    name = GetAtomString(atable, symbol->name);
+    count = 0;
+    for (param = symbol->type->fun.paramtypes; param != NULL;
+         param = param->next)
+    {
+        if (count >= (int) (sizeof(params) / sizeof(params[0])) ||
+            !GlslResolvedType(param->type, &params[count])) return 0;
+        count++;
+    }
+    builtin = GlslLookupBuiltin(name, &result, params, count);
+    if (builtin == GLSL_BUILTIN_NONE)
+        return 0;
+    *group = GLSL_BUILTIN_GROUP;
+    return (int) builtin;
 }
 
 static int FreeHAL_glsl(slHAL *hal)
@@ -489,6 +608,7 @@ int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile)
     hal->GetConnectorRegister = GetConnectorRegister_glsl;
     hal->IsValidOperator = IsValidOperator_glsl;
     hal->CheckInternalFunction = CheckInternalFunction_glsl;
+    hal->BindUniformUnbound = BindUniformUnbound_glsl;
     hal->BindVaryingSemantic = BindVaryingSemantic_glsl;
     hal->BindVaryingUnbound = BindVaryingUnbound_glsl;
     hal->PrintCodeHeader = PrintCodeHeader_glsl;

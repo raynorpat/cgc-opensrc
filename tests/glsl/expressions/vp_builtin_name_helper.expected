@@ -1,0 +1,25 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+float normalize(float value, float scale)
+{
+    return value * scale;
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut result;
+    position = cg_ATTRIB0;
+    result.position = position;
+    result.position.x = normalize(position.x, 2.0);
+    gl_Position = result.position;
+}

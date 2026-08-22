@@ -290,6 +290,94 @@ static void MakeVector(Type *type, Type *element, int base, int len)
     type->arr.numels = len;
 }
 
+static void MakeMatrix(Type *type, Type *row, Type *element, int size)
+{
+    MakeVector(row, element, TYPE_BASE_FLOAT, size);
+    memset(type, 0, sizeof(*type));
+    type->arr.properties = TYPE_CATEGORY_ARRAY | TYPE_MISC_PACKED |
+                           TYPE_BASE_FLOAT;
+    type->arr.size = size * size;
+    type->arr.eltype = row;
+    type->arr.numels = size;
+}
+
+static void CheckUniformBinding(slHAL *hal)
+{
+    SourceLoc loc;
+    Symbol symbol;
+    Binding binding;
+    Type type;
+    Type element;
+
+    memset(&loc, 0, sizeof(loc));
+    memset(&symbol, 0, sizeof(symbol));
+    memset(&binding, 0, sizeof(binding));
+    MakeVector(&type, &element, TYPE_BASE_FLOAT, 3);
+    symbol.name = AddAtom(atable, "output");
+    symbol.type = &type;
+    assert(hal->BindUniformUnbound(&loc, &symbol, &binding));
+    assert(binding.none.kind == BK_SEMANTIC);
+    assert(binding.none.properties ==
+           (BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM));
+    assert(binding.none.base == TYPE_BASE_FLOAT);
+    assert(binding.none.size == 3);
+    assert(!strcmp(GetAtomString(atable, binding.sem.sname), "cg_output"));
+    assert(binding.sem.sregno == 0);
+}
+
+static void CheckInternalFunctions(slHAL *hal)
+{
+    Symbol symbol;
+    Type functionType;
+    Type result;
+    Type matrix;
+    Type row;
+    Type rowElement;
+    Type vector;
+    Type vectorElement;
+    TypeList first;
+    TypeList second;
+    int group;
+
+    memset(&symbol, 0, sizeof(symbol));
+    memset(&functionType, 0, sizeof(functionType));
+    MakeVector(&result, &vectorElement, TYPE_BASE_FLOAT, 4);
+    MakeMatrix(&matrix, &row, &rowElement, 4);
+    MakeVector(&vector, &vectorElement, TYPE_BASE_FLOAT, 4);
+    first.type = &matrix;
+    first.next = &second;
+    second.type = &vector;
+    second.next = NULL;
+    functionType.fun.properties = TYPE_CATEGORY_FUNCTION;
+    functionType.fun.rettype = &result;
+    functionType.fun.paramtypes = &first;
+    symbol.kind = FUNCTION_S;
+    symbol.name = AddAtom(atable, "mul");
+    symbol.type = &functionType;
+    group = 0;
+    assert(hal->CheckInternalFunction(&symbol, &group) == GLSL_BUILTIN_MUL);
+    assert(group == GLSL_BUILTIN_GROUP);
+
+    MakeVector(&vector, &vectorElement, TYPE_BASE_FLOAT, 3);
+    group = 0;
+    assert(hal->CheckInternalFunction(&symbol, &group) == 0);
+    assert(group == 0);
+
+    MakeVector(&result, &vectorElement, TYPE_BASE_FLOAT, 3);
+    MakeMatrix(&matrix, &row, &rowElement, 3);
+    matrix.arr.properties = (matrix.arr.properties & ~TYPE_BASE_MASK) |
+                            TYPE_BASE_INT;
+    group = 0;
+    assert(hal->CheckInternalFunction(&symbol, &group) == 0);
+    assert(group == 0);
+
+    symbol.name = AddAtom(atable, "user_mul");
+    MakeVector(&vector, &vectorElement, TYPE_BASE_FLOAT, 4);
+    group = 0;
+    assert(hal->CheckInternalFunction(&symbol, &group) == 0);
+    assert(group == 0);
+}
+
 static ConnectorRegisters *FindRegister(const GlslProfileDesc *profile,
                                         int IsOutVal, const char *name)
 {
@@ -483,6 +571,8 @@ static void CheckVertex(void)
     assert(hal.GetConnectorUses(CID_NONE_ID, hal.pid) ==
            CONNECTOR_IS_USELESS);
     CheckSemanticBoundaries(&hal);
+    CheckUniformBinding(&hal);
+    CheckInternalFunctions(&hal);
 
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
                    AddAtom(atable, "ATTRIB0"), 0), "ATTRIB0"));
@@ -795,6 +885,29 @@ int IsVector(const Type *type, int *len)
         return 1;
     }
     return 0;
+}
+
+int IsMatrix(const Type *type, int *rows, int *cols)
+{
+    int rowLength;
+
+    if (type &&
+        (type->properties & TYPE_CATEGORY_MASK) == TYPE_CATEGORY_ARRAY &&
+        (type->properties & TYPE_MISC_PACKED) &&
+        IsVector(type->arr.eltype, &rowLength))
+    {
+        if (rows)
+            *rows = rowLength;
+        if (cols)
+            *cols = type->arr.numels;
+        return 1;
+    }
+    return 0;
+}
+
+int GetCategory(const Type *type)
+{
+    return type ? type->properties & TYPE_CATEGORY_MASK : TYPE_CATEGORY_NONE;
 }
 
 int GetBase(const Type *type)

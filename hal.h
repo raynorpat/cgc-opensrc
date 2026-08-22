@@ -216,6 +216,6 @@ ConnectorDescriptor *LookupConnectorHAL(ConnectorDescriptor *connectors, int cid
 void SetSymbolConnectorBindingHAL(Binding *fBind, ConnectorRegisters *fConn);
 
 void AddConstantBinding(Binding *fBind);
-void AddDefaultBinding(Binding *fBind);
+void AddDefaultBinding(Binding *fBind, const void *identity);
 
 #endif // !defined(__HAL_H)

@@ -208,8 +208,15 @@ static int GlslValidateModule(const GlslModule *module)
     for (binding = module->bindings; binding != NULL;
          binding = binding->next)
     {
+        int i;
+
         if (GlslStorageName(binding->storage) == NULL ||
             binding->name == NULL || binding->semantic == NULL) return 0;
+        if (binding->defaultCount < 0 || binding->defaultCount > 4)
+            return 0;
+        for (i = 0; i < binding->defaultCount; i++) {
+            if (!GlslFiniteFloat(binding->defaultValues[i])) return 0;
+        }
     }
     for (decl = module->structs; decl != NULL; decl = decl->next) {
         if (decl->name == NULL || !GlslValidateDecls(decl->members)) return 0;
@@ -308,11 +315,15 @@ static int GlslWriteExprList(FILE *out, const GlslExpr *expr)
 
 static int GlslWriteFloat(FILE *out, float value)
 {
+    char *decimal;
     char text[64];
     size_t length;
 
     if (!GlslFiniteFloat(value) ||
         snprintf(text, sizeof(text), "%.9g", value) < 0) return 0;
+    decimal = strchr(text, ',');
+    if (decimal != NULL)
+        *decimal = '.';
     if (strchr(text, '.') == NULL && strchr(text, 'e') == NULL &&
         strchr(text, 'E') == NULL)
     {
@@ -432,21 +443,43 @@ static int GlslWriteIndent(FILE *out, int level)
     return 1;
 }
 
+static int GlslWriteDeclarator(FILE *out, const GlslType *type,
+                               const char *name)
+{
+    const GlslType *current;
+
+    if (fprintf(out, "%s %s", GlslTypeName(type), name) < 0)
+        return 0;
+    for (current = type; current != NULL && current->elementType != NULL;
+         current = current->elementType)
+    {
+        if (fprintf(out, "[%d]", current->arraySize) < 0)
+            return 0;
+    }
+    return 1;
+}
+
 static int GlslWriteStruct(FILE *out, const GlslDecl *decl)
 {
     const GlslDecl *member;
     if (fprintf(out, "struct %s\n{\n", decl->name) < 0) return 0;
     for (member = decl->members; member != NULL; member = member->next) {
-        if (fprintf(out, "    %s %s;\n", GlslTypeName(&member->type),
-                    member->name) < 0) return 0;
+        if (fprintf(out, "    ") < 0 ||
+            !GlslWriteDeclarator(out, &member->type, member->name) ||
+            fprintf(out, ";\n") < 0) return 0;
     }
     return fprintf(out, "};\n") >= 0;
 }
 
 static int GlslWriteGlobal(FILE *out, const GlslDecl *decl)
 {
-    return fprintf(out, "%s %s %s;\n", GlslStorageName(decl->storage),
-                   GlslTypeName(&decl->type), decl->name) >= 0;
+    const char *storage;
+
+    storage = GlslStorageName(decl->storage);
+    if (storage != NULL && fprintf(out, "%s ", storage) < 0)
+        return 0;
+    return GlslWriteDeclarator(out, &decl->type, decl->name) &&
+           fprintf(out, ";\n") >= 0;
 }
 
 static const char *GlslParameterQualifierName(GlslParameterQualifier qualifier)
@@ -470,9 +503,9 @@ static int GlslWriteFunctionSignature(FILE *out,
          parameter = parameter->next)
     {
         if ((!first && fprintf(out, ", ") < 0) ||
-            fprintf(out, "%s%s %s",
-                    GlslParameterQualifierName(parameter->parameterQualifier),
-                    GlslTypeName(&parameter->type), parameter->name) < 0) return 0;
+            fprintf(out, "%s",
+                    GlslParameterQualifierName(parameter->parameterQualifier)) < 0 ||
+            !GlslWriteDeclarator(out, &parameter->type, parameter->name)) return 0;
         first = 0;
     }
     return fprintf(out, ")") >= 0;
@@ -570,8 +603,9 @@ static int GlslWriteFunction(FILE *out, const GlslFunction *function)
     if (!GlslWriteFunctionSignature(out, function) ||
         fprintf(out, "\n{\n") < 0) return 0;
     for (decl = function->locals; decl != NULL; decl = decl->next) {
-        if (fprintf(out, "    %s %s;\n", GlslTypeName(&decl->type),
-                    decl->name) < 0) return 0;
+        if (fprintf(out, "    ") < 0 ||
+            !GlslWriteDeclarator(out, &decl->type, decl->name) ||
+            fprintf(out, ";\n") < 0) return 0;
     }
     if (!GlslWriteStmtList(out, function->body, 1)) return 0;
     return fprintf(out, "}\n") >= 0;
@@ -579,25 +613,53 @@ static int GlslWriteFunction(FILE *out, const GlslFunction *function)
 
 int GlslWriteModule(FILE *out, const GlslModule *module)
 {
+    static const GlslStorage globalOrder[] = {
+        GLSL_STORAGE_ATTRIBUTE,
+        GLSL_STORAGE_VARYING,
+        GLSL_STORAGE_UNIFORM,
+        GLSL_STORAGE_SAMPLER,
+        GLSL_STORAGE_CONST,
+        GLSL_STORAGE_NONE
+    };
     const GlslBinding *binding;
     const GlslDecl *decl;
     const GlslFunction *function;
+    int i;
     int wrotePrototype = 0;
 
     if (out == NULL || !GlslValidateModule(module)) return 0;
     for (binding = module->bindings; binding != NULL;
          binding = binding->next)
     {
-        if (fprintf(out, "// cgc-bind %s %s %s\n",
-                    GlslStorageName(binding->storage), binding->name,
-                    binding->semantic) < 0) return 0;
+        int i;
+
+        if (fprintf(out, "// cgc-bind %s %s",
+                    GlslStorageName(binding->storage), binding->name) < 0)
+            return 0;
+        if (binding->semantic[0] != '\0' &&
+            fprintf(out, " %s", binding->semantic) < 0) return 0;
+        if (fprintf(out, "\n") < 0) return 0;
+        if (binding->defaultCount > 0) {
+            if (fprintf(out, "// cgc-default %s", binding->name) < 0)
+                return 0;
+            for (i = 0; i < binding->defaultCount; i++) {
+                if (fprintf(out, " ") < 0 ||
+                    !GlslWriteFloat(out, binding->defaultValues[i])) return 0;
+            }
+            if (fprintf(out, "\n") < 0) return 0;
+        }
     }
     if (module->bindings != NULL && fprintf(out, "\n") < 0) return 0;
     for (decl = module->structs; decl != NULL; decl = decl->next) {
         if (!GlslWriteStruct(out, decl) || fprintf(out, "\n") < 0) return 0;
     }
-    for (decl = module->globals; decl != NULL; decl = decl->next) {
-        if (!GlslWriteGlobal(out, decl)) return 0;
+    for (i = 0; i < (int) (sizeof(globalOrder) / sizeof(globalOrder[0]));
+         i++)
+    {
+        for (decl = module->globals; decl != NULL; decl = decl->next) {
+            if (decl->storage == globalOrder[i] &&
+                !GlslWriteGlobal(out, decl)) return 0;
+        }
     }
     if (module->globals != NULL && fprintf(out, "\n") < 0) return 0;
     for (function = module->functions; function != NULL;

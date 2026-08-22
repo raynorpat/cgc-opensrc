@@ -435,7 +435,7 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
                     GetVectorConst(lVal, formal->details.var.init);
                     lBind = NewConstDefaultBinding(0, formal->name, 4, 0, 0, lVal);
                     lBind->constdef.kind = BK_DEFAULT;
-                    AddDefaultBinding(lBind);
+                    AddDefaultBinding(lBind, formal);
                 }
                 break;
             default:
@@ -574,7 +574,7 @@ void BindDefaultSemantic(Symbol *lSymb, int category, int gname)
             GetVectorConst(lVal, lSymb->details.var.init);
             lBind = NewConstDefaultBinding(0, lSymb->name, 4, 0, 0, lVal);
             lBind->constdef.kind = BK_DEFAULT;
-            AddDefaultBinding(lBind);
+            AddDefaultBinding(lBind, lSymb);
         }
         break;
     default:

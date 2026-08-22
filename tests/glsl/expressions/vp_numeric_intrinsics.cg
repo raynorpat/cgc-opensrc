@@ -1,0 +1,16 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut result;
+    float scalar;
+    float3 value;
+    value = float3(position.x, position.y, position.z);
+    scalar = dot(position.x, position.y);
+    value = saturate(lerp(frac(value), normalize(value), 0.5));
+    result.position = float4(value.x, value.y, value.z,
+                             scalar * rsqrt(position.w));
+    return result;
+}

@@ -114,6 +114,20 @@ int main(void)
     FILE *writer;
     float infinity;
     float nanValue;
+    GlslType builtinParams[3];
+    GlslType arrayElement;
+    GlslType arrayType;
+    GlslType structType;
+    GlslDecl structMembers[2];
+    static const char *builtinSpellings[] = {
+        NULL,
+        "mul", "dot", "cross", "normalize", "reflect", "refract",
+        "length", "distance", "min", "max", "clamp", "abs", "sign",
+        "floor", "ceil", "sqrt", "exp", "exp2", "log", "log2",
+        "sin", "cos", "tan", "asin", "acos", "atan", "inversesqrt",
+        "mix", "fract", "clamp", "texture1D", "texture2D",
+        "texture3D", "textureCube"
+    };
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!strcmp(GlslAllocateName(&module, "position"), "position"));
@@ -130,6 +144,84 @@ int main(void)
     assert(!strcmp(GlslTypeName(&type), "ivec3"));
     type = GlslMatrixType(3);
     assert(!strcmp(GlslTypeName(&type), "mat3"));
+
+    for (index = GLSL_BUILTIN_MUL; index <= GLSL_BUILTIN_TEXCUBE;
+         index++)
+    {
+        assert(GlslBuiltinSpelling((GlslBuiltin) index) != NULL);
+        assert(!strcmp(GlslBuiltinSpelling((GlslBuiltin) index),
+                       builtinSpellings[index]));
+    }
+    assert(GlslBuiltinSpelling(GLSL_BUILTIN_NONE) == NULL);
+    assert(GlslBuiltinSpelling((GlslBuiltin) 999) == NULL);
+
+    builtinParams[0] = GlslMatrixType(4);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    assert(GlslLookupBuiltin("mul", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_MUL);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    assert(GlslLookupBuiltin("dot", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_DOT);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    assert(GlslLookupBuiltin("normalize", &type, builtinParams, 1) ==
+           GLSL_BUILTIN_NORMALIZE);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    builtinParams[2] = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    assert(GlslLookupBuiltin("refract", &type, builtinParams, 3) ==
+           GLSL_BUILTIN_REFRACT);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    builtinParams[2] = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    assert(GlslLookupBuiltin("clamp", &type, builtinParams, 3) ==
+           GLSL_BUILTIN_CLAMP);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    assert(GlslLookupBuiltin("lerp", &type, builtinParams, 3) ==
+           GLSL_BUILTIN_LERP);
+    assert(GlslLookupBuiltin("not_a_builtin", &type, builtinParams, 3) ==
+           GLSL_BUILTIN_NONE);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_INT, 3);
+    assert(GlslLookupBuiltin("normalize", &type, builtinParams, 1) ==
+           GLSL_BUILTIN_NONE);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    builtinParams[0].members = structMembers;
+    assert(GlslLookupBuiltin("normalize", &type, builtinParams, 1) ==
+           GLSL_BUILTIN_NONE);
+    builtinParams[0] = GlslMatrixType(3);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    assert(GlslLookupBuiltin("mul", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_NONE);
+
+    type = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    assert(GlslTypeComponentCount(&type) == 4);
+    type = GlslMatrixType(3);
+    assert(GlslTypeComponentCount(&type) == 9);
+    arrayElement = GlslMatrixType(2);
+    arrayType = GlslNumericType(GLSL_BASE_VOID, 0);
+    arrayType.arraySize = 3;
+    arrayType.elementType = &arrayElement;
+    assert(GlslTypeComponentCount(&arrayType) == 12);
+    arrayType.arraySize = 0;
+    assert(GlslTypeComponentCount(&arrayType) == 0);
+    type = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+    assert(GlslTypeComponentCount(&type) == 0);
+    memset(structMembers, 0, sizeof(structMembers));
+    structMembers[0].type = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    structMembers[0].next = &structMembers[1];
+    arrayElement = GlslMatrixType(2);
+    arrayType = GlslNumericType(GLSL_BASE_VOID, 0);
+    arrayType.arraySize = 2;
+    arrayType.elementType = &arrayElement;
+    structMembers[1].type = arrayType;
+    structType = GlslNumericType(GLSL_BASE_STRUCT, 0);
+    structType.structName = "ResourceBlock";
+    structType.members = structMembers;
+    assert(GlslTypeComponentCount(&structType) == 11);
 
     assert(!strcmp(GlslAllocateSymbolName(&module, &firstIdentity, "value"),
         "value"));

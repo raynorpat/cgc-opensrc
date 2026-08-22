@@ -1,0 +1,16 @@
+float normalize(float value, float scale)
+{
+    return value * scale;
+}
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut result;
+    result.position = position;
+    result.position.x = normalize(position.x, 2.0);
+    return result;
+}

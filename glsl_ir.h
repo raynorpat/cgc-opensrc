@@ -70,6 +70,46 @@ typedef enum GlslBase_Enum {
     GLSL_BASE_STRUCT
 } GlslBase;
 
+typedef enum GlslBuiltin_Enum {
+    GLSL_BUILTIN_NONE,
+    GLSL_BUILTIN_MUL,
+    GLSL_BUILTIN_DOT,
+    GLSL_BUILTIN_CROSS,
+    GLSL_BUILTIN_NORMALIZE,
+    GLSL_BUILTIN_REFLECT,
+    GLSL_BUILTIN_REFRACT,
+    GLSL_BUILTIN_LENGTH,
+    GLSL_BUILTIN_DISTANCE,
+    GLSL_BUILTIN_MIN,
+    GLSL_BUILTIN_MAX,
+    GLSL_BUILTIN_CLAMP,
+    GLSL_BUILTIN_ABS,
+    GLSL_BUILTIN_SIGN,
+    GLSL_BUILTIN_FLOOR,
+    GLSL_BUILTIN_CEIL,
+    GLSL_BUILTIN_SQRT,
+    GLSL_BUILTIN_EXP,
+    GLSL_BUILTIN_EXP2,
+    GLSL_BUILTIN_LOG,
+    GLSL_BUILTIN_LOG2,
+    GLSL_BUILTIN_SIN,
+    GLSL_BUILTIN_COS,
+    GLSL_BUILTIN_TAN,
+    GLSL_BUILTIN_ASIN,
+    GLSL_BUILTIN_ACOS,
+    GLSL_BUILTIN_ATAN,
+    GLSL_BUILTIN_RSQRT,
+    GLSL_BUILTIN_LERP,
+    GLSL_BUILTIN_FRAC,
+    GLSL_BUILTIN_SATURATE,
+    GLSL_BUILTIN_TEX1D,
+    GLSL_BUILTIN_TEX2D,
+    GLSL_BUILTIN_TEX3D,
+    GLSL_BUILTIN_TEXCUBE
+} GlslBuiltin;
+
+typedef struct GlslDecl_Rec GlslDecl;
+
 typedef struct GlslType_Rec {
     GlslBase base;
     int len;
@@ -78,6 +118,7 @@ typedef struct GlslType_Rec {
     int arraySize;
     const char *structName;
     struct GlslType_Rec *elementType;
+    GlslDecl *members;
 } GlslType;
 
 typedef struct GlslName_Rec {
@@ -142,7 +183,6 @@ typedef struct GlslLoc_Rec {
     int line;
 } GlslLoc;
 
-typedef struct GlslDecl_Rec GlslDecl;
 typedef struct GlslExpr_Rec GlslExpr;
 typedef struct GlslStmt_Rec GlslStmt;
 typedef struct GlslFunction_Rec GlslFunction;
@@ -255,6 +295,8 @@ struct GlslBinding_Rec {
     const char *semantic;
     GlslLoc loc;
     GlslDecl *declaration;
+    int defaultCount;
+    float defaultValues[4];
 };
 
 typedef struct GlslModule_Rec {
@@ -283,6 +325,10 @@ const char *GlslAllocateDistinctName(GlslModule *module, const char *source);
 GlslType GlslNumericType(GlslBase base, int len);
 GlslType GlslMatrixType(int size);
 const char *GlslTypeName(const GlslType *type);
+GlslBuiltin GlslLookupBuiltin(const char *name, const GlslType *result,
+    const GlslType *params, int paramCount);
+const char *GlslBuiltinSpelling(GlslBuiltin builtin);
+int GlslTypeComponentCount(const GlslType *type);
 int GlslIsReservedName(const char *name);
 GlslDecl *GlslNewDecl(GlslModule *module, GlslStorage storage,
     GlslType type, const char *name);

@@ -116,13 +116,21 @@ static char *GlslCopyText(GlslModule *module, const char *text)
 
 static int GlslTypesEqual(const GlslType *left, const GlslType *right)
 {
-    const char *leftName;
-    const char *rightName;
-
-    leftName = GlslTypeName(left);
-    rightName = GlslTypeName(right);
-    return leftName != NULL && rightName != NULL &&
-           !strcmp(leftName, rightName);
+    if (left == NULL || right == NULL || left->base != right->base ||
+        left->len != right->len || left->rows != right->rows ||
+        left->cols != right->cols || left->arraySize != right->arraySize)
+    {
+        return 0;
+    }
+    if ((left->structName == NULL) != (right->structName == NULL))
+        return 0;
+    if (left->structName != NULL &&
+        strcmp(left->structName, right->structName)) return 0;
+    if ((left->elementType == NULL) != (right->elementType == NULL))
+        return 0;
+    if (left->elementType != NULL)
+        return GlslTypesEqual(left->elementType, right->elementType);
+    return GlslTypeName(left) != NULL && GlslTypeName(right) != NULL;
 }
 
 static GlslDecl *GlslFindDeclList(GlslDecl *list, const void *identity)
@@ -215,17 +223,33 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
 {
     GlslDecl *structDecl;
     GlslBase glslBase;
+    GlslType elementType;
+    GlslType *element;
     int base;
     int category;
     int len;
+    int rows;
+    int cols;
 
     if (source == NULL || target == NULL)
         return 0;
+    base = GetBase(source);
     if (IsVoid(source)) {
         *target = GlslNumericType(GLSL_BASE_VOID, 0);
         return 1;
     }
-    base = GetBase(source);
+    if (IsMatrix(source, &cols, &rows)) {
+        if (base != TYPE_BASE_FLOAT && base != TYPE_BASE_CFLOAT) {
+            GlslRecordFailure(context, "GLSL 1.10 matrix type");
+            return 0;
+        }
+        if (rows != cols || rows < 2 || rows > 4) {
+            GlslRecordFailure(context, "non-square GLSL matrix");
+            return 0;
+        }
+        *target = GlslMatrixType(rows);
+        return 1;
+    }
     switch (base) {
     case TYPE_BASE_FLOAT:
     case TYPE_BASE_CFLOAT:
@@ -253,12 +277,26 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
         *target = GlslNumericType(glslBase, len);
         return 1;
     }
+    if (category == TYPE_CATEGORY_ARRAY && source->arr.numels > 0 &&
+        GlslLowerType(context, source->arr.eltype, &elementType))
+    {
+        element = (GlslType *) context->module->alloc(
+            context->module->allocArg, sizeof(GlslType));
+        if (element == NULL)
+            return 0;
+        *element = elementType;
+        *target = GlslNumericType(GLSL_BASE_VOID, 0);
+        target->arraySize = source->arr.numels;
+        target->elementType = element;
+        return 1;
+    }
     if (category == TYPE_CATEGORY_STRUCT) {
         structDecl = GlslFindStruct(context, source);
         if (structDecl == NULL)
             return 0;
         *target = GlslNumericType(GLSL_BASE_STRUCT, 0);
         target->structName = structDecl->name;
+        target->members = structDecl->members;
         return 1;
     }
     return 0;
@@ -367,8 +405,14 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
 
     if (type == NULL)
         return 0;
-    if (GetCategory(type) != TYPE_CATEGORY_STRUCT)
+    if (IsMatrix(type, NULL, NULL) || IsVector(type, NULL) ||
+        GetCategory(type) == TYPE_CATEGORY_SCALAR)
         return 1;
+    if (GetCategory(type) == TYPE_CATEGORY_ARRAY)
+        return type->arr.numels > 0 &&
+               GlslEnsureType(context, type->arr.eltype);
+    if (GetCategory(type) != TYPE_CATEGORY_STRUCT)
+        return 0;
     if (GlslFindStruct(context, type) != NULL)
         return 1;
     tag = GlslFindTag(context->scope, type);
@@ -396,6 +440,14 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
         type->str.members->symbols, &decl->members);
 }
 
+static int GlslTypeUsesStruct(const GlslType *type, const char *name)
+{
+    if (type->elementType != NULL)
+        return GlslTypeUsesStruct(type->elementType, name);
+    return type->base == GLSL_BASE_STRUCT && type->structName != NULL &&
+           !strcmp(type->structName, name);
+}
+
 static int GlslStructReady(const GlslDecl *decl,
                            const GlslDecl *remaining)
 {
@@ -403,11 +455,9 @@ static int GlslStructReady(const GlslDecl *decl,
     const GlslDecl *other;
 
     for (member = decl->members; member != NULL; member = member->next) {
-        if (member->type.base != GLSL_BASE_STRUCT)
-            continue;
         for (other = remaining; other != NULL; other = other->next) {
             if (other != decl &&
-                !strcmp(member->type.structName, other->name)) return 0;
+                GlslTypeUsesStruct(&member->type, other->name)) return 0;
         }
     }
     return 1;
@@ -448,6 +498,8 @@ static int GlslSortStructs(GlslLowerContext *context)
     return 1;
 }
 
+static void GlslInsertBinding(GlslBinding **list, GlslBinding *binding);
+
 static int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
                                  int entry)
 {
@@ -455,8 +507,11 @@ static int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
     int qualifiers;
 
     for (; formal != NULL; formal = formal->next) {
-        if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM)
+        if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM) {
+            if (entry)
+                continue;
             return 0;
+        }
         decl = GlslNewSourceDecl(context, formal,
                                  entry ? NULL : context->function->identity);
         if (decl == NULL)
@@ -476,6 +531,213 @@ static int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
         }
     }
     return 1;
+}
+
+static GlslBinding *GlslFindUniformBinding(GlslModule *module,
+                                           const Symbol *symbol)
+{
+    GlslBinding *binding;
+
+    for (binding = module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->storage == GLSL_STORAGE_UNIFORM &&
+            binding->declaration != NULL &&
+            binding->declaration->identity == symbol) return binding;
+    }
+    return NULL;
+}
+
+static int GlslCollectUniformSymbol(GlslLowerContext *context,
+                                    Symbol *symbol)
+{
+    GlslBinding *binding;
+    GlslDecl *decl;
+    GlslType type;
+    const char *sourceName;
+    const char *name;
+
+    if (symbol == NULL || symbol->kind != VARIABLE_S ||
+        GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM)
+    {
+        return 1;
+    }
+    if (GlslFindUniformBinding(context->module, symbol) != NULL)
+        return 1;
+    if (!GlslEnsureType(context, symbol->type) ||
+        !GlslLowerType(context, symbol->type, &type)) return 0;
+    sourceName = GetAtomString(atable, symbol->name);
+    name = GlslAllocateSymbolName(context->module, symbol, sourceName);
+    if (name == NULL)
+        return 0;
+    decl = GlslNewDecl(context->module, GLSL_STORAGE_UNIFORM, type, name);
+    binding = GlslNewBinding(context->module, GLSL_STORAGE_UNIFORM,
+                             name, "");
+    if (decl == NULL || binding == NULL)
+        return 0;
+    decl->identity = symbol;
+    GlslSetLoc(&decl->loc, &symbol->loc);
+    binding->declaration = decl;
+    GlslSetLoc(&binding->loc, &symbol->loc);
+    GlslAppendDecl(&context->module->globals, decl);
+    GlslInsertBinding(&context->module->bindings, binding);
+    return 1;
+}
+
+static int GlslCollectUniformList(GlslLowerContext *context,
+                                  SymbolList *list)
+{
+    for (; list != NULL; list = list->next) {
+        if (!GlslCollectUniformSymbol(context, list->symb))
+            return 0;
+    }
+    return 1;
+}
+
+static int GlslCollectUniformsInExpr(GlslLowerContext *context,
+                                     expr *source)
+{
+    if (source == NULL)
+        return 1;
+    switch (source->common.kind) {
+    case SYMB_N:
+        if (source->sym.op == VARIABLE_OP)
+            return GlslCollectUniformSymbol(context, source->sym.symbol);
+        return 1;
+    case DECL_N:
+    case CONST_N:
+        return 1;
+    case UNARY_N:
+        return GlslCollectUniformsInExpr(context, source->un.arg);
+    case BINARY_N:
+        return GlslCollectUniformsInExpr(context, source->bin.left) &&
+               GlslCollectUniformsInExpr(context, source->bin.right);
+    case TRINARY_N:
+        return GlslCollectUniformsInExpr(context, source->tri.arg1) &&
+               GlslCollectUniformsInExpr(context, source->tri.arg2) &&
+               GlslCollectUniformsInExpr(context, source->tri.arg3);
+    default:
+        return 0;
+    }
+}
+
+static int GlslCollectUniformsInStatements(GlslLowerContext *context,
+                                            stmt *source)
+{
+    for (; source != NULL; source = source->commonst.next) {
+        switch (source->commonst.kind) {
+        case EXPR_STMT:
+            if (!GlslCollectUniformsInExpr(context, source->exprst.exp))
+                return 0;
+            break;
+        case IF_STMT:
+            if (!GlslCollectUniformsInExpr(context, source->ifst.cond) ||
+                !GlslCollectUniformsInStatements(context,
+                                                  source->ifst.thenstmt) ||
+                !GlslCollectUniformsInStatements(context,
+                                                  source->ifst.elsestmt))
+                return 0;
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            if (!GlslCollectUniformsInExpr(context, source->whilest.cond) ||
+                !GlslCollectUniformsInStatements(context,
+                                                  source->whilest.body))
+                return 0;
+            break;
+        case FOR_STMT:
+            if (!GlslCollectUniformsInStatements(context,
+                                                  source->forst.init) ||
+                !GlslCollectUniformsInExpr(context, source->forst.cond) ||
+                !GlslCollectUniformsInStatements(context,
+                                                  source->forst.step) ||
+                !GlslCollectUniformsInStatements(context,
+                                                  source->forst.body))
+                return 0;
+            break;
+        case BLOCK_STMT:
+            if (!GlslCollectUniformsInStatements(context,
+                                                  source->blockst.body))
+                return 0;
+            break;
+        case RETURN_STMT:
+            if (!GlslCollectUniformsInExpr(context, source->returnst.exp))
+                return 0;
+            break;
+        case DISCARD_STMT:
+            if (!GlslCollectUniformsInExpr(context, source->discardst.cond))
+                return 0;
+            break;
+        case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+            break;
+        default:
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int GlslCollectUniforms(GlslLowerContext *context, Symbol *program)
+{
+    GlslFunction *function;
+    Symbol *symbol;
+
+    if (!GlslCollectUniformList(context, Cg->theHAL->uniformParam) ||
+        !GlslCollectUniformList(context, Cg->theHAL->uniformGlobal) ||
+        !GlslCollectUniformsInStatements(context,
+                                          program->details.fun.statements))
+    {
+        return 0;
+    }
+    for (function = context->module->functions; function != NULL;
+         function = function->next)
+    {
+        symbol = (Symbol *) function->identity;
+        if (!GlslCollectUniformsInStatements(context,
+                                              symbol->details.fun.statements))
+            return 0;
+    }
+    return 1;
+}
+
+static void GlslCollectDefaults(GlslLowerContext *context)
+{
+    BindingList *item;
+    GlslBinding *binding;
+    Symbol *symbol;
+    int componentCount;
+    int i;
+
+    for (item = Cg->theHAL->defaultBindings; item != NULL;
+         item = item->next)
+    {
+        if (item->binding == NULL ||
+            item->binding->none.kind != BK_DEFAULT) continue;
+        for (binding = context->module->bindings; binding != NULL;
+             binding = binding->next)
+        {
+            if (binding->storage != GLSL_STORAGE_UNIFORM ||
+                binding->declaration == NULL || binding->defaultCount != 0)
+                continue;
+            symbol = (Symbol *) binding->declaration->identity;
+            if (symbol == NULL || item->identity != symbol)
+                continue;
+            componentCount = GlslTypeComponentCount(
+                &binding->declaration->type);
+            if (componentCount > item->binding->constdef.size)
+                componentCount = item->binding->constdef.size;
+            if (componentCount > 4)
+                componentCount = 4;
+            binding->defaultCount = componentCount;
+            for (i = 0; i < componentCount; i++) {
+                binding->defaultValues[i] =
+                    item->binding->constdef.val[i];
+            }
+            break;
+        }
+    }
 }
 
 static int GlslCollectLocals(GlslLowerContext *context, Symbol *symbol,
@@ -1119,6 +1381,128 @@ static GlslExpr *GlslLowerSwizzle(GlslLowerContext *context, expr *source,
     return GlslNewSwizzle(context, object, type, maskText);
 }
 
+static GlslExpr *GlslNewIndexLiteral(GlslLowerContext *context,
+                                     GlslExpr *object,
+                                     const GlslType *type, int index)
+{
+    GlslExpr *target;
+    GlslExpr *literal;
+    GlslType intType;
+
+    intType = GlslNumericType(GLSL_BASE_INT, 1);
+    literal = GlslNewExpr(context->module, GLSL_EXPR_INT, intType);
+    target = GlslNewExpr(context->module, GLSL_EXPR_INDEX, *type);
+    if (literal == NULL || target == NULL)
+        return NULL;
+    literal->u.literalInt = index;
+    target->u.index.object = object;
+    target->u.index.index = literal;
+    return target;
+}
+
+static GlslExpr *GlslMatrixComponent(GlslLowerContext *context,
+    GlslExpr *matrix, int row, int column)
+{
+    GlslExpr *columnExpr;
+    GlslType columnType;
+    GlslType scalarType;
+
+    if (matrix == NULL || matrix->type.rows < 2 ||
+        matrix->type.rows != matrix->type.cols || row < 0 || column < 0 ||
+        row >= matrix->type.rows || column >= matrix->type.cols)
+    {
+        return NULL;
+    }
+    columnType = GlslNumericType(GLSL_BASE_FLOAT, matrix->type.rows);
+    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    columnExpr = GlslNewIndexLiteral(context, matrix, &columnType, column);
+    if (columnExpr == NULL)
+        return NULL;
+    return GlslNewIndexLiteral(context, columnExpr, &scalarType, row);
+}
+
+static GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
+    expr *source, const GlslType *type)
+{
+    GlslExpr *object;
+    GlslExpr *target;
+    GlslExpr *component;
+    int count;
+    int mask;
+    int selector;
+    int row;
+    int column;
+    int i;
+
+    object = GlslLowerExpr(context, source->un.arg);
+    if (object == NULL)
+        return NULL;
+    count = SUBOP_GET_T2(source->un.subop);
+    if (count == 0)
+        count = 1;
+    if (count < 1 || count > 4)
+        return NULL;
+    mask = SUBOP_GET_MASK16(source->un.subop);
+    if (count == 1) {
+        selector = mask & 15;
+        row = (selector >> 2) & 3;
+        column = selector & 3;
+        return GlslMatrixComponent(context, object, row, column);
+    }
+    target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
+    if (target == NULL)
+        return NULL;
+    for (i = 0; i < count; i++) {
+        selector = (mask >> (i * 4)) & 15;
+        row = (selector >> 2) & 3;
+        column = selector & 3;
+        component = GlslMatrixComponent(context, object, row, column);
+        if (component == NULL)
+            return NULL;
+        GlslAppendExpr(&target->u.construct.arguments, component);
+    }
+    return target;
+}
+
+static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
+    expr *source, const GlslType *type)
+{
+    GlslExpr *arguments[16];
+    GlslExpr *argument;
+    GlslExpr *next;
+    GlslExpr *target;
+    int count;
+    int row;
+    int column;
+    int size;
+
+    size = type->rows;
+    if (size < 2 || size > 4 || type->cols != size)
+        return NULL;
+    argument = GlslLowerExprChain(context, source->un.arg, EXPR_LIST_OP);
+    count = 0;
+    while (argument != NULL && count < 16) {
+        next = argument->next;
+        argument->next = NULL;
+        if (argument->type.len != 1 || argument->type.rows != 0 ||
+            argument->type.cols != 0) return NULL;
+        arguments[count++] = argument;
+        argument = next;
+    }
+    if (argument != NULL || count != size * size)
+        return NULL;
+    target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
+    if (target == NULL)
+        return NULL;
+    for (column = 0; column < size; column++) {
+        for (row = 0; row < size; row++) {
+            GlslAppendExpr(&target->u.construct.arguments,
+                           arguments[row * size + column]);
+        }
+    }
+    return target;
+}
+
 static GlslOperator GlslUnaryOperator(opcode op)
 {
     switch (op) {
@@ -1175,9 +1559,16 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
                                const GlslType *type)
 {
     GlslExpr *target;
+    GlslExpr *arguments;
+    GlslExpr *left;
+    GlslExpr *right;
+    GlslExpr *zero;
+    GlslExpr *one;
     GlslFunction *function;
     Symbol *symbol;
     const char *name;
+    GlslBuiltin builtin;
+    GlslType scalarType;
 
     if (source->bin.left == NULL ||
         source->bin.left->common.kind != SYMB_N) return NULL;
@@ -1185,22 +1576,80 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
     function = GlslFindFunction(context->module, symbol);
     if (function != NULL) {
         name = function->name;
-    } else if (symbol != NULL && symbol->kind == FUNCTION_S &&
-               (symbol->properties & SYMB_IS_BUILTIN)) {
-        name = GetAtomString(atable, symbol->name);
+    } else if (source->bin.op == FUN_BUILTIN_OP && symbol != NULL &&
+               symbol->kind == FUNCTION_S &&
+               (symbol->properties & SYMB_IS_BUILTIN) &&
+               symbol->details.fun.group == GLSL_BUILTIN_GROUP &&
+               (source->bin.subop >> 16) == GLSL_BUILTIN_GROUP &&
+               (source->bin.subop & 0xffff) == symbol->details.fun.index)
+    {
+        builtin = (GlslBuiltin) symbol->details.fun.index;
+        name = GlslBuiltinSpelling(builtin);
+        if (name == NULL)
+            return NULL;
     } else {
         return NULL;
+    }
+    arguments = NULL;
+    if (source->bin.right != NULL) {
+        arguments = GlslLowerExprChain(context, source->bin.right,
+                                        FUN_ARG_OP);
+        if (arguments == NULL)
+            return NULL;
+    }
+    if (function == NULL) {
+        builtin = (GlslBuiltin) symbol->details.fun.index;
+        if (builtin == GLSL_BUILTIN_MUL ||
+            (builtin == GLSL_BUILTIN_DOT &&
+             arguments != NULL && arguments->type.len == 1))
+        {
+            left = arguments;
+            right = left != NULL ? left->next : NULL;
+            if (left == NULL || right == NULL || right->next != NULL)
+                return NULL;
+            left->next = NULL;
+            right->next = NULL;
+            target = GlslNewExpr(context->module, GLSL_EXPR_BINARY, *type);
+            if (target == NULL)
+                return NULL;
+            target->u.binary.op = GLSL_OP_MULTIPLY;
+            target->u.binary.left = left;
+            target->u.binary.right = right;
+            return target;
+        }
+        if (builtin == GLSL_BUILTIN_SATURATE) {
+            if (arguments == NULL || arguments->next != NULL)
+                return NULL;
+            scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+            zero = GlslNewLiteral(context, GLSL_BASE_FLOAT, 0, 0.0f);
+            one = GlslNewLiteral(context, GLSL_BASE_FLOAT, 0, 1.0f);
+            if (zero == NULL || one == NULL)
+                return NULL;
+            if (type->len > 1) {
+                target = GlslNewExpr(context->module,
+                                     GLSL_EXPR_CONSTRUCT, *type);
+                if (target == NULL)
+                    return NULL;
+                target->u.construct.arguments = zero;
+                zero = target;
+                target = GlslNewExpr(context->module,
+                                     GLSL_EXPR_CONSTRUCT, *type);
+                if (target == NULL)
+                    return NULL;
+                target->u.construct.arguments = one;
+                one = target;
+            } else if (!GlslTypesEqual(type, &scalarType)) {
+                return NULL;
+            }
+            arguments->next = zero;
+            zero->next = one;
+        }
     }
     target = GlslNewExpr(context->module, GLSL_EXPR_CALL, *type);
     if (target == NULL)
         return NULL;
     target->u.call.name = name;
-    if (source->bin.right != NULL) {
-        target->u.call.arguments = GlslLowerExprChain(context,
-            source->bin.right, FUN_ARG_OP);
-        if (target->u.call.arguments == NULL)
-            return NULL;
-    }
+    target->u.call.arguments = arguments;
     return target;
 }
 
@@ -1385,6 +1834,10 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
     if (source->common.kind == UNARY_N) {
         if (source->un.op == SWIZZLE_Z_OP)
             return GlslLowerSwizzle(context, source, &type);
+        if (source->un.op == SWIZMAT_Z_OP)
+            return GlslLowerMatrixSwizzle(context, source, &type);
+        if (source->un.op == VECTOR_V_OP && type.rows != 0)
+            return GlslLowerMatrixConstructor(context, source, &type);
         if (source->un.op == VECTOR_V_OP) {
             target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, type);
             if (target == NULL)
@@ -1395,7 +1848,9 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
                 return NULL;
             return target;
         }
-        if (source->un.op == CAST_CS_OP || source->un.op == CAST_CV_OP) {
+        if (source->un.op == CAST_CS_OP || source->un.op == CAST_CV_OP ||
+            source->un.op == CAST_CM_OP)
+        {
             operand = GlslLowerExpr(context, source->un.arg);
             if (operand == NULL)
                 return NULL;
@@ -1507,6 +1962,102 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
 static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
                                   GlslStmt **list);
 
+static int GlslMatrixSelectorCount(const expr *source)
+{
+    int count;
+
+    if (source == NULL || source->common.kind != UNARY_N ||
+        source->un.op != SWIZMAT_Z_OP) return 0;
+    count = SUBOP_GET_T2(source->un.subop);
+    return count == 0 ? 1 : count;
+}
+
+static GlslExpr *GlslMatrixSelectorComponent(GlslLowerContext *context,
+    GlslExpr *matrix, const expr *selectorSource, int component)
+{
+    int mask;
+    int selector;
+    int row;
+    int column;
+
+    mask = SUBOP_GET_MASK16(selectorSource->un.subop);
+    selector = (mask >> (component * 4)) & 15;
+    row = (selector >> 2) & 3;
+    column = selector & 3;
+    return GlslMatrixComponent(context, matrix, row, column);
+}
+
+static int GlslLowerMatrixAssignment(GlslLowerContext *context,
+    expr *source, const SourceLoc *loc, GlslStmt **list)
+{
+    GlslExpr *leftMatrix;
+    GlslExpr *rightMatrix;
+    GlslExpr *rightValue;
+    GlslExpr *left;
+    GlslExpr *right;
+    GlslExpr *assignment;
+    GlslStmt *statement;
+    GlslType scalarType;
+    char mask[2];
+    int count;
+    int rightCount;
+    int i;
+
+    count = GlslMatrixSelectorCount(source->bin.left);
+    if (count <= 1)
+        return 0;
+    rightCount = GlslMatrixSelectorCount(source->bin.right);
+    if (rightCount != 0 && rightCount != count)
+        return 0;
+    if (rightCount == 0 && source->bin.right->common.HasSideEffects) {
+        GlslRecordFailure(context, "matrix selector side effects");
+        return 0;
+    }
+    leftMatrix = GlslLowerExpr(context, source->bin.left->un.arg);
+    if (leftMatrix == NULL)
+        return 0;
+    rightMatrix = NULL;
+    rightValue = NULL;
+    if (rightCount != 0) {
+        rightMatrix = GlslLowerExpr(context, source->bin.right->un.arg);
+        if (rightMatrix == NULL)
+            return 0;
+    } else {
+        rightValue = GlslLowerExpr(context, source->bin.right);
+        if (rightValue == NULL)
+            return 0;
+    }
+    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    for (i = 0; i < count; i++) {
+        left = GlslMatrixSelectorComponent(context, leftMatrix,
+                                            source->bin.left, i);
+        if (rightMatrix != NULL) {
+            right = GlslMatrixSelectorComponent(context, rightMatrix,
+                                                 source->bin.right, i);
+        } else if (rightValue->type.len == 1) {
+            right = rightValue;
+        } else {
+            mask[0] = "xyzw"[i];
+            mask[1] = '\0';
+            right = GlslNewSwizzle(context, rightValue, &scalarType, mask);
+        }
+        if (left == NULL || right == NULL)
+            return 0;
+        assignment = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                                 scalarType);
+        statement = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
+        if (assignment == NULL || statement == NULL)
+            return 0;
+        assignment->u.binary.op = GLSL_OP_ASSIGN;
+        assignment->u.binary.left = left;
+        assignment->u.binary.right = right;
+        statement->u.expression = assignment;
+        GlslSetLoc(&statement->loc, loc);
+        GlslAppendStmt(list, statement);
+    }
+    return 1;
+}
+
 static int GlslLowerBranch(GlslLowerContext *context, stmt *source,
                            GlslStmt **list)
 {
@@ -1554,6 +2105,19 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
         case EXPR_STMT:
             if (source->exprst.exp == NULL)
                 continue;
+            if (source->exprst.exp->common.kind == BINARY_N &&
+                (source->exprst.exp->bin.op == ASSIGN_OP ||
+                 source->exprst.exp->bin.op == ASSIGN_V_OP ||
+                 source->exprst.exp->bin.op == ASSIGN_GEN_OP) &&
+                GlslMatrixSelectorCount(
+                    source->exprst.exp->bin.left) > 1)
+            {
+                if (!GlslLowerMatrixAssignment(context,
+                                                source->exprst.exp,
+                                                &source->commonst.loc,
+                                                list)) return 0;
+                continue;
+            }
             target = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
             if (target == NULL)
                 return 0;
@@ -1704,8 +2268,10 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
                                program->details.fun.locals->symbols) ||
         !GlslCollectCallsInStatements(&context,
                                       program->details.fun.statements) ||
+        !GlslCollectUniforms(&context, program) ||
         !GlslSortStructs(&context) ||
         !GlslAssignHelperNames(&context)) return GlslLowerError(&context);
+    GlslCollectDefaults(&context);
     GlslMarkForwardCalls(&context);
     for (helper = module->functions; helper != NULL; helper = next) {
         next = helper->next;

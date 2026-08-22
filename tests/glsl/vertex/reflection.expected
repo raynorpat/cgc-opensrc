@@ -1,0 +1,69 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind attribute cg_ATTRIB1 ATTRIB1
+// cgc-bind varying cg_COLOR0 COLOR0
+// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+// cgc-bind uniform modelview_matrix
+// cgc-bind uniform projection_matrix
+// cgc-bind uniform lightdir
+// cgc-bind uniform lightcolor
+// cgc-bind uniform ambientcolor
+// cgc-bind builtin gl_Position POSITION0
+
+struct appdata
+{
+    vec4 position;
+    vec3 normal;
+};
+
+struct vf20
+{
+    vec4 HPOS;
+    vec4 COL0;
+    vec4 TEX0;
+};
+
+attribute vec4 cg_ATTRIB0;
+attribute vec3 cg_ATTRIB1;
+varying vec4 cg_COLOR0;
+varying vec4 cg_TEXCOORD0;
+uniform mat4 modelview_matrix;
+uniform mat4 projection_matrix;
+uniform vec3 lightdir;
+uniform vec3 lightcolor;
+uniform vec3 ambientcolor;
+
+void main()
+{
+    appdata I;
+    vf20 O;
+    vec3 n;
+    vec3 r;
+    vec3 u;
+    vec4 v;
+    float m;
+    mat3 m3;
+    I.position = cg_ATTRIB0;
+    I.normal = cg_ATTRIB1;
+    v = modelview_matrix * I.position;
+    u = normalize(v.xyz);
+    m3[0][0] = modelview_matrix[0][0];
+    m3[1][0] = modelview_matrix[1][0];
+    m3[2][0] = modelview_matrix[2][0];
+    m3[0][1] = modelview_matrix[0][1];
+    m3[1][1] = modelview_matrix[1][1];
+    m3[2][1] = modelview_matrix[2][1];
+    m3[0][2] = modelview_matrix[0][2];
+    m3[1][2] = modelview_matrix[1][2];
+    m3[2][2] = modelview_matrix[2][2];
+    n = m3 * I.normal;
+    r = u - 2.0 * n * dot(n, u);
+    r.z = r.z + 1.0;
+    m = 0.5 * inversesqrt(dot(r, r));
+    O.TEX0.x = r.x * m + 0.5;
+    O.TEX0.y = r.y * m + 0.5;
+    O.HPOS = projection_matrix * v;
+    gl_Position = O.HPOS;
+    cg_COLOR0 = O.COL0;
+    cg_TEXCOORD0 = O.TEX0;
+}

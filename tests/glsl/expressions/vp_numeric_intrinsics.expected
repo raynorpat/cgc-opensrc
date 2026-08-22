@@ -1,0 +1,24 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+void main()
+{
+    vec4 position;
+    VertexOut result;
+    float scalar;
+    vec3 value;
+    position = cg_ATTRIB0;
+    value = vec3(position.x, position.y, position.z);
+    scalar = position.x * position.y;
+    value = clamp(mix(fract(value), normalize(value), 0.5), vec3(0.0), vec3(1.0));
+    result.position = vec4(value.x, value.y, value.z, scalar * inversesqrt(position.w));
+    gl_Position = result.position;
+}

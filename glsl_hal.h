@@ -64,6 +64,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CID_GLSLF_IN_ID 16
 #define CID_GLSLF_OUT_NAME "glslf_out"
 #define CID_GLSLF_OUT_ID 17
+#define GLSL_BUILTIN_GROUP 3
 
 typedef struct GlslLimits_Rec {
     int attributes;

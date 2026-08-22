@@ -150,6 +150,7 @@ union Binding_Rec {
 struct BindingList_Rec {
     BindingList *next;
     Binding *binding;
+    const void *identity;
 };
 
 struct BindingTree_Rec {
