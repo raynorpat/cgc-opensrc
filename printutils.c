@@ -426,6 +426,14 @@ static void lBPrintStmt(stmt *fstmt, int level)
         lIndent(level);
         printf("// %s\n", GetAtomString(atable, fstmt->commentst.str));
         break;
+    case BREAK_STMT:
+        lIndent(level);
+        printf("break;\n");
+        break;
+    case CONTINUE_STMT:
+        lIndent(level);
+        printf("continue;\n");
+        break;
     default:
         lIndent(level);
         printf("<!BadStmt-0x%2x>\n", fstmt->exprst.kind);
@@ -1255,6 +1263,14 @@ static void lPrintStmt(stmt *fstmt, int level, const char *fcomment)
     case COMMENT_STMT:
         lIndent(level);
         printf("// %s\n", GetAtomString(atable, fstmt->commentst.str));
+        break;
+    case BREAK_STMT:
+        lIndent(level);
+        printf("break;\n");
+        break;
+    case CONTINUE_STMT:
+        lIndent(level);
+        printf("continue;\n");
         break;
     default:
         lIndent(level);

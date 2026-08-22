@@ -1,0 +1,13 @@
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    bool4 aboveZero;
+    bool4 belowOne;
+    aboveZero = 0.0 < position;
+    belowOne = position < 1.0;
+    if (aboveZero.x && belowOne.x)
+        position.x = 1.0;
+    output.position = position;
+    return output;
+}

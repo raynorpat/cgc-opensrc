@@ -1,0 +1,32 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+void scalePosition(inout vec4 value, float factor)
+{
+    value = value * factor;
+}
+
+void copyPosition(vec4 value, out vec4 result)
+{
+    result = value;
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    vec4 copied;
+    position = cg_ATTRIB0;
+    scalePosition(position, 2.0);
+    copyPosition(position, copied);
+    cg_output.position = copied;
+    gl_Position = cg_output.position;
+}

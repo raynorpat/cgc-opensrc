@@ -85,10 +85,11 @@ find_package(BISON QUIET)
 if(BISON_FOUND)
     add_custom_target(regenerate_parser
         COMMAND ${BISON_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/parser.y
-            --defines=${CMAKE_CURRENT_SOURCE_DIR}/parser.h
-            --output=${CMAKE_CURRENT_SOURCE_DIR}/parser.c
+            parser.y
+            --defines=parser.h
+            --output=parser.c
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/parser.y
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         VERBATIM
     )
 else()

@@ -1,0 +1,15 @@
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    int index;
+    for (index = 0; index < 4; index = index + 1) {
+        if (index == 1)
+            continue;
+        if (index == 3)
+            break;
+        position.x = position.x + 1.0;
+    }
+    output.position = position;
+    return output;
+}

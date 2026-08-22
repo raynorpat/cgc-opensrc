@@ -5,6 +5,8 @@ struct VertexOut {
 VertexOut main(float4 position : ATTRIB0)
 {
     VertexOut output;
-    output.position = position * 2.0;
+    int value;
+    value = value % 2;
+    output.position = position;
     return output;
 }

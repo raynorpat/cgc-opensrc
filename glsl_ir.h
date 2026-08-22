@@ -111,6 +111,26 @@ typedef enum GlslExprKind_Enum {
     GLSL_EXPR_INDEX, GLSL_EXPR_SWIZZLE
 } GlslExprKind;
 
+typedef enum GlslOperator_Enum {
+    GLSL_OP_NONE,
+    GLSL_OP_ASSIGN,
+    GLSL_OP_LOGICAL_OR,
+    GLSL_OP_LOGICAL_AND,
+    GLSL_OP_EQUAL,
+    GLSL_OP_NOT_EQUAL,
+    GLSL_OP_LESS,
+    GLSL_OP_GREATER,
+    GLSL_OP_LESS_EQUAL,
+    GLSL_OP_GREATER_EQUAL,
+    GLSL_OP_ADD,
+    GLSL_OP_SUBTRACT,
+    GLSL_OP_MULTIPLY,
+    GLSL_OP_DIVIDE,
+    GLSL_OP_NEGATE,
+    GLSL_OP_POSITIVE,
+    GLSL_OP_LOGICAL_NOT
+} GlslOperator;
+
 typedef enum GlslStmtKind_Enum {
     GLSL_STMT_EXPRESSION, GLSL_STMT_IF, GLSL_STMT_WHILE, GLSL_STMT_DO,
     GLSL_STMT_FOR, GLSL_STMT_BLOCK, GLSL_STMT_RETURN, GLSL_STMT_DISCARD,
@@ -139,11 +159,11 @@ struct GlslExpr_Rec {
         float literalFloat;
         int literalBool;
         struct {
-            int op;
+            GlslOperator op;
             GlslExpr *operand;
         } unary;
         struct {
-            int op;
+            GlslOperator op;
             GlslExpr *left;
             GlslExpr *right;
         } binary;
@@ -224,6 +244,8 @@ struct GlslFunction_Rec {
     GlslDecl *locals;
     GlslStmt *body;
     int isEntry;
+    int needsPrototype;
+    int visitState;
 };
 
 struct GlslBinding_Rec {

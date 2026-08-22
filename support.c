@@ -496,6 +496,22 @@ expr_stmt *NewExprStmt(SourceLoc *loc, expr *fExpr)
 } // NewExprStmt
 
 /*
+ * NewSimpleStmt() - Create a leaf statement with no expression or children.
+ *
+ */
+
+common_stmt *NewSimpleStmt(SourceLoc *loc, stmtkind kind)
+{
+    common_stmt *lStmt;
+
+    lStmt = (common_stmt *) malloc(sizeof(common_stmt));
+    lStmt->kind = kind;
+    lStmt->next = NULL;
+    lStmt->loc = *loc;
+    return lStmt;
+} // NewSimpleStmt
+
+/*
  * NewIfStmt() - Create an expression statement.
  *
  */

@@ -95,6 +95,22 @@ add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.cg
     tests/glsl/profile/vp_passthrough.expected)
 
+add_glsl_fixture(glslv_control glslv
+    tests/glsl/expressions/vp_control.cg
+    tests/glsl/expressions/vp_control.expected)
+
+add_glsl_fixture(glslv_jumps glslv
+    tests/glsl/expressions/vp_jumps.cg
+    tests/glsl/expressions/vp_jumps.expected)
+
+add_glsl_fixture(glslv_qualifiers glslv
+    tests/glsl/expressions/vp_qualifiers.cg
+    tests/glsl/expressions/vp_qualifiers.expected)
+
+add_glsl_fixture(glslv_vector_compare glslv
+    tests/glsl/expressions/vp_vector_compare.cg
+    tests/glsl/expressions/vp_vector_compare.expected)
+
 add_glsl_fixture(glslv_formal_interface_collision glslv
     tests/glsl/profile/vp_formal_interface_collision.cg
     tests/glsl/profile/vp_formal_interface_collision.expected)
@@ -112,11 +128,11 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
-        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/vp_unsupported_multiply.cg
+        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/vp_unsupported_operator.cg
         -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_unsupported_lowering.glsl
         -DCODE=5508
-        -DEXPECTED_LINE=8
-        -DREASON=multiply
+        -DEXPECTED_LINE=9
+        -DREASON=remainder
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
 )
 

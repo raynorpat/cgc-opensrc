@@ -69,66 +69,67 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     int    dummy;
 }
 
-%token <sc_token> AND_SY
-%token <sc_token> ASM_SY
-%token <sc_token> ASSIGNMINUS_SY
-%token <sc_token> ASSIGNMOD_SY
-%token <sc_token> ASSIGNPLUS_SY
-%token <sc_token> ASSIGNSLASH_SY
-%token <sc_token> ASSIGNSTAR_SY
-%token <sc_token> BOOLEAN_SY
-%token <sc_token> BREAK_SY
-%token <sc_token> CASE_SY
-%token <sc_fval>  CFLOATCONST_SY
-%token <sc_token> COLONCOLON_SY
-%token <sc_token> CONST_SY
-%token <sc_token> CONTINUE_SY
-%token <sc_token> DEFAULT_SY
-%token <sc_token> DISCARD_SY
-%token <sc_token> DO_SY
-%token <sc_token> EQ_SY
-%token <sc_token> ELSE_SY
-%token <sc_token> ERROR_SY
-%token <sc_token> EXTERN_SY
-%token <sc_token> FLOAT_SY
-%token <sc_fval>  FLOATCONST_SY
-%token <sc_fval>  FLOATHCONST_SY
-%token <sc_fval>  FLOATXCONST_SY
-%token <sc_token> FOR_SY
-%token <sc_token> GE_SY
-%token <sc_token> GG_SY
-%token <sc_token> GOTO_SY
-%token <sc_ident> IDENT_SY
-%token <sc_token> IF_SY
-%token <sc_token> IN_SY
-%token <sc_token> INLINE_SY
-%token <sc_token> INOUT_SY
-%token <sc_token> INT_SY
-%token <sc_int>   INTCONST_SY
-%token <sc_token> INTERNAL_SY
-%token <sc_token> LE_SY
-%token <sc_token> LL_SY
-%token <sc_token> MINUSMINUS_SY
-%token <sc_token> NE_SY
-%token <sc_token> OR_SY
-%token <sc_token> OUT_SY
-%token <sc_token> PACKED_SY
-%token <sc_token> PLUSPLUS_SY
-%token <sc_token> RETURN_SY
-%token <sc_token> STATIC_SY
-%token <sc_token> STRCONST_SY
-%token <sc_token> STRUCT_SY
-%token <sc_token> SWITCH_SY
-%token <sc_token> TEXOBJ_SY
-%token <sc_token> THIS_SY
-%token <sc_token> TYPEDEF_SY
-%token <sc_ident> TYPEIDENT_SY
-%token <sc_token> UNIFORM_SY
-%token <sc_token> VARYING_SY
-%token <sc_token> VOID_SY
-%token <sc_token> WHILE_SY
+/* Preserve the token numbers embedded in the checked-in stdlib stream. */
+%token <sc_token> AND_SY 257
+%token <sc_token> ASM_SY 258
+%token <sc_token> ASSIGNMINUS_SY 259
+%token <sc_token> ASSIGNMOD_SY 260
+%token <sc_token> ASSIGNPLUS_SY 261
+%token <sc_token> ASSIGNSLASH_SY 262
+%token <sc_token> ASSIGNSTAR_SY 263
+%token <sc_token> BOOLEAN_SY 264
+%token <sc_token> BREAK_SY 265
+%token <sc_token> CASE_SY 266
+%token <sc_fval>  CFLOATCONST_SY 267
+%token <sc_token> COLONCOLON_SY 268
+%token <sc_token> CONST_SY 269
+%token <sc_token> CONTINUE_SY 270
+%token <sc_token> DEFAULT_SY 271
+%token <sc_token> DISCARD_SY 272
+%token <sc_token> DO_SY 273
+%token <sc_token> EQ_SY 274
+%token <sc_token> ELSE_SY 275
+%token <sc_token> ERROR_SY 276
+%token <sc_token> EXTERN_SY 277
+%token <sc_token> FLOAT_SY 278
+%token <sc_fval>  FLOATCONST_SY 279
+%token <sc_fval>  FLOATHCONST_SY 280
+%token <sc_fval>  FLOATXCONST_SY 281
+%token <sc_token> FOR_SY 282
+%token <sc_token> GE_SY 283
+%token <sc_token> GG_SY 284
+%token <sc_token> GOTO_SY 285
+%token <sc_ident> IDENT_SY 286
+%token <sc_token> IF_SY 287
+%token <sc_token> IN_SY 288
+%token <sc_token> INLINE_SY 289
+%token <sc_token> INOUT_SY 290
+%token <sc_token> INT_SY 291
+%token <sc_int>   INTCONST_SY 292
+%token <sc_token> INTERNAL_SY 293
+%token <sc_token> LE_SY 294
+%token <sc_token> LL_SY 295
+%token <sc_token> MINUSMINUS_SY 296
+%token <sc_token> NE_SY 297
+%token <sc_token> OR_SY 298
+%token <sc_token> OUT_SY 299
+%token <sc_token> PACKED_SY 300
+%token <sc_token> PLUSPLUS_SY 301
+%token <sc_token> RETURN_SY 302
+%token <sc_token> STATIC_SY 303
+%token <sc_token> STRCONST_SY 304
+%token <sc_token> STRUCT_SY 305
+%token <sc_token> SWITCH_SY 306
+%token <sc_token> TEXOBJ_SY 307
+%token <sc_token> THIS_SY 308
+%token <sc_token> TYPEDEF_SY 309
+%token <sc_ident> TYPEIDENT_SY 310
+%token <sc_token> UNIFORM_SY 311
+%token <sc_token> VARYING_SY 312
+%token <sc_token> VOID_SY 313
+%token <sc_token> WHILE_SY 314
 
-%token <sc_token> FIRST_USER_TOKEN_SY  /* Must be last token declaration */
+%token <sc_token> FIRST_USER_TOKEN_SY 315  /* Must be last token declaration */
 
 /*************<<<<<<<<<<<<<<<<<<<********************
 %type <dummy> abstract_parameter_declaration
@@ -231,6 +232,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <sc_stmt> init_declarator
 %type <sc_stmt> init_declarator_list
 %type <sc_stmt> iteration_statement
+%type <sc_stmt> jump_statement
 %type <sc_stmt> return_statement
 %type <sc_stmt> statement
 %type <sc_stmt> struct_declaration
@@ -341,7 +343,7 @@ type_specifier:           INT_SY
                         | type_identifier
                               { $$ = LookUpTypeSymbol(NULL, $1); }
                         | error
-                              { 
+                              {
                                 SemanticParseError(Cg->tokenLoc, ERROR_S_TYPE_NAME_EXPECTED,
                                                    GetAtomString(atable, Cg->mostRecentToken /* yychar */));
                                 $$ = UndefinedType;
@@ -815,6 +817,7 @@ balanced_statement:       compound_statement
                         | expression_statement
                         | iteration_statement
                         | if_statement
+                        | jump_statement
                         | return_statement
 ;
 
@@ -830,6 +833,16 @@ discard_statement:        DISCARD_SY ';'
                               { $$ = (stmt *) NewDiscardStmt(Cg->tokenLoc, NULL); }
                         | DISCARD_SY expression ';'
                               { $$ = (stmt *) NewDiscardStmt(Cg->tokenLoc, CheckBooleanExpr(Cg->tokenLoc, $2, 1)); }
+;
+
+/******************/
+/* Jump Statement */
+/******************/
+
+jump_statement:           BREAK_SY ';'
+                              { $$ = (stmt *) NewSimpleStmt(Cg->tokenLoc, BREAK_STMT); }
+                        | CONTINUE_SY ';'
+                              { $$ = (stmt *) NewSimpleStmt(Cg->tokenLoc, CONTINUE_STMT); }
 ;
 
 /****************/

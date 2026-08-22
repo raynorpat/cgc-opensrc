@@ -846,6 +846,11 @@ stmt *DuplicateStatement(stmt *fStmt, void *arg1, int arg2)
             lStmt = (stmt *) NewCommentStmt(&fStmt->commonst.loc,
                                             GetAtomString(atable, fStmt->commentst.str));
             break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+            lStmt = (stmt *) NewSimpleStmt(&fStmt->commonst.loc,
+                                           fStmt->commonst.kind);
+            break;
         default:
             lStmt = fStmt;
             assert(!"DuplicateStatement() - not yet finished");
@@ -1839,6 +1844,8 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
                 rStmt = fStmt;
             }
             break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
         default:
             rStmt = fStmt;
             break;
@@ -2168,6 +2175,10 @@ static stmt *FlattenIfStatementsStmt(stmt *fStmt, void *arg1, int flevel)
                 }
                 fStmt->discardst.cond->un.arg = ifvar;
             }
+            rStmt = fStmt;
+            break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
             rStmt = fStmt;
             break;
         default:
