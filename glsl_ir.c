@@ -141,7 +141,7 @@ static void GlslWriteDecimal(char *string, int value)
     }
 }
 
-static const char *GlslSanitizeName(GlslModule *module, const char *source)
+static const char *GlslLegalizeName(GlslModule *module, const char *source)
 {
     const char *input;
     char *name;
@@ -159,7 +159,13 @@ static const char *GlslSanitizeName(GlslModule *module, const char *source)
         return NULL;
     input = source;
     output = name;
-    previousUnderscore = 0;
+    if (reserved) {
+        memcpy(output, "cg_", 3);
+        output += 3;
+        previousUnderscore = 1;
+    } else {
+        previousUnderscore = 0;
+    }
     while (*input != '\0') {
         if (*input != '_' || !previousUnderscore)
             *output++ = *input;
@@ -167,15 +173,8 @@ static const char *GlslSanitizeName(GlslModule *module, const char *source)
         input++;
     }
     *output = '\0';
-    if (name[0] == '\0') {
+    if (name[0] == '\0')
         strcpy(name, "cg_");
-    } else if (reserved) {
-        if (name[0] == '_')
-            memmove(name + 3, name + 1, strlen(name));
-        else
-            memmove(name + 3, name, strlen(name) + 1);
-        memcpy(name, "cg_", 3);
-    }
     return name;
 }
 
@@ -193,7 +192,7 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
 
     if (module == NULL || source == NULL)
         return NULL;
-    base = GlslSanitizeName(module, source);
+    base = GlslLegalizeName(module, source);
     if (base == NULL)
         return NULL;
     emitted = base;
@@ -212,7 +211,9 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
         } else {
             GlslWriteDecimal(candidate + length, suffix);
         }
-        emitted = candidate;
+        emitted = GlslLegalizeName(module, candidate);
+        if (emitted == NULL)
+            return NULL;
         suffix++;
     }
     name = (GlslName *) GlslAlloc(module, sizeof(GlslName));

@@ -67,6 +67,7 @@ int main(void)
 {
     GlslModule module;
     GlslModule dirtyModule;
+    GlslModule collisionModule;
     GlslType type;
     GlslDecl *decl;
     GlslDecl *secondDecl;
@@ -122,6 +123,19 @@ int main(void)
     assert(!GlslIsReservedName(emitted));
     emitted = GlslAllocateDistinctName(&module, "foo_");
     assert(!strcmp(emitted, "foo_1"));
+    assert(!GlslIsReservedName(emitted));
+    emitted = GlslAllocateDistinctName(&module, "gl");
+    assert(!strcmp(emitted, "gl"));
+    emitted = GlslAllocateDistinctName(&module, "gl");
+    assert(!strcmp(emitted, "cg_gl_1"));
+    assert(!GlslIsReservedName(emitted));
+
+    GlslInitModule(&collisionModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(!strcmp(GlslAllocateDistinctName(&collisionModule, "gl"), "gl"));
+    assert(!strcmp(GlslAllocateName(&collisionModule, "cg_gl_1"),
+        "cg_gl_1"));
+    emitted = GlslAllocateDistinctName(&collisionModule, "gl");
+    assert(!strcmp(emitted, "cg_gl_2"));
     assert(!GlslIsReservedName(emitted));
 
     type = GlslNumericType(GLSL_BASE_BOOL, 2);
