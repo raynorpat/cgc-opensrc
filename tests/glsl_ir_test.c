@@ -77,6 +77,8 @@ int main(void)
     GlslModule dirtyModule;
     GlslModule collisionModule;
     GlslModule countModule;
+    GlslModule gapModule;
+    GlslModule overflowModule;
     GlslType type;
     GlslDecl *decl;
     GlslDecl *secondDecl;
@@ -147,6 +149,21 @@ int main(void)
     emitted = GlslAllocateDistinctName(&collisionModule, "gl");
     assert(!strcmp(emitted, "cg_gl_2"));
     assert(!GlslIsReservedName(emitted));
+
+    GlslInitModule(&gapModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(!strcmp(GlslAllocateName(&gapModule, "item_2"), "item_2"));
+    assert(!strcmp(GlslAllocateDistinctName(&gapModule, "item"), "item"));
+    assert(!strcmp(GlslAllocateDistinctName(&gapModule, "item"), "item_1"));
+
+    GlslInitModule(&overflowModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(!strcmp(GlslAllocateName(&overflowModule, "item_2147483648"),
+        "item_2147483648"));
+    emitted = GlslAllocateDistinctName(&overflowModule, "item");
+    assert(emitted != NULL);
+    assert(!strcmp(emitted, "item"));
+    emitted = GlslAllocateDistinctName(&overflowModule, "item");
+    assert(emitted != NULL);
+    assert(!strcmp(emitted, "item_1"));
 
     allocationCount = 0;
     GlslInitModule(&countModule, GLSL_STAGE_VERTEX, CountingAlloc, NULL);

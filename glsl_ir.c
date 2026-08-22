@@ -45,6 +45,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 #include "glsl_ir.h"
 
@@ -200,7 +201,7 @@ static int GlslSuffixValue(const char *name, const char *base, int *value)
             return 0;
         digit = *current - '0';
         if (result > (INT_MAX - digit) / 10)
-            return -1;
+            return 0;
         result = result * 10 + digit;
         current++;
     }
@@ -246,11 +247,12 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
     const char *sourceCopy;
     GlslName *name;
     GlslName *current;
+    unsigned char *occupied;
+    size_t nameCount;
     int inUse;
-    int maximumSuffix;
+    int limit;
     int suffix;
     int suffixValue;
-    int suffixResult;
 
     if (module == NULL || source == NULL)
         return NULL;
@@ -258,25 +260,42 @@ static const char *GlslAllocate(GlslModule *module, const void *identity,
     if (base == NULL)
         return NULL;
     inUse = 0;
-    maximumSuffix = 0;
+    nameCount = 0;
     for (current = module->names; current != NULL; current = current->next) {
         if (!strcmp(current->emitted, base))
             inUse = 1;
-        suffixResult = GlslSuffixValue(current->emitted, base, &suffixValue);
-        if (suffixResult < 0)
+        if (nameCount == (size_t) -1)
             return NULL;
-        if (suffixResult > 0 && suffixValue > maximumSuffix)
-            maximumSuffix = suffixValue;
+        nameCount++;
     }
-    if (inUse) {
-        if (maximumSuffix == INT_MAX)
+    if (!inUse) {
+        emitted = base;
+    } else {
+        if (nameCount > (size_t) INT_MAX - 1 ||
+            nameCount > (size_t) -1 - 2)
             return NULL;
-        suffix = maximumSuffix + 1;
+        limit = (int) nameCount + 1;
+        occupied = (unsigned char *) malloc(nameCount + 2);
+        if (occupied == NULL)
+            return NULL;
+        memset(occupied, 0, nameCount + 2);
+        for (current = module->names; current != NULL; current = current->next) {
+            if (GlslSuffixValue(current->emitted, base, &suffixValue) &&
+                suffixValue <= limit)
+                occupied[suffixValue] = 1;
+        }
+        for (suffix = 1; suffix <= limit; suffix++) {
+            if (!occupied[suffix])
+                break;
+        }
+        if (suffix > limit) {
+            free(occupied);
+            return NULL;
+        }
+        free(occupied);
         emitted = GlslBuildSuffixedName(module, base, suffix);
         if (emitted == NULL)
             return NULL;
-    } else {
-        emitted = base;
     }
     name = (GlslName *) GlslAlloc(module, sizeof(GlslName));
     if (name == NULL)
