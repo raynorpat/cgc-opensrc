@@ -170,7 +170,10 @@ static const char *GlslSanitizeName(GlslModule *module, const char *source)
     if (name[0] == '\0') {
         strcpy(name, "cg_");
     } else if (reserved) {
-        memmove(name + 3, name, strlen(name) + 1);
+        if (name[0] == '_')
+            memmove(name + 3, name + 1, strlen(name));
+        else
+            memmove(name + 3, name, strlen(name) + 1);
         memcpy(name, "cg_", 3);
     }
     return name;

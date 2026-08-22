@@ -114,6 +114,9 @@ int main(void)
     emitted = GlslAllocateName(&module, "user__name");
     assert(!strcmp(emitted, "cg_user_name"));
     assert(!GlslIsReservedName(emitted));
+    emitted = GlslAllocateName(&module, "__foo");
+    assert(!strcmp(emitted, "cg_foo"));
+    assert(!GlslIsReservedName(emitted));
     emitted = GlslAllocateDistinctName(&module, "foo_");
     assert(!strcmp(emitted, "foo_"));
     assert(!GlslIsReservedName(emitted));
