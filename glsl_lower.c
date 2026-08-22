@@ -56,6 +56,7 @@ typedef struct GlslLowerContext_Rec {
     Scope *scope;
     GlslFunction *function;
     SourceLoc statementLoc;
+    int loopDepth;
 } GlslLowerContext;
 
 static void GlslSetLoc(GlslLoc *target, const SourceLoc *source)
@@ -327,7 +328,35 @@ static int GlslCollectMembers(GlslLowerContext *context, Scope *memberScope,
     return GlslCollectMembers(context, memberScope, symbol->right, members);
 }
 
-static int GlslBuildEntryStruct(GlslLowerContext *context, Type *type)
+static int GlslEnsureType(GlslLowerContext *context, Type *type);
+
+static int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
+{
+    const char *name;
+
+    if (symbol == NULL)
+        return 1;
+    if (!GlslEnsureSymbolTypes(context, symbol->left))
+        return 0;
+    if (symbol->kind == VARIABLE_S) {
+        name = GetAtomString(atable, symbol->name);
+        if (name != NULL && name[0] != '$' &&
+            !GlslEnsureType(context, symbol->type)) return 0;
+    }
+    return GlslEnsureSymbolTypes(context, symbol->right);
+}
+
+static int GlslEnsureParameterTypes(GlslLowerContext *context,
+                                    Symbol *formal)
+{
+    for (; formal != NULL; formal = formal->next) {
+        if (!GlslEnsureType(context, formal->type))
+            return 0;
+    }
+    return 1;
+}
+
+static int GlslEnsureType(GlslLowerContext *context, Type *type)
 {
     GlslDecl *decl;
     GlslType structType;
@@ -335,8 +364,12 @@ static int GlslBuildEntryStruct(GlslLowerContext *context, Type *type)
     const char *sourceName;
     const char *name;
 
-    if (GetCategory(type) != TYPE_CATEGORY_STRUCT)
+    if (type == NULL)
         return 0;
+    if (GetCategory(type) != TYPE_CATEGORY_STRUCT)
+        return 1;
+    if (GlslFindStruct(context, type) != NULL)
+        return 1;
     tag = GlslFindTag(context->scope, type);
     if (tag == NULL)
         return 0;
@@ -353,8 +386,65 @@ static int GlslBuildEntryStruct(GlslLowerContext *context, Type *type)
     decl->identity = tag;
     GlslSetLoc(&decl->loc, &type->str.loc);
     GlslAppendDecl(&context->module->structs, decl);
+    if (type->str.members == NULL ||
+        !GlslEnsureSymbolTypes(context, type->str.members->symbols))
+    {
+        return 0;
+    }
     return GlslCollectMembers(context, type->str.members,
         type->str.members->symbols, &decl->members);
+}
+
+static int GlslStructReady(const GlslDecl *decl,
+                           const GlslDecl *remaining)
+{
+    const GlslDecl *member;
+    const GlslDecl *other;
+
+    for (member = decl->members; member != NULL; member = member->next) {
+        if (member->type.base != GLSL_BASE_STRUCT)
+            continue;
+        for (other = remaining; other != NULL; other = other->next) {
+            if (other != decl &&
+                !strcmp(member->type.structName, other->name)) return 0;
+        }
+    }
+    return 1;
+}
+
+static int GlslSortStructs(GlslLowerContext *context)
+{
+    GlslDecl *remaining;
+    GlslDecl *ordered;
+    GlslDecl **tail;
+    GlslDecl **place;
+    GlslDecl **best;
+    GlslDecl *decl;
+
+    remaining = context->module->structs;
+    ordered = NULL;
+    tail = &ordered;
+    while (remaining != NULL) {
+        best = NULL;
+        for (place = &remaining; *place != NULL; place = &(*place)->next) {
+            if (GlslStructReady(*place, remaining) &&
+                (best == NULL || GlslDeclComesBefore(*place, *best)))
+            {
+                best = place;
+            }
+        }
+        if (best == NULL) {
+            GlslRecordFailure(context, "recursive GLSL structure");
+            return 0;
+        }
+        decl = *best;
+        *best = decl->next;
+        decl->next = NULL;
+        *tail = decl;
+        tail = &decl->next;
+    }
+    context->module->structs = ordered;
+    return 1;
 }
 
 static int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
@@ -596,8 +686,14 @@ static int GlslCollectHelper(GlslLowerContext *context, Symbol *symbol)
         }
         return 1;
     }
-    if (!GlslLowerType(context, symbol->type->fun.rettype, &result)) {
-        GlslRecordFailure(context, "GLSL helper result type");
+    if (!GlslEnsureType(context, symbol->type->fun.rettype) ||
+        !GlslEnsureParameterTypes(context, symbol->details.fun.params) ||
+        symbol->details.fun.locals == NULL ||
+        !GlslEnsureSymbolTypes(context,
+                               symbol->details.fun.locals->symbols) ||
+        !GlslLowerType(context, symbol->type->fun.rettype, &result))
+    {
+        GlslRecordFailure(context, "GLSL helper type");
         return 0;
     }
     function = GlslNewFunction(context->module, result, NULL);
@@ -605,7 +701,12 @@ static int GlslCollectHelper(GlslLowerContext *context, Symbol *symbol)
         return 0;
     function->identity = symbol;
     function->visitState = 1;
-    GlslSetLoc(&function->loc, &symbol->loc);
+    if (symbol->details.fun.statements != NULL) {
+        GlslSetLoc(&function->loc,
+                   &symbol->details.fun.statements->commonst.loc);
+    } else {
+        GlslSetLoc(&function->loc, &symbol->loc);
+    }
     GlslInsertFunction(&context->module->functions, function);
     if (!GlslCollectCallsInStatements(context,
                                       symbol->details.fun.statements))
@@ -975,6 +1076,7 @@ static GlslExpr *GlslLowerSwizzle(GlslLowerContext *context, expr *source,
                                   const GlslType *type)
 {
     GlslExpr *object;
+    GlslExpr *target;
     char maskText[5];
     int count;
     int i;
@@ -992,6 +1094,14 @@ static GlslExpr *GlslLowerSwizzle(GlslLowerContext *context, expr *source,
     for (i = count - 1; i >= 0; i--)
         maskText[i] = "xyzw"[(mask >> (i * 2)) & 3];
     maskText[count] = '\0';
+    if (object->type.len == 1) {
+        if (type->len == 1)
+            return object;
+        target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
+        if (target != NULL)
+            target->u.construct.arguments = object;
+        return target;
+    }
     return GlslNewSwizzle(context, object, type, maskText);
 }
 
@@ -1282,6 +1392,17 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
                 target->u.construct.arguments = operand;
             return target;
         }
+        if (source->un.op == BNOT_V_OP) {
+            operand = GlslLowerExpr(context, source->un.arg);
+            if (operand == NULL)
+                return NULL;
+            target = GlslNewExpr(context->module, GLSL_EXPR_CALL, type);
+            if (target != NULL) {
+                target->u.call.name = "not";
+                target->u.call.arguments = operand;
+            }
+            return target;
+        }
         op = GlslUnaryOperator(source->un.op);
         if (op != GLSL_OP_NONE) {
             target = GlslNewExpr(context->module, GLSL_EXPR_UNARY, type);
@@ -1447,9 +1568,15 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
                 return 0;
             target->u.loop.condition = GlslLowerExpr(context,
                                                      source->whilest.cond);
-            if (target->u.loop.condition == NULL ||
-                !GlslLowerBranch(context, source->whilest.body,
-                                 &target->u.loop.body)) return 0;
+            if (target->u.loop.condition == NULL)
+                return 0;
+            context->loopDepth++;
+            if (!GlslLowerBranch(context, source->whilest.body,
+                                 &target->u.loop.body)) {
+                context->loopDepth--;
+                return 0;
+            }
+            context->loopDepth--;
             break;
         case FOR_STMT:
             target = GlslNewStmt(context->module, GLSL_STMT_FOR);
@@ -1461,9 +1588,14 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
                  (target->u.forStmt.condition = GlslLowerExpr(
                     context, source->forst.cond)) == NULL) ||
                 !GlslLowerForPart(context, source->forst.step,
-                                  &target->u.forStmt.step) ||
-                !GlslLowerBranch(context, source->forst.body,
-                                 &target->u.forStmt.body)) return 0;
+                                  &target->u.forStmt.step)) return 0;
+            context->loopDepth++;
+            if (!GlslLowerBranch(context, source->forst.body,
+                                 &target->u.forStmt.body)) {
+                context->loopDepth--;
+                return 0;
+            }
+            context->loopDepth--;
             break;
         case BLOCK_STMT:
             target = GlslNewStmt(context->module, GLSL_STMT_BLOCK);
@@ -1484,9 +1616,17 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
             }
             break;
         case BREAK_STMT:
+            if (context->loopDepth == 0) {
+                GlslRecordFailure(context, "break outside loop");
+                return 0;
+            }
             target = GlslNewStmt(context->module, GLSL_STMT_BREAK);
             break;
         case CONTINUE_STMT:
+            if (context->loopDepth == 0) {
+                GlslRecordFailure(context, "continue outside loop");
+                return 0;
+            }
             target = GlslNewStmt(context->module, GLSL_STMT_CONTINUE);
             break;
         default:
@@ -1541,9 +1681,16 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     context.scope = scope;
     context.statementLoc = program->loc;
     result = program->type->fun.rettype;
-    if (!GlslBuildEntryStruct(&context, result) ||
+    if (GetCategory(result) != TYPE_CATEGORY_STRUCT ||
+        !GlslEnsureType(&context, result) ||
+        !GlslEnsureParameterTypes(&context,
+                                  program->details.fun.params) ||
+        program->details.fun.locals == NULL ||
+        !GlslEnsureSymbolTypes(&context,
+                               program->details.fun.locals->symbols) ||
         !GlslCollectCallsInStatements(&context,
                                       program->details.fun.statements) ||
+        !GlslSortStructs(&context) ||
         !GlslAssignHelperNames(&context)) return GlslLowerError(&context);
     GlslMarkForwardCalls(&context);
     for (helper = module->functions; helper != NULL; helper = next) {

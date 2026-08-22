@@ -22,6 +22,21 @@ function(add_glsl_fixture name profile source expected)
     )
 endfunction()
 
+function(add_glsl_failure name source expected_line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=glslv
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            -DCODE=5508
+            -DEXPECTED_LINE=${expected_line}
+            -DREASON=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+    )
+endfunction()
+
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
@@ -111,6 +126,22 @@ add_glsl_fixture(glslv_vector_compare glslv
     tests/glsl/expressions/vp_vector_compare.cg
     tests/glsl/expressions/vp_vector_compare.expected)
 
+add_glsl_fixture(glslv_expression_edges glslv
+    tests/glsl/expressions/vp_expression_edges.cg
+    tests/glsl/expressions/vp_expression_edges.expected)
+
+add_glsl_fixture(glslv_float1_swizzle glslv
+    tests/glsl/expressions/vp_float1_swizzle.cg
+    tests/glsl/expressions/vp_float1_swizzle.expected)
+
+add_glsl_fixture(glslv_helper_struct glslv
+    tests/glsl/expressions/vp_helper_struct.cg
+    tests/glsl/expressions/vp_helper_struct.expected)
+
+add_glsl_fixture(glslv_forward_helper glslv
+    tests/glsl/expressions/vp_forward_helper.cg
+    tests/glsl/expressions/vp_forward_helper.expected)
+
 add_glsl_fixture(glslv_formal_interface_collision glslv
     tests/glsl/profile/vp_formal_interface_collision.cg
     tests/glsl/profile/vp_formal_interface_collision.expected)
@@ -123,18 +154,26 @@ add_glsl_fixture(glslv_function_local_collision glslv
     tests/glsl/profile/vp_function_local_collision.cg
     tests/glsl/profile/vp_function_local_collision.expected)
 
-add_test(
-    NAME glslv_unsupported_lowering
-    COMMAND ${CMAKE_COMMAND}
-        -DCGC=$<TARGET_FILE:cgc>
-        -DPROFILE=glslv
-        -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/vp_unsupported_operator.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_unsupported_lowering.glsl
-        -DCODE=5508
-        -DEXPECTED_LINE=9
-        -DREASON=remainder
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
-)
+add_glsl_failure(glslv_unsupported_lowering
+    tests/glsl/profile/vp_unsupported_operator.cg 9 remainder)
+add_glsl_failure(glslv_constant_remainder
+    tests/glsl/diagnostics/vp_constant_remainder.cg 6 remainder)
+add_glsl_failure(glslv_constant_shift_left
+    tests/glsl/diagnostics/vp_constant_shift_left.cg 6 "left shift")
+add_glsl_failure(glslv_constant_shift_right
+    tests/glsl/diagnostics/vp_constant_shift_right.cg 6 "right shift")
+add_glsl_failure(glslv_constant_bitwise_and
+    tests/glsl/diagnostics/vp_constant_bitwise_and.cg 6 "bitwise and")
+add_glsl_failure(glslv_constant_bitwise_xor
+    tests/glsl/diagnostics/vp_constant_bitwise_xor.cg 6 "bitwise xor")
+add_glsl_failure(glslv_constant_bitwise_or
+    tests/glsl/diagnostics/vp_constant_bitwise_or.cg 6 "bitwise or")
+add_glsl_failure(glslv_constant_bitwise_not
+    tests/glsl/diagnostics/vp_constant_bitwise_not.cg 6 "bitwise not")
+add_glsl_failure(glslv_break_outside_loop
+    tests/glsl/diagnostics/vp_break_outside_loop.cg 5 "break outside loop")
+add_glsl_failure(glslv_continue_outside_loop
+    tests/glsl/diagnostics/vp_continue_outside_loop.cg 5 "continue outside loop")
 
 add_test(
     NAME glslv_semantics

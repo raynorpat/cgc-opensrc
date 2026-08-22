@@ -238,6 +238,57 @@ static int GetConnectorUses_glsl(int cid, int pid)
     return connector ? connector->properties : CONNECTOR_IS_USELESS;
 }
 
+static const char *GlslUnsupportedOperatorReason(int op)
+{
+    switch (op) {
+    case MOD_OP:
+    case MOD_V_OP:
+    case MOD_SV_OP:
+    case MOD_VS_OP:
+    case ASSIGNMOD_OP:
+        return "remainder (%)";
+    case SHL_OP:
+    case SHL_V_OP:
+        return "left shift";
+    case SHR_OP:
+    case SHR_V_OP:
+        return "right shift";
+    case NOT_OP:
+    case NOT_V_OP:
+        return "bitwise not";
+    case AND_OP:
+    case AND_V_OP:
+    case AND_SV_OP:
+    case AND_VS_OP:
+        return "bitwise and";
+    case XOR_OP:
+    case XOR_V_OP:
+    case XOR_SV_OP:
+    case XOR_VS_OP:
+        return "bitwise xor";
+    case OR_OP:
+    case OR_V_OP:
+    case OR_SV_OP:
+    case OR_VS_OP:
+        return "bitwise or";
+    default:
+        return NULL;
+    }
+}
+
+static int IsValidOperator_glsl(SourceLoc *loc, int name, int op, int subop)
+{
+    const char *reason;
+
+    (void) name;
+    (void) subop;
+    reason = GlslUnsupportedOperatorReason(op);
+    if (reason == NULL)
+        return 1;
+    SemanticError(loc, ERROR_S_UNSUPPORTED_PROFILE_OP, reason);
+    return 0;
+}
+
 static int GetConnectorRegister_glsl(int cid, int ByIndex, int ratom,
                                      Binding *fBind)
 {
@@ -436,6 +487,7 @@ int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile)
     hal->GetConnectorAtom = GetConnectorAtom_glsl;
     hal->GetConnectorUses = GetConnectorUses_glsl;
     hal->GetConnectorRegister = GetConnectorRegister_glsl;
+    hal->IsValidOperator = IsValidOperator_glsl;
     hal->CheckInternalFunction = CheckInternalFunction_glsl;
     hal->BindVaryingSemantic = BindVaryingSemantic_glsl;
     hal->BindVaryingUnbound = BindVaryingUnbound_glsl;

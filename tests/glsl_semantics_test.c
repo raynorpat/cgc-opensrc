@@ -605,6 +605,37 @@ static void CheckFragment(void)
     assert(!hal.BindVaryingUnbound(NULL, NULL, 0, 0, NULL, 1));
 }
 
+static void CheckOperatorFilter(void)
+{
+    static const int rejected[] = {
+        MOD_OP, MOD_V_OP, MOD_SV_OP, MOD_VS_OP, ASSIGNMOD_OP,
+        SHL_OP, SHL_V_OP, SHR_OP, SHR_V_OP,
+        NOT_OP, NOT_V_OP,
+        AND_OP, AND_V_OP, AND_SV_OP, AND_VS_OP,
+        XOR_OP, XOR_V_OP, XOR_SV_OP, XOR_VS_OP,
+        OR_OP, OR_V_OP, OR_SV_OP, OR_VS_OP
+    };
+    static const int accepted[] = {
+        BNOT_OP, BNOT_V_OP, BAND_OP, BOR_OP, ADD_OP, ASSIGN_OP
+    };
+    slHAL hal;
+    SourceLoc loc;
+    int i;
+
+    InitStage(&hal, 1);
+    memset(&loc, 0, sizeof(loc));
+    for (i = 0; i < NUMELS(rejected); i++) {
+        semanticErrorCount = 0;
+        assert(!hal.IsValidOperator(&loc, 0, rejected[i], 0));
+        assert(semanticErrorCount == 1);
+        assert(lastSemanticError == 5508);
+    }
+    semanticErrorCount = 0;
+    for (i = 0; i < NUMELS(accepted); i++)
+        assert(hal.IsValidOperator(&loc, 0, accepted[i], 0));
+    assert(semanticErrorCount == 0);
+}
+
 static void CheckGenerateCodeWriterFailure(void)
 {
     slHAL hal;
@@ -656,6 +687,7 @@ int main(void)
     assert(result);
     CheckVertex();
     CheckFragment();
+    CheckOperatorFilter();
     CheckGenerateCodeWriterFailure();
     FreeAtomTable(atable);
     return 0;

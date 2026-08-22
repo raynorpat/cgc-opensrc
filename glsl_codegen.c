@@ -344,7 +344,7 @@ static int GlslWriteExprPrec(FILE *out, const GlslExpr *expr,
     case GLSL_EXPR_UNARY:
         operatorText = GlslOperatorText(expr->u.unary.op);
         if (fprintf(out, "%s", operatorText) < 0 ||
-            !GlslWriteExprPrec(out, expr->u.unary.operand, precedence, 1,
+            !GlslWriteExprPrec(out, expr->u.unary.operand, precedence + 1, 1,
                                expr->u.unary.op)) return 0;
         break;
     case GLSL_EXPR_BINARY:
@@ -357,7 +357,7 @@ static int GlslWriteExprPrec(FILE *out, const GlslExpr *expr,
         break;
     case GLSL_EXPR_CONDITIONAL:
         if (!GlslWriteExprPrec(out, expr->u.conditional.condition,
-                               precedence, 0, GLSL_OP_NONE) ||
+                               precedence + 1, 0, GLSL_OP_NONE) ||
             fprintf(out, " ? ") < 0 ||
             !GlslWriteExprPrec(out, expr->u.conditional.trueExpr,
                                precedence, 0, GLSL_OP_NONE) ||
