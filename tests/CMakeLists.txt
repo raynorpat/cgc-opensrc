@@ -128,6 +128,12 @@ add_generic_regression(matrix_constructors
 add_generic_regression(matrix_side_effects
     tests/glsl/expressions/vp_matrix_side_effects.cg
     c2c21eae0ea60e5ad522d75e1fa43e747124100443bea973a6377e04e056bd83)
+add_generic_regression(matrix_numeric_args
+    tests/glsl/expressions/vp_matrix_numeric_args.cg
+    4d8121ef07c7595ecfc0ab6ac9dac7fc2912d19f323c90c576011ed797719264)
+add_generic_regression(matrix_bool_constructor
+    tests/glsl/diagnostics/vp_matrix_bool_constructor.cg
+    d712b839746efd515acb18cf68b06c265e029d960df636baa00ef9db514e2685)
 add_generic_failure(generic_break_outside_loop
     tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
 add_generic_failure(generic_continue_outside_loop
@@ -215,6 +221,10 @@ add_glsl_fixture(glslv_matrix_side_effects glslv
     tests/glsl/expressions/vp_matrix_side_effects.cg
     tests/glsl/expressions/vp_matrix_side_effects.expected)
 
+add_glsl_fixture(glslv_matrix_numeric_args glslv
+    tests/glsl/expressions/vp_matrix_numeric_args.cg
+    tests/glsl/expressions/vp_matrix_numeric_args.expected)
+
 add_glsl_fixture(glslv_float1_swizzle glslv
     tests/glsl/expressions/vp_float1_swizzle.cg
     tests/glsl/expressions/vp_float1_swizzle.expected)
@@ -261,6 +271,9 @@ add_glsl_failure(glslv_nonfinite_nan
     tests/glsl/diagnostics/vp_nonfinite_nan.cg 6 non-finite)
 add_glsl_failure(glslv_nonsquare_matrix
     tests/glsl/diagnostics/vp_nonsquare_matrix.cg 5 "non-square GLSL matrix")
+add_glsl_failure(glslv_matrix_bool_constructor
+    tests/glsl/diagnostics/vp_matrix_bool_constructor.cg 9
+    "matrix constructor argument type")
 add_test(
     NAME glslv_matrix_constructor_underfilled
     COMMAND ${CMAKE_COMMAND}

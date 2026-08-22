@@ -1476,9 +1476,11 @@ static GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
     return target;
 }
 
-static int GlslMatrixParameterType(const GlslType *type)
+static int GlslMatrixNumericParameterType(const GlslType *type)
 {
-    return type != NULL && type->base == GLSL_BASE_FLOAT &&
+    return type != NULL &&
+           (type->base == GLSL_BASE_FLOAT ||
+            type->base == GLSL_BASE_INT) &&
            type->len >= 1 && type->len <= 4 && type->rows == 0 &&
            type->cols == 0 && type->arraySize == 0 &&
            type->structName == NULL && type->elementType == NULL &&
@@ -1519,12 +1521,19 @@ static const char *GlslMatrixHelperName(GlslLowerContext *context,
     sprintf(candidate, "cg_construct_mat%d", result->rows);
     end = candidate + strlen(candidate);
     for (i = 0; i < parameterCount; i++) {
-        if (!GlslMatrixParameterType(&parameters[i]))
+        if (!GlslMatrixNumericParameterType(&parameters[i]))
             return NULL;
-        if (parameters[i].len == 1)
-            sprintf(end, "_f");
-        else
-            sprintf(end, "_v%d", parameters[i].len);
+        if (parameters[i].base == GLSL_BASE_FLOAT) {
+            if (parameters[i].len == 1)
+                sprintf(end, "_f");
+            else
+                sprintf(end, "_v%d", parameters[i].len);
+        } else {
+            if (parameters[i].len == 1)
+                sprintf(end, "_i");
+            else
+                sprintf(end, "_iv%d", parameters[i].len);
+        }
         end += strlen(end);
     }
     return GlslAllocateDistinctName(context->module, candidate);
@@ -1546,7 +1555,7 @@ static GlslExpr *GlslNewParameterComponent(GlslLowerContext *context,
     symbol->u.symbol = parameter;
     if (parameter->type.len == 1)
         return symbol;
-    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    scalarType = GlslNumericType(parameter->type.base, 1);
     mask[0] = "xyzw"[componentIndex];
     mask[1] = '\0';
     return GlslNewSwizzle(context, symbol, &scalarType, mask);
@@ -1650,9 +1659,12 @@ static GlslExpr *GlslLowerImpureMatrixConstructor(
     parameterCount = 0;
     for (argument = arguments; argument != NULL; argument = argument->next) {
         if (parameterCount >= GLSL_MATRIX_MAX_ARGUMENTS ||
-            !GlslMatrixParameterType(&argument->type) ||
+            !GlslMatrixNumericParameterType(&argument->type) ||
             componentCount > type->rows * type->cols - argument->type.len)
         {
+            if (!GlslMatrixNumericParameterType(&argument->type))
+                GlslRecordFailure(context,
+                                  "matrix constructor argument type");
             return NULL;
         }
         parameters[parameterCount++] = argument->type;
@@ -1716,18 +1728,17 @@ static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
     if (hasSideEffects)
         return GlslLowerImpureMatrixConstructor(context, argument, type);
     sourceArgument = source->un.arg;
-    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
     count = 0;
     while (argument != NULL) {
         next = argument->next;
         argument->next = NULL;
         componentCount = argument->type.len;
-        if (argument->type.base != GLSL_BASE_FLOAT ||
-            componentCount < 1 || componentCount > 4 ||
-            argument->type.rows != 0 || argument->type.cols != 0 ||
-            argument->type.elementType != NULL ||
+        if (!GlslMatrixNumericParameterType(&argument->type) ||
             count > size * size - componentCount)
         {
+            if (!GlslMatrixNumericParameterType(&argument->type))
+                GlslRecordFailure(context,
+                                  "matrix constructor argument type");
             return NULL;
         }
         if (componentCount == 1) {
@@ -1742,6 +1753,7 @@ static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
             for (componentIndex = 0; componentIndex < componentCount;
                  componentIndex++)
             {
+                scalarType = GlslNumericType(argument->type.base, 1);
                 mask[0] = "xyzw"[componentIndex];
                 mask[1] = '\0';
                 component = GlslNewSwizzle(context, argument,

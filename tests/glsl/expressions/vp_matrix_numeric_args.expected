@@ -1,0 +1,76 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+mat2 cg_construct_mat2_i_i_i_i(int arg0, int arg1, int arg2, int arg3)
+{
+    return mat2(arg0, arg2, arg1, arg3);
+}
+
+mat2 cg_construct_mat2_iv2_iv2(ivec2 arg0, ivec2 arg1)
+{
+    return mat2(arg0.x, arg1.x, arg0.y, arg1.y);
+}
+
+int next_int(inout int value)
+{
+    value = value + 1;
+    return value;
+}
+
+ivec2 next_irow(inout int value)
+{
+    value = value + 2;
+    return ivec2(value, value + 10);
+}
+
+mat2 make_int_scalars(inout int state0, inout int state1, inout int state2, inout int state3)
+{
+    return cg_construct_mat2_i_i_i_i(next_int(state0), next_int(state1), next_int(state2), next_int(state3));
+}
+
+mat2 make_int_rows(inout int state0, inout int state1)
+{
+    return cg_construct_mat2_iv2_iv2(next_irow(state0), next_irow(state1));
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut result;
+    int state0;
+    int state1;
+    int state2;
+    int state3;
+    mat2 scalar2;
+    mat2 rows2;
+    mat2 mixed2;
+    mat3 scalar3;
+    mat4 scalar4;
+    position = cg_ATTRIB0;
+    result.position = position;
+    state0 = 1;
+    state1 = 2;
+    state2 = 3;
+    state3 = 4;
+    scalar2 = mat2(1, 3, 2, 4);
+    scalar3 = mat3(11, 14, 17, 12, 15, 18, 13, 16, 19);
+    scalar4 = mat4(21, 25, 29, 33, 22, 26, 30, 34, 23, 27, 31, 35, 24, 28, 32, 36);
+    mixed2 = mat2(41.0, 43.0, 42.0, 44.0);
+    rows2 = make_int_rows(state0, state1);
+    result.position.xy = scalar2 * result.position.xy;
+    result.position.xyz = scalar3 * result.position.xyz;
+    result.position = scalar4 * result.position;
+    result.position.xy = mixed2 * result.position.xy;
+    result.position.xy = rows2 * result.position.xy;
+    scalar2 = make_int_scalars(state0, state1, state2, state3);
+    result.position.xy = scalar2 * result.position.xy;
+    gl_Position = result.position;
+}
