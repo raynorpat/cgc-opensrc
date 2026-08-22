@@ -1471,7 +1471,13 @@ static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
     GlslExpr *argument;
     GlslExpr *next;
     GlslExpr *target;
+    GlslExpr *component;
+    GlslType scalarType;
+    expr *sourceArgument;
+    char mask[2];
     int count;
+    int componentIndex;
+    int componentCount;
     int row;
     int column;
     int size;
@@ -1480,16 +1486,49 @@ static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
     if (size < 2 || size > 4 || type->cols != size)
         return NULL;
     argument = GlslLowerExprChain(context, source->un.arg, EXPR_LIST_OP);
+    sourceArgument = source->un.arg;
+    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
     count = 0;
-    while (argument != NULL && count < 16) {
+    while (argument != NULL) {
         next = argument->next;
         argument->next = NULL;
-        if (argument->type.len != 1 || argument->type.rows != 0 ||
-            argument->type.cols != 0) return NULL;
-        arguments[count++] = argument;
+        componentCount = argument->type.len;
+        if (argument->type.base != GLSL_BASE_FLOAT ||
+            componentCount < 1 || componentCount > 4 ||
+            argument->type.rows != 0 || argument->type.cols != 0 ||
+            argument->type.elementType != NULL ||
+            count > size * size - componentCount)
+        {
+            return NULL;
+        }
+        if (componentCount == 1) {
+            arguments[count++] = argument;
+        } else {
+            if (sourceArgument == NULL ||
+                sourceArgument->common.kind != BINARY_N ||
+                sourceArgument->bin.op != EXPR_LIST_OP ||
+                sourceArgument->bin.left->common.HasSideEffects)
+            {
+                GlslRecordFailure(context,
+                                  "matrix constructor side effects");
+                return NULL;
+            }
+            for (componentIndex = 0; componentIndex < componentCount;
+                 componentIndex++)
+            {
+                mask[0] = "xyzw"[componentIndex];
+                mask[1] = '\0';
+                component = GlslNewSwizzle(context, argument,
+                                           &scalarType, mask);
+                if (component == NULL)
+                    return NULL;
+                arguments[count++] = component;
+            }
+        }
         argument = next;
+        sourceArgument = sourceArgument->bin.right;
     }
-    if (argument != NULL || count != size * size)
+    if (sourceArgument != NULL || count != size * size)
         return NULL;
     target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
     if (target == NULL)

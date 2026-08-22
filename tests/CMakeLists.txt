@@ -122,6 +122,9 @@ add_generic_regression(vertexlight4 vertexlight4.cg
     5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
+add_generic_regression(matrix_constructors
+    tests/glsl/expressions/vp_matrix_constructors.cg
+    81aa1a161295604282418efb49977a31a6c0961c4e9bf853db11dacebee69d1f)
 add_generic_failure(generic_break_outside_loop
     tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
 add_generic_failure(generic_continue_outside_loop
@@ -201,6 +204,10 @@ add_glsl_fixture(glslv_numeric_intrinsics glslv
     tests/glsl/expressions/vp_numeric_intrinsics.cg
     tests/glsl/expressions/vp_numeric_intrinsics.expected)
 
+add_glsl_fixture(glslv_matrix_constructors glslv
+    tests/glsl/expressions/vp_matrix_constructors.cg
+    tests/glsl/expressions/vp_matrix_constructors.expected)
+
 add_glsl_fixture(glslv_float1_swizzle glslv
     tests/glsl/expressions/vp_float1_swizzle.cg
     tests/glsl/expressions/vp_float1_swizzle.expected)
@@ -247,6 +254,54 @@ add_glsl_failure(glslv_nonfinite_nan
     tests/glsl/diagnostics/vp_nonfinite_nan.cg 6 non-finite)
 add_glsl_failure(glslv_nonsquare_matrix
     tests/glsl/diagnostics/vp_nonsquare_matrix.cg 5 "non-square GLSL matrix")
+add_test(
+    NAME glslv_matrix_constructor_underfilled
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_matrix_constructor_underfilled.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_matrix_constructor_underfilled.glsl
+        -DCODE=1067
+        -DEXPECTED_LINE=9
+        -DREASON=too.little.data
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+add_test(
+    NAME glslv_matrix_constructor_overfilled
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_matrix_constructor_overfilled.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_matrix_constructor_overfilled.glsl
+        -DCODE=1068
+        -DEXPECTED_LINE=9
+        -DREASON=too.much.data
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+add_test(
+    NAME glslv_vector_constructor_overfilled
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_vector_constructor_overfilled.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_vector_constructor_overfilled.glsl
+        -DCODE=5018
+        -DEXPECTED_LINE=9
+        -DREASON=length.of.constructed.vectors
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+add_test(
+    NAME glslv_matrix_constructor_row_overflow
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_matrix_constructor_row_overflow.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_matrix_constructor_row_overflow.glsl
+        -DCODE=1068
+        -DEXPECTED_LINE=9
+        -DREASON=too.much.data
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
 add_glsl_common_failure(glslv_break_outside_loop
     tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
 add_glsl_common_failure(glslv_continue_outside_loop

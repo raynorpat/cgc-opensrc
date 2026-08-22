@@ -2710,6 +2710,8 @@ expr *NewMatrixSwizzleOperator(SourceLoc *loc, expr *fExpr, int ident)
 expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
 {
     int len = 0, HasError = 0, size = 0, lbase, nbase, lNumeric, nNumeric, vlen, vlen2;
+    int IsMatrixConstructor = 0;
+    int MatrixRowSize = 0;
     unary *result = NULL;
     expr *lExpr;
     Type *lType, *rType;
@@ -2722,6 +2724,8 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
             size = vlen;
         } else if (IsMatrix(fType, &vlen, &vlen2)) {
             size = vlen*vlen2;
+            IsMatrixConstructor = 1;
+            MatrixRowSize = vlen;
         } else {
             SemanticError(loc, ERROR___INVALID_TYPE_FUNCTION);
             rType = UndefinedType;
@@ -2742,19 +2746,30 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
         }
         if (IsScalar(lType)) {
             vlen = 1;
-#if 000 // Unifdefout this to allow things like: "{ vec3, float }"
-        } else if (IsVector(lType, &vlen)) {
-            /* Nothing to do. */
-#endif
+        } else if (IsMatrixConstructor && IsVector(lType, &vlen)) {
+            /* Matrix rows may combine scalars and vectors. */
         } else {
             SemanticError(loc, ERROR___VECTOR_CONSTR_NOT_SCALAR);
+            HasError = 1;
+            break;
+        }
+        if (IsMatrixConstructor) {
+            if (vlen > size - len ||
+                vlen > MatrixRowSize - len % MatrixRowSize)
+            {
+                SemanticError(loc, ERROR___TOO_MUCH_DATA_TYPE_FUN);
+                HasError = 1;
+                break;
+            }
+        } else if (len > 0 && len + vlen > 4) {
+            SemanticError(loc, ERROR___CONSTRUCTER_VECTOR_LEN_GR_4);
             HasError = 1;
             break;
         }
         if (len == 0) {
             nbase = lbase;
             nNumeric = lNumeric;
-        } else if (len + vlen <= 4) {
+        } else {
             if (lNumeric == nNumeric) {
                 if (nNumeric) {
                     nbase = Cg->theHAL->GetBinOpBase(VECTOR_V_OP, nbase, lbase, 0, 0);
@@ -2764,10 +2779,6 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
                 HasError = 1;
                 break;
             }
-        } else {
-            SemanticError(loc, ERROR___CONSTRUCTER_VECTOR_LEN_GR_4);
-            HasError = 1;
-            break;
         }
         len += vlen;
         lExpr = lExpr->bin.right;
@@ -2786,12 +2797,19 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
         while (lExpr) {
             lType = lExpr->common.type;
             lbase = GetBase(lType);
-            if (lbase != nbase)
-                lExpr->bin.left = CastScalarVectorMatrix(lExpr->bin.left, lbase, nbase, 0, 0);
+            if (lbase != nbase) {
+                vlen = 0;
+                IsVector(lType, &vlen);
+                lExpr->bin.left = CastScalarVectorMatrix(
+                    lExpr->bin.left, lbase, nbase, vlen, 0);
+            }
             lExpr = lExpr->bin.right;
         }
-        result = NewUnopSubNode(VECTOR_V_OP, SUBOP_V(len, nbase), fExpr);
-        result->type = GetStandardType(nbase, len, 0);
+        /* VECTOR_V_OP has no room for a 16-component matrix length. */
+        result = NewUnopSubNode(VECTOR_V_OP,
+            SUBOP_V(IsMatrixConstructor ? 0 : len, nbase), fExpr);
+        result->type = IsMatrixConstructor ? rType :
+            GetStandardType(nbase, len, 0);
     }
     if (!result) {
         result = NewUnopSubNode(VECTOR_V_OP, 0, fExpr);

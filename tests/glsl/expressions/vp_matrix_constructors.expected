@@ -1,0 +1,45 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+void main()
+{
+    vec4 position;
+    VertexOut result;
+    vec2 row0;
+    vec2 row1;
+    vec2 pair0;
+    vec2 pair1;
+    vec3 row2;
+    ivec2 introw;
+    mat2 scalar2;
+    mat2 rows2;
+    mat2 converted2;
+    mat3 mixed3;
+    mat4 scalar4;
+    position = cg_ATTRIB0;
+    row0 = vec2(101.0, 102.0);
+    row1 = vec2(103.0, 104.0);
+    pair0 = vec2(11.0, 12.0);
+    pair1 = vec2(18.0, 19.0);
+    row2 = vec3(14.0, 15.0, 16.0);
+    introw = ivec2(201, 202);
+    scalar2 = mat2(1.0, 3.0, 2.0, 4.0);
+    rows2 = mat2(row0.x, row1.x, row0.y, row1.y);
+    converted2 = mat2(vec2(introw).x, 203.0, vec2(introw).y, 204.0);
+    mixed3 = mat3(pair0.x, row2.x, 17.0, pair0.y, row2.y, pair1.x, 13.0, row2.z, pair1.y);
+    scalar4 = mat4(21.0, 25.0, 29.0, 33.0, 22.0, 26.0, 30.0, 34.0, 23.0, 27.0, 31.0, 35.0, 24.0, 28.0, 32.0, 36.0);
+    result.position = scalar4 * position;
+    result.position.xy = scalar2 * result.position.xy;
+    result.position.xy = rows2 * result.position.xy;
+    result.position.xy = converted2 * result.position.xy;
+    result.position.xyz = mixed3 * result.position.xyz;
+    gl_Position = result.position;
+}

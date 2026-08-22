@@ -203,7 +203,9 @@ expr *ConstantFoldNode(expr *fexpr, void *_arg1, int arg2)
     case UNARY_N:
         base = SUBOP_GET_T(fexpr->un.subop);
         len = SUBOP_GET_S(fexpr->un.subop);
-        if (fexpr->un.op == VECTOR_V_OP && IsConstList(fexpr->un.arg)) {
+        if (fexpr->un.op == VECTOR_V_OP &&
+            !IsMatrix(fexpr->common.type, NULL, NULL) &&
+            IsConstList(fexpr->un.arg)) {
             constlist_iter      iter;
             DB (printf("fold VECTOR_V_OP[%d:%d]", len, base);
                 DumpConstList(fexpr->un.arg, base);
