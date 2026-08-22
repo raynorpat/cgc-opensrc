@@ -15,6 +15,10 @@ if(NOT result EQUAL 0)
     message(FATAL_ERROR "generic compile failed (${result}):\n${output}${error}")
 endif()
 
+if(NOT error STREQUAL "")
+    message(FATAL_ERROR "generic compile emitted diagnostics:\n${error}")
+endif()
+
 string(REPLACE "\r\n" "\n" output "${output}")
 string(REPLACE "\r" "\n" output "${output}")
 string(REGEX REPLACE "(^|\n)// cgc version [^\n]*\n" "\\1" output "${output}")
