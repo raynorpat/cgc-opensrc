@@ -120,8 +120,9 @@ color, fog coordinate, and indexed texture coordinates. It also accepts generic
 `ATTRn` inputs where the specification permits them. The profile validates the
 ARB aliasing restrictions between generic and conventional vertex attributes.
 
-Vertex outputs map to position, primary and secondary color, fog coordinate,
-point size, clip distances, and indexed texture coordinates. Required output
+Vertex outputs map to position, front and back primary and secondary color, fog
+coordinate, point size, and indexed texture coordinates. Base ARBVP1 has no
+clip-distance result register, so `CLP` semantics are excluded. Required output
 rules and read/write permissions are represented in connector descriptors and
 checked before lowering.
 
@@ -165,9 +166,9 @@ instruction contains:
 
 Operands identify virtual temporaries, inputs, outputs, uniforms, constants,
 address registers, or profile state. Constants are interned so repeated values
-share `PARAM` declarations. Virtual registers are four-component values, but
-component liveness and write masks are retained to avoid unnecessary moves and
-temporaries.
+share `PARAM` declarations. Virtual registers are four-component values;
+mask-aware use/definition analysis and write masks are retained to avoid
+unnecessary moves and shorten vector live intervals.
 
 IR construction and destruction use the compiler's existing memory-management
 conventions. An internal validator runs after construction and after
@@ -214,11 +215,11 @@ scheduling are not goals.
 
 ## Register Allocation and Resource Validation
 
-The allocator computes component-aware live intervals and assigns deterministic
-physical `TEMP` registers with linear scan. Safe move coalescing is preferred,
-but the backend does not spill because base ARB programs have no spill storage.
-Failure to fit the guaranteed temporary-register count produces a source-located
-resource diagnostic.
+The allocator computes mask-aware vector live intervals and assigns
+deterministic full physical `TEMP` registers with linear scan. Safe move
+coalescing is preferred, but the backend does not spill or pack unrelated values
+into separate lanes of one register. Failure to fit the guaranteed
+temporary-register count produces a source-located resource diagnostic.
 
 Address registers are allocated separately for vertex relative addressing.
 Parameters and samplers use the binding allocations established before IR
@@ -228,8 +229,9 @@ After legalization and allocation, the validator computes all resources defined
 by the selected base specification. These include temporaries, address
 registers, local parameters, total instructions, and the fragment profile's
 math instructions, texture instructions, texture units, and texture-indirection
-depth. Texture indirection is calculated from instruction dependencies, not
-merely by counting texture operations.
+depth. Texture indirection uses the node algorithm specified by
+ARB_fragment_program—including its initial node and ALU/TEMP dependency rules—
+rather than a simple texture-operation count or expression-tree depth.
 
 Every limit is tested at its exact guaranteed boundary and one unit beyond it.
 Resource overflow prevents binding metadata and assembly instructions from
