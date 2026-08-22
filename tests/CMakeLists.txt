@@ -9,6 +9,26 @@ function(add_generic_regression name source expected_sha256)
     )
 endfunction()
 
+add_executable(glsl_ir_unit
+    ${PROJECT_SOURCE_DIR}/glsl_ir.c
+    glsl_ir_test.c
+)
+
+target_include_directories(glsl_ir_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(glsl_ir_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME glsl_ir_unit
+    COMMAND glsl_ir_unit
+)
+
 add_generic_regression(position position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
 add_generic_regression(reflection reflection.cg
