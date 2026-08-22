@@ -37,7 +37,7 @@ The directory contains 4 examples: vertexlight.cg, vertexlight4.cg,
 position.cg, and reflection.cg. After building, invoke the produced executable
 with the generic profile. For a single-config generator, use:
   ./build/cgc -profile generic <example_file_name>
-For a Visual Studio Release build, use:
+For a multi-config Release build on Windows, use:
   .\build\Release\cgc.exe -profile generic <example_file_name>
 This release prints the output to stdout only.
 
