@@ -2,14 +2,23 @@
 RELEASE INFORMATION
 -------------------
 
-This release builds the Cg compiler (cgc.exe) with the "generic" profile,
+This release builds the Cg compiler (cgc) with the "generic" profile,
 which does some minimal semantic checks and prints out a tree representation
-of the code.  It can be built either with the included Microsoft Visual C++ 6.0 projects
-and workspace, or with the included Makefile.
+of the code. Build both cgc and the tokenize helper with CMake:
+
+  cmake -S . -B build
+  cmake --build build --config Release
+
+The included Makefile remains available for systems using make.
 
 The release contains a pre-built parser (parser.c and parser.h) built
-from parser.y with GNU bison.  Rebuilding will require GNU bison if
-you make any changes to parser.y
+from parser.y with GNU bison. Normal builds use the checked-in generated
+sources and do not require bison. To regenerate the generated sources, run:
+
+  cmake --build build --target regenerate_stdlib
+  cmake --build build --target regenerate_parser
+
+The parser target requires GNU bison.
 
 This release contains the front-end to the compiler, plus a 'trivial'
 back-end (profile) that does some limited checking and outputs a parse tree
