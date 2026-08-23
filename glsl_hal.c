@@ -181,6 +181,19 @@ static int RegisterNames_glsl(slHAL *hal)
     ConnectorDescriptor *connector;
     GlslSemanticDesc *semantic;
     GlslSemanticAlias *alias;
+    static const struct {
+        const char *name;
+        int base;
+    } samplerTypes[] = {
+        { "sampler1D", TYPE_BASE_GLSL_SAMPLER1D },
+        { "sampler2D", TYPE_BASE_GLSL_SAMPLER2D },
+        { "sampler3D", TYPE_BASE_GLSL_SAMPLER3D },
+        { "samplerCUBE", TYPE_BASE_GLSL_SAMPLERCUBE }
+    };
+    SourceLoc loc = { 0, 0 };
+    Symbol *existing;
+    Type *type;
+    int atom;
     int i, j;
 
     profile = (const GlslProfileDesc *) hal->localData;
@@ -201,7 +214,43 @@ static int RegisterNames_glsl(slHAL *hal)
         AddAtom(atable, alias->alias);
         AddAtom(atable, alias->canonical);
     }
+    if (CurrentScope != NULL) {
+        for (i = 0; i < (int) (sizeof(samplerTypes) /
+                               sizeof(samplerTypes[0])); i++)
+        {
+            atom = LookUpAddString(atable, samplerTypes[i].name);
+            existing = LookUpLocalSymbol(CurrentScope, atom);
+            if (existing != NULL) {
+                if (existing->kind != TYPEDEF_S || existing->type == NULL ||
+                    GetBase(existing->type) != samplerTypes[i].base)
+                {
+                    return 0;
+                }
+                continue;
+            }
+            type = NewType(TYPE_CATEGORY_SCALAR | samplerTypes[i].base, 1);
+            if (type == NULL)
+                return 0;
+            SetScalarTypeName(samplerTypes[i].base, atom, type);
+            if (AddSymbol(&loc, CurrentScope, atom, type, TYPEDEF_S) == NULL)
+                return 0;
+        }
+    }
     return 1;
+}
+
+static int IsTexobjBase_glsl(int base)
+{
+    return base == TYPE_BASE_GLSL_SAMPLER1D ||
+           base == TYPE_BASE_GLSL_SAMPLER2D ||
+           base == TYPE_BASE_GLSL_SAMPLER3D ||
+           base == TYPE_BASE_GLSL_SAMPLERCUBE;
+}
+
+static int IsValidRuntimeBase_glsl(int base)
+{
+    return base == TYPE_BASE_FLOAT || base == TYPE_BASE_INT ||
+           base == TYPE_BASE_BOOLEAN || IsTexobjBase_glsl(base);
 }
 
 static int GetConnectorID_glsl(int name)
@@ -505,6 +554,18 @@ static int GlslResolvedType(Type *source, GlslType *target)
     case TYPE_BASE_BOOLEAN:
         base = GLSL_BASE_BOOL;
         break;
+    case TYPE_BASE_GLSL_SAMPLER1D:
+        base = GLSL_BASE_SAMPLER1D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLER2D:
+        base = GLSL_BASE_SAMPLER2D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLER3D:
+        base = GLSL_BASE_SAMPLER3D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLERCUBE:
+        base = GLSL_BASE_SAMPLERCUBE;
+        break;
     default:
         return 0;
     }
@@ -634,6 +695,8 @@ int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile)
     hal->GetConnectorUses = GetConnectorUses_glsl;
     hal->GetConnectorRegister = GetConnectorRegister_glsl;
     hal->IsValidOperator = IsValidOperator_glsl;
+    hal->IsTexobjBase = IsTexobjBase_glsl;
+    hal->IsValidRuntimeBase = IsValidRuntimeBase_glsl;
     hal->CheckInternalFunction = CheckInternalFunction_glsl;
     hal->BindUniformUnbound = BindUniformUnbound_glsl;
     hal->BindVaryingSemantic = BindVaryingSemantic_glsl;

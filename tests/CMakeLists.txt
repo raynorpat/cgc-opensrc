@@ -213,6 +213,66 @@ add_glsl_fixture(glslf_interfaces glslf
     tests/glsl/semantics/fp_interfaces.cg
     tests/glsl/semantics/fp_interfaces.expected)
 
+add_glsl_fixture(glslf_tex2d glslf
+    tests/glsl/textures/fp_tex2d.cg
+    tests/glsl/textures/fp_tex2d.expected)
+
+add_glsl_fixture(glslf_texcube glslf
+    tests/glsl/textures/fp_texcube.cg
+    tests/glsl/textures/fp_texcube.expected)
+
+add_glsl_fixture(glslf_tex1d glslf
+    tests/glsl/textures/fp_tex1d.cg
+    tests/glsl/textures/fp_tex1d.expected)
+
+add_glsl_fixture(glslf_tex3d glslf
+    tests/glsl/textures/fp_tex3d.cg
+    tests/glsl/textures/fp_tex3d.expected)
+
+add_glsl_fixture(glslf_two_samplers glslf
+    tests/glsl/textures/fp_two_samplers.cg
+    tests/glsl/textures/fp_two_samplers.expected)
+
+add_glsl_fixture(glslf_helper_sampler glslf
+    tests/glsl/textures/fp_helper_sampler.cg
+    tests/glsl/textures/fp_helper_sampler.expected)
+
+add_glsl_fixture(glslf_user_tex_helper glslf
+    tests/glsl/textures/fp_user_tex_helper.cg
+    tests/glsl/textures/fp_user_tex_helper.expected)
+
+add_glsl_fixture(glslf_sampler_numeric_limit glslf
+    tests/glsl/textures/fp_sampler_numeric_limit.cg
+    tests/glsl/textures/fp_sampler_numeric_limit.expected)
+
+add_glsl_profile_failure(glslf_third_sampler glslf
+    tests/glsl/textures/fp_third_sampler.cg 6207 5
+    "3.used,.2.available")
+
+add_glsl_profile_failure(glslv_sampler glslv
+    tests/glsl/textures/vp_sampler.cg 6207 4
+    "1.used,.0.available")
+
+add_glsl_profile_failure(glslf_local_sampler glslf
+    tests/glsl/textures/fp_local_sampler.cg 5508 6
+    "samplers.must.be.uniforms")
+
+add_glsl_profile_failure(glslf_sampler_array glslf
+    tests/glsl/textures/fp_sampler_array.cg 5508 3
+    "sampler.arrays.or.aggregates")
+
+add_glsl_profile_failure(glslf_sampler_default glslf
+    tests/glsl/textures/fp_sampler_default.cg 1056 3
+    "invalid.initialization")
+
+add_glsl_profile_failure(glslf_invalid_texture_coord glslf
+    tests/glsl/textures/fp_invalid_coord.cg 1102 6
+    "incompatible.type.for.parameter.#2")
+
+add_glsl_profile_failure(glslf_texture_bias glslf
+    tests/glsl/textures/fp_texture_bias.cg 1104 6
+    "too.many.parameters")
+
 add_glsl_fixture(glslv_reused_interface glslv
     tests/glsl/semantics/vp_reused_interface.cg
     tests/glsl/semantics/vp_reused_interface.expected)

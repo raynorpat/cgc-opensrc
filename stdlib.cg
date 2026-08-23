@@ -159,6 +159,12 @@ __internal float2 atan(float2 value);
 __internal float3 atan(float3 value);
 __internal float4 atan(float4 value);
 
+// CGC_GLSL_TEXTURES_BEGIN
+__internal float4 tex1D(sampler1D image, float coord);
+__internal float4 tex2D(sampler2D image, float2 coord);
+__internal float4 tex3D(sampler3D image, float3 coord);
+__internal float4 texCUBE(samplerCUBE image, float3 coord);
+// CGC_GLSL_TEXTURES_END
 #else
 
 float dot(float1 a, float1 b) { return a.x*b.x; }

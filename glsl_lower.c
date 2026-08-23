@@ -327,6 +327,18 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
     case TYPE_BASE_BOOLEAN:
         glslBase = GLSL_BASE_BOOL;
         break;
+    case TYPE_BASE_GLSL_SAMPLER1D:
+        glslBase = GLSL_BASE_SAMPLER1D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLER2D:
+        glslBase = GLSL_BASE_SAMPLER2D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLER3D:
+        glslBase = GLSL_BASE_SAMPLER3D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLERCUBE:
+        glslBase = GLSL_BASE_SAMPLERCUBE;
+        break;
     default:
         glslBase = GLSL_BASE_VOID;
         break;
@@ -443,6 +455,13 @@ static int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
     if (!GlslEnsureSymbolTypes(context, symbol->left))
         return 0;
     if (symbol->kind == VARIABLE_S) {
+        if (Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) &&
+            GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM)
+        {
+            context->statementLoc = symbol->loc;
+            GlslRecordFailure(context, "samplers must be uniforms");
+            return 0;
+        }
         name = GetAtomString(atable, symbol->name);
         if (name != NULL && name[0] != '$' &&
             !GlslEnsureType(context, symbol->type)) return 0;
@@ -454,6 +473,13 @@ static int GlslEnsureParameterTypes(GlslLowerContext *context,
                                     Symbol *formal)
 {
     for (; formal != NULL; formal = formal->next) {
+        if (Cg->theHAL->IsTexobjBase(GetBase(formal->type)) &&
+            GetDomain(formal->type) != TYPE_DOMAIN_UNIFORM)
+        {
+            context->statementLoc = formal->loc;
+            GlslRecordFailure(context, "samplers must be uniforms");
+            return 0;
+        }
         if (!GlslEnsureType(context, formal->type))
             return 0;
     }
@@ -610,7 +636,8 @@ static GlslBinding *GlslFindUniformBinding(GlslModule *module,
     for (binding = module->bindings; binding != NULL;
          binding = binding->next)
     {
-        if (binding->storage == GLSL_STORAGE_UNIFORM &&
+        if ((binding->storage == GLSL_STORAGE_UNIFORM ||
+             binding->storage == GLSL_STORAGE_SAMPLER) &&
             binding->declaration != NULL &&
             binding->declaration->identity == symbol) return binding;
     }
@@ -623,6 +650,7 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
     GlslBinding *binding;
     GlslDecl *decl;
     GlslType type;
+    GlslStorage storage;
     const char *sourceName;
     const char *name;
 
@@ -633,14 +661,23 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
     }
     if (GlslFindUniformBinding(context->module, symbol) != NULL)
         return 1;
+    if (Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) &&
+        GetCategory(symbol->type) != TYPE_CATEGORY_SCALAR)
+    {
+        context->statementLoc = symbol->loc;
+        GlslRecordFailure(context, "sampler arrays or aggregates");
+        return 0;
+    }
     if (!GlslEnsureType(context, symbol->type) ||
         !GlslLowerType(context, symbol->type, &type)) return 0;
+    storage = Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) ?
+              GLSL_STORAGE_SAMPLER : GLSL_STORAGE_UNIFORM;
     sourceName = GetAtomString(atable, symbol->name);
     name = GlslAllocateSymbolName(context->module, symbol, sourceName);
     if (name == NULL)
         return 0;
-    decl = GlslNewDecl(context->module, GLSL_STORAGE_UNIFORM, type, name);
-    binding = GlslNewBinding(context->module, GLSL_STORAGE_UNIFORM,
+    decl = GlslNewDecl(context->module, storage, type, name);
+    binding = GlslNewBinding(context->module, storage,
                              name, "");
     if (decl == NULL || binding == NULL)
         return 0;
@@ -813,6 +850,57 @@ static int GlslValidateUniformLimit(GlslLowerContext *context)
             return 0;
         }
         used += componentCount;
+    }
+    return 1;
+}
+
+static int GlslAllocateTextureUnits(GlslLowerContext *context)
+{
+    GlslBinding *binding;
+    Binding *sourceBinding;
+    Symbol *symbol;
+    const char *resourceName;
+    char unitText[32];
+    int limit;
+    int used;
+
+    limit = context->profile->limits.textureUnits;
+    resourceName = context->profile->stage == GLSL_STAGE_FRAGMENT ?
+                   "fragment texture units" : "vertex texture units";
+    used = 0;
+    for (binding = context->module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->storage != GLSL_STORAGE_SAMPLER ||
+            binding->declaration == NULL) continue;
+        if (used >= limit) {
+            context->module->errorLoc = binding->loc;
+            context->module->resourceName = resourceName;
+            context->module->resourceUsed = used + 1;
+            context->module->resourceAvailable = limit;
+            return 0;
+        }
+        sprintf(unitText, "%d", used);
+        binding->semantic = GlslCopyText(context->module, unitText);
+        if (binding->semantic == NULL)
+            return 0;
+        symbol = (Symbol *) binding->declaration->identity;
+        sourceBinding = symbol != NULL ? symbol->details.var.bind : NULL;
+        if (sourceBinding == NULL) {
+            context->statementLoc.file =
+                (unsigned short) binding->loc.file;
+            context->statementLoc.line =
+                (unsigned short) binding->loc.line;
+            GlslRecordFailure(context, "sampler binding");
+            return 0;
+        }
+        sourceBinding->none.kind = BK_TEXUNIT;
+        sourceBinding->none.properties =
+            BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+        sourceBinding->none.base = GetBase(symbol->type);
+        sourceBinding->none.size = symbol->type->co.size;
+        sourceBinding->texunit.unitno = used;
+        used++;
     }
     return 1;
 }
@@ -2611,6 +2699,56 @@ static const char *GlslVectorComparisonName(opcode op)
     }
 }
 
+static int GlslValidateTextureCall(GlslLowerContext *context,
+    GlslBuiltin builtin, const GlslType *result, GlslExpr *arguments)
+{
+    GlslType samplerType;
+    GlslType coordType;
+    GlslType resultType;
+    GlslBase samplerBase;
+    int coordLen;
+
+    if (builtin < GLSL_BUILTIN_TEX1D ||
+        builtin > GLSL_BUILTIN_TEXCUBE) return 1;
+    if (context->profile->stage != GLSL_STAGE_FRAGMENT) {
+        GlslRecordFailure(context, "texture sampling in vertex shader");
+        return 0;
+    }
+    switch (builtin) {
+    case GLSL_BUILTIN_TEX1D:
+        samplerBase = GLSL_BASE_SAMPLER1D;
+        coordLen = 1;
+        break;
+    case GLSL_BUILTIN_TEX2D:
+        samplerBase = GLSL_BASE_SAMPLER2D;
+        coordLen = 2;
+        break;
+    case GLSL_BUILTIN_TEX3D:
+        samplerBase = GLSL_BASE_SAMPLER3D;
+        coordLen = 3;
+        break;
+    case GLSL_BUILTIN_TEXCUBE:
+        samplerBase = GLSL_BASE_SAMPLERCUBE;
+        coordLen = 3;
+        break;
+    default:
+        return 0;
+    }
+    samplerType = GlslNumericType(samplerBase, 1);
+    coordType = GlslNumericType(GLSL_BASE_FLOAT, coordLen);
+    resultType = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    if (arguments == NULL || arguments->next == NULL ||
+        arguments->next->next != NULL ||
+        !GlslTypesEqual(&arguments->type, &samplerType) ||
+        !GlslTypesEqual(&arguments->next->type, &coordType) ||
+        !GlslTypesEqual(result, &resultType))
+    {
+        GlslRecordFailure(context, "GLSL texture intrinsic signature");
+        return 0;
+    }
+    return 1;
+}
+
 static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
                                const GlslType *type)
 {
@@ -2655,6 +2793,8 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
     }
     if (function == NULL) {
         builtin = (GlslBuiltin) symbol->details.fun.index;
+        if (!GlslValidateTextureCall(context, builtin, type, arguments))
+            return NULL;
         if (builtin == GLSL_BUILTIN_MUL ||
             (builtin == GLSL_BUILTIN_DOT &&
              arguments != NULL && arguments->type.len == 1))
@@ -3528,6 +3668,7 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
         !GlslCollectCallsInStatements(&context,
                                       program->details.fun.statements) ||
         !GlslCollectUniforms(&context, program) ||
+        !GlslAllocateTextureUnits(&context) ||
         !GlslValidateUniformLimit(&context) ||
         !GlslSortStructs(&context) ||
         !GlslAssignHelperNames(&context)) return GlslLowerError(&context);

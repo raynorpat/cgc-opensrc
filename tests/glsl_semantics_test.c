@@ -74,6 +74,12 @@ static int lastSemanticError;
 static int lowerProgramResult;
 static int writeModuleResult;
 static int writeModuleDiagnostic;
+static Scope vertexSamplerScope;
+static Scope fragmentSamplerScope;
+static Scope *samplerSymbolScopes[8];
+static Symbol samplerSymbols[8];
+static Type samplerTypes[8];
+static int samplerTypeCount;
 
 static const GlslSemanticDesc vertexSemantics[] = {
     { "ATTRIB",       "ATTRIB",       0, 16, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_ATTRIBUTE },
@@ -335,6 +341,9 @@ static void CheckInternalFunctions(slHAL *hal)
     Type rowElement;
     Type vector;
     Type vectorElement;
+    Type sampler;
+    Type coord;
+    Type coordElement;
     TypeList first;
     TypeList second;
     int group;
@@ -373,6 +382,22 @@ static void CheckInternalFunctions(slHAL *hal)
 
     symbol.name = AddAtom(atable, "user_mul");
     MakeVector(&vector, &vectorElement, TYPE_BASE_FLOAT, 4);
+    group = 0;
+    assert(hal->CheckInternalFunction(&symbol, &group) == 0);
+    assert(group == 0);
+
+    symbol.name = AddAtom(atable, "tex2D");
+    MakeVector(&result, &vectorElement, TYPE_BASE_FLOAT, 4);
+    MakeScalar(&sampler, TYPE_BASE_GLSL_SAMPLER2D);
+    MakeVector(&coord, &coordElement, TYPE_BASE_FLOAT, 2);
+    first.type = &sampler;
+    second.type = &coord;
+    group = 0;
+    assert(hal->CheckInternalFunction(&symbol, &group) ==
+           GLSL_BUILTIN_TEX2D);
+    assert(group == GLSL_BUILTIN_GROUP);
+
+    MakeScalar(&sampler, TYPE_BASE_GLSL_SAMPLER3D);
     group = 0;
     assert(hal->CheckInternalFunction(&symbol, &group) == 0);
     assert(group == 0);
@@ -523,6 +548,10 @@ static void CheckSemanticBoundaries(slHAL *hal)
 
 static const GlslProfileDesc *InitStage(slHAL *hal, int vertex)
 {
+    Scope *registrationScope;
+    Symbol *existing;
+    int sampler1D;
+    int oldSamplerTypeCount;
     int result;
 
     memset(hal, 0, sizeof(*hal));
@@ -532,8 +561,18 @@ static const GlslProfileDesc *InitStage(slHAL *hal, int vertex)
     else
         result = InitHAL_glslf(hal);
     assert(result);
+    registrationScope = vertex ? &vertexSamplerScope :
+                        &fragmentSamplerScope;
+    sampler1D = AddAtom(atable, "sampler1D");
+    oldSamplerTypeCount = samplerTypeCount;
+    existing = LookUpLocalSymbol(registrationScope, sampler1D);
+    CurrentScope = registrationScope;
     result = hal->RegisterNames(hal);
+    CurrentScope = NULL;
     assert(result);
+    assert(samplerTypeCount == oldSamplerTypeCount +
+           (existing == NULL ? 4 : 0));
+    assert(LookUpLocalSymbol(registrationScope, sampler1D) != NULL);
     assert(hal->semantics == NULL);
     assert(hal->numSemantics == 0);
     return (const GlslProfileDesc *) hal->localData;
@@ -573,6 +612,17 @@ static void CheckVertex(void)
     CheckSemanticBoundaries(&hal);
     CheckUniformBinding(&hal);
     CheckInternalFunctions(&hal);
+    assert(hal.IsTexobjBase(TYPE_BASE_GLSL_SAMPLER1D));
+    assert(hal.IsTexobjBase(TYPE_BASE_GLSL_SAMPLER2D));
+    assert(hal.IsTexobjBase(TYPE_BASE_GLSL_SAMPLER3D));
+    assert(hal.IsTexobjBase(TYPE_BASE_GLSL_SAMPLERCUBE));
+    assert(!hal.IsTexobjBase(TYPE_BASE_FLOAT));
+    assert(!hal.IsTexobjBase(TYPE_BASE_FIRST_USER + 4));
+    assert(hal.IsValidRuntimeBase(TYPE_BASE_FLOAT));
+    assert(hal.IsValidRuntimeBase(TYPE_BASE_INT));
+    assert(hal.IsValidRuntimeBase(TYPE_BASE_BOOLEAN));
+    assert(hal.IsValidRuntimeBase(TYPE_BASE_GLSL_SAMPLER2D));
+    assert(!hal.IsValidRuntimeBase(TYPE_BASE_CFLOAT));
 
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
                    AddAtom(atable, "ATTRIB0"), 0), "ATTRIB0"));
@@ -791,6 +841,59 @@ int main(void)
     CheckGenerateCodeWriterFailure();
     FreeAtomTable(atable);
     return 0;
+}
+
+Type *NewType(int properties, int size)
+{
+    Type *type;
+
+    assert(samplerTypeCount >= 0 && samplerTypeCount < 8);
+    type = &samplerTypes[samplerTypeCount];
+    memset(type, 0, sizeof(*type));
+    type->properties = properties;
+    type->co.size = size;
+    return type;
+}
+
+void SetScalarTypeName(int base, int name, Type *type)
+{
+    (void) name;
+    assert(type == &samplerTypes[samplerTypeCount]);
+    assert(GetBase(type) == base);
+}
+
+Symbol *LookUpLocalSymbol(Scope *scope, int atom)
+{
+    int i;
+
+    assert(scope == &vertexSamplerScope ||
+           scope == &fragmentSamplerScope);
+    for (i = 0; i < samplerTypeCount; i++) {
+        if (samplerSymbolScopes[i] == scope &&
+            samplerSymbols[i].name == atom)
+            return &samplerSymbols[i];
+    }
+    return NULL;
+}
+
+Symbol *AddSymbol(SourceLoc *loc, Scope *scope, int atom, Type *type,
+                  symbolkind kind)
+{
+    Symbol *symbol;
+
+    (void) loc;
+    assert(scope == &vertexSamplerScope ||
+           scope == &fragmentSamplerScope);
+    assert(samplerTypeCount < 8);
+    assert(type == &samplerTypes[samplerTypeCount]);
+    symbol = &samplerSymbols[samplerTypeCount];
+    memset(symbol, 0, sizeof(*symbol));
+    symbol->name = atom;
+    symbol->type = type;
+    symbol->kind = kind;
+    samplerSymbolScopes[samplerTypeCount] = scope;
+    samplerTypeCount++;
+    return symbol;
 }
 
 int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,

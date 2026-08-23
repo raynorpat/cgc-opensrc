@@ -487,6 +487,14 @@ static int GlslBuiltinMatrixType(const GlslType *type, int size)
            type->elementType == NULL && type->members == NULL;
 }
 
+static int GlslBuiltinSamplerType(const GlslType *type, GlslBase base)
+{
+    return type != NULL && type->base == base && type->len == 1 &&
+           type->rows == 0 && type->cols == 0 && type->arraySize == 0 &&
+           type->structName == NULL && type->elementType == NULL &&
+           type->members == NULL;
+}
+
 static GlslBuiltin GlslBuiltinFromName(const char *name)
 {
     static const struct {
@@ -651,6 +659,28 @@ GlslBuiltin GlslLookupBuiltin(const char *name, const GlslType *result,
     {
         for (len = 1; len <= 4; len++) {
             if (GlslBuiltinNumericType(&params[0], len)) return builtin;
+        }
+    }
+    if (paramCount == 2 && GlslBuiltinNumericType(result, 4)) {
+        switch (builtin) {
+        case GLSL_BUILTIN_TEX1D:
+            if (GlslBuiltinSamplerType(&params[0], GLSL_BASE_SAMPLER1D) &&
+                GlslBuiltinNumericType(&params[1], 1)) return builtin;
+            break;
+        case GLSL_BUILTIN_TEX2D:
+            if (GlslBuiltinSamplerType(&params[0], GLSL_BASE_SAMPLER2D) &&
+                GlslBuiltinNumericType(&params[1], 2)) return builtin;
+            break;
+        case GLSL_BUILTIN_TEX3D:
+            if (GlslBuiltinSamplerType(&params[0], GLSL_BASE_SAMPLER3D) &&
+                GlslBuiltinNumericType(&params[1], 3)) return builtin;
+            break;
+        case GLSL_BUILTIN_TEXCUBE:
+            if (GlslBuiltinSamplerType(&params[0], GLSL_BASE_SAMPLERCUBE) &&
+                GlslBuiltinNumericType(&params[1], 3)) return builtin;
+            break;
+        default:
+            break;
         }
     }
     return GLSL_BUILTIN_NONE;

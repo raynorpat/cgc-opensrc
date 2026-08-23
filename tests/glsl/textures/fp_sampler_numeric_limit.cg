@@ -1,0 +1,10 @@
+uniform float4 weights[16];
+uniform sampler2D image;
+
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(float2 coord : TEXCOORD0)
+{
+    FragmentOut result;
+    result.color = tex2D(image, coord + weights[0].xy);
+    return result;
+}

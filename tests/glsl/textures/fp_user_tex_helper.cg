@@ -1,0 +1,12 @@
+float4 tex2D(float4 value)
+{
+    return value * 0.5;
+}
+
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(float4 color : TEXCOORD0)
+{
+    FragmentOut result;
+    result.color = tex2D(color);
+    return result;
+}

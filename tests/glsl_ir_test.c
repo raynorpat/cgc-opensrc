@@ -199,6 +199,44 @@ int main(void)
            GLSL_BUILTIN_NONE);
 
     type = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_SAMPLER1D, 1);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    assert(GlslLookupBuiltin("tex1D", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_TEX1D);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 2);
+    assert(GlslLookupBuiltin("tex2D", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_TEX2D);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_SAMPLER3D, 1);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    assert(GlslLookupBuiltin("tex3D", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_TEX3D);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_SAMPLERCUBE, 1);
+    assert(GlslLookupBuiltin("texCUBE", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_TEXCUBE);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 2);
+    assert(GlslLookupBuiltin("texCUBE", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_NONE);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    assert(GlslLookupBuiltin("tex2D", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_NONE);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 3);
+    builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 2);
+    assert(GlslLookupBuiltin("tex2D", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_NONE);
+    type = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_SAMPLER3D, 1);
+    assert(GlslLookupBuiltin("tex2D", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_NONE);
+    builtinParams[0] = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+    builtinParams[2] = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    assert(GlslLookupBuiltin("tex2D", &type, builtinParams, 3) ==
+           GLSL_BUILTIN_NONE);
+    assert(GlslLookupBuiltin("texture2D", &type, builtinParams, 2) ==
+           GLSL_BUILTIN_NONE);
+
+    type = GlslNumericType(GLSL_BASE_FLOAT, 4);
     assert(GlslTypeComponentCount(&type) == 4);
     type = GlslMatrixType(3);
     assert(GlslTypeComponentCount(&type) == 9);

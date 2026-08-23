@@ -52,6 +52,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "glsl_hal.h"
 
 // Profile registration functions:
 
@@ -69,6 +70,7 @@ int main(int argc, char **argv)
 {
     const char *copyright = "(c) 2001-2002 NVIDIA Corp.";
     int numerrors, ii;
+    TokenStream *stdlibStream;
 
     if (!InitCgStruct()) {
         return 1;
@@ -108,7 +110,14 @@ int main(int argc, char **argv)
             return 1;
         PrintOptions(argc, argv);
         if (!Cg->options.NoStdlib) {
-            if (!ReadFromTokenStream(&stdlib_cg_stream,
+            if (Cg->theHAL->pid == PROFILE_GLSLV_ID ||
+                Cg->theHAL->pid == PROFILE_GLSLF_ID)
+            {
+                stdlibStream = &stdlib_cg_stream;
+            } else {
+                stdlibStream = &stdlibgeneric_cg_stream;
+            }
+            if (!ReadFromTokenStream(stdlibStream,
                                      LookUpAddString(atable, "<stdlib>"),
                                      StartGlobalScope))
             {

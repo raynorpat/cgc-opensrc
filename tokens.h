@@ -69,6 +69,7 @@ struct TokenBlock_Rec {
 };
 
 extern TokenStream stdlib_cg_stream;
+extern TokenStream stdlibgeneric_cg_stream;
 
 int InitTokenStreams(CgStruct *Cg);
 

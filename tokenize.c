@@ -59,11 +59,11 @@ int main(int ac, char **av) {
     }
     if (!InitScanner(Cg))
         return 1;
-    if (ac != 2 || !SetInputFile(av[1])) {
-        fprintf(stderr, "usage: %s filename\n", av[0]);
+    if ((ac != 2 && ac != 3) || !SetInputFile(av[1])) {
+        fprintf(stderr, "usage: %s filename [stream-name]\n", av[0]);
         return 1;
     }
-    Cg->options.sourceFileName = av[1];
+    Cg->options.sourceFileName = ac == 3 ? av[2] : av[1];
     TokenizeInput();
     return 0;
 }

@@ -71,6 +71,7 @@ add_custom_target(regenerate_stdlib
         -DTOKENIZE=$<TARGET_FILE:tokenize>
         -DINPUT=stdlib.cg
         -DOUTPUT=stdlib.c
+        -DTEMP=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/stdlib_generic.cg
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
     DEPENDS
         tokenize

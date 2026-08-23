@@ -56,6 +56,7 @@ static const char *GlslStorageName(GlslStorage storage)
     case GLSL_STORAGE_ATTRIBUTE: return "attribute";
     case GLSL_STORAGE_VARYING: return "varying";
     case GLSL_STORAGE_UNIFORM: return "uniform";
+    case GLSL_STORAGE_SAMPLER: return "sampler";
     case GLSL_STORAGE_CONST: return "const";
     case GLSL_STORAGE_BUILTIN: return "builtin";
     default: return NULL;
@@ -481,7 +482,8 @@ static int GlslWriteGlobal(FILE *out, const GlslDecl *decl)
 {
     const char *storage;
 
-    storage = GlslStorageName(decl->storage);
+    storage = decl->storage == GLSL_STORAGE_SAMPLER ? "uniform" :
+              GlslStorageName(decl->storage);
     if (storage != NULL && fprintf(out, "%s ", storage) < 0)
         return 0;
     return GlslWriteDeclarator(out, &decl->type, decl->name) &&
