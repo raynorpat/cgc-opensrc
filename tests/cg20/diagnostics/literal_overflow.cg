@@ -1,5 +1,6 @@
 float4 main(float4 p : POSITION) : POSITION
 {
     const unsigned long big = 0x1ffffffffffffffffful;
+    const unsigned long wrap = 0x10000000000000001ul;
     return p * 0.0;
 }

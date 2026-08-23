@@ -191,7 +191,7 @@ add_test(
         -DPROFILE=generic
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/literal_overflow.cg
         -DCODE=130
-        -DMESSAGE="literal_overflow\\.cg\\(3\\)"
+        -DMESSAGE="literal_overflow\\.cg\\(3\\).*literal_overflow\\.cg\\(4\\)"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
 )
 add_test(

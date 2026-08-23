@@ -793,7 +793,7 @@ static int byte_scan(InputSrc *in)
                         }
                         if (uovf) {
                             ; // value already wider than 64 bits
-                        } else if (uval > (((CgUInt64)-1) - (CgUInt64)ii) / 15) {
+                        } else if (uval > (((CgUInt64)-1) - (CgUInt64)ii) / 16) {
                             uval = 0;
                             uovf = 1;
                         } else {
@@ -850,7 +850,7 @@ static int byte_scan(InputSrc *in)
                     ii = ch - '0';
                     if (uovf) {
                         ; // value already wider than 64 bits
-                    } else if (uval > (((CgUInt64)-1) - (CgUInt64)ii) / 7) {
+                    } else if (uval > (((CgUInt64)-1) - (CgUInt64)ii) / 8) {
                         uval = 0;
                         uovf = 1;
                     } else {
