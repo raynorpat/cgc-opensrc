@@ -5,6 +5,10 @@ foreach(required CGC VERTEX_SOURCE FRAGMENT_SOURCE VERTEX_ACTUAL
     endif()
 endforeach()
 
+include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
+prepare_config_output("${VERTEX_ACTUAL}")
+prepare_config_output("${FRAGMENT_ACTUAL}")
+
 file(REMOVE "${VERTEX_ACTUAL}" "${FRAGMENT_ACTUAL}")
 execute_process(
     COMMAND "${CGC}" -quiet -profile glslv -o "${VERTEX_ACTUAL}"
@@ -47,15 +51,19 @@ if(NOT unsuffixed_attribute EQUAL -1)
     message(FATAL_ERROR "COLOR0 attribute stole the canonical varying name")
 endif()
 
-find_program(GLSLANG_VALIDATOR NAMES glslangValidator REQUIRED)
-execute_process(
-    COMMAND "${GLSLANG_VALIDATOR}" -l "${VERTEX_ACTUAL}"
-        "${FRAGMENT_ACTUAL}"
-    RESULT_VARIABLE validator_result
-    OUTPUT_VARIABLE validator_stdout
-    ERROR_VARIABLE validator_stderr
-)
-if(NOT validator_result EQUAL 0)
-    message(FATAL_ERROR
-        "glslang link failed:\n${validator_stdout}${validator_stderr}")
+if(NOT DEFINED GLSLANG_VALIDATOR)
+    find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
+endif()
+if(GLSLANG_VALIDATOR)
+    execute_process(
+        COMMAND "${GLSLANG_VALIDATOR}" -l "${VERTEX_ACTUAL}"
+            "${FRAGMENT_ACTUAL}"
+        RESULT_VARIABLE validator_result
+        OUTPUT_VARIABLE validator_stdout
+        ERROR_VARIABLE validator_stderr
+    )
+    if(NOT validator_result EQUAL 0)
+        message(FATAL_ERROR
+            "glslang link failed:\n${validator_stdout}${validator_stderr}")
+    endif()
 endif()

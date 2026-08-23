@@ -1808,11 +1808,143 @@ static void AssignAggregate(StmtList *fStatements, Type *fType,
     }
 } // AssignAggregate
 
-static int IsPreservedReturnTempAssignment(expr *fExpr)
+typedef struct FlattenStructAssignmentsData_Rec {
+    Scope *scope;
+    int normalizeOperands;
+} FlattenStructAssignmentsData;
+
+static int AggregateContainsArray(Type *fType)
+{
+    Symbol *member;
+    int len;
+    int len2;
+
+    len = len2 = 0;
+    if (IsScalar(fType) || IsVector(fType, &len) ||
+        IsMatrix(fType, &len, &len2)) return 0;
+
+    switch (GetCategory(fType)) {
+    case TYPE_CATEGORY_ARRAY:
+        return 1;
+    case TYPE_CATEGORY_STRUCT:
+        for (member = fType->str.members->symbols; member != NULL;
+             member = member->next)
+        {
+            if (AggregateContainsArray(member->type))
+                return 1;
+        }
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static int AggregateExprNeedsMaterialization(expr *fExpr)
+{
+    if (fExpr == NULL)
+        return 0;
+    if (fExpr->common.HasSideEffects)
+        return 1;
+    switch (fExpr->common.kind) {
+    case DECL_N:
+    case SYMB_N:
+    case CONST_N:
+        return 0;
+    case UNARY_N:
+        return AggregateExprNeedsMaterialization(fExpr->un.arg);
+    case BINARY_N:
+        if (fExpr->bin.op == FUN_CALL_OP ||
+            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+        return AggregateExprNeedsMaterialization(fExpr->bin.left) ||
+               AggregateExprNeedsMaterialization(fExpr->bin.right);
+    case TRINARY_N:
+        return AggregateExprNeedsMaterialization(fExpr->tri.arg1) ||
+               AggregateExprNeedsMaterialization(fExpr->tri.arg2) ||
+               AggregateExprNeedsMaterialization(fExpr->tri.arg3);
+    default:
+        return 1;
+    }
+}
+
+static Symbol *NewAggregateFlattenTemp(FlattenStructAssignmentsData *fData,
+                                       Type *fType, SourceLoc *fLoc,
+                                       const char *fPrefix, int fNative)
+{
+    Symbol *temp;
+    Type *tempType;
+    char name[64];
+    int atom;
+    int index;
+
+    index = 0;
+    do {
+        if (index == 0) {
+            strcpy(name, fPrefix);
+        } else {
+            sprintf(name, "%s%d", fPrefix, index);
+        }
+        atom = AddAtom(atable, name);
+        temp = LookUpLocalSymbol(fData->scope, atom);
+        index++;
+    } while (temp != NULL);
+    tempType = DupType(fType);
+    tempType->co.properties &= ~(TYPE_DOMAIN_MASK | TYPE_QUALIFIER_MASK);
+    temp = DefineVar(fLoc, fData->scope, atom, tempType);
+    if (fNative)
+        temp->properties |= SYMB_IS_NATIVE_AGGREGATE_TEMP;
+    return temp;
+}
+
+static void NormalizeAggregateIndices(FlattenStructAssignmentsData *fData,
+                                      StmtList *fStatements, expr *fExpr,
+                                      SourceLoc *fLoc)
+{
+    Symbol *temp;
+    stmt *tempAssignment;
+
+    if (fExpr == NULL)
+        return;
+    switch (fExpr->common.kind) {
+    case UNARY_N:
+        NormalizeAggregateIndices(fData, fStatements, fExpr->un.arg,
+                                  fLoc);
+        break;
+    case BINARY_N:
+        NormalizeAggregateIndices(fData, fStatements, fExpr->bin.left,
+                                  fLoc);
+        NormalizeAggregateIndices(fData, fStatements, fExpr->bin.right,
+                                  fLoc);
+        if (fExpr->bin.op == ARRAY_INDEX_OP &&
+            AggregateExprNeedsMaterialization(fExpr->bin.right))
+        {
+            temp = NewAggregateFlattenTemp(fData,
+                                           fExpr->bin.right->common.type,
+                                           fLoc, "cg_index", 0);
+            tempAssignment = NewSimpleAssignmentStmt(
+                fLoc, GenSymb(temp), fExpr->bin.right, 0);
+            AppendStatements(fStatements, tempAssignment);
+            fExpr->bin.right = GenSymb(temp);
+        }
+        break;
+    case TRINARY_N:
+        NormalizeAggregateIndices(fData, fStatements, fExpr->tri.arg1,
+                                  fLoc);
+        NormalizeAggregateIndices(fData, fStatements, fExpr->tri.arg2,
+                                  fLoc);
+        NormalizeAggregateIndices(fData, fStatements, fExpr->tri.arg3,
+                                  fLoc);
+        break;
+    default:
+        break;
+    }
+}
+
+static int IsPreservedAggregateTempAssignment(expr *fExpr)
 {
     expr *left;
 
-    if (!Cg->theHAL->GetCapsBit(CAPS_PRESERVE_RETURN_TEMP_ASSIGNMENTS))
+    if (!Cg->theHAL->GetCapsBit(CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS))
         return 0;
     if (IsAssignCondSVOp(fExpr)) {
         left = fExpr->tri.arg1;
@@ -1821,7 +1953,8 @@ static int IsPreservedReturnTempAssignment(expr *fExpr)
     }
     return left != NULL && left->common.kind == SYMB_N &&
            left->sym.symbol != NULL &&
-           (left->sym.symbol->properties & SYMB_IS_PROGRAM_RETURN_TEMP) != 0;
+           (left->sym.symbol->properties &
+            SYMB_IS_NATIVE_AGGREGATE_TEMP) != 0;
 }
 
 /*
@@ -1833,6 +1966,9 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
 {
     stmt *rStmt;
     expr *eExpr, *lExpr, *rExpr, *cExpr;
+    FlattenStructAssignmentsData *data;
+    Symbol *aggregateTemp;
+    stmt *tempAssignment;
     StmtList lStatements;
     Type *lType;
 
@@ -1843,8 +1979,9 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
             if (IsAssignSVOp(eExpr)) {
                 lType = eExpr->bin.type;
                 if (IsStruct(lType)) {
-                    if (IsPreservedReturnTempAssignment(eExpr))
+                    if (IsPreservedAggregateTempAssignment(eExpr))
                         return fStmt;
+                    data = (FlattenStructAssignmentsData *) arg1;
                     lStatements.first = NULL;
                     lStatements.last = NULL;
                     if (IsAssignCondSVOp(eExpr)) {
@@ -1862,6 +1999,34 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
                     } else {
                         lExpr = eExpr->bin.left;
                         rExpr = eExpr->bin.right;
+                        if (data->normalizeOperands &&
+                            AggregateExprNeedsMaterialization(rExpr) &&
+                            AggregateContainsArray(lType))
+                        {
+                            SemanticError(&fStmt->commonst.loc,
+                                ERROR_S_UNSUPPORTED_PROFILE_OP,
+                                "side-effecting aggregate with arrays");
+                            return fStmt;
+                        }
+                        if (data->normalizeOperands) {
+                            NormalizeAggregateIndices(data, &lStatements,
+                                                      lExpr,
+                                                      &fStmt->commonst.loc);
+                            NormalizeAggregateIndices(data, &lStatements,
+                                                      rExpr,
+                                                      &fStmt->commonst.loc);
+                            if (AggregateExprNeedsMaterialization(rExpr)) {
+                                aggregateTemp = NewAggregateFlattenTemp(
+                                    data, lType, &fStmt->commonst.loc,
+                                    "cg_aggregate", 1);
+                                tempAssignment = NewSimpleAssignmentStmt(
+                                    &fStmt->commonst.loc,
+                                    GenSymb(aggregateTemp), rExpr, 0);
+                                AppendStatements(&lStatements,
+                                                 tempAssignment);
+                                rExpr = GenSymb(aggregateTemp);
+                            }
+                        }
                         AssignAggregate(&lStatements, lType, lExpr,
                                         rExpr, NULL, 0);
                         rStmt = lStatements.first;
@@ -1892,9 +2057,13 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
 
 static stmt *FlattenStructAssignments(Scope *fScope, stmt *fStmt)
 {
+    FlattenStructAssignmentsData data;
     stmt *lStmt;
 
-    lStmt = PreApplyToStatements(FlattenStructAssignment, fStmt, NULL, 0);
+    data.scope = fScope;
+    data.normalizeOperands = Cg->theHAL->GetCapsBit(
+        CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS);
+    lStmt = PreApplyToStatements(FlattenStructAssignment, fStmt, &data, 0);
     return lStmt;
 } // FlattenStructAssignments
 

@@ -4,6 +4,9 @@ foreach(required CGC PROFILE SOURCE EXPECTED ACTUAL)
     endif()
 endforeach()
 
+include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
+prepare_config_output("${ACTUAL}")
+
 file(REMOVE "${ACTUAL}")
 execute_process(
     COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"

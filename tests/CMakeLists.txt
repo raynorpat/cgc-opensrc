@@ -17,7 +17,8 @@ function(add_glsl_fixture name profile source expected)
             -DPROFILE=${profile}
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
             -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
-            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl.cmake
     )
 endfunction()
@@ -29,7 +30,8 @@ function(add_glsl_failure name source expected_line reason)
             -DCGC=$<TARGET_FILE:cgc>
             -DPROFILE=glslv
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
-            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
             -DCODE=5508
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
@@ -43,7 +45,8 @@ function(add_generic_failure name source expected_line reason)
         COMMAND ${CMAKE_COMMAND}
             -DCGC=$<TARGET_FILE:cgc>
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
-            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.txt
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.txt"
             -DCODE=1116
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
@@ -57,7 +60,8 @@ function(add_generic_diagnostic name source code expected_line reason)
         COMMAND ${CMAKE_COMMAND}
             -DCGC=$<TARGET_FILE:cgc>
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
-            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.txt
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.txt"
             -DCODE=${code}
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
@@ -72,7 +76,8 @@ function(add_glsl_common_failure name source expected_line reason)
             -DCGC=$<TARGET_FILE:cgc>
             -DPROFILE=glslv
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
-            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
             -DCODE=1116
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
@@ -87,7 +92,8 @@ function(add_glsl_profile_failure name profile source code expected_line reason)
             -DCGC=$<TARGET_FILE:cgc>
             -DPROFILE=${profile}
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
-            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
             -DCODE=${code}
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
@@ -255,6 +261,14 @@ add_glsl_fixture(glslv_nested_struct_array_assignment glslv
     tests/glsl/expressions/vp_nested_struct_array_assignment.cg
     tests/glsl/expressions/vp_nested_struct_array_assignment.expected)
 
+add_glsl_fixture(glslv_struct_rhs_once glslv
+    tests/glsl/expressions/vp_struct_rhs_once.cg
+    tests/glsl/expressions/vp_struct_rhs_once.expected)
+
+add_glsl_fixture(glslv_struct_indices_once glslv
+    tests/glsl/expressions/vp_struct_indices_once.cg
+    tests/glsl/expressions/vp_struct_indices_once.expected)
+
 add_glsl_fixture(glslv_linked_varyings glslv
     tests/glsl/semantics/vp_linked_varyings.cg
     tests/glsl/semantics/vp_linked_varyings.expected)
@@ -267,10 +281,24 @@ add_test(
     NAME glsl_linked_varyings
     COMMAND ${CMAKE_COMMAND}
         -DCGC=$<TARGET_FILE:cgc>
+        "-DCONFIG=$<CONFIG>"
         -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/vp_linked_varyings.cg
         -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/fp_linked_varyings.cg
-        -DVERTEX_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glsl_linked_varyings.vert
-        -DFRAGMENT_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glsl_linked_varyings.frag
+        "-DVERTEX_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_linked_varyings.vert"
+        "-DFRAGMENT_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_linked_varyings.frag"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_link.cmake
+)
+
+add_test(
+    NAME glsl_linked_varyings_without_validator
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        "-DCONFIG=$<CONFIG>"
+        -DGLSLANG_VALIDATOR=GLSLANG_VALIDATOR-NOTFOUND
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/vp_linked_varyings.cg
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/fp_linked_varyings.cg
+        "-DVERTEX_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_linked_varyings_without_validator.vert"
+        "-DFRAGMENT_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_linked_varyings_without_validator.frag"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_link.cmake
 )
 
@@ -414,6 +442,9 @@ add_glsl_failure(glslv_unsupported_lowering
     tests/glsl/profile/vp_unsupported_operator.cg 9 remainder)
 add_glsl_failure(glslv_discard
     tests/glsl/diagnostics/vp_discard.cg 8 "discard.in.vertex.shader")
+add_glsl_profile_failure(glslv_impure_array_aggregate glslv
+    tests/glsl/diagnostics/vp_impure_array_aggregate.cg 5508 28
+    "side-effecting.aggregate.with.arrays")
 add_glsl_profile_failure(glslv_builtin_position_width glslv
     tests/glsl/diagnostics/vp_builtin_position_width.cg 5108 2 semantic)
 add_glsl_profile_failure(glslf_builtin_position_width glslf
@@ -490,7 +521,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_uniform_struct_default.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_struct_default.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_struct_default.glsl"
         -DCODE=1056
         -DEXPECTED_LINE=11
         -DREASON=invalid.initialization
@@ -502,7 +534,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_components_513.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_components_513.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_components_513.glsl"
         -DCODE=6207
         -DEXPECTED_LINE=14
         -DREASON=513.used,.512.available
@@ -517,7 +550,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_components_516.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_components_516.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_components_516.glsl"
         -DCODE=6207
         -DEXPECTED_LINE=6
         -DREASON=516.used,.512.available
@@ -529,7 +563,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_struct_components_513.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_struct_components_513.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_struct_components_513.glsl"
         -DCODE=6207
         -DEXPECTED_LINE=14
         -DREASON=513.used,.512.available
@@ -541,7 +576,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_matrix_constructor_underfilled.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_matrix_constructor_underfilled.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_matrix_constructor_underfilled.glsl"
         -DCODE=1067
         -DEXPECTED_LINE=9
         -DREASON=too.little.data
@@ -553,7 +589,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_matrix_constructor_overfilled.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_matrix_constructor_overfilled.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_matrix_constructor_overfilled.glsl"
         -DCODE=1068
         -DEXPECTED_LINE=9
         -DREASON=too.much.data
@@ -565,7 +602,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_vector_constructor_overfilled.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_vector_constructor_overfilled.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_vector_constructor_overfilled.glsl"
         -DCODE=5018
         -DEXPECTED_LINE=9
         -DREASON=length.of.constructed.vectors
@@ -577,7 +615,8 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_matrix_constructor_row_overflow.cg
-        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_matrix_constructor_row_overflow.glsl
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_matrix_constructor_row_overflow.glsl"
         -DCODE=1068
         -DEXPECTED_LINE=9
         -DREASON=too.much.data

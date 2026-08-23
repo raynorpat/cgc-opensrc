@@ -171,7 +171,7 @@ static Symbol *NewProgramReturnTemp(Symbol *program, Type *type,
         index++;
     } while (temp != NULL);
     temp = DefineVar(loc, scope, atom, type);
-    temp->properties |= SYMB_IS_PROGRAM_RETURN_TEMP;
+    temp->properties |= SYMB_IS_NATIVE_AGGREGATE_TEMP;
     return temp;
 }
 

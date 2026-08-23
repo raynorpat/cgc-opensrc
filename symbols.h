@@ -119,7 +119,7 @@ typedef enum StrorageClass {
 #define SYMB_CONNECTOR_CAN_READ     0x000020    // Symbol is a readable connector hw register
 #define SYMB_CONNECTOR_CAN_WRITE    0x000040    // Symbol is a writable connector hw register
 #define SYMB_NEEDS_BINDING          0x000080    // Symbol is a non-static global and has not yet been bound
-#define SYMB_IS_PROGRAM_RETURN_TEMP 0x000100    // Compiler-created entry return value temporary
+#define SYMB_IS_NATIVE_AGGREGATE_TEMP 0x000100  // Compiler aggregate temporary safe for native assignment
 
 // Typedefs for things defined in "support.h":
 

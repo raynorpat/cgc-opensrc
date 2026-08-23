@@ -1,0 +1,44 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct Pair
+{
+    vec4 first;
+    vec4 second;
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+Pair makePair(vec4 value, inout float state)
+{
+    Pair result;
+    state = state + 1.0;
+    result.first = value * state;
+    result.second = value + state;
+    return result;
+}
+
+void main()
+{
+    vec4 position;
+    Pair cg_aggregate;
+    Pair copied;
+    float state;
+    VertexOut cg_output;
+    Pair cg_aggregate1;
+    position = cg_ATTRIB0;
+    cg_aggregate.first = position;
+    cg_aggregate.second = position;
+    state = 0.0;
+    cg_aggregate1 = makePair(position, state);
+    copied.first = cg_aggregate1.first;
+    copied.second = cg_aggregate1.second;
+    cg_output.position = copied.first + copied.second + state;
+    gl_Position = cg_output.position;
+}
