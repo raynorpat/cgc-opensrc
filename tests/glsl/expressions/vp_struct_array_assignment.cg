@@ -1,0 +1,21 @@
+struct Data {
+    float4 values[2];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    Data a;
+    Data b;
+    Data cg_return;
+    VertexOut output;
+    a.values[0] = position;
+    a.values[1] = position * 2.0;
+    b = a;
+    cg_return = b;
+    output.position = cg_return.values[0] + cg_return.values[1];
+    return output;
+}

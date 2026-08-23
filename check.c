@@ -170,7 +170,9 @@ static Symbol *NewProgramReturnTemp(Symbol *program, Type *type,
         temp = LookUpLocalSymbol(scope, atom);
         index++;
     } while (temp != NULL);
-    return DefineVar(loc, scope, atom, type);
+    temp = DefineVar(loc, scope, atom, type);
+    temp->properties |= SYMB_IS_PROGRAM_RETURN_TEMP;
+    return temp;
 }
 
 static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)

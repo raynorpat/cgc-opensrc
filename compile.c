@@ -1726,76 +1726,103 @@ stmt *DeconstructMatrices(Scope *fscope, stmt *fStmt)
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * AssignStructMembers() - Assign individual memebers of one struct to another.
+ * AssignAggregate() - Assign individual leaves of one aggregate to another.
  *
  */
 
-static void AssignStructMembers(StmtList *fStatements, int fop, Type *fType, expr *varExpr,
-                                expr *valExpr, expr *condExpr, int VectorCond)
+static void AssignAggregate(StmtList *fStatements, Type *fType,
+                            expr *varExpr, expr *valExpr,
+                            expr *condExpr, int VectorCond)
 {
     expr *lExpr, *mExpr, *rExpr;
-    int base, len, len2;
+    int base, len, len2, index;
     Symbol *lSymb;
     Type *lType;
     stmt *lStmt;
 
-    lSymb = fType->str.members->symbols;
-    while (lSymb) {
-        len = len2 = 0;
-        lType = lSymb->type;
-        if (IsScalar(lType) || IsVector(lType, &len) || IsMatrix(lType, &len, &len2)) {
-            base = GetBase(lType);
+    len = len2 = 0;
+    if (IsScalar(fType) || IsVector(fType, &len) ||
+        IsMatrix(fType, &len, &len2))
+    {
+        base = GetBase(fType);
+        lExpr = DupExpr(varExpr);
+        rExpr = DupExpr(valExpr);
+        if (condExpr != NULL) {
+            if (len2 > 0) {
+                lExpr = GenCondGenAssign(lExpr, rExpr, condExpr);
+            } else if (len > 0) {
+                if (VectorCond) {
+                    lExpr = GenCondSVAssign(lExpr, rExpr, condExpr, base, len);
+                } else {
+                    lExpr = GenCondVAssign(lExpr, rExpr, condExpr, base, len);
+                }
+            } else {
+                lExpr = GenCondSAssign(lExpr, rExpr, condExpr, base);
+            }
+            lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
+        } else {
+            if (len2 > 0) {
+                lExpr = GenMAssign(lExpr, rExpr, base, len, len2);
+            } else if (len > 0) {
+                lExpr = GenVAssign(lExpr, rExpr, base, len);
+            } else {
+                lExpr = GenSAssign(lExpr, rExpr, base);
+            }
+            lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
+        }
+        AppendStatements(fStatements, lStmt);
+        return;
+    }
+
+    switch (GetCategory(fType)) {
+    case TYPE_CATEGORY_STRUCT:
+        lSymb = fType->str.members->symbols;
+        while (lSymb) {
+            lType = lSymb->type;
             lExpr = DupExpr(varExpr);
             mExpr = GenMember(lSymb);
             lExpr = GenMemberSelector(lExpr, mExpr);
             rExpr = DupExpr(valExpr);
             mExpr = GenMember(lSymb);
             rExpr = GenMemberSelector(rExpr, mExpr);
-            if (condExpr != NULL) {
-                if (len2 > 0) {
-                    lExpr = GenCondGenAssign(lExpr, rExpr, condExpr);
-                } else if (len > 0) {
-                    if (VectorCond) {
-                        lExpr = GenCondSVAssign(lExpr, rExpr, condExpr, base, len);
-                    } else {
-                        lExpr = GenCondVAssign(lExpr, rExpr, condExpr, base, len);
-                    }
-                } else {
-                    lExpr = GenCondSAssign(lExpr, rExpr, condExpr, base);
-                }
-                lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
-            } else {
-                if (len2 > 0) {
-                    lExpr = GenMAssign(lExpr, rExpr, base, len, len2);
-                } else if (len > 0) {
-                    lExpr = GenVAssign(lExpr, rExpr, base, len);
-                } else {
-                    lExpr = GenSAssign(lExpr, rExpr, base);
-                }
-                lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
-            }
-            AppendStatements(fStatements, lStmt);
-        } else {
-            switch (GetCategory(lType)) {
-            case TYPE_CATEGORY_STRUCT:
-                lExpr = DupExpr(varExpr);
-                mExpr = GenMember(lSymb);
-                lExpr = GenMemberSelector(lExpr, mExpr);
-                rExpr = DupExpr(valExpr);
-                mExpr = GenMember(lSymb);
-                rExpr = GenMemberSelector(rExpr, mExpr);
-                AssignStructMembers(fStatements, fop, lType, lExpr, rExpr, condExpr, VectorCond);
-                break;
-            case TYPE_CATEGORY_ARRAY:
-                // XYZZY Not Done Yet XYZZY //
-                break;
-            default:
-                break;
-            }
+            AssignAggregate(fStatements, lType, lExpr, rExpr,
+                            condExpr, VectorCond);
+            lSymb = lSymb->next;
         }
-        lSymb = lSymb->next;
+        break;
+    case TYPE_CATEGORY_ARRAY:
+        lType = fType->arr.eltype;
+        for (index = 0; index < fType->arr.numels; index++) {
+            lExpr = NewIndexOperator(Cg->pLastSourceLoc,
+                                     DupExpr(varExpr),
+                                     GenIntConst(index));
+            rExpr = NewIndexOperator(Cg->pLastSourceLoc,
+                                     DupExpr(valExpr),
+                                     GenIntConst(index));
+            AssignAggregate(fStatements, lType, lExpr, rExpr,
+                            condExpr, VectorCond);
+        }
+        break;
+    default:
+        break;
     }
-} // AssignStructMembers
+} // AssignAggregate
+
+static int IsPreservedReturnTempAssignment(expr *fExpr)
+{
+    expr *left;
+
+    if (!Cg->theHAL->GetCapsBit(CAPS_PRESERVE_RETURN_TEMP_ASSIGNMENTS))
+        return 0;
+    if (IsAssignCondSVOp(fExpr)) {
+        left = fExpr->tri.arg1;
+    } else {
+        left = fExpr->bin.left;
+    }
+    return left != NULL && left->common.kind == SYMB_N &&
+           left->sym.symbol != NULL &&
+           (left->sym.symbol->properties & SYMB_IS_PROGRAM_RETURN_TEMP) != 0;
+}
 
 /*
  * FlattenStructAssignment() - Convert struct assignments into multiple assignments of members.
@@ -1806,7 +1833,6 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
 {
     stmt *rStmt;
     expr *eExpr, *lExpr, *rExpr, *cExpr;
-    int lop, lsubop;
     StmtList lStatements;
     Type *lType;
 
@@ -1817,25 +1843,27 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
             if (IsAssignSVOp(eExpr)) {
                 lType = eExpr->bin.type;
                 if (IsStruct(lType)) {
+                    if (IsPreservedReturnTempAssignment(eExpr))
+                        return fStmt;
+                    lStatements.first = NULL;
+                    lStatements.last = NULL;
                     if (IsAssignCondSVOp(eExpr)) {
-                        lop = eExpr->tri.op;
                         lExpr = eExpr->tri.arg1;
                         cExpr = eExpr->tri.arg2;
                         rExpr = eExpr->tri.arg3;
                         if (IsScalar(cExpr->common.type)) {
-                            AssignStructMembers(&lStatements, lop, lType, lExpr, rExpr, cExpr, 0);
+                            AssignAggregate(&lStatements, lType, lExpr,
+                                            rExpr, cExpr, 0);
                         } else {
-                            AssignStructMembers(&lStatements, lop, lType, lExpr, rExpr, cExpr, 1);
+                            AssignAggregate(&lStatements, lType, lExpr,
+                                            rExpr, cExpr, 1);
                         }
                         rStmt = lStatements.first;
                     } else {
-                        lop = eExpr->bin.op;
                         lExpr = eExpr->bin.left;
                         rExpr = eExpr->bin.right;
-                        lsubop = eExpr->bin.subop;
-                        lStatements.first = NULL;
-                        lStatements.last = NULL;
-                        AssignStructMembers(&lStatements, lop, lType, lExpr, rExpr, NULL, 0);
+                        AssignAggregate(&lStatements, lType, lExpr,
+                                        rExpr, NULL, 0);
                         rStmt = lStatements.first;
                     }
                 } else {
@@ -2587,8 +2615,7 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                 PostApplyToExpressions(ConvertNamedConstantsExpr, lStmt, NULL, 0);
                 if (theHAL->GetCapsBit(CAPS_DECONSTRUCT_MATRICES))
                     lStmt = DeconstructMatrices(lScope, lStmt);
-                if (!theHAL->GetCapsBit(CAPS_NATIVE_STRUCT_ASSIGNMENTS))
-                    lStmt = FlattenStructAssignments(lScope, lStmt);
+                lStmt = FlattenStructAssignments(lScope, lStmt);
                 if (!theHAL->GetCapsBit(CAPS_DONT_FLATTEN_IF_STATEMENTS))
                     lStmt = FlattenIfStatements(lScope, lStmt);
 

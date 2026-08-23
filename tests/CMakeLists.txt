@@ -247,6 +247,33 @@ add_glsl_fixture(glslf_return_pure_once glslf
     tests/glsl/expressions/fp_return_pure_once.cg
     tests/glsl/expressions/fp_return_pure_once.expected)
 
+add_glsl_fixture(glslv_struct_array_assignment glslv
+    tests/glsl/expressions/vp_struct_array_assignment.cg
+    tests/glsl/expressions/vp_struct_array_assignment.expected)
+
+add_glsl_fixture(glslv_nested_struct_array_assignment glslv
+    tests/glsl/expressions/vp_nested_struct_array_assignment.cg
+    tests/glsl/expressions/vp_nested_struct_array_assignment.expected)
+
+add_glsl_fixture(glslv_linked_varyings glslv
+    tests/glsl/semantics/vp_linked_varyings.cg
+    tests/glsl/semantics/vp_linked_varyings.expected)
+
+add_glsl_fixture(glslf_linked_varyings glslf
+    tests/glsl/semantics/fp_linked_varyings.cg
+    tests/glsl/semantics/fp_linked_varyings.expected)
+
+add_test(
+    NAME glsl_linked_varyings
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/vp_linked_varyings.cg
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/fp_linked_varyings.cg
+        -DVERTEX_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glsl_linked_varyings.vert
+        -DFRAGMENT_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glsl_linked_varyings.frag
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_link.cmake
+)
+
 add_glsl_fixture(glslf_uniform_components_64 glslf
     tests/glsl/limits/fp_uniform_components_64.cg
     tests/glsl/limits/fp_uniform_components_64.expected)

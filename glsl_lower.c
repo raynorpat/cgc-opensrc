@@ -81,6 +81,7 @@ typedef struct GlslInterfaceSource_Rec {
     struct GlslInterfaceSource_Rec *next;
     const Symbol *source;
     const char *interfaceKey;
+    const char *reservedName;
     int isOutput;
 } GlslInterfaceSource;
 
@@ -1312,6 +1313,24 @@ static int GlslHasInterfaceBinding(GlslLowerContext *context,
     return 0;
 }
 
+static const char *GlslReservedInterfaceName(GlslLowerContext *context,
+                                             const char *interfaceKey,
+                                             int isOutput)
+{
+    GlslInterfaceSource *source;
+
+    for (source = context->interfaceSources; source != NULL;
+         source = source->next)
+    {
+        if (source->isOutput == isOutput &&
+            !strcmp(source->interfaceKey, interfaceKey))
+        {
+            return source->reservedName;
+        }
+    }
+    return NULL;
+}
+
 static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
                                     Symbol *member)
 {
@@ -1356,8 +1375,12 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
         if (strlen(interfaceName) + 4 > sizeof(generatedName))
             return NULL;
         sprintf(generatedName, "cg_%s", interfaceName);
-        name = GlslAllocateSymbolName(context->module, member,
-                                      generatedName);
+        name = GlslReservedInterfaceName(context, interfaceName,
+                                         isOutput);
+        if (name == NULL) {
+            name = GlslAllocateSymbolName(context->module, member,
+                                          generatedName);
+        }
         if (name == NULL)
             return NULL;
         if (!isOutput && context->profile->stage == GLSL_STAGE_VERTEX)
@@ -3370,6 +3393,8 @@ static int GlslValidateInterfaceSource(GlslLowerContext *context,
     GlslInterfaceSource *record;
     Binding *binding;
     const char *interfaceKey;
+    char generatedName[256];
+    int reserveVarying;
 
     binding = source->details.var.bind;
     if (binding == NULL || binding->none.kind != BK_CONNECTOR ||
@@ -3396,7 +3421,21 @@ static int GlslValidateInterfaceSource(GlslLowerContext *context,
         return 0;
     record->source = source;
     record->interfaceKey = interfaceKey;
+    record->reservedName = NULL;
     record->isOutput = isOutput;
+    reserveVarying = (context->profile->stage == GLSL_STAGE_VERTEX &&
+                      isOutput) ||
+                     (context->profile->stage == GLSL_STAGE_FRAGMENT &&
+                      !isOutput);
+    if (reserveVarying && strncmp(interfaceKey, "gl_", 3)) {
+        if (strlen(interfaceKey) + 4 > sizeof(generatedName))
+            return 0;
+        sprintf(generatedName, "cg_%s", interfaceKey);
+        record->reservedName = GlslAllocateName(context->module,
+                                                generatedName);
+        if (record->reservedName == NULL)
+            return 0;
+    }
     record->next = context->interfaceSources;
     context->interfaceSources = record;
     return 1;
