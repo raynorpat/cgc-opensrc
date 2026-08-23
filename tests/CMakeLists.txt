@@ -207,6 +207,10 @@ add_glsl_fixture(glslf_interfaces glslf
     tests/glsl/semantics/fp_interfaces.cg
     tests/glsl/semantics/fp_interfaces.expected)
 
+add_glsl_fixture(glslv_reused_interface glslv
+    tests/glsl/semantics/vp_reused_interface.cg
+    tests/glsl/semantics/vp_reused_interface.expected)
+
 add_glsl_fixture(glslf_helper_discard glslf
     tests/glsl/expressions/fp_helper_discard.cg
     tests/glsl/expressions/fp_helper_discard.expected)
@@ -222,6 +226,26 @@ add_glsl_fixture(glslv_early_return glslv
 add_glsl_fixture(glslf_early_return glslf
     tests/glsl/expressions/fp_early_return.cg
     tests/glsl/expressions/fp_early_return.expected)
+
+add_glsl_fixture(glslv_out_returns glslv
+    tests/glsl/expressions/vp_out_returns.cg
+    tests/glsl/expressions/vp_out_returns.expected)
+
+add_glsl_fixture(glslf_out_returns glslf
+    tests/glsl/expressions/fp_out_returns.cg
+    tests/glsl/expressions/fp_out_returns.expected)
+
+add_glsl_fixture(glslv_return_once glslv
+    tests/glsl/expressions/vp_return_once.cg
+    tests/glsl/expressions/vp_return_once.expected)
+
+add_glsl_fixture(glslf_return_once glslf
+    tests/glsl/expressions/fp_return_once.cg
+    tests/glsl/expressions/fp_return_once.expected)
+
+add_glsl_fixture(glslf_return_pure_once glslf
+    tests/glsl/expressions/fp_return_pure_once.cg
+    tests/glsl/expressions/fp_return_pure_once.expected)
 
 add_glsl_fixture(glslf_uniform_components_64 glslf
     tests/glsl/limits/fp_uniform_components_64.cg
@@ -389,6 +413,24 @@ add_glsl_profile_failure(glslf_duplicate_output glslf
 add_glsl_profile_failure(glslf_numeric_discard glslf
     tests/glsl/diagnostics/fp_numeric_discard.cg 1018 8
     "Boolean.expression.expected")
+add_glsl_profile_failure(glslv_duplicate_exact_input_same glslv
+    tests/glsl/diagnostics/vp_duplicate_exact_input_same.cg 5508 6
+    "duplicate.interface")
+add_glsl_profile_failure(glslv_duplicate_exact_input_type glslv
+    tests/glsl/diagnostics/vp_duplicate_exact_input_type.cg 5508 6
+    "duplicate.interface")
+add_glsl_profile_failure(glslv_duplicate_exact_output glslv
+    tests/glsl/diagnostics/vp_duplicate_exact_output.cg 5508 4
+    "duplicate.interface")
+add_glsl_profile_failure(glslf_duplicate_exact_input_same glslf
+    tests/glsl/diagnostics/fp_duplicate_exact_input_same.cg 5508 6
+    "duplicate.interface")
+add_glsl_profile_failure(glslf_duplicate_exact_input_type glslf
+    tests/glsl/diagnostics/fp_duplicate_exact_input_type.cg 5508 6
+    "duplicate.interface")
+add_glsl_profile_failure(glslf_duplicate_exact_output glslf
+    tests/glsl/diagnostics/fp_duplicate_exact_output.cg 5508 3
+    "duplicate.interface")
 add_glsl_failure(glslv_constant_remainder
     tests/glsl/diagnostics/vp_constant_remainder.cg 6 remainder)
 add_glsl_failure(glslv_constant_shift_left

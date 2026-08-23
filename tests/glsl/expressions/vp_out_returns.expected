@@ -1,0 +1,53 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind attribute cg_ATTRIB1 ATTRIB1
+// cgc-bind varying cg_COLOR0 COLOR0
+// cgc-bind builtin gl_Position POSITION0
+// cgc-bind builtin gl_PointSize PSIZE0
+
+struct VertexOut
+{
+    vec4 position;
+    vec4 color;
+};
+
+attribute vec4 cg_ATTRIB0;
+attribute vec4 cg_ATTRIB1;
+varying vec4 cg_COLOR0;
+
+void main()
+{
+    vec4 position;
+    vec4 selector;
+    float pointSize;
+    VertexOut cg_output;
+    int index;
+    position = cg_ATTRIB0;
+    selector = cg_ATTRIB1;
+    cg_output.position = position;
+    cg_output.color = selector;
+    pointSize = 1.0;
+    if (selector.x > 0.5)
+    {
+        pointSize = 2.0;
+        gl_Position = cg_output.position;
+        cg_COLOR0 = cg_output.color;
+        gl_PointSize = pointSize;
+        return;
+    }
+    for (index = 0; index < 1; index = index + 1)
+    {
+        if (selector.y > 0.5)
+        {
+            pointSize = 3.0;
+            gl_Position = cg_output.position;
+            cg_COLOR0 = cg_output.color;
+            gl_PointSize = pointSize;
+            return;
+        }
+    }
+    pointSize = 4.0;
+    gl_Position = cg_output.position;
+    cg_COLOR0 = cg_output.color;
+    gl_PointSize = pointSize;
+}

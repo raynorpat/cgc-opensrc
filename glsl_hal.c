@@ -566,6 +566,7 @@ static int GetCapsBit_glsl(int bitNumber)
     case CAPS_MATRIX_CONSTRUCTOR_AST:
     case CAPS_AGGREGATE_DEFAULT_BINDINGS:
     case CAPS_PRESERVE_ENTRY_RETURNS:
+    case CAPS_NATIVE_STRUCT_ASSIGNMENTS:
         return 1;
     default:
         return 0;

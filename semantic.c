@@ -559,10 +559,16 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
 
     voutType->str.variety = Cg->theHAL->outcid;
 
-    // Append initial and final assignment statements to beginning and end of main:
+    // Add input assignments and retain profile-managed output assignments:
 
-    program->details.fun.statements = ConcatStmts(instmts.first, program->details.fun.statements);
-    program->details.fun.statements = ConcatStmts(program->details.fun.statements, outstmts.first);
+    program->details.fun.statements = ConcatStmts(instmts.first,
+                                                  program->details.fun.statements);
+    if (Cg->theHAL->GetCapsBit(CAPS_PRESERVE_ENTRY_RETURNS)) {
+        program->details.fun.entryOutputAssignments = outstmts.first;
+    } else {
+        program->details.fun.statements = ConcatStmts(
+            program->details.fun.statements, outstmts.first);
+    }
 
 } // BuildSemanticStructs
 

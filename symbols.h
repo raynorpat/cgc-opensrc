@@ -222,6 +222,7 @@ struct FunSymbol_Rec {
     Scope *locals;
     Symbol *params;
     union stmt_rec *statements;
+    union stmt_rec *entryOutputAssignments;
     Symbol *overload;   // List of overloaded versions of this function
     int flags;          // Used when resolving overloaded reference
     short group;        // Built-in function group

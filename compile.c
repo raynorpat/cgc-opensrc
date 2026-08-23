@@ -2587,7 +2587,8 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                 PostApplyToExpressions(ConvertNamedConstantsExpr, lStmt, NULL, 0);
                 if (theHAL->GetCapsBit(CAPS_DECONSTRUCT_MATRICES))
                     lStmt = DeconstructMatrices(lScope, lStmt);
-                lStmt = FlattenStructAssignments(lScope, lStmt);
+                if (!theHAL->GetCapsBit(CAPS_NATIVE_STRUCT_ASSIGNMENTS))
+                    lStmt = FlattenStructAssignments(lScope, lStmt);
                 if (!theHAL->GetCapsBit(CAPS_DONT_FLATTEN_IF_STATEMENTS))
                     lStmt = FlattenIfStatements(lScope, lStmt);
 

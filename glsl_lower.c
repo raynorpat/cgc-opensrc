@@ -77,6 +77,13 @@ typedef struct GlslMatrixSelectorHelper_Rec {
     int mask;
 } GlslMatrixSelectorHelper;
 
+typedef struct GlslInterfaceSource_Rec {
+    struct GlslInterfaceSource_Rec *next;
+    const Symbol *source;
+    const char *interfaceKey;
+    int isOutput;
+} GlslInterfaceSource;
+
 typedef struct GlslLowerContext_Rec {
     GlslModule *module;
     const GlslProfileDesc *profile;
@@ -86,6 +93,7 @@ typedef struct GlslLowerContext_Rec {
     GlslMatrixHelper *lastMatrixHelper;
     GlslMatrixSelectorHelper *selectorHelpers;
     GlslMatrixSelectorHelper *lastSelectorHelper;
+    GlslInterfaceSource *interfaceSources;
     SourceLoc statementLoc;
     int loopDepth;
 } GlslLowerContext;
@@ -3355,6 +3363,94 @@ static void GlslPrependMatrixSelectorHelpers(GlslLowerContext *context)
     }
 }
 
+static int GlslValidateInterfaceSource(GlslLowerContext *context,
+                                       Symbol *source, int isOutput)
+{
+    GlslInterfaceSource *current;
+    GlslInterfaceSource *record;
+    Binding *binding;
+    const char *interfaceKey;
+
+    binding = source->details.var.bind;
+    if (binding == NULL || binding->none.kind != BK_CONNECTOR ||
+        !(binding->none.properties & BIND_IS_BOUND) ||
+        binding->conn.rname == 0) return 1;
+    interfaceKey = GlslCanonicalInterfaceName(
+        context->profile, binding->conn.rname, isOutput);
+    if (interfaceKey == NULL)
+        return 1;
+    for (current = context->interfaceSources; current != NULL;
+         current = current->next)
+    {
+        if (current->isOutput != isOutput ||
+            strcmp(current->interfaceKey, interfaceKey)) continue;
+        if (current->source == source)
+            return 1;
+        context->statementLoc = source->loc;
+        GlslRecordFailure(context, "duplicate interface semantic");
+        return 0;
+    }
+    record = (GlslInterfaceSource *) context->module->alloc(
+        context->module->allocArg, sizeof(GlslInterfaceSource));
+    if (record == NULL)
+        return 0;
+    record->source = source;
+    record->interfaceKey = interfaceKey;
+    record->isOutput = isOutput;
+    record->next = context->interfaceSources;
+    context->interfaceSources = record;
+    return 1;
+}
+
+static int GlslValidateInterfaceType(GlslLowerContext *context,
+                                     Type *type, Symbol *source,
+                                     int isOutput)
+{
+    Symbol *member;
+
+    if (GetCategory(type) != TYPE_CATEGORY_STRUCT)
+        return GlslValidateInterfaceSource(context, source, isOutput);
+    if (type->str.members == NULL)
+        return 1;
+    for (member = type->str.members->symbols; member != NULL;
+         member = member->next)
+    {
+        if (!GlslValidateInterfaceSource(context, member, isOutput))
+            return 0;
+    }
+    return 1;
+}
+
+static int GlslValidateEntryInterfaces(GlslLowerContext *context,
+                                       Symbol *program)
+{
+    Symbol *formal;
+    Symbol *member;
+    Type *result;
+    int isOutput;
+
+    for (formal = program->details.fun.params; formal != NULL;
+         formal = formal->next)
+    {
+        if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM)
+            continue;
+        isOutput = (GetQualifiers(formal->type) &
+                    TYPE_QUALIFIER_OUT) != 0;
+        if (!GlslValidateInterfaceType(context, formal->type,
+                                       formal, isOutput)) return 0;
+    }
+    result = program->type->fun.rettype;
+    if (GetCategory(result) != TYPE_CATEGORY_STRUCT ||
+        result->str.members == NULL) return 1;
+    for (member = result->str.members->symbols; member != NULL;
+         member = member->next)
+    {
+        if (!GlslValidateInterfaceSource(context, member, 1))
+            return 0;
+    }
+    return 1;
+}
+
 int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
                      SourceLoc *loc, Scope *scope, Symbol *program)
 {
@@ -3383,6 +3479,7 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     context.statementLoc = program->loc;
     result = program->type->fun.rettype;
     if (GetCategory(result) != TYPE_CATEGORY_STRUCT ||
+        !GlslValidateEntryInterfaces(&context, program) ||
         !GlslEnsureType(&context, result) ||
         !GlslEnsureParameterTypes(&context,
                                   program->details.fun.params) ||

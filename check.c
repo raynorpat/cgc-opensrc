@@ -100,8 +100,78 @@ struct BuildReturnAssignments {
     Scope *globalScope;
     Symbol *program;
     stmt *terminalReturn;
+    stmt *entryOutputAssignments;
+    Symbol *returnTemp;
     int preserveReturns;
 };
+
+static stmt *DuplicateEntryOutputAssignments(stmt *source)
+{
+    stmt *copy;
+    stmt *list;
+
+    list = NULL;
+    while (source != NULL) {
+        assert(source->commonst.kind == EXPR_STMT);
+        copy = (stmt *) NewExprStmt(&source->commonst.loc,
+                                    DupExpr(source->exprst.exp));
+        list = ConcatStmts(list, copy);
+        source = source->commonst.next;
+    }
+    return list;
+}
+
+static int ProgramReturnExprNeedsTemp(expr *fExpr)
+{
+    if (fExpr == NULL)
+        return 0;
+    if (fExpr->common.HasSideEffects)
+        return 1;
+    switch (fExpr->common.kind) {
+    case DECL_N:
+    case SYMB_N:
+    case CONST_N:
+        return 0;
+    case UNARY_N:
+        return ProgramReturnExprNeedsTemp(fExpr->un.arg);
+    case BINARY_N:
+        if (fExpr->bin.op == FUN_CALL_OP ||
+            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+        return ProgramReturnExprNeedsTemp(fExpr->bin.left) ||
+               ProgramReturnExprNeedsTemp(fExpr->bin.right);
+    case TRINARY_N:
+        return ProgramReturnExprNeedsTemp(fExpr->tri.arg1) ||
+               ProgramReturnExprNeedsTemp(fExpr->tri.arg2) ||
+               ProgramReturnExprNeedsTemp(fExpr->tri.arg3);
+    default:
+        assert(!"bad kind to ProgramReturnExprNeedsTemp()");
+        return 1;
+    }
+}
+
+static Symbol *NewProgramReturnTemp(Symbol *program, Type *type,
+                                    SourceLoc *loc)
+{
+    Scope *scope;
+    Symbol *temp;
+    char name[64];
+    int atom;
+    int index;
+
+    scope = program->details.fun.locals;
+    index = 0;
+    do {
+        if (index == 0) {
+            strcpy(name, "cg_return");
+        } else {
+            sprintf(name, "cg_return%d", index);
+        }
+        atom = AddAtom(atable, name);
+        temp = LookUpLocalSymbol(scope, atom);
+        index++;
+    } while (temp != NULL);
+    return DefineVar(loc, scope, atom, type);
+}
 
 static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
 {
@@ -112,7 +182,7 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
     Scope *lScope, *gScope, *voutScope;
     stmt *lStmt, *stmtlist;
     stmt *sourceReturn;
-    int category, len, lname;
+    int category, len, lname, resultMembers, useReturnTemp;
 
     if (fStmt->commonst.kind == RETURN_STMT) {
         sourceReturn = fStmt;
@@ -130,6 +200,31 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                 voutVar = Cg->theHAL->varyingOut;
                 voutScope = voutVar->type->str.members;
                 lScope = rettype->str.members;
+                resultMembers = 0;
+                lSymb = lScope->symbols;
+                while (lSymb) {
+                    lname = lSymb->details.var.semantics ?
+                        lSymb->details.var.semantics : lSymb->name;
+                    outSymb = LookUpLocalSymbol(voutScope, lname);
+                    retSymb = LookUpLocalSymbol(lScope, lSymb->name);
+                    if (outSymb && retSymb)
+                        resultMembers++;
+                    lSymb = lSymb->next;
+                }
+                useReturnTemp = lstr->preserveReturns &&
+                    resultMembers > 1 && ProgramReturnExprNeedsTemp(
+                        sourceReturn->returnst.exp);
+                if (useReturnTemp) {
+                    if (lstr->returnTemp == NULL) {
+                        lstr->returnTemp = NewProgramReturnTemp(
+                            program, rettype, &sourceReturn->commonst.loc);
+                    }
+                    lStmt = NewSimpleAssignmentStmt(
+                        &sourceReturn->commonst.loc,
+                        GenSymb(lstr->returnTemp),
+                        sourceReturn->returnst.exp, 0);
+                    stmtlist = ConcatStmts(stmtlist, lStmt);
+                }
                 lSymb = lScope->symbols;
                 while (lSymb) {
                     // Create an assignment statement of the bound variable to the $vout member:
@@ -138,7 +233,12 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                     retSymb = LookUpLocalSymbol(lScope, lSymb->name);
                     if (outSymb && retSymb) {
                         // outSymb may not be in the symbol table if it's a "hidden" register.
-                        returnVar = DupExpr(fStmt->returnst.exp);
+                        if (useReturnTemp) {
+                            returnVar = GenSymb(lstr->returnTemp);
+                        } else {
+                            returnVar = DupExpr(
+                                sourceReturn->returnst.exp);
+                        }
                         outputVar = (expr *) NewSymbNode(VARIABLE_OP, voutVar);
                         lExpr = GenMemberReference(outputVar, outSymb);
                         rexpr = GenMemberReference(returnVar, retSymb);
@@ -159,12 +259,21 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                 //               GetAtomString(atable, program->name));
             }
         }
-        if (lstr->preserveReturns &&
-            sourceReturn != lstr->terminalReturn)
-        {
-            lStmt = (stmt *) NewReturnStmt(&sourceReturn->commonst.loc,
-                                           NULL, NULL);
-            fStmt = ConcatStmts(fStmt, lStmt);
+        if (lstr->preserveReturns) {
+            if (lstr->entryOutputAssignments != NULL) {
+                if (sourceReturn == lstr->terminalReturn) {
+                    lStmt = lstr->entryOutputAssignments;
+                } else {
+                    lStmt = DuplicateEntryOutputAssignments(
+                        lstr->entryOutputAssignments);
+                }
+                fStmt = ConcatStmts(fStmt, lStmt);
+            }
+            if (sourceReturn != lstr->terminalReturn) {
+                lStmt = (stmt *) NewReturnStmt(
+                    &sourceReturn->commonst.loc, NULL, NULL);
+                fStmt = ConcatStmts(fStmt, lStmt);
+            }
         }
     }
     return fStmt;
@@ -463,6 +572,9 @@ static int CheckFunctionDefinition(Scope *fScope, Symbol *funSymb, int IsProgram
 
             lstr.globalScope = fScope;
             lstr.program = funSymb;
+            lstr.entryOutputAssignments =
+                funSymb->details.fun.entryOutputAssignments;
+            lstr.returnTemp = NULL;
             terminalReturn = lStmt;
             while (terminalReturn != NULL &&
                    terminalReturn->commonst.next != NULL)
@@ -479,6 +591,10 @@ static int CheckFunctionDefinition(Scope *fScope, Symbol *funSymb, int IsProgram
                 CAPS_PRESERVE_ENTRY_RETURNS);
             lStmt = PreApplyToStatements(BuildProgramReturnAssignments,
                                          lStmt, &lstr, 0);
+            if (lstr.preserveReturns && terminalReturn == NULL) {
+                lStmt = ConcatStmts(lStmt,
+                    lstr.entryOutputAssignments);
+            }
             funSymb->details.fun.statements = lStmt;
         }
         ApplyToTopExpressions(CheckExpressionForUndefinedFunctions, lStmt, &count, 0);
