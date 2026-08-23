@@ -479,6 +479,7 @@ int main(void)
     assert(binding->loc.file == 0);
     assert(binding->loc.line == 0);
     assert(binding->declaration == NULL);
+    assert(binding->isOutput == 0);
 
     secondDecl = GlslNewDecl(&dirtyModule, GLSL_STORAGE_UNIFORM, type,
         "second");
@@ -552,6 +553,38 @@ int main(void)
     assert(writer != NULL);
     assert(!GlslWriteModule(writer, &module));
     assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+
+    GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(&module, type, "main");
+    assert(function != NULL);
+    function->isEntry = 1;
+    module.entry = function;
+    GlslAppendFunction(&module.functions, function);
+    stmt = GlslNewStmt(&module, GLSL_STMT_DISCARD);
+    assert(stmt != NULL);
+    GlslAppendStmt(&function->body, stmt);
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &module));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+
+    GlslInitModule(&module, GLSL_STAGE_FRAGMENT, TestAlloc, NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(&module, type, "main");
+    assert(function != NULL);
+    function->isEntry = 1;
+    module.entry = function;
+    GlslAppendFunction(&module.functions, function);
+    stmt = GlslNewStmt(&module, GLSL_STMT_DISCARD);
+    assert(stmt != NULL);
+    GlslAppendStmt(&function->body, stmt);
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(GlslWriteModule(writer, &module));
+    assert(ftell(writer) > 0);
     assert(!fclose(writer));
     return 0;
 }

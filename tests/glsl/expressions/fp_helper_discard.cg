@@ -1,0 +1,20 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+float4 shade(float2 texcoord)
+{
+    if (texcoord.x < 0.0) {
+        discard texcoord.y < 0.0;
+    }
+    if (texcoord.y > 1.0)
+        return float4(1.0, 1.0, 1.0, 1.0);
+    return float4(texcoord.x, texcoord.y, 0.0, 1.0);
+}
+
+FragmentOut main(float2 texcoord : TEXCOORD0)
+{
+    FragmentOut output;
+    output.color = shade(texcoord);
+    return output;
+}

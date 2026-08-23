@@ -1,0 +1,14 @@
+struct FragmentOut {
+    float4 color : COLOR;
+};
+
+FragmentOut main(float4 diffuse : DIFFUSE,
+                 float2 texcoord : TEXCOORD1,
+                 float fog : FOGCOORD,
+                 float4 position : POSITION)
+{
+    FragmentOut output;
+    output.color = diffuse +
+                   float4(texcoord.x, texcoord.y, fog, position.w);
+    return output;
+}

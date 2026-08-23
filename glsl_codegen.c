@@ -141,7 +141,7 @@ static int GlslValidateDecls(const GlslDecl *decl)
     return 1;
 }
 
-static int GlslValidateStmtList(const GlslStmt *stmt);
+static int GlslValidateStmtList(const GlslStmt *stmt, GlslStage stage);
 
 static int GlslValidateForPart(const GlslStmt *stmt)
 {
@@ -155,7 +155,7 @@ static int GlslValidateForPart(const GlslStmt *stmt)
     return 1;
 }
 
-static int GlslValidateStmtList(const GlslStmt *stmt)
+static int GlslValidateStmtList(const GlslStmt *stmt, GlslStage stage)
 {
     for (; stmt != NULL; stmt = stmt->next) {
         switch (stmt->kind) {
@@ -164,29 +164,34 @@ static int GlslValidateStmtList(const GlslStmt *stmt)
             break;
         case GLSL_STMT_IF:
             if (!GlslValidateExpr(stmt->u.ifStmt.condition) ||
-                !GlslValidateStmtList(stmt->u.ifStmt.trueBranch) ||
-                !GlslValidateStmtList(stmt->u.ifStmt.falseBranch)) return 0;
+                !GlslValidateStmtList(stmt->u.ifStmt.trueBranch, stage) ||
+                !GlslValidateStmtList(stmt->u.ifStmt.falseBranch, stage))
+            {
+                return 0;
+            }
             break;
         case GLSL_STMT_WHILE:
         case GLSL_STMT_DO:
             if (!GlslValidateExpr(stmt->u.loop.condition) ||
-                !GlslValidateStmtList(stmt->u.loop.body)) return 0;
+                !GlslValidateStmtList(stmt->u.loop.body, stage)) return 0;
             break;
         case GLSL_STMT_FOR:
             if (!GlslValidateForPart(stmt->u.forStmt.init) ||
                 (stmt->u.forStmt.condition != NULL &&
                  !GlslValidateExpr(stmt->u.forStmt.condition)) ||
                 !GlslValidateForPart(stmt->u.forStmt.step) ||
-                !GlslValidateStmtList(stmt->u.forStmt.body)) return 0;
+                !GlslValidateStmtList(stmt->u.forStmt.body, stage)) return 0;
             break;
         case GLSL_STMT_BLOCK:
-            if (!GlslValidateStmtList(stmt->u.block)) return 0;
+            if (!GlslValidateStmtList(stmt->u.block, stage)) return 0;
             break;
         case GLSL_STMT_RETURN:
             if (stmt->u.returnExpr != NULL &&
                 !GlslValidateExpr(stmt->u.returnExpr)) return 0;
             break;
         case GLSL_STMT_DISCARD:
+            if (stage != GLSL_STAGE_FRAGMENT) return 0;
+            break;
         case GLSL_STMT_BREAK:
         case GLSL_STMT_CONTINUE:
             break;
@@ -230,7 +235,7 @@ static int GlslValidateModule(const GlslModule *module)
             GlslTypeName(&function->result) == NULL ||
             !GlslValidateDecls(function->parameters) ||
             !GlslValidateDecls(function->locals) ||
-            !GlslValidateStmtList(function->body)) return 0;
+            !GlslValidateStmtList(function->body, module->stage)) return 0;
         if (function->isEntry &&
             (function != module->entry || function->parameters != NULL ||
              strcmp(function->name, "main") ||

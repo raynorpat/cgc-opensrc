@@ -80,6 +80,21 @@ function(add_glsl_common_failure name source expected_line reason)
     )
 endfunction()
 
+function(add_glsl_profile_failure name profile source code expected_line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.glsl
+            -DCODE=${code}
+            -DEXPECTED_LINE=${expected_line}
+            -DREASON=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+    )
+endfunction()
+
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
@@ -170,6 +185,30 @@ add_glsl_registration(glslf)
 add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.cg
     tests/glsl/profile/vp_passthrough.expected)
+
+add_glsl_fixture(glslf_passthrough glslf
+    tests/glsl/profile/fp_passthrough.cg
+    tests/glsl/profile/fp_passthrough.expected)
+
+add_glsl_fixture(glslf_control glslf
+    tests/glsl/expressions/fp_control.cg
+    tests/glsl/expressions/fp_control.expected)
+
+add_glsl_fixture(glslf_builtins glslf
+    tests/glsl/semantics/fp_builtins.cg
+    tests/glsl/semantics/fp_builtins.expected)
+
+add_glsl_fixture(glslf_interfaces glslf
+    tests/glsl/semantics/fp_interfaces.cg
+    tests/glsl/semantics/fp_interfaces.expected)
+
+add_glsl_fixture(glslf_helper_discard glslf
+    tests/glsl/expressions/fp_helper_discard.cg
+    tests/glsl/expressions/fp_helper_discard.expected)
+
+add_glsl_fixture(glslf_uniform_components_64 glslf
+    tests/glsl/limits/fp_uniform_components_64.cg
+    tests/glsl/limits/fp_uniform_components_64.expected)
 
 add_glsl_fixture(glslv_defaults glslv
     tests/glsl/uniforms/vp_defaults.cg
@@ -305,6 +344,8 @@ add_glsl_fixture(glslv_function_local_collision glslv
 
 add_glsl_failure(glslv_unsupported_lowering
     tests/glsl/profile/vp_unsupported_operator.cg 9 remainder)
+add_glsl_failure(glslv_discard
+    tests/glsl/diagnostics/vp_discard.cg 8 "discard.in.vertex.shader")
 add_glsl_failure(glslv_constant_remainder
     tests/glsl/diagnostics/vp_constant_remainder.cg 6 remainder)
 add_glsl_failure(glslv_constant_shift_left
@@ -355,6 +396,9 @@ add_test(
         -DREASON=513.used,.512.available
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
 )
+add_glsl_profile_failure(glslf_uniform_components_65 glslf
+    tests/glsl/limits/fp_uniform_components_65.cg 6207 7
+    "65.used,.64.available")
 add_test(
     NAME glslv_uniform_components_516
     COMMAND ${CMAKE_COMMAND}

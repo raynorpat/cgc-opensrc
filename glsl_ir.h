@@ -295,6 +295,7 @@ struct GlslBinding_Rec {
     const char *semantic;
     GlslLoc loc;
     GlslDecl *declaration;
+    int isOutput;
     int defaultCount;
     float *defaultValues;
 };

@@ -1268,6 +1268,8 @@ static int GlslBindingComesBefore(const GlslBinding *left,
 {
     if (left->storage != right->storage)
         return left->storage < right->storage;
+    if (left->isOutput != right->isOutput)
+        return left->isOutput < right->isOutput;
     if (left->loc.file != right->loc.file)
         return left->loc.file < right->loc.file;
     if (left->loc.line != right->loc.line)
@@ -1341,6 +1343,7 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
     decl->identity = member;
     GlslSetLoc(&decl->loc, &member->loc);
     binding->declaration = decl;
+    binding->isOutput = isOutput;
     GlslSetLoc(&binding->loc, &member->loc);
     if (storage != GLSL_STORAGE_BUILTIN)
         GlslAppendDecl(&context->module->globals, decl);
@@ -3191,6 +3194,35 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
                     return 0;
             }
             break;
+        case DISCARD_STMT:
+            if (context->module->stage != GLSL_STAGE_FRAGMENT) {
+                GlslRecordFailure(context, "discard in vertex shader");
+                return 0;
+            }
+            if (source->discardst.cond == NULL ||
+                source->discardst.cond->common.kind != UNARY_N ||
+                source->discardst.cond->un.op != KILL_OP)
+            {
+                GlslRecordFailure(context, "GLSL discard statement");
+                return 0;
+            }
+            if (source->discardst.cond->un.arg == NULL) {
+                target = GlslNewStmt(context->module, GLSL_STMT_DISCARD);
+            } else {
+                GlslStmt *discard;
+
+                target = GlslNewStmt(context->module, GLSL_STMT_IF);
+                discard = GlslNewStmt(context->module, GLSL_STMT_DISCARD);
+                if (target == NULL || discard == NULL)
+                    return 0;
+                target->u.ifStmt.condition = GlslLowerExpr(
+                    context, source->discardst.cond->un.arg);
+                if (target->u.ifStmt.condition == NULL)
+                    return 0;
+                GlslSetLoc(&discard->loc, &source->commonst.loc);
+                target->u.ifStmt.trueBranch = discard;
+            }
+            break;
         case BREAK_STMT:
             if (context->loopDepth == 0) {
                 GlslRecordFailure(context, "break outside loop");
@@ -3291,7 +3323,9 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
 
     if (module == NULL || profile == NULL || scope == NULL ||
         program == NULL || program->kind != FUNCTION_S ||
-        profile->stage != GLSL_STAGE_VERTEX)
+        (profile->stage != GLSL_STAGE_VERTEX &&
+         profile->stage != GLSL_STAGE_FRAGMENT) ||
+        module->stage != profile->stage)
     {
         if (module != NULL)
             module->errors++;

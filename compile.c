@@ -1510,7 +1510,8 @@ int GetConstIndex(expr *fExpr)
 
 static int IsComma(const expr *fExpr)
 {
-    return fExpr->common.kind == BINARY_N && fExpr->bin.op == COMMA_OP;
+    return fExpr != NULL && fExpr->common.kind == BINARY_N &&
+           fExpr->bin.op == COMMA_OP;
 } // IsComma
 
 /*
