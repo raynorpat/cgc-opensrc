@@ -588,11 +588,16 @@ static int PropagateSingleFullMoves(ArbProgram *program)
             continue;
         for (jj = 0; jj < 4; jj++)
             replacement.swizzle[jj] = (signed char) jj;
-        for (inst = inst->next; inst; inst = inst->next) {
-            for (ii = 0; ii < inst->srcCount; ii++) {
-                if (OperandReferencesTemp(&inst->src[ii], inst->dst.index)) {
-                    inst->src[ii] = replacement;
-                    changed = 1;
+        {
+            ArbInstruction *user;
+            for (user = inst->next; user; user = user->next) {
+                for (ii = 0; ii < user->srcCount; ii++) {
+                    if (OperandReferencesTemp(&user->src[ii],
+                                              inst->dst.index))
+                    {
+                        user->src[ii] = replacement;
+                        changed = 1;
+                    }
                 }
             }
         }

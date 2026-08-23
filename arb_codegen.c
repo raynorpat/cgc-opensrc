@@ -701,6 +701,7 @@ static void WriteDeclarations(FILE *out, const ArbProgram *program)
 {
     ArbInstruction const *inst;
     int maxTemp = -1;
+    int maxParam = -1;
     int ii;
 
     for (inst = program->first; inst; inst = inst->next) {
@@ -712,10 +713,18 @@ static void WriteDeclarations(FILE *out, const ArbProgram *program)
             {
                 maxTemp = inst->src[ii].index;
             }
+            if (inst->src[ii].file == ARB_REG_PARAM &&
+                !inst->src[ii].relative && inst->src[ii].index > maxParam)
+            {
+                maxParam = inst->src[ii].index;
+            }
         }
     }
     for (ii = 0; ii <= maxTemp; ii++)
         fprintf(out, "TEMP R%d;\n", ii);
+    if (maxParam >= 0)
+        fprintf(out, "PARAM c[%d] = { program.local[0..%d] };\n",
+                maxParam, maxParam);
     for (ii = 0; ii < program->numConstants; ii++) {
         const ArbConstant *cnst = program->constants;
         while (cnst && cnst->index != ii)

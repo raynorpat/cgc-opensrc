@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -387,25 +387,169 @@ static int IsValidRuntimeBase_arb(int fBase)
 } // IsValidRuntimeBase_arb
 
 /*
- * BindUniformUnbound_arb() - Deterministic numeric uniform allocation is
- *         implemented with the uniform-packing support.
+ * ReserveUniformRange_arb() - Find the first contiguous free range in the
+ *         profile's uniform bitmap and mark it used.  Returns the first
+ *         register or -1 when the portable parameter limit cannot hold
+ *         the whole value.
+ */
+
+static int ReserveUniformRange_arb(ArbHALData *data, int count)
+{
+    int first;
+    int ii;
+
+    for (first = 0; first + count <= ARBVP_MAX_PARAMETERS; first++) {
+        int free_ = 1;
+        for (ii = 0; ii < count; ii++) {
+            if (data->uniformUsed[first + ii]) {
+                free_ = 0;
+                first += ii; // Skip past this occupied register.
+                break;
+            }
+        }
+        if (free_)
+            break;
+    }
+    if (first + count > ARBVP_MAX_PARAMETERS)
+        return -1;
+    for (ii = 0; ii < count; ii++)
+        data->uniformUsed[first + ii] = 1;
+    if (first + count > data->nextUniform)
+        data->nextUniform = first + count;
+    return first;
+} // ReserveUniformRange_arb
+
+static int RangeIsFree_arb(ArbHALData *data, int first, int count)
+{
+    int ii;
+    if (first < 0 || count <= 0 || first + count > ARBVP_MAX_PARAMETERS)
+        return 0;
+    for (ii = 0; ii < count; ii++) {
+        if (data->uniformUsed[first + ii])
+            return 0;
+    }
+    return 1;
+} // RangeIsFree_arb
+
+static void MarkUniformRange_arb(ArbHALData *data, int first, int count)
+{
+    int ii;
+    for (ii = 0; ii < count; ii++)
+        data->uniformUsed[first + ii] = 1;
+    if (first + count > data->nextUniform)
+        data->nextUniform = first + count;
+} // MarkUniformRange_arb
+
+/*
+ * PopulateRegArrayBinding_arb() - Fill a symbol's runtime uniform binding.
+ */
+
+static void PopulateRegArrayBinding_arb(Binding *fBind, Symbol *fSymb,
+                                        int first, int count)
+{
+    fBind->reg.kind = BK_REGARRAY;
+    fBind->reg.properties |= BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+    fBind->reg.base = GetBase(fSymb->type);
+    fBind->reg.size = GetQuadRegSize(fSymb->type);
+    fBind->reg.rname = LookUpAddString(atable, "c");
+    fBind->reg.regno = first;
+    fBind->reg.count = count;
+} // PopulateRegArrayBinding_arb
+
+/*
+ * BindUniformUnbound_arb() - Allocate numeric uniforms deterministically
+ *         from the first contiguous free range of the profile's bitmap.
  */
 
 static int BindUniformUnbound_arb(SourceLoc *loc, Symbol *fSymb,
                                   Binding *fBind)
 {
-    return 0;
+    ArbHALData *data = (ArbHALData *) Cg->theHAL->localData;
+    const ArbProfileDesc *profile = data->profile;
+    int size = GetQuadRegSize(fSymb->type);
+    int first;
+
+    if (Cg->theHAL->IsTexobjBase(GetBase(fSymb->type))) {
+        // Sampler allocation arrives with fragment texture support.
+        return 0;
+    }
+    first = ReserveUniformRange_arb(data, size);
+    if (first < 0) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "parameters",
+                      data->nextUniform + size, profile->limits->parameters);
+        return 0;
+    }
+    PopulateRegArrayBinding_arb(fBind, fSymb, first, size);
+    return 1;
 } // BindUniformUnbound_arb
 
 /*
- * BindUniformPragma_arb() - Explicit uniform pragmas are implemented with
- *         the uniform-packing support.
+ * BindUniformPragma_arb() - Honor explicit c[N] ranges, constant values,
+ *         and default values.  Connector, semantic, and texture-unit
+ *         bindings are rejected here; texture units join in Task 10.
  */
 
 static int BindUniformPragma_arb(SourceLoc *loc, Symbol *fSymb, Binding *lBind,
                                  const Binding *fBind)
 {
-    return 0;
+    ArbHALData *data = (ArbHALData *) Cg->theHAL->localData;
+    const ArbProfileDesc *profile = data->profile;
+    int size = GetQuadRegSize(fSymb->type);
+    int first;
+
+    switch (fBind->none.kind) {
+    case BK_REGARRAY:
+        // An explicit c-range: reserve exactly regno..regno+count-1.
+        // The pragma parser passes count 0 for single-register binds.
+        first = fBind->reg.regno;
+        {
+            int count = fBind->reg.count > 0 ? fBind->reg.count : size;
+            const char *rname = GetAtomString(atable, fBind->reg.rname);
+            if (strcmp(rname, "c") != 0)
+                return 0;
+            if (!RangeIsFree_arb(data, first, count))
+                return 0; // In-range overlap: binding conflict.
+            if (first + count > profile->limits->parameters) {
+                SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "parameters",
+                              first + count, profile->limits->parameters);
+                return 0;
+            }
+            MarkUniformRange_arb(data, first, count);
+            PopulateRegArrayBinding_arb(lBind, fSymb, first, count);
+            return 1;
+        }
+    case BK_CONSTANT:
+    case BK_DEFAULT: {
+        Binding *record;
+        float lVal[4];
+        int ii;
+
+        first = ReserveUniformRange_arb(data, size);
+        if (first < 0) {
+            SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "parameters",
+                          data->nextUniform + size,
+                          profile->limits->parameters);
+            return 0;
+        }
+        PopulateRegArrayBinding_arb(lBind, fSymb, first, size);
+        for (ii = 0; ii < 4; ii++)
+            lVal[ii] = fBind->constdef.val[ii];
+        record = NewConstDefaultBinding(fBind->constdef.gname,
+                                        fBind->constdef.lname,
+                                        fBind->constdef.size,
+                                        lBind->reg.rname, first, lVal);
+        record->constdef.kind = fBind->none.kind;
+        record->none.properties = BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+        if (fBind->none.kind == BK_CONSTANT)
+            AddConstantBinding(record);
+        else
+            AddDefaultBinding(record, fSymb, fSymb->details.var.init,
+                              fSymb->type);
+        return 1;
+    }
+    default:
+        return 0;
+    }
 } // BindUniformPragma_arb
 
 /*

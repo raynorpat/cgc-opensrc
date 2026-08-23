@@ -1043,3 +1043,10 @@ add_arb_fixture(arbvp1_arithmetic arbvp1
 add_arb_fixture(arbvp1_swizzle arbvp1
     tests/arb/arithmetic/vp_swizzle.cg
     tests/arb/arithmetic/vp_swizzle.expected)
+
+add_arb_fixture(arbvp1_matrix arbvp1
+    tests/arb/uniforms/vp_matrix.cg
+    tests/arb/uniforms/vp_matrix.expected)
+add_arb_fixture(arbvp1_bindings arbvp1
+    tests/arb/uniforms/vp_bindings.cg
+    tests/arb/uniforms/vp_bindings.expected)

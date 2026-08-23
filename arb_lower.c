@@ -1,4 +1,4 @@
-﻿/****************************************************************************\
+/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -77,6 +77,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                            ArbOperand *operand);
 static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
                                 ArbOperand *operand);
+static void TrackSymbolTemp(ArbLowerContext *ctx, Symbol *symbol);
 
 /*
  * MaskFromType() - Return the destination mask covering the components of
@@ -98,9 +99,9 @@ static int MaskFromType(Type *fType)
 } // MaskFromType
 
 /*
- * GetSymbolTemp() - Map a plain local variable onto a virtual temporary,
- *         allocating it on first use.  The heap index cell is tracked in
- *         the context so backend-owned pointers never outlive lowering.
+ * GetSymbolTemp() - Map a plain scalar or vector local onto a virtual
+ *         temporary, allocating it on first use.  Aggregates get a
+ *         contiguous block of one temp per quad via GetSymbolTempBlock.
  */
 
 static int GetSymbolTemp(ArbLowerContext *ctx, Symbol *symbol)
@@ -115,6 +116,34 @@ static int GetSymbolTemp(ArbLowerContext *ctx, Symbol *symbol)
     symbol->tempptr = index;
     return *index;
 } // GetSymbolTemp
+
+static int GetSymbolTempBlock(ArbLowerContext *ctx, Symbol *symbol, int *count)
+{
+    int base;
+    int ii;
+
+    *count = GetQuadRegSize(symbol->type);
+    if (*count <= 1) {
+        *count = 1;
+        return GetSymbolTemp(ctx, symbol);
+    }
+    if (symbol->tempptr)
+        return *(int *) symbol->tempptr;
+    base = ctx->ir->numVirtualTemps;
+    for (ii = 0; ii < *count; ii++) {
+        if (ArbNewTemp(ctx->ir) < 0)
+            return -1;
+    }
+    {
+        int *index = (int *) malloc(sizeof(int));
+        if (!index)
+            return -1;
+        *index = base;
+        symbol->tempptr = index;
+    }
+    TrackSymbolTemp(ctx, symbol);
+    return base;
+} // GetSymbolTempBlock
 
 /*
  * ClearSymbolTemps() - Release every temp-index cell allocated through
@@ -177,6 +206,190 @@ static int ResolveMemberBinding(Binding *fBind, ArbOperand *operand)
 } // ResolveMemberBinding
 
 /*
+ * UniformQuadBase() - Return the PARAM quad index of a uniform variable
+ *         (or -1 when the symbol is not a bound uniform).
+ */
+
+static int UniformQuadBase(Symbol *symb)
+{
+    Binding *fBind = symb->details.var.bind;
+
+    if (!symb->details.var.bind ||
+        !(GetDomain(symb->type) & TYPE_DOMAIN_UNIFORM))
+    {
+        return -1;
+    }
+    if (fBind->none.kind == BK_REGARRAY &&
+        (fBind->none.properties & BIND_IS_BOUND))
+    {
+        return fBind->reg.regno + (symb->details.var.addr >> 2);
+    }
+    return -1;
+} // UniformQuadBase
+
+/*
+ * ExprSame() - Structural equality for expression subtrees, used to
+ *     recognize the multiply/add chains that inlined dot products leave.
+ */
+
+static int ExprSame(expr *a, expr *b)
+{
+    if (!a || !b)
+        return a == b;
+    if (a->common.kind != b->common.kind)
+        return 0;
+    switch (a->common.kind) {
+    case CONST_N:
+        return a->co.op == b->co.op && a->co.subop == b->co.subop &&
+               memcmp(a->co.val, b->co.val, sizeof(a->co.val)) == 0;
+    case SYMB_N:
+        return a->sym.op == b->sym.op && a->sym.symbol == b->sym.symbol;
+    case UNARY_N:
+        return a->un.op == b->un.op && a->un.subop == b->un.subop &&
+               ExprSame(a->un.arg, b->un.arg);
+    case BINARY_N:
+        return a->bin.op == b->bin.op && a->bin.subop == b->bin.subop &&
+               ExprSame(a->bin.left, b->bin.left) &&
+               ExprSame(a->bin.right, b->bin.right);
+    default:
+        return 0;
+    }
+} // ExprSame
+
+/*
+ * SwizzleComponentLeaf() - Recognize "base.component" scalar extracts and
+ *     report the base subtree and selected component.
+ */
+
+static int SwizzleComponentLeaf(expr *e, expr **base, int *comp)
+{
+    unsigned int packed;
+
+    if (!e || e->common.kind != UNARY_N || e->un.op != SWIZZLE_Z_OP)
+        return 0;
+    packed = (unsigned int) SUBOP_GET_MASK(e->un.subop);
+    if (SUBOP_GET_S2(e->un.subop) > 1 && SUBOP_GET_S2(e->un.subop) != 0)
+        return 0;
+    *comp = (int) (packed & 3);
+    *base = e->un.arg;
+    return 1;
+} // SwizzleComponentLeaf
+
+typedef struct DotTerm_Rec {
+    expr *a;
+    expr *b;
+    int comp;
+} DotTerm;
+
+static int IsMulFamily(int op)
+{
+    switch (op) {
+    case MUL_OP: case MUL_V_OP: case MUL_SV_OP: case MUL_VS_OP:
+        return 1;
+    default:
+        return 0;
+    }
+} // IsMulFamily
+
+static int IsAddFamily(int op)
+{
+    switch (op) {
+    case ADD_OP: case ADD_V_OP: case ADD_SV_OP: case ADD_VS_OP:
+        return 1;
+    default:
+        return 0;
+    }
+} // IsAddFamily
+
+/*
+ * DetectDotChain() - Match "(a.x*b.x + a.y*b.y + ...)" shapes produced by
+ *     inlined dot() calls.  Every term must pair matching components of
+ *     two structurally identical source vectors.  On success, *ua and
+ *     *ub point at the two source subtrees and *width holds the term
+ *     count (3 or 4).
+ */
+
+static int DetectDotTermList(expr *e, DotTerm *terms, int *count);
+
+static int DetectDotTerm(expr *e, DotTerm *term)
+{
+    expr *la, *lb, *ba, *bb;
+    int ca, cb;
+
+    if (!e || e->common.kind != BINARY_N || !IsMulFamily(e->bin.op))
+        return 0;
+    la = e->bin.left;
+    lb = e->bin.right;
+    if (!SwizzleComponentLeaf(la, &ba, &ca) ||
+        !SwizzleComponentLeaf(lb, &bb, &cb))
+    {
+        return 0;
+    }
+    if (ca != cb)
+        return 0;
+    term->a = ba;
+    term->b = bb;
+    term->comp = ca;
+    return 1;
+} // DetectDotTerm
+
+static int DetectDotTermList(expr *e, DotTerm *terms, int *count)
+{
+    if (!e || e->common.kind != BINARY_N)
+        return 0;
+    if (IsAddFamily(e->bin.op)) {
+        int n = *count;
+        if (n >= 3)
+            return 0;
+        if (!DetectDotTermList(e->bin.left, terms, count))
+            return 0;
+        if (*count >= 4)
+            return 0;
+        if (!DetectDotTerm(e->bin.right, &terms[*count]))
+            return 0;
+        (*count)++;
+        return 1;
+    }
+    if (*count != 0)
+        return 0;
+    if (!DetectDotTerm(e, &terms[0]))
+        return 0;
+    *count = 1;
+    return 1;
+} // DetectDotTermList
+
+static int DetectDotChain(expr *e, expr **ua, expr **ub, int *width)
+{
+    DotTerm terms[4];
+    int count = 0;
+    int ii;
+
+    if (!DetectDotTermList(e, terms, &count))
+        return 0;
+    if (count < 1)
+        return 0;
+    // Every term pairs component i of one source with component i of the
+    // other; sources must match across all terms.
+    for (ii = 1; ii < count; ii++) {
+        if (terms[ii].comp != ii)
+            return 0;
+        if (!(ExprSame(terms[ii].a, terms[0].a) &&
+              ExprSame(terms[ii].b, terms[0].b)) &&
+            !(ExprSame(terms[ii].a, terms[0].b) &&
+              ExprSame(terms[ii].b, terms[0].a)))
+        {
+            return 0;
+        }
+    }
+    if (count != 3 && count != 4)
+        return 0;
+    *ua = terms[0].a;
+    *ub = terms[0].b;
+    *width = count;
+    return 1;
+} // DetectDotChain
+
+/*
  * LowerConnectorMember() - Lower a MEMBER_SELECTOR_OP (or bare variable)
  *         that refers to a connector register, uniform, or local value.
  *         Returns 0 when the shape is unsupported.
@@ -195,22 +408,36 @@ static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
     {
         Symbol *symb = expression->sym.symbol;
         int temp;
+        int base;
 
         if (ResolveMemberBinding(symb->details.var.bind, operand))
             return 1;
         if (GetDomain(symb->type) & TYPE_DOMAIN_UNIFORM) {
-            // Uniform parameters are packed with the binding support.
-            SemanticError(Cg->pLastSourceLoc,
-                          ERROR_S_ARB_UNSUPPORTED_OPERATION,
-                          opcode_name[VARIABLE_OP]);
-            return 0;
+            base = UniformQuadBase(symb);
+            if (base < 0) {
+                SemanticError(Cg->pLastSourceLoc,
+                              ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                              opcode_name[VARIABLE_OP]);
+                return 0;
+            }
+            *operand = ArbParamOperand(base);
+            if (IsScalar(symb->type)) {
+                operand->swizzle[0] = 0;
+                operand->swizzle[1] = 0;
+                operand->swizzle[2] = 0;
+                operand->swizzle[3] = 0;
+            }
+            return 1;
         }
-        // Plain scalar or vector local variable:
+        // Plain scalar or vector local variable; aggregates resolve to
+        // the base of their contiguous temp block.
         if (!IsScalar(symb->type) && !IsVector(symb->type, &len)) {
-            SemanticError(Cg->pLastSourceLoc,
-                          ERROR_S_ARB_UNSUPPORTED_OPERATION,
-                          opcode_name[VARIABLE_OP]);
-            return 0;
+            int count;
+            int base = GetSymbolTempBlock(ctx, symb, &count);
+            if (base < 0)
+                return 0;
+            *operand = ArbTempOperand(base);
+            return 1;
         }
         temp = GetSymbolTemp(ctx, symb);
         if (temp < 0)
@@ -247,6 +474,24 @@ static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
             operand->swizzle[3] = 0;
         }
         return 1;
+    }
+
+    // A member of a uniform struct or matrix: add the member's quad
+    // offset to the uniform's base register.
+
+    if (expression->bin.left->common.kind == SYMB_N) {
+        Symbol *baseSymb = expression->bin.left->sym.symbol;
+        int base = UniformQuadBase(baseSymb);
+        if (base >= 0) {
+            *operand = ArbParamOperand(base + (member->details.var.addr >> 2));
+            if (IsScalar(memberType)) {
+                operand->swizzle[0] = 0;
+                operand->swizzle[1] = 0;
+                operand->swizzle[2] = 0;
+                operand->swizzle[3] = 0;
+            }
+            return 1;
+        }
     }
 
     // Unbound local struct members are not representable yet.
@@ -409,6 +654,42 @@ static int LowerAssignment(ArbLowerContext *ctx, expr *left, expr *right,
         // Identity move (e.g. the $vout epilogue after direct mapping).
         return 1;
     }
+
+    // Aggregates (packed matrices and arrays) copy one quad at a time.
+
+    if (left->common.type && GetQuadRegSize(left->common.type) > 1 &&
+        dst.file == ARB_REG_TEMP)
+    {
+        int quads = GetQuadRegSize(left->common.type);
+        int k;
+
+        for (k = 0; k < quads; k++) {
+            ArbOperand srcQuad = src;
+            ArbInstruction *qinst;
+
+            if (src.file == ARB_REG_TEMP || src.file == ARB_REG_PARAM) {
+                srcQuad.index = src.index + k;
+                srcQuad.swizzle[0] = 0;
+                srcQuad.swizzle[1] = 1;
+                srcQuad.swizzle[2] = 2;
+                srcQuad.swizzle[3] = 3;
+            } else if (k > 0) {
+                // Only the first quad can come from a scalar source.
+                SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                              "aggregate");
+                return 0;
+            }
+            qinst = ArbAppendInstruction(ctx->ir, ARB_OP_MOV, loc,
+                                         ArbTempOperand(dst.index + k));
+            if (!qinst)
+                return 0;
+            qinst->mask = ARB_MASK_XYZW;
+            if (!ArbAddSource(qinst, srcQuad))
+                return 0;
+        }
+        return 1;
+    }
+
     inst = ArbAppendInstruction(ctx->ir, ARB_OP_MOV, loc, dst);
     if (!inst)
         return 0;
@@ -1116,6 +1397,77 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
             return LowerExpression(ctx, expression->un.arg, operand);
         case SWIZZLE_Z_OP:
             return LowerSwizzleNode(ctx, expression, operand);
+        case SWIZMAT_Z_OP: {
+            // Matrix element selects: each 4-bit code packs (row<<2)|col.
+            // Same-row groups read that row vector with a column swizzle.
+            unsigned int packed16 =
+                (unsigned int) SUBOP_GET_MASK16(expression->un.subop);
+            int width = SUBOP_GET_T2(expression->un.subop);
+            int codes[4];
+            int row0;
+            int sameRow = 1;
+            int ii;
+
+            if (width <= 0)
+                width = 1;
+            if (width > 4)
+                width = 4;
+            for (ii = 0; ii < width; ii++)
+                codes[ii] = (int) ((packed16 >> (4 * ii)) & 15);
+            row0 = codes[0] >> 2;
+            for (ii = 1; ii < width; ii++) {
+                if ((codes[ii] >> 2) != row0) {
+                    sameRow = 0;
+                    break;
+                }
+            }
+            if (!sameRow) {
+                SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                              "swizmat");
+                return 0;
+            }
+            {
+                Symbol *matSymb;
+                int base;
+
+                if (expression->un.arg->common.kind == SYMB_N &&
+                    expression->un.arg->sym.op == VARIABLE_OP)
+                {
+                    matSymb = expression->un.arg->sym.symbol;
+                } else if (expression->un.arg->common.kind == BINARY_N &&
+                           expression->un.arg->bin.op == MEMBER_SELECTOR_OP &&
+                           expression->un.arg->bin.left->common.kind == SYMB_N)
+                {
+                    matSymb = expression->un.arg->bin.left->sym.symbol;
+                } else {
+                    SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                                  "swizmat");
+                    return 0;
+                }
+                base = UniformQuadBase(matSymb);
+
+                if (base >= 0) {
+                    *operand = ArbParamOperand(base + row0);
+                } else if (matSymb->tempptr) {
+                    // Local matrix rows live in consecutive temps.
+                    *operand = ArbTempOperand(*(int *) matSymb->tempptr +
+                                              row0);
+                } else {
+                    SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                                  "swizmat");
+                    return 0;
+                }
+                {
+                    int sel[4];
+                    for (ii = 0; ii < 4; ii++) {
+                        int cc = codes[ii < width ? ii : width - 1];
+                        sel[ii] = cc & 3;
+                    }
+                    ComposeSwizzledSource(operand, sel, width);
+                }
+            }
+            return 1;
+        }
         case VECTOR_V_OP:
             return LowerVectorConstructor(ctx, expression, loc, operand);
         case KILL_OP:
@@ -1148,9 +1500,49 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
         case ASSIGN_MASKED_KV_OP:
             SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION, "assign");
             return 0;
-        case ARRAY_INDEX_OP:
+        case ARRAY_INDEX_OP: {
+            // Constant-index reads of uniform arrays (and packed matrix
+            // rows) resolve to a PARAM register plus element stride.
+            Symbol *baseSymb = NULL;
+            int extra = 0;
+            expr *baseExpr = expression->bin.left;
+            int index;
+
+            for (;;) {
+                if (baseExpr->common.kind == SYMB_N) {
+                    baseSymb = baseExpr->sym.symbol;
+                    break;
+                } else if (baseExpr->common.kind == BINARY_N &&
+                           baseExpr->bin.op == ARRAY_INDEX_OP)
+                {
+                    // Multidimensional arrays fold left; accumulate.
+                    if (!IsConst(baseExpr->bin.right))
+                        break;
+                    index = GetConstIndex(baseExpr->bin.right);
+                    extra += index *
+                             GetQuadRegSize(baseExpr->bin.left->common.type ?
+                                            baseExpr->bin.left->common.type :
+                                            baseExpr->common.type);
+                    baseExpr = baseExpr->bin.left;
+                    continue;
+                } else {
+                    break;
+                }
+            }
+            if (baseSymb && IsConst(expression->bin.right)) {
+                int base = UniformQuadBase(baseSymb);
+                Type *elType = baseSymb->type;
+                if (base >= 0 && GetCategory(elType) == TYPE_CATEGORY_ARRAY) {
+                    index = GetConstIndex(expression->bin.right);
+                    *operand = ArbParamOperand(
+                        base + (baseSymb->details.var.addr >> 2) + extra +
+                        index * GetQuadRegSize(elType->arr.eltype));
+                    return 1;
+                }
+            }
             SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION, "index");
             return 0;
+        }
         default:
             break;
         }
@@ -1158,14 +1550,35 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
         if (RejectUnsupportedBinary(expression))
             return 0;
 
+        // Inlined dot() calls leave multiply/add chains over matching
+        // components of two source vectors; emit native DP3/DP4.
+
+        {
+            expr *ua, *ub;
+            int dwidth;
+            ArbOperand u, v;
+
+            if (IsAddFamily(expression->bin.op) &&
+                DetectDotChain(expression, &ua, &ub, &dwidth))
+            {
+                ArbOperand dot;
+                if (!LowerExpression(ctx, ua, &u) ||
+                    !LowerExpression(ctx, ub, &v))
+                {
+                    return 0;
+                }
+                if (!EmitBinary(ctx, dwidth == 4 ? ARB_OP_DP4 : ARB_OP_DP3,
+                                ARB_MASK_X, loc, u, v, &dot))
+                {
+                    return 0;
+                }
+                *operand = dot;
+                return 1;
+            }
+        }
+
         lcost = SethiUllmanCost(expression->bin.left);
         rcost = SethiUllmanCost(expression->bin.right);
-        if (IsCommutativeOpcode(expression->bin.op) &&
-            strcmp(opcode_name[expression->bin.op], "mul") == 0)
-        {
-            // Keep mul operand order stable except when reordering helps
-            // register pressure on genuinely symmetric trees.
-        }
         if (IsCommutativeOpcode(expression->bin.op) && rcost > lcost) {
             expr *tmp = expression->bin.left;
             expression->bin.left = expression->bin.right;
