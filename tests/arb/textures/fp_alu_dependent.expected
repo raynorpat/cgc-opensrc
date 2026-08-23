@@ -12,7 +12,7 @@ TEMP R1;
 PARAM literal0 = { 0.5, 0.5, 0.5, 0.5 };
 MUL R0, fragment.texcoord[0].xxyy, literal0.xxxx;
 ADD R1, R0, fragment.texcoord[0].yyxx;
-TEX R0, R1;
+TEX R0, R1, texture[0], 2D;
 MOV result.color, R0;
 END
 # 4 instructions, 2 R-regs

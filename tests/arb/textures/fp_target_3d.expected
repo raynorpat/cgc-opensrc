@@ -8,7 +8,7 @@
 #var sampler3D image : TEXUNIT0 : texunit 0 : 1 : 1
 #var float4 main : $vout.COLOR : COL : -1 : 1
 TEMP R0;
-TEX R0, fragment.texcoord[0];
+TEX R0, fragment.texcoord[0], texture[0], 3D;
 MOV result.color, R0;
 END
 # 2 instructions, 1 R-regs

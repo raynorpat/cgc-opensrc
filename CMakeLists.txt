@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.16)
 
 project(cgc LANGUAGES C)
 
@@ -72,6 +72,14 @@ target_compile_definitions(cgc PRIVATE
     $<$<CONFIG:Debug>:CGC_DEBUG_THE_COMPILER>
 )
 
+if(BUILD_TESTING AND WIN32)
+    add_executable(arb_smoke tests/arb_smoke.c)
+    target_link_libraries(arb_smoke PRIVATE opengl32)
+    set_target_properties(arb_smoke PROPERTIES
+        C_STANDARD 90
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS YES)
+endif()
 add_custom_target(regenerate_stdlib
     COMMAND ${CMAKE_COMMAND}
         -DTOKENIZE=$<TARGET_FILE:tokenize>

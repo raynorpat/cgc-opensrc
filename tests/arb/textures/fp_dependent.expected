@@ -9,13 +9,13 @@
 #var float4 main : $vout.COLOR : COL : -1 : 1
 TEMP R0;
 TEMP R1;
-TEX R0, fragment.texcoord[0];
+TEX R0, fragment.texcoord[0], texture[0], 2D;
 ADD R1.xy, R0, fragment.texcoord[0];
-TEX R0, R1;
+TEX R0, R1, texture[0], 2D;
 ADD R1.xy, R0, fragment.texcoord[0];
-TEX R0, R1;
+TEX R0, R1, texture[0], 2D;
 ADD R1.xy, R0, fragment.texcoord[0];
-TEX R0, R1;
+TEX R0, R1, texture[0], 2D;
 MOV result.color, R0;
 END
 # 8 instructions, 2 R-regs

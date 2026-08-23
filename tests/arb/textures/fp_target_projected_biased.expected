@@ -17,12 +17,12 @@ MOV R0.x, fragment.texcoord[0].xxxx;
 MOV R0.y, fragment.texcoord[0].xxxx;
 MOV R0.z, literal0.xxxx;
 MOV R0.w, literal1.xxxx;
-TXP R1, R0;
+TXP R1, R0, texture[0], 2D;
 MOV R0.x, fragment.texcoord[0].xxxx;
 MOV R0.y, fragment.texcoord[0].xxxx;
 MOV R0.z, literal2.xxxx;
 MOV R0.w, literal0.xxxx;
-TXB R2, R0;
+TXB R2, R0, texture[0], 2D;
 ADD R0, R1, R2;
 MOV result.color, R0;
 END

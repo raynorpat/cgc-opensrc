@@ -1036,6 +1036,14 @@ add_test(NAME arb_ir_unit COMMAND arb_ir_tests)
 add_arb_fixture(arbvp1_passthrough arbvp1
     tests/arb/profile/vp_passthrough.cg
     tests/arb/profile/vp_passthrough.expected)
+add_test(NAME arbvp1_wgl_smoke
+    COMMAND $<TARGET_FILE:arb_smoke> vp
+        ${CMAKE_CURRENT_BINARY_DIR}/arbvp1_passthrough.arb)
+set_tests_properties(arbvp1_passthrough PROPERTIES
+    FIXTURES_SETUP arbvp1_smoke_program)
+set_tests_properties(arbvp1_wgl_smoke PROPERTIES
+    DEPENDS arbvp1_passthrough
+    SKIP_RETURN_CODE 77)
 
 add_arb_fixture(arbvp1_arithmetic arbvp1
     tests/arb/arithmetic/vp_arithmetic.cg
@@ -1097,6 +1105,14 @@ add_arb_fixture(arbfp1_conditional arbfp1
 add_arb_fixture(arbfp1_tex2d arbfp1
     tests/arb/textures/fp_tex2d.cg
     tests/arb/textures/fp_tex2d.expected)
+add_test(NAME arbfp1_wgl_smoke
+    COMMAND $<TARGET_FILE:arb_smoke> fp
+        ${CMAKE_CURRENT_BINARY_DIR}/arbfp1_tex2d.arb)
+set_tests_properties(arbfp1_tex2d PROPERTIES
+    FIXTURES_SETUP arbfp1_smoke_program)
+set_tests_properties(arbfp1_wgl_smoke PROPERTIES
+    DEPENDS arbfp1_tex2d
+    SKIP_RETURN_CODE 77)
 add_arb_fixture(arbfp1_target_1d arbfp1
     tests/arb/textures/fp_targets.cg
     tests/arb/textures/fp_target_1d.expected -DTEST_1D)
