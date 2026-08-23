@@ -1,0 +1,27 @@
+!!ARBvp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbvp1
+#program main
+#semantic main.threshold
+#var float4 input.position : $vin.POSITION : POSITION : 0 : 1
+#var float4 input.color : $vin.COLOR0 : COLOR0 : 0 : 1
+#var float threshold :  : c[0] : 1 : 1
+#var float4 main.position : $vout.POSITION : HPOS : -1 : 1
+#var float4 main.color : $vout.COLOR0 : COL0 : -1 : 1
+TEMP R0;
+TEMP R1;
+TEMP R2;
+PARAM c[0] = { program.local[0..0] };
+PARAM literal0 = { 0, 0, 0, 0 };
+PARAM literal1 = { 1, 1, 1, 1 };
+MOV result.position, vertex.position;
+SGE R0, vertex.position.xxxx, c[0].xxxx;
+SGE R1, R0.xxxx, literal0;
+SUB R0, literal1, R1;
+MUL R2, vertex.color.primary, R1;
+MUL R1, literal0, R0;
+ADD R0, R2, R1;
+MOV result.color.front.primary, R0;
+END
+# 8 instructions, 3 R-regs

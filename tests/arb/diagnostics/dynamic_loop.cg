@@ -1,0 +1,8 @@
+float4 main(float4 position : POSITION, uniform int count) : POSITION
+{
+    float4 result = position;
+    int i;
+    for (i = 0; i < count; i++)
+        result.xyz = result.xyz * 2.0;
+    return result;
+}

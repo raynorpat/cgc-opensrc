@@ -1,0 +1,20 @@
+!!ARBvp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbvp1
+#program main
+#var float4 position : $vin.POSITION : POSITION : 0 : 1
+#var float4 main : $vout.POSITION : HPOS : -1 : 1
+TEMP R0;
+TEMP R1;
+PARAM literal0 = { 2, 2, 2, 2 };
+MOV R0, vertex.position;
+MUL R1.xyz, R0.xyzz, literal0.xxxx;
+MOV R0.xyz, R1;
+MUL R1.xyz, R0.xyzz, literal0.xxxx;
+MOV R0.xyz, R1;
+MUL R1.xyz, R0.xyzz, literal0.xxxx;
+MOV R0.xyz, R1;
+MOV result.position, R0;
+END
+# 8 instructions, 2 R-regs

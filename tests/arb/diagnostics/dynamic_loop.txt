@@ -1,0 +1,2 @@
+error C6002
+loop cannot be unrolled at compile time

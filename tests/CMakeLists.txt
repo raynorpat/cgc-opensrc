@@ -1050,3 +1050,19 @@ add_arb_fixture(arbvp1_matrix arbvp1
 add_arb_fixture(arbvp1_bindings arbvp1
     tests/arb/uniforms/vp_bindings.cg
     tests/arb/uniforms/vp_bindings.expected)
+
+add_arb_fixture(arbvp1_conditional arbvp1
+    tests/arb/control-flow/vp_conditional.cg
+    tests/arb/control-flow/vp_conditional.expected)
+add_arb_fixture(arbvp1_static_loop arbvp1
+    tests/arb/control-flow/vp_static_loop.cg
+    tests/arb/control-flow/vp_static_loop.expected)
+add_arb_fixture(arbvp1_static_while arbvp1
+    tests/arb/control-flow/vp_static_while.cg
+    tests/arb/control-flow/vp_static_while.expected)
+add_arb_fixture(arbvp1_static_do arbvp1
+    tests/arb/control-flow/vp_static_do.cg
+    tests/arb/control-flow/vp_static_do.expected)
+add_arb_failure(arb_dynamic_loop arbvp1
+    tests/arb/diagnostics/dynamic_loop.cg
+    tests/arb/diagnostics/dynamic_loop.txt)
