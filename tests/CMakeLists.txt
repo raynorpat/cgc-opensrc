@@ -1201,3 +1201,31 @@ add_arb_fixture(arbfp1_texture_units_2 arbfp1
 add_arb_failure(arbfp1_texture_units_3 arbfp1
     tests/arb/limits/fp_texture_units_3.cg
     tests/arb/limits/fp_texture_units_3.txt)
+
+set(CGC_REFERENCE_EXECUTABLE "" CACHE FILEPATH
+    "Optional NVIDIA Cg cgc executable used for ARB compatibility tests")
+
+if(CGC_REFERENCE_EXECUTABLE AND NOT EXISTS "${CGC_REFERENCE_EXECUTABLE}")
+    message(FATAL_ERROR
+        "CGC_REFERENCE_EXECUTABLE does not exist: ${CGC_REFERENCE_EXECUTABLE}")
+endif()
+
+if(CGC_REFERENCE_EXECUTABLE)
+    function(add_arb_oracle name profile source)
+        add_test(NAME oracle_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC_UNDER_TEST=$<TARGET_FILE:cgc>
+                -DREFERENCE_CGC=${CGC_REFERENCE_EXECUTABLE}
+                -DPROFILE=${profile}
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DENTRY=main
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/oracle
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/compare_arb_oracle.cmake)
+        set_tests_properties(oracle_${name} PROPERTIES LABELS oracle)
+    endfunction()
+
+    add_arb_oracle(vp_passthrough arbvp1 tests/arb/oracle/vp_passthrough.cg)
+    add_arb_oracle(vp_uniform arbvp1 tests/arb/oracle/vp_uniform.cg)
+    add_arb_oracle(fp_passthrough arbfp1 tests/arb/oracle/fp_passthrough.cg)
+    add_arb_oracle(fp_texture arbfp1 tests/arb/oracle/fp_texture.cg)
+endif()
