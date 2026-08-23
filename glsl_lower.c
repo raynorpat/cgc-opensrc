@@ -119,6 +119,28 @@ static const char *GlslAllocateSymbolNameForSource(
                                     loc != NULL ? &glslLoc : NULL);
 }
 
+static const char *GlslAllocateNameForSource(GlslLowerContext *context,
+    const char *source, const SourceLoc *loc)
+{
+    GlslLoc glslLoc;
+
+    memset(&glslLoc, 0, sizeof(glslLoc));
+    GlslSetLoc(&glslLoc, loc);
+    return GlslAllocateNameAt(context->module, source,
+                              loc != NULL ? &glslLoc : NULL);
+}
+
+static const char *GlslAllocateDistinctNameForSource(
+    GlslLowerContext *context, const char *source, const SourceLoc *loc)
+{
+    GlslLoc glslLoc;
+
+    memset(&glslLoc, 0, sizeof(glslLoc));
+    GlslSetLoc(&glslLoc, loc);
+    return GlslAllocateDistinctNameAt(context->module, source,
+                                      loc != NULL ? &glslLoc : NULL);
+}
+
 static const char *GlslAllocateScopedSymbolNameForSource(
     GlslLowerContext *context, const void *nameSpace, const void *identity,
     const char *source, const SourceLoc *loc)
@@ -2498,7 +2520,8 @@ static const char *GlslMatrixHelperName(GlslLowerContext *context,
         }
         end += strlen(end);
     }
-    return GlslAllocateDistinctName(context->module, candidate);
+    return GlslAllocateDistinctNameForSource(context, candidate,
+                                              &context->statementLoc);
 }
 
 static GlslExpr *GlslNewParameterComponent(GlslLowerContext *context,
@@ -2568,7 +2591,8 @@ static const char *GlslMatrixSelectorHelperName(
         sprintf(end, "_m%d%d", row, column);
         end += strlen(end);
     }
-    return GlslAllocateDistinctName(context->module, candidate);
+    return GlslAllocateDistinctNameForSource(context, candidate,
+                                              &context->statementLoc);
 }
 
 static GlslMatrixSelectorHelper *GlslCreateMatrixSelectorHelper(
@@ -3912,8 +3936,8 @@ static int GlslValidateInterfaceSource(GlslLowerContext *context,
         if (strlen(interfaceKey) + 4 > sizeof(generatedName))
             return 0;
         sprintf(generatedName, "cg_%s", interfaceKey);
-        record->reservedName = GlslAllocateName(context->module,
-                                                generatedName);
+        record->reservedName = GlslAllocateNameForSource(context,
+            generatedName, &source->loc);
         if (record->reservedName == NULL)
             return 0;
     }

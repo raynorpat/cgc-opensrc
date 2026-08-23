@@ -336,9 +336,28 @@ void GlslInitModule(GlslModule *module, GlslStage stage, GlslAllocFn alloc,
     module->allocArg = allocArg;
 }
 
+static const char *GlslRecordNameLocation(GlslModule *module,
+    const char *emitted, const GlslLoc *loc)
+{
+    if (emitted == NULL && module != NULL &&
+        module->errorKind == GLSL_ERROR_NAME_COLLISION && loc != NULL &&
+        module->errorLoc.file == 0 && module->errorLoc.line == 0)
+    {
+        module->errorLoc = *loc;
+    }
+    return emitted;
+}
+
 const char *GlslAllocateName(GlslModule *module, const char *source)
 {
+    return GlslAllocateNameAt(module, source, NULL);
+}
+
+const char *GlslAllocateNameAt(GlslModule *module, const char *source,
+    const GlslLoc *loc)
+{
     GlslName *name;
+    const char *emitted;
 
     if (module == NULL || source == NULL)
         return NULL;
@@ -346,8 +365,9 @@ const char *GlslAllocateName(GlslModule *module, const char *source)
                         &defaultNameIdentity, source);
     if (name != NULL)
         return name->emitted;
-    return GlslAllocate(module, &defaultNameNamespace,
-                        &defaultNameIdentity, source);
+    emitted = GlslAllocate(module, &defaultNameNamespace,
+                           &defaultNameIdentity, source);
+    return GlslRecordNameLocation(module, emitted, loc);
 }
 
 const char *GlslAllocateSymbolName(GlslModule *module, const void *identity,
@@ -393,18 +413,21 @@ const char *GlslAllocateScopedSymbolNameAt(GlslModule *module,
         }
         emitted = GlslAllocate(module, nameSpace, identity, source);
     }
-    if (emitted == NULL && module->errorKind == GLSL_ERROR_NAME_COLLISION &&
-        loc != NULL && module->errorLoc.file == 0 &&
-        module->errorLoc.line == 0)
-    {
-        module->errorLoc = *loc;
-    }
-    return emitted;
+    return GlslRecordNameLocation(module, emitted, loc);
 }
 
 const char *GlslAllocateDistinctName(GlslModule *module, const char *source)
 {
-    return GlslAllocate(module, &defaultNameNamespace, NULL, source);
+    return GlslAllocateDistinctNameAt(module, source, NULL);
+}
+
+const char *GlslAllocateDistinctNameAt(GlslModule *module,
+    const char *source, const GlslLoc *loc)
+{
+    const char *emitted;
+
+    emitted = GlslAllocate(module, &defaultNameNamespace, NULL, source);
+    return GlslRecordNameLocation(module, emitted, loc);
 }
 
 GlslType GlslNumericType(GlslBase base, int len)

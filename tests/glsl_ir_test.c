@@ -121,6 +121,8 @@ int main(int argc, char **argv)
     GlslModule overflowModule;
     GlslModule identityModule;
     GlslModule nameLocationModule;
+    GlslModule ordinaryNameLocationModule;
+    GlslModule distinctNameLocationModule;
     GlslModule scopedModule;
     GlslModule visibleModule;
     GlslModule nonfiniteModule;
@@ -440,6 +442,22 @@ int main(int argc, char **argv)
                                     "value", &nameLocation) == NULL);
     assert(nameLocationModule.errorLoc.file == 17);
     assert(nameLocationModule.errorLoc.line == 23);
+    GlslInitModule(&ordinaryNameLocationModule, GLSL_STAGE_VERTEX,
+                   FailingAlloc, NULL);
+    ordinaryNameLocationModule.errorKind = GLSL_ERROR_NAME_COLLISION;
+    ordinaryNameLocationModule.errorReason = "forced ordinary collision";
+    assert(GlslAllocateNameAt(&ordinaryNameLocationModule, "value",
+                              &nameLocation) == NULL);
+    assert(ordinaryNameLocationModule.errorLoc.file == 17);
+    assert(ordinaryNameLocationModule.errorLoc.line == 23);
+    GlslInitModule(&distinctNameLocationModule, GLSL_STAGE_VERTEX,
+                   FailingAlloc, NULL);
+    distinctNameLocationModule.errorKind = GLSL_ERROR_NAME_COLLISION;
+    distinctNameLocationModule.errorReason = "forced distinct collision";
+    assert(GlslAllocateDistinctNameAt(&distinctNameLocationModule, "value",
+                                      &nameLocation) == NULL);
+    assert(distinctNameLocationModule.errorLoc.file == 17);
+    assert(distinctNameLocationModule.errorLoc.line == 23);
     assert(GlslIsReservedName("attribute"));
     assert(GlslIsReservedName("gl_Position"));
     assert(GlslIsReservedName("user__name"));
