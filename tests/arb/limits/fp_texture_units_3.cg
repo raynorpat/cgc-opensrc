@@ -1,0 +1,7 @@
+float4 main(float2 t : TEXCOORD0,
+            uniform sampler2D a : TEXUNIT0,
+            uniform sampler2D b : TEXUNIT1,
+            uniform sampler2D c : TEXUNIT2) : COLOR
+{
+    return tex2D(a, t) * tex2D(b, t) * tex2D(c, t);
+}

@@ -1,0 +1,2 @@
+error C6005
+ALU instructions resource use 49 exceeds portable limit 48

@@ -1,4 +1,4 @@
-find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
+﻿find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
 if(NOT GLSLANG_VALIDATOR)
     message(STATUS
         "glslangValidator not found; GLSL source validation tests are disabled")
@@ -224,7 +224,7 @@ add_generic_regression(reflection reflection.cg
 add_generic_regression(vertexlight vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
 add_generic_regression(vertexlight4 vertexlight4.cg
-    5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
+    8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
 add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg
@@ -984,3 +984,248 @@ foreach(stream_case default valid valid_underscore valid_leading_underscore
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_tokenize_stream_name.cmake
     )
 endforeach()
+
+function(add_arb_fixture name profile source expected)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DTEST_NAME=${name}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECT_SUCCESS=TRUE
+            -DEXPECTED_OUTPUT=${PROJECT_SOURCE_DIR}/${expected}
+            "-DEXTRA_ARGS=${ARGN}"
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_arb_test.cmake
+    )
+endfunction()
+
+function(add_arb_failure name profile source diagnostics)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DTEST_NAME=${name}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECT_SUCCESS=FALSE
+            -DEXPECTED_DIAGNOSTICS=${PROJECT_SOURCE_DIR}/${diagnostics}
+            "-DEXTRA_ARGS=${ARGN}"
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_arb_test.cmake
+    )
+endfunction()
+
+add_test(NAME arbvp1_registration
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbvp1
+            ${PROJECT_SOURCE_DIR}/tests/arb/profile/vp_passthrough.cg)
+add_test(NAME arbfp1_registration
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbfp1
+            ${PROJECT_SOURCE_DIR}/tests/arb/profile/fp_passthrough.cg)
+
+add_executable(arb_ir_tests arb_ir_tests.c ${PROJECT_SOURCE_DIR}/arb_ir.c)
+target_include_directories(arb_ir_tests PRIVATE ${PROJECT_SOURCE_DIR})
+set_target_properties(arb_ir_tests PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(NAME arb_ir_unit COMMAND arb_ir_tests)
+
+add_arb_fixture(arbvp1_passthrough arbvp1
+    tests/arb/profile/vp_passthrough.cg
+    tests/arb/profile/vp_passthrough.expected)
+add_test(NAME arbvp1_wgl_smoke
+    COMMAND $<TARGET_FILE:arb_smoke> vp
+        ${CMAKE_CURRENT_BINARY_DIR}/arbvp1_passthrough.arb)
+set_tests_properties(arbvp1_passthrough PROPERTIES
+    FIXTURES_SETUP arbvp1_smoke_program)
+set_tests_properties(arbvp1_wgl_smoke PROPERTIES
+    DEPENDS arbvp1_passthrough
+    SKIP_RETURN_CODE 77)
+
+add_arb_fixture(arbvp1_arithmetic arbvp1
+    tests/arb/arithmetic/vp_arithmetic.cg
+    tests/arb/arithmetic/vp_arithmetic.expected)
+add_arb_fixture(arbvp1_swizzle arbvp1
+    tests/arb/arithmetic/vp_swizzle.cg
+    tests/arb/arithmetic/vp_swizzle.expected)
+
+add_arb_fixture(arbvp1_matrix arbvp1
+    tests/arb/uniforms/vp_matrix.cg
+    tests/arb/uniforms/vp_matrix.expected)
+add_arb_fixture(arbvp1_bindings arbvp1
+    tests/arb/uniforms/vp_bindings.cg
+    tests/arb/uniforms/vp_bindings.expected)
+
+add_arb_fixture(arbvp1_conditional arbvp1
+    tests/arb/control-flow/vp_conditional.cg
+    tests/arb/control-flow/vp_conditional.expected)
+add_arb_fixture(arbvp1_static_loop arbvp1
+    tests/arb/control-flow/vp_static_loop.cg
+    tests/arb/control-flow/vp_static_loop.expected)
+add_arb_fixture(arbvp1_static_while arbvp1
+    tests/arb/control-flow/vp_static_while.cg
+    tests/arb/control-flow/vp_static_while.expected)
+add_arb_fixture(arbvp1_static_do arbvp1
+    tests/arb/control-flow/vp_static_do.cg
+    tests/arb/control-flow/vp_static_do.expected)
+add_arb_failure(arb_dynamic_loop arbvp1
+    tests/arb/diagnostics/dynamic_loop.cg
+    tests/arb/diagnostics/dynamic_loop.txt)
+
+add_arb_fixture(arbvp1_relative_index arbvp1
+    tests/arb/uniforms/vp_relative_index.cg
+    tests/arb/uniforms/vp_relative_index.expected)
+add_arb_fixture(arbvp1_params_96 arbvp1
+    tests/arb/limits/vp_params_96.cg
+    tests/arb/limits/vp_params_96.expected)
+add_arb_failure(arbvp1_params_97 arbvp1
+    tests/arb/limits/vp_params_97.cg
+    tests/arb/limits/vp_params_97.txt)
+add_arb_fixture(arbvp1_instructions_128 arbvp1
+    tests/arb/limits/vp_instructions_128.cg
+    tests/arb/limits/vp_instructions_128.expected)
+add_arb_failure(arbvp1_instructions_129 arbvp1
+    tests/arb/limits/vp_instructions_129.cg
+    tests/arb/limits/vp_instructions_129.txt)
+
+add_test(NAME arbfp1_sampler_types
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbfp1
+            ${PROJECT_SOURCE_DIR}/tests/arb/profile/fp_sampler_nocode.cg)
+
+add_arb_fixture(arbfp1_passthrough arbfp1
+    tests/arb/profile/fp_passthrough.cg
+    tests/arb/profile/fp_passthrough.expected)
+add_arb_fixture(arbfp1_conditional arbfp1
+    tests/arb/arithmetic/fp_conditional.cg
+    tests/arb/arithmetic/fp_conditional.expected)
+
+add_arb_fixture(arbfp1_tex2d arbfp1
+    tests/arb/textures/fp_tex2d.cg
+    tests/arb/textures/fp_tex2d.expected)
+add_test(NAME arbfp1_wgl_smoke
+    COMMAND $<TARGET_FILE:arb_smoke> fp
+        ${CMAKE_CURRENT_BINARY_DIR}/arbfp1_tex2d.arb)
+set_tests_properties(arbfp1_tex2d PROPERTIES
+    FIXTURES_SETUP arbfp1_smoke_program)
+set_tests_properties(arbfp1_wgl_smoke PROPERTIES
+    DEPENDS arbfp1_tex2d
+    SKIP_RETURN_CODE 77)
+add_arb_fixture(arbfp1_target_1d arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_1d.expected -DTEST_1D)
+add_arb_fixture(arbfp1_target_3d arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_3d.expected -DTEST_3D)
+add_arb_fixture(arbfp1_target_cube arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_cube.expected -DTEST_CUBE)
+add_arb_fixture(arbfp1_target_rect arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_rect.expected -DTEST_RECT)
+add_arb_fixture(arbfp1_target_projected_biased arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_projected_biased.expected -DTEST_PROJECTED_BIASED)
+add_arb_fixture(arbfp1_dependent arbfp1
+    tests/arb/textures/fp_dependent.cg
+    tests/arb/textures/fp_dependent.expected)
+add_arb_fixture(arbfp1_alu_dependent arbfp1
+    tests/arb/textures/fp_alu_dependent.cg
+    tests/arb/textures/fp_alu_dependent.expected)
+add_arb_fixture(arbfp1_discard arbfp1
+    tests/arb/control-flow/fp_discard.cg
+    tests/arb/control-flow/fp_discard.expected)
+add_arb_failure(arb_texture_conflict arbfp1
+    tests/arb/diagnostics/fp_texture_conflict.cg
+    tests/arb/diagnostics/fp_texture_conflict.txt)
+
+add_arb_fixture(arbvp1_all_semantics arbvp1
+    tests/arb/vp-semantics/vp_all_semantics.cg
+    tests/arb/vp-semantics/vp_all_semantics_conventional.expected)
+add_arb_fixture(arbvp1_all_semantics_generic arbvp1
+    tests/arb/vp-semantics/vp_all_semantics.cg
+    tests/arb/vp-semantics/vp_all_semantics_generic.expected -DTEST_GENERIC)
+add_arb_fixture(arbfp1_all_semantics arbfp1
+    tests/arb/fp-semantics/fp_all_semantics.cg
+    tests/arb/fp-semantics/fp_all_semantics_primary.expected)
+add_arb_fixture(arbfp1_all_semantics_secondary arbfp1
+    tests/arb/fp-semantics/fp_all_semantics.cg
+    tests/arb/fp-semantics/fp_all_semantics_secondary.expected -DTEST_SECONDARY)
+add_arb_failure(arbvp1_missing_position arbvp1
+    tests/arb/diagnostics/vp_missing_position.cg
+    tests/arb/diagnostics/vp_missing_position.txt)
+add_arb_failure(arbvp1_attribute_alias arbvp1
+    tests/arb/diagnostics/vp_attribute_alias.cg
+    tests/arb/diagnostics/vp_attribute_alias.txt)
+add_arb_failure(arbvp1_discard arbvp1
+    tests/arb/diagnostics/vp_discard.cg
+    tests/arb/diagnostics/vp_discard.txt)
+add_arb_failure(arbvp1_clip_output arbvp1
+    tests/arb/diagnostics/vp_clip_output.cg
+    tests/arb/diagnostics/vp_clip_output.txt)
+add_arb_failure(arbfp1_dynamic_index arbfp1
+    tests/arb/diagnostics/fp_dynamic_index.cg
+    tests/arb/diagnostics/fp_dynamic_index.txt)
+add_arb_fixture(arbfp1_params_24 arbfp1
+    tests/arb/limits/fp_params_24.cg
+    tests/arb/limits/fp_params_24.expected)
+add_arb_failure(arbfp1_params_25 arbfp1
+    tests/arb/limits/fp_params_25.cg
+    tests/arb/limits/fp_params_25.txt)
+add_arb_fixture(arbfp1_attributes_10 arbfp1
+    tests/arb/limits/fp_attributes_10.cg
+    tests/arb/limits/fp_attributes_10.expected)
+add_arb_failure(arbfp1_attributes_11 arbfp1
+    tests/arb/limits/fp_attributes_11.cg
+    tests/arb/limits/fp_attributes_11.txt)
+add_arb_fixture(arbfp1_alu_48 arbfp1
+    tests/arb/limits/fp_alu_48.cg
+    tests/arb/limits/fp_alu_48.expected)
+add_arb_failure(arbfp1_alu_49 arbfp1
+    tests/arb/limits/fp_alu_49.cg
+    tests/arb/limits/fp_alu_49.txt)
+add_arb_fixture(arbfp1_tex_24 arbfp1
+    tests/arb/limits/fp_tex_24.cg
+    tests/arb/limits/fp_tex_24.expected)
+add_arb_failure(arbfp1_tex_25 arbfp1
+    tests/arb/limits/fp_tex_25.cg
+    tests/arb/limits/fp_tex_25.txt)
+add_arb_failure(arbfp1_indirections_5 arbfp1
+    tests/arb/textures/fp_indirections_5.cg
+    tests/arb/limits/fp_indirections_5.txt)
+add_arb_fixture(arbfp1_texture_units_2 arbfp1
+    tests/arb/limits/fp_texture_units_2.cg
+    tests/arb/limits/fp_texture_units_2.expected)
+add_arb_failure(arbfp1_texture_units_3 arbfp1
+    tests/arb/limits/fp_texture_units_3.cg
+    tests/arb/limits/fp_texture_units_3.txt)
+
+set(CGC_REFERENCE_EXECUTABLE "" CACHE FILEPATH
+    "Optional NVIDIA Cg cgc executable used for ARB compatibility tests")
+
+if(CGC_REFERENCE_EXECUTABLE AND NOT EXISTS "${CGC_REFERENCE_EXECUTABLE}")
+    message(FATAL_ERROR
+        "CGC_REFERENCE_EXECUTABLE does not exist: ${CGC_REFERENCE_EXECUTABLE}")
+endif()
+
+if(CGC_REFERENCE_EXECUTABLE)
+    function(add_arb_oracle name profile source)
+        add_test(NAME oracle_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC_UNDER_TEST=$<TARGET_FILE:cgc>
+                -DREFERENCE_CGC=${CGC_REFERENCE_EXECUTABLE}
+                -DPROFILE=${profile}
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DENTRY=main
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/oracle
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/compare_arb_oracle.cmake)
+        set_tests_properties(oracle_${name} PROPERTIES LABELS oracle)
+    endfunction()
+
+    add_arb_oracle(vp_passthrough arbvp1 tests/arb/oracle/vp_passthrough.cg)
+    add_arb_oracle(vp_uniform arbvp1 tests/arb/oracle/vp_uniform.cg)
+    add_arb_oracle(fp_passthrough arbfp1 tests/arb/oracle/fp_passthrough.cg)
+    add_arb_oracle(fp_texture arbfp1 tests/arb/oracle/fp_texture.cg)
+endif()

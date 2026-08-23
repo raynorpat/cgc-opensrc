@@ -1,0 +1,36 @@
+#ifdef TEST_1D
+float4 main(float texcoord : TEXCOORD0,
+            uniform sampler1D image : TEXUNIT0) : COLOR
+{
+    return tex1D(image, texcoord);
+}
+#endif
+#ifdef TEST_3D
+float4 main(float3 texcoord : TEXCOORD0,
+            uniform sampler3D image : TEXUNIT0) : COLOR
+{
+    return tex3D(image, texcoord);
+}
+#endif
+#ifdef TEST_CUBE
+float4 main(float3 texcoord : TEXCOORD0,
+            uniform samplerCUBE image : TEXUNIT0) : COLOR
+{
+    return texCUBE(image, texcoord);
+}
+#endif
+#ifdef TEST_RECT
+float4 main(float2 texcoord : TEXCOORD0,
+            uniform samplerRECT image : TEXUNIT0) : COLOR
+{
+    return texRECT(image, texcoord);
+}
+#endif
+#ifdef TEST_PROJECTED_BIASED
+float4 main(float2 texcoord : TEXCOORD0,
+            uniform sampler2D image : TEXUNIT0) : COLOR
+{
+    return tex2Dproj(image, float4(texcoord.x, texcoord.y, 0.5, 1.0)) +
+           tex2Dbias(image, float4(texcoord.x, texcoord.y, 0.0, 0.5));
+}
+#endif

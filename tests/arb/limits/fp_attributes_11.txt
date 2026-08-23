@@ -1,0 +1,2 @@
+error C6005
+attributes resource use 11 exceeds portable limit 10

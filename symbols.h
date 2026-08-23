@@ -229,6 +229,7 @@ struct FunSymbol_Rec {
     short group;        // Built-in function group
     short index;        // Built-in function index
     char HasOutParams;
+    int semantics;      // Return-value semantic atom for programs
 };
 
 typedef struct VarSymbol_Rec {

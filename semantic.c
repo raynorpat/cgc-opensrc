@@ -553,6 +553,13 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
                                              rettype->str.semantics);
                 member = member->next;
             }
+        } else if (program->details.fun.semantics) {
+            // Scalar or vector return value with a semantic: bind it as an
+            // implicit member of the $vout connector named after the program.
+            lSymb = NewSymbol(&program->loc, voutScope, program->name,
+                              rettype, VARIABLE_S);
+            lSymb->details.var.semantics = program->details.fun.semantics;
+            lBindVaryingVariable(lSymb, program->name, 1, 0, 0);
         } else {
             SemanticError(&program->loc, ERROR_S_PROGRAM_MUST_RETURN_STRUCT,
                           GetAtomString(atable, program->name));

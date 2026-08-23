@@ -1,0 +1,20 @@
+!!ARBfp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbfp1
+#program main
+#semantic main.a : TEXUNIT0
+#semantic main.b : TEXUNIT1
+#var float2 t : $vin.TEXCOORD0 : TEX0 : 0 : 1
+#var sampler2D a : TEXUNIT0 : texunit 0 : 1 : 1
+#var sampler2D b : TEXUNIT1 : texunit 1 : 2 : 1
+#var float4 main : $vout.COLOR : COL : -1 : 1
+TEMP R0;
+TEMP R1;
+TEMP R2;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+TEX R1, fragment.texcoord[0], texture[1], 2D;
+MUL R2, R0, R1;
+MOV result.color, R2;
+END
+# 4 instructions, 3 R-regs

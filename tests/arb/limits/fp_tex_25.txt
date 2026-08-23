@@ -1,0 +1,2 @@
+error C6005
+texture instructions resource use 25 exceeds portable limit 24

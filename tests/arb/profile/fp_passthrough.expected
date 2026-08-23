@@ -1,0 +1,10 @@
+!!ARBfp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbfp1
+#program main
+#var float4 color : $vin.COLOR0 : COL0 : 0 : 1
+#var float4 main : $vout.COLOR : COL : -1 : 1
+MOV result.color, fragment.color.primary;
+END
+# 1 instructions, 0 R-regs

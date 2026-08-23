@@ -1,0 +1,2 @@
+error C6005
+texture indirections resource use 5 exceeds portable limit 4

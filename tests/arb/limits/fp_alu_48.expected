@@ -1,0 +1,59 @@
+!!ARBfp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbfp1
+#program main
+#var float4 c : $vin.COLOR0 : COL0 : 0 : 1
+#var float4 main : $vout.COLOR : COL : -1 : 1
+TEMP R0;
+TEMP R1;
+ADD R0, fragment.color.primary, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+ADD R1, R0, fragment.color.primary;
+ADD R0, R1, fragment.color.primary;
+MOV result.color, R0;
+END
+# 48 instructions, 2 R-regs

@@ -1,0 +1,2 @@
+error C6009
+generic and conventional vertex attributes alias

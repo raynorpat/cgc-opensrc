@@ -1,0 +1,12 @@
+#define WRITE1 output = position;
+#define WRITE2 WRITE1 WRITE1
+#define WRITE4 WRITE2 WRITE2
+#define WRITE8 WRITE4 WRITE4
+#define WRITE16 WRITE8 WRITE8
+#define WRITE32 WRITE16 WRITE16
+#define WRITE64 WRITE32 WRITE32
+
+void main(float4 position : POSITION, out float4 output : POSITION)
+{
+    WRITE64 WRITE32 WRITE16 WRITE8 WRITE8 WRITE1
+}

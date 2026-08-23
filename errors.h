@@ -265,7 +265,19 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR___ARRAY2_INIT_NOT_DONE        5507, "initialization of arrays with more than 1 dimension not yet implemented"
 #define ERROR_S_UNSUPPORTED_PROFILE_OP      5508, "the operator \"%s\" is not supported by this profile"
 
-// Numbers 6000 to 6999 are reserved for profile specific messages
+// Numbers 6000 to 6199 are reserved for the ARB profile messages
+
+#define ERROR_S_ARB_UNSUPPORTED_OPERATION  6001, "ARB profile does not support operation \"%s\""
+#define ERROR___ARB_LOOP_NOT_UNROLLABLE   6002, "loop cannot be unrolled at compile time"
+#define ERROR___ARB_FRAGMENT_DYNAMIC_INDEX 6003, "ARB fragment profile requires a constant uniform index"
+#define ERROR_DS_ARB_TEXTURE_CONFLICT     6004, "texture unit %d already has target %s"
+#define ERROR_SDD_ARB_RESOURCE_LIMIT      6005, "%s resource use %d exceeds portable limit %d"
+#define ERROR___ARB_VERTEX_DISCARD        6006, "discard is not supported by the ARB vertex profile"
+#define ERROR___ARB_VERTEX_TEXTURE        6007, "texture access is not supported by the ARB vertex profile"
+#define ERROR___ARB_REQUIRED_POSITION     6008, "ARB vertex program must write POSITION"
+#define ERROR___ARB_ATTRIBUTE_ALIAS       6009, "generic and conventional vertex attributes alias"
+#define ERROR_S_ARB_INVALID_MODIFIER      6010, "ARB instruction cannot represent modifier combination \"%s\""
+#define ERROR___ARB_INVALID_IR            9010, "invalid ARB intermediate representation"
 
 #define ERROR_S_GLSL_UNSUPPORTED_TYPE       6200, "GLSL 1.10 does not support type \"%s\""
 #define ERROR_S_GLSL_UNSUPPORTED_OPERATION  6201, "GLSL 1.10 does not support operation \"%s\""

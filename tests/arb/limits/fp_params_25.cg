@@ -1,0 +1,6 @@
+void main(float4 position : POSITION,
+          uniform float4 values[25],
+          out float4 output : COLOR)
+{
+    output = position + values[0];
+}

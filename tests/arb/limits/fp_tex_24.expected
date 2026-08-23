@@ -1,0 +1,62 @@
+!!ARBfp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbfp1
+#program main
+#semantic main.image : TEXUNIT0
+#var float2 t : $vin.TEXCOORD0 : TEX0 : 0 : 1
+#var sampler2D image : TEXUNIT0 : texunit 0 : 1 : 1
+#var float4 main : $vout.COLOR : COL : -1 : 1
+TEMP R0;
+TEMP R1;
+TEMP R2;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+TEX R1, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R0, R1;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R1, R2, R0;
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+ADD R2, R1, R0;
+MOV result.color, R2;
+END
+# 48 instructions, 3 R-regs

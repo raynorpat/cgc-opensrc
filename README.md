@@ -1,4 +1,4 @@
-# Release Information
+﻿# Release Information
 
 This release builds the Cg compiler front end (`cgc`) and its `tokenize`
 helper with CMake:
@@ -29,6 +29,8 @@ The compiler provides these profiles:
   tree.
 - `glslv` translates a Cg vertex entry point to strict GLSL 1.10.
 - `glslf` translates a Cg fragment entry point to strict GLSL 1.10.
+- `arbvp1` emits base `!!ARBvp1.0` vertex assembly.
+- `arbfp1` emits base `!!ARBfp1.0` fragment assembly.
 
 For a single-config build, use:
 
@@ -85,6 +87,49 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
+## OpenGL ARB Profiles
+
+`arbvp1` and `arbfp1` target the base `!!ARBvp1.0` and `!!ARBfp1.0`
+languages from the Khronos ARB program specifications:
+
+```sh
+cgc -profile arbvp1 -entry main -o program.arb shader.cg
+cgc -profile arbfp1 -entry main -o program.arb shader.cg
+```
+
+The backend preserves the existing Cg front end and rejects NVIDIA profile
+options. Loops with compile-time-resolvable bounds are statically unrolled.
+Relative uniform indexing is available only in vertex programs through an
+address register; fragment uniform indices must resolve at compile time.
+Fragment discard lowers to `KIL`. The profiles enforce the portable minimum
+resource limits guaranteed by the base specifications: 128 vertex
+instructions, 12 vertex temporaries, 96 vertex parameter vectors, and 16
+vertex attributes; and on the fragment side, 72 total instructions (48 ALU,
+24 texture), 4 texture indirections, 16 temporaries, 24 parameter vectors,
+10 attributes, and 2 texture units.
+
+Windows test builds additionally compile a hidden-window WGL smoke test that
+loads generated assembly with `glProgramStringARB`; CTest skips it when the
+required driver extension is unavailable.
+
+An optional compatibility oracle compares acceptance and public binding
+metadata against a locally installed NVIDIA Cg compiler. Configure it
+explicitly; the normal build and test suite neither requires nor
+redistributes the proprietary executable:
+
+```sh
+cmake -S . -B build -DBUILD_TESTING=ON \
+  -DCGC_REFERENCE_EXECUTABLE="path/to/NVIDIA/cgc"
+ctest --test-dir build -C Debug -L oracle --output-on-failure
+```
+
+Run the self-contained suite with:
+
+```sh
+cmake -S . -B build -DBUILD_TESTING=ON
+cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
+```
 ## Compiler Internals
 
 The historical tree-printing back end is almost entirely encapsulated in

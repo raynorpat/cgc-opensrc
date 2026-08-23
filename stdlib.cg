@@ -248,3 +248,29 @@ float4 max(float4 a, float4 b) { return a>b ? a : b; }
 
 #endif /* PROFILE_GLSL */
 
+
+// different profiles can have things defined for them specifically
+
+#ifdef PROFILE_ARBFP1
+
+__internal float4 tex1D(sampler1D image, float coord);
+__internal float4 tex1Dproj(sampler1D image, float2 coord);
+__internal float4 tex1Dbias(sampler1D image, float4 coord);
+
+__internal float4 tex2D(sampler2D image, float2 coord);
+__internal float4 tex2Dproj(sampler2D image, float3 coord);
+__internal float4 tex2Dproj(sampler2D image, float4 coord);
+__internal float4 tex2Dbias(sampler2D image, float4 coord);
+
+__internal float4 tex3D(sampler3D image, float3 coord);
+__internal float4 tex3Dproj(sampler3D image, float4 coord);
+__internal float4 tex3Dbias(sampler3D image, float4 coord);
+
+__internal float4 texCUBE(samplerCUBE image, float3 coord);
+__internal float4 texCUBEproj(samplerCUBE image, float4 coord);
+__internal float4 texCUBEbias(samplerCUBE image, float4 coord);
+
+__internal float4 texRECT(samplerRECT image, float2 coord);
+__internal float4 texRECTproj(samplerRECT image, float3 coord);
+
+#endif /* PROFILE_ARBFP1 */

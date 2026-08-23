@@ -1,0 +1,22 @@
+!!ARBvp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbvp1
+#program main
+#semantic main.offsets
+#semantic main.index
+#var float4 position : $vin.POSITION : POSITION : 0 : 1
+#var float4 offsets[0] :  : c[0] : 1 : 1
+#var float4 offsets[1] :  : c[1] : 1 : 1
+#var float4 offsets[2] :  : c[2] : 1 : 1
+#var float4 offsets[3] :  : c[3] : 1 : 1
+#var int index :  : c[4] : 2 : 1
+#var float4 main : $vout.POSITION : HPOS : -1 : 1
+TEMP R0;
+ADDRESS A0;
+PARAM c[4] = { program.local[0..4] };
+ARL A0.x, c[4].xxxx;
+ADD R0, c[A0.x + 0], vertex.position;
+MOV result.position, R0;
+END
+# 3 instructions, 1 R-regs

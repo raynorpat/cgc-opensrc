@@ -1,0 +1,15 @@
+#pragma bind main.scale = c 4
+#pragma bind main.tint = default 1.0 1.0 1.0 1.0
+#pragma bind main.bias = const 0.1 0.2 0.3 0.0
+
+struct appin { float4 position : POSITION; float4 color : COLOR0; };
+struct vout { float4 position : POSITION; float4 color : COLOR0; };
+
+vout main(appin input, uniform float4 scale, uniform float4 tint,
+          uniform float4 bias)
+{
+    vout output;
+    output.position = input.position * scale;
+    output.color = input.color * tint + bias;
+    return output;
+}

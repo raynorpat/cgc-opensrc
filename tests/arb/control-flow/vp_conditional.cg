@@ -1,0 +1,10 @@
+struct appin { float4 position : POSITION; float4 color : COLOR0; };
+struct vout { float4 position : POSITION; float4 color : COLOR0; };
+
+vout main(appin input, uniform float threshold)
+{
+    vout output;
+    output.position = input.position;
+    output.color = input.position.x >= threshold ? input.color : float4(0.0, 0.0, 0.0, 0.0);
+    return output;
+}

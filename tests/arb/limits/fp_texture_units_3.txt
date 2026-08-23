@@ -1,0 +1,2 @@
+error C6005
+texture units resource use 3 exceeds portable limit 2

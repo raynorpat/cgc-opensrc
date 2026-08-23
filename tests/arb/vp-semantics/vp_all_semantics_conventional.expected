@@ -1,0 +1,42 @@
+!!ARBvp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbvp1
+#program main
+#var float4 input.position : $vin.POSITION : POSITION : 0 : 1
+#var float4 input.weight : $vin.BLENDWEIGHT : BLENDWEIGHT : 0 : 1
+#var float4 input.normal : $vin.NORMAL : NORMAL : 0 : 1
+#var float4 input.c0 : $vin.COLOR0 : COLOR0 : 0 : 1
+#var float4 input.c1 : $vin.COLOR1 : COLOR1 : 0 : 1
+#var float4 input.fog : $vin.FOG : FOG : 0 : 1
+#var float4 input.t0 : $vin.TEXCOORD0 : TEXCOORD0 : 0 : 1
+#var float4 input.t1 : $vin.TEXCOORD1 : TEXCOORD1 : 0 : 1
+#var float4 input.t2 : $vin.TEXCOORD2 : TEXCOORD2 : 0 : 1
+#var float4 input.t3 : $vin.TEXCOORD3 : TEXCOORD3 : 0 : 1
+#var float4 main.position : $vout.POSITION : HPOS : -1 : 1
+#var float4 main.c0 : $vout.COLOR0 : COL0 : -1 : 1
+#var float4 main.c1 : $vout.COLOR1 : COL1 : -1 : 1
+#var float4 main.b0 : $vout.BCOL0 : BFC0 : -1 : 1
+#var float4 main.fog : $vout.FOG : FOGC : -1 : 1
+#var float4 main.psiz : $vout.PSIZE : PSIZ : -1 : 1
+#var float4 main.t0 : $vout.TEXCOORD0 : TEX0 : -1 : 1
+TEMP R0;
+TEMP R1;
+ADD R0, vertex.position, vertex.weight;
+ADD R1, R0, vertex.normal;
+ADD R0, R1, vertex.color.primary;
+ADD R1, R0, vertex.color.secondary;
+ADD R0, R1, vertex.fogcoord;
+ADD R1, R0, vertex.texcoord[0];
+ADD R0, R1, vertex.texcoord[1];
+ADD R1, R0, vertex.texcoord[2];
+ADD R0, R1, vertex.texcoord[3];
+MOV result.position, R0;
+MOV result.color.front.primary, result.position;
+MOV result.color.front.secondary, result.position;
+MOV result.color.back.primary, result.position;
+MOV result.fogcoord, result.position;
+MOV result.pointsize, result.position;
+MOV result.texcoord[0], result.position;
+END
+# 16 instructions, 2 R-regs

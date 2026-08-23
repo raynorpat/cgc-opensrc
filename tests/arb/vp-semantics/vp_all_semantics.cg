@@ -1,0 +1,54 @@
+struct appin {
+    float4 position : POSITION;
+#ifdef TEST_GENERIC
+    float4 a0 : ATTR0;
+    float4 a1 : ATTR1;
+    float4 a2 : ATTR2;
+    float4 a3 : ATTR3;
+    float4 a4 : ATTR4;
+    float4 a5 : ATTR5;
+    float4 t0 : ATTR8;
+    float4 t1 : ATTR9;
+    float4 t2 : ATTR10;
+    float4 t3 : ATTR11;
+#else
+    float4 weight : BLENDWEIGHT;
+    float4 normal : NORMAL;
+    float4 c0 : COLOR0;
+    float4 c1 : COLOR1;
+    float4 fog : FOG;
+    float4 t0 : TEXCOORD0;
+    float4 t1 : TEXCOORD1;
+    float4 t2 : TEXCOORD2;
+    float4 t3 : TEXCOORD3;
+#endif
+};
+struct vout {
+    float4 position : POSITION;
+    float4 c0 : COLOR0;
+    float4 c1 : COLOR1;
+    float4 b0 : BCOL0;
+    float4 fog : FOG;
+    float4 psiz : PSIZE;
+    float4 t0 : TEXCOORD0;
+};
+vout main(appin input)
+{
+    vout output;
+#ifdef TEST_GENERIC
+    output.position = input.a0 + input.a1 + input.a2 + input.a3 +
+                      input.a4 + input.a5 + input.t0 + input.t1 +
+                      input.t2 + input.t3;
+#else
+    output.position = input.position + input.weight + input.normal +
+                      input.c0 + input.c1 + input.fog +
+                      input.t0 + input.t1 + input.t2 + input.t3;
+#endif
+    output.c0 = output.position;
+    output.c1 = output.position;
+    output.b0 = output.position;
+    output.fog = output.position;
+    output.psiz = output.position;
+    output.t0 = output.position;
+    return output;
+}

@@ -1,0 +1,110 @@
+!!ARBvp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbvp1
+#program main
+#semantic main.values
+#var float4 position : $vin.POSITION : POSITION : 0 : 1
+#var float4 values[0] :  : c[0] : 1 : 1
+#var float4 values[1] :  : c[1] : 1 : 1
+#var float4 values[2] :  : c[2] : 1 : 1
+#var float4 values[3] :  : c[3] : 1 : 1
+#var float4 values[4] :  : c[4] : 1 : 1
+#var float4 values[5] :  : c[5] : 1 : 1
+#var float4 values[6] :  : c[6] : 1 : 1
+#var float4 values[7] :  : c[7] : 1 : 1
+#var float4 values[8] :  : c[8] : 1 : 1
+#var float4 values[9] :  : c[9] : 1 : 1
+#var float4 values[10] :  : c[10] : 1 : 1
+#var float4 values[11] :  : c[11] : 1 : 1
+#var float4 values[12] :  : c[12] : 1 : 1
+#var float4 values[13] :  : c[13] : 1 : 1
+#var float4 values[14] :  : c[14] : 1 : 1
+#var float4 values[15] :  : c[15] : 1 : 1
+#var float4 values[16] :  : c[16] : 1 : 1
+#var float4 values[17] :  : c[17] : 1 : 1
+#var float4 values[18] :  : c[18] : 1 : 1
+#var float4 values[19] :  : c[19] : 1 : 1
+#var float4 values[20] :  : c[20] : 1 : 1
+#var float4 values[21] :  : c[21] : 1 : 1
+#var float4 values[22] :  : c[22] : 1 : 1
+#var float4 values[23] :  : c[23] : 1 : 1
+#var float4 values[24] :  : c[24] : 1 : 1
+#var float4 values[25] :  : c[25] : 1 : 1
+#var float4 values[26] :  : c[26] : 1 : 1
+#var float4 values[27] :  : c[27] : 1 : 1
+#var float4 values[28] :  : c[28] : 1 : 1
+#var float4 values[29] :  : c[29] : 1 : 1
+#var float4 values[30] :  : c[30] : 1 : 1
+#var float4 values[31] :  : c[31] : 1 : 1
+#var float4 values[32] :  : c[32] : 1 : 1
+#var float4 values[33] :  : c[33] : 1 : 1
+#var float4 values[34] :  : c[34] : 1 : 1
+#var float4 values[35] :  : c[35] : 1 : 1
+#var float4 values[36] :  : c[36] : 1 : 1
+#var float4 values[37] :  : c[37] : 1 : 1
+#var float4 values[38] :  : c[38] : 1 : 1
+#var float4 values[39] :  : c[39] : 1 : 1
+#var float4 values[40] :  : c[40] : 1 : 1
+#var float4 values[41] :  : c[41] : 1 : 1
+#var float4 values[42] :  : c[42] : 1 : 1
+#var float4 values[43] :  : c[43] : 1 : 1
+#var float4 values[44] :  : c[44] : 1 : 1
+#var float4 values[45] :  : c[45] : 1 : 1
+#var float4 values[46] :  : c[46] : 1 : 1
+#var float4 values[47] :  : c[47] : 1 : 1
+#var float4 values[48] :  : c[48] : 1 : 1
+#var float4 values[49] :  : c[49] : 1 : 1
+#var float4 values[50] :  : c[50] : 1 : 1
+#var float4 values[51] :  : c[51] : 1 : 1
+#var float4 values[52] :  : c[52] : 1 : 1
+#var float4 values[53] :  : c[53] : 1 : 1
+#var float4 values[54] :  : c[54] : 1 : 1
+#var float4 values[55] :  : c[55] : 1 : 1
+#var float4 values[56] :  : c[56] : 1 : 1
+#var float4 values[57] :  : c[57] : 1 : 1
+#var float4 values[58] :  : c[58] : 1 : 1
+#var float4 values[59] :  : c[59] : 1 : 1
+#var float4 values[60] :  : c[60] : 1 : 1
+#var float4 values[61] :  : c[61] : 1 : 1
+#var float4 values[62] :  : c[62] : 1 : 1
+#var float4 values[63] :  : c[63] : 1 : 1
+#var float4 values[64] :  : c[64] : 1 : 1
+#var float4 values[65] :  : c[65] : 1 : 1
+#var float4 values[66] :  : c[66] : 1 : 1
+#var float4 values[67] :  : c[67] : 1 : 1
+#var float4 values[68] :  : c[68] : 1 : 1
+#var float4 values[69] :  : c[69] : 1 : 1
+#var float4 values[70] :  : c[70] : 1 : 1
+#var float4 values[71] :  : c[71] : 1 : 1
+#var float4 values[72] :  : c[72] : 1 : 1
+#var float4 values[73] :  : c[73] : 1 : 1
+#var float4 values[74] :  : c[74] : 1 : 1
+#var float4 values[75] :  : c[75] : 1 : 1
+#var float4 values[76] :  : c[76] : 1 : 1
+#var float4 values[77] :  : c[77] : 1 : 1
+#var float4 values[78] :  : c[78] : 1 : 1
+#var float4 values[79] :  : c[79] : 1 : 1
+#var float4 values[80] :  : c[80] : 1 : 1
+#var float4 values[81] :  : c[81] : 1 : 1
+#var float4 values[82] :  : c[82] : 1 : 1
+#var float4 values[83] :  : c[83] : 1 : 1
+#var float4 values[84] :  : c[84] : 1 : 1
+#var float4 values[85] :  : c[85] : 1 : 1
+#var float4 values[86] :  : c[86] : 1 : 1
+#var float4 values[87] :  : c[87] : 1 : 1
+#var float4 values[88] :  : c[88] : 1 : 1
+#var float4 values[89] :  : c[89] : 1 : 1
+#var float4 values[90] :  : c[90] : 1 : 1
+#var float4 values[91] :  : c[91] : 1 : 1
+#var float4 values[92] :  : c[92] : 1 : 1
+#var float4 values[93] :  : c[93] : 1 : 1
+#var float4 values[94] :  : c[94] : 1 : 1
+#var float4 values[95] :  : c[95] : 1 : 1
+#var float4 main : $vout.POSITION : HPOS : -1 : 1
+TEMP R0;
+PARAM c[95] = { program.local[0..95] };
+ADD R0, c[95], vertex.position;
+MOV result.position, R0;
+END
+# 2 instructions, 1 R-regs
