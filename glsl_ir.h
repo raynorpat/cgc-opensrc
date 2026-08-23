@@ -354,6 +354,10 @@ const char *GlslAllocateScopedSymbolNameAt(GlslModule *module,
 const char *GlslAllocateDistinctName(GlslModule *module, const char *source);
 const char *GlslAllocateDistinctNameAt(GlslModule *module,
     const char *source, const GlslLoc *loc);
+#if defined(GLSL_IR_TEST_SEAMS)
+const char *GlslTestRaiseNameCollision(GlslModule *module,
+    const char *source, const GlslLoc *loc);
+#endif
 GlslType GlslNumericType(GlslBase base, int len);
 GlslType GlslMatrixType(int size);
 const char *GlslTypeName(const GlslType *type);

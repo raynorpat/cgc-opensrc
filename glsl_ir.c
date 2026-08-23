@@ -244,8 +244,22 @@ static const char *GlslBuildSuffixedName(GlslModule *module,
     return name;
 }
 
+static const char *GlslRaiseNameCollision(GlslModule *module,
+    const char *source, const GlslLoc *loc)
+{
+    if (module != NULL) {
+        module->errorKind = GLSL_ERROR_NAME_COLLISION;
+        module->errorReason = source;
+        if (loc != NULL)
+            module->errorLoc = *loc;
+        else
+            memset(&module->errorLoc, 0, sizeof(module->errorLoc));
+    }
+    return NULL;
+}
+
 static const char *GlslAllocate(GlslModule *module, const void *nameSpace,
-    const void *identity, const char *source)
+    const void *identity, const char *source, const GlslLoc *loc)
 {
     const char *base;
     const char *emitted;
@@ -280,9 +294,7 @@ static const char *GlslAllocate(GlslModule *module, const void *nameSpace,
     } else {
         if (nameCount > (size_t) INT_MAX - 1 ||
             nameCount > (size_t) -1 - 2) {
-            module->errorKind = GLSL_ERROR_NAME_COLLISION;
-            module->errorReason = source;
-            return NULL;
+            return GlslRaiseNameCollision(module, source, loc);
         }
         limit = (int) nameCount + 1;
         occupied = (unsigned char *) malloc(nameCount + 2);
@@ -301,9 +313,7 @@ static const char *GlslAllocate(GlslModule *module, const void *nameSpace,
         }
         if (suffix > limit) {
             free(occupied);
-            module->errorKind = GLSL_ERROR_NAME_COLLISION;
-            module->errorReason = source;
-            return NULL;
+            return GlslRaiseNameCollision(module, source, loc);
         }
         free(occupied);
         emitted = GlslBuildSuffixedName(module, base, suffix);
@@ -336,18 +346,6 @@ void GlslInitModule(GlslModule *module, GlslStage stage, GlslAllocFn alloc,
     module->allocArg = allocArg;
 }
 
-static const char *GlslRecordNameLocation(GlslModule *module,
-    const char *emitted, const GlslLoc *loc)
-{
-    if (emitted == NULL && module != NULL &&
-        module->errorKind == GLSL_ERROR_NAME_COLLISION && loc != NULL &&
-        module->errorLoc.file == 0 && module->errorLoc.line == 0)
-    {
-        module->errorLoc = *loc;
-    }
-    return emitted;
-}
-
 const char *GlslAllocateName(GlslModule *module, const char *source)
 {
     return GlslAllocateNameAt(module, source, NULL);
@@ -357,7 +355,6 @@ const char *GlslAllocateNameAt(GlslModule *module, const char *source,
     const GlslLoc *loc)
 {
     GlslName *name;
-    const char *emitted;
 
     if (module == NULL || source == NULL)
         return NULL;
@@ -365,9 +362,8 @@ const char *GlslAllocateNameAt(GlslModule *module, const char *source,
                         &defaultNameIdentity, source);
     if (name != NULL)
         return name->emitted;
-    emitted = GlslAllocate(module, &defaultNameNamespace,
-                           &defaultNameIdentity, source);
-    return GlslRecordNameLocation(module, emitted, loc);
+    return GlslAllocate(module, &defaultNameNamespace,
+                        &defaultNameIdentity, source, loc);
 }
 
 const char *GlslAllocateSymbolName(GlslModule *module, const void *identity,
@@ -395,7 +391,6 @@ const char *GlslAllocateScopedSymbolNameAt(GlslModule *module,
     const GlslLoc *loc)
 {
     GlslName *name;
-    const char *emitted;
 
     if (module == NULL || nameSpace == NULL || source == NULL)
         return NULL;
@@ -404,16 +399,15 @@ const char *GlslAllocateScopedSymbolNameAt(GlslModule *module,
                             source);
         if (name != NULL)
             return name->emitted;
-        emitted = GlslAllocate(module, nameSpace, &defaultNameIdentity,
-                               source);
+        return GlslAllocate(module, nameSpace, &defaultNameIdentity,
+                            source, loc);
     } else {
         for (name = module->names; name != NULL; name = name->next) {
             if (name->nameSpace == nameSpace && name->identity == identity)
                 return name->emitted;
         }
-        emitted = GlslAllocate(module, nameSpace, identity, source);
+        return GlslAllocate(module, nameSpace, identity, source, loc);
     }
-    return GlslRecordNameLocation(module, emitted, loc);
 }
 
 const char *GlslAllocateDistinctName(GlslModule *module, const char *source)
@@ -424,11 +418,16 @@ const char *GlslAllocateDistinctName(GlslModule *module, const char *source)
 const char *GlslAllocateDistinctNameAt(GlslModule *module,
     const char *source, const GlslLoc *loc)
 {
-    const char *emitted;
-
-    emitted = GlslAllocate(module, &defaultNameNamespace, NULL, source);
-    return GlslRecordNameLocation(module, emitted, loc);
+    return GlslAllocate(module, &defaultNameNamespace, NULL, source, loc);
 }
+
+#if defined(GLSL_IR_TEST_SEAMS)
+const char *GlslTestRaiseNameCollision(GlslModule *module,
+    const char *source, const GlslLoc *loc)
+{
+    return GlslRaiseNameCollision(module, source, loc);
+}
+#endif
 
 GlslType GlslNumericType(GlslBase base, int len)
 {

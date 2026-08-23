@@ -170,6 +170,10 @@ target_include_directories(glsl_ir_unit PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
 
+target_compile_definitions(glsl_ir_unit PRIVATE
+    GLSL_IR_TEST_SEAMS=1
+)
+
 set_target_properties(glsl_ir_unit PROPERTIES
     C_STANDARD 90
     C_STANDARD_REQUIRED YES

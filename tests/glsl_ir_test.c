@@ -121,8 +121,10 @@ int main(int argc, char **argv)
     GlslModule overflowModule;
     GlslModule identityModule;
     GlslModule nameLocationModule;
-    GlslModule ordinaryNameLocationModule;
-    GlslModule distinctNameLocationModule;
+    GlslModule failedNameLocationModule;
+    GlslModule nullIdentityModule;
+    GlslModule collisionLocationModule;
+    GlslModule compatibilityCollisionLocationModule;
     GlslModule scopedModule;
     GlslModule visibleModule;
     GlslModule nonfiniteModule;
@@ -168,6 +170,7 @@ int main(int argc, char **argv)
     GlslType arrayType;
     GlslType structType;
     GlslLoc nameLocation;
+    GlslLoc priorNameLocation;
     GlslDecl structMembers[2];
     GlslStmt *savedBody;
     static const char *builtinSpellings[] = {
@@ -432,32 +435,100 @@ int main(int argc, char **argv)
                    "otherMember"));
     assert(!strcmp(GlslAllocateSymbolName(&module, &secondIdentity, "value"),
         "value_1"));
-    GlslInitModule(&nameLocationModule, GLSL_STAGE_VERTEX, FailingAlloc,
-                   NULL);
-    nameLocationModule.errorKind = GLSL_ERROR_NAME_COLLISION;
-    nameLocationModule.errorReason = "forced name collision";
+    GlslInitModule(&nameLocationModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    nameLocationModule.errorKind = GLSL_ERROR_UNSUPPORTED_OPERATION;
+    nameLocationModule.errorReason = "prior diagnostic";
+    priorNameLocation.file = 5;
+    priorNameLocation.line = 7;
+    nameLocationModule.errorLoc = priorNameLocation;
     nameLocation.file = 17;
     nameLocation.line = 23;
-    assert(GlslAllocateSymbolNameAt(&nameLocationModule, &firstIdentity,
-                                    "value", &nameLocation) == NULL);
-    assert(nameLocationModule.errorLoc.file == 17);
-    assert(nameLocationModule.errorLoc.line == 23);
-    GlslInitModule(&ordinaryNameLocationModule, GLSL_STAGE_VERTEX,
-                   FailingAlloc, NULL);
-    ordinaryNameLocationModule.errorKind = GLSL_ERROR_NAME_COLLISION;
-    ordinaryNameLocationModule.errorReason = "forced ordinary collision";
-    assert(GlslAllocateNameAt(&ordinaryNameLocationModule, "value",
+    assert(!strcmp(GlslAllocateNameAt(&nameLocationModule, "ordinary",
+                                     &nameLocation), "ordinary"));
+    assert(!strcmp(GlslAllocateDistinctNameAt(&nameLocationModule, "distinct",
+                                             &nameLocation), "distinct"));
+    assert(!strcmp(GlslAllocateSymbolNameAt(&nameLocationModule,
+                                           &firstIdentity, "symbol",
+                                           &nameLocation), "symbol"));
+    assert(!strcmp(GlslAllocateScopedSymbolNameAt(&nameLocationModule,
+                                                 &memberNamespace, NULL,
+                                                 "member", &nameLocation),
+                   "member"));
+    assert(nameLocationModule.errorKind == GLSL_ERROR_UNSUPPORTED_OPERATION);
+    assert(!strcmp(nameLocationModule.errorReason, "prior diagnostic"));
+    assert(nameLocationModule.errorLoc.file == priorNameLocation.file);
+    assert(nameLocationModule.errorLoc.line == priorNameLocation.line);
+
+    GlslInitModule(&failedNameLocationModule, GLSL_STAGE_VERTEX, FailingAlloc,
+                   NULL);
+    failedNameLocationModule.errorKind = GLSL_ERROR_NAME_COLLISION;
+    failedNameLocationModule.errorReason = "prior name collision";
+    assert(GlslAllocateNameAt(&failedNameLocationModule, "ordinary",
                               &nameLocation) == NULL);
-    assert(ordinaryNameLocationModule.errorLoc.file == 17);
-    assert(ordinaryNameLocationModule.errorLoc.line == 23);
-    GlslInitModule(&distinctNameLocationModule, GLSL_STAGE_VERTEX,
-                   FailingAlloc, NULL);
-    distinctNameLocationModule.errorKind = GLSL_ERROR_NAME_COLLISION;
-    distinctNameLocationModule.errorReason = "forced distinct collision";
-    assert(GlslAllocateDistinctNameAt(&distinctNameLocationModule, "value",
+    assert(failedNameLocationModule.errorLoc.file == 0);
+    assert(failedNameLocationModule.errorLoc.line == 0);
+    assert(GlslAllocateDistinctNameAt(&failedNameLocationModule, "distinct",
                                       &nameLocation) == NULL);
-    assert(distinctNameLocationModule.errorLoc.file == 17);
-    assert(distinctNameLocationModule.errorLoc.line == 23);
+    assert(failedNameLocationModule.errorLoc.file == 0);
+    assert(failedNameLocationModule.errorLoc.line == 0);
+    assert(GlslAllocateSymbolNameAt(&failedNameLocationModule,
+                                    &firstIdentity, "symbol",
+                                    &nameLocation) == NULL);
+    assert(failedNameLocationModule.errorLoc.file == 0);
+    assert(failedNameLocationModule.errorLoc.line == 0);
+    failedNameLocationModule.errorLoc = priorNameLocation;
+    assert(GlslAllocateNameAt(&failedNameLocationModule, NULL,
+                              &nameLocation) == NULL);
+    assert(GlslAllocateScopedSymbolNameAt(&failedNameLocationModule, NULL,
+                                          NULL, "member",
+                                          &nameLocation) == NULL);
+    assert(GlslAllocateScopedSymbolNameAt(&failedNameLocationModule,
+                                          &memberNamespace, NULL, "member",
+                                          &nameLocation) == NULL);
+    assert(failedNameLocationModule.errorLoc.file == priorNameLocation.file);
+    assert(failedNameLocationModule.errorLoc.line == priorNameLocation.line);
+    assert(failedNameLocationModule.errorKind == GLSL_ERROR_NAME_COLLISION);
+    assert(!strcmp(failedNameLocationModule.errorReason,
+                   "prior name collision"));
+
+    GlslInitModule(&nullIdentityModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(!strcmp(GlslAllocateScopedSymbolNameAt(&nullIdentityModule,
+                                                 &memberNamespace, NULL,
+                                                 "member", &nameLocation),
+                   "member"));
+    nameLocation.line = 29;
+    assert(!strcmp(GlslAllocateScopedSymbolNameAt(&nullIdentityModule,
+                                                 &memberNamespace, NULL,
+                                                 "member", &nameLocation),
+                   "member"));
+    assert(nullIdentityModule.errorKind == GLSL_ERROR_NONE);
+    assert(nullIdentityModule.errorLoc.file == 0);
+    assert(nullIdentityModule.errorLoc.line == 0);
+
+    GlslInitModule(&collisionLocationModule, GLSL_STAGE_VERTEX, TestAlloc,
+                   NULL);
+    collisionLocationModule.errorKind = GLSL_ERROR_UNSUPPORTED_OPERATION;
+    collisionLocationModule.errorReason = "prior diagnostic";
+    collisionLocationModule.errorLoc = priorNameLocation;
+    assert(GlslTestRaiseNameCollision(&collisionLocationModule,
+                                      "colliding name",
+                                      &nameLocation) == NULL);
+    assert(collisionLocationModule.errorKind == GLSL_ERROR_NAME_COLLISION);
+    assert(!strcmp(collisionLocationModule.errorReason, "colliding name"));
+    assert(collisionLocationModule.errorLoc.file == nameLocation.file);
+    assert(collisionLocationModule.errorLoc.line == nameLocation.line);
+
+    GlslInitModule(&compatibilityCollisionLocationModule, GLSL_STAGE_VERTEX,
+                   TestAlloc, NULL);
+    compatibilityCollisionLocationModule.errorLoc = priorNameLocation;
+    assert(GlslTestRaiseNameCollision(&compatibilityCollisionLocationModule,
+                                      "fallback collision", NULL) == NULL);
+    assert(compatibilityCollisionLocationModule.errorKind ==
+           GLSL_ERROR_NAME_COLLISION);
+    assert(!strcmp(compatibilityCollisionLocationModule.errorReason,
+                   "fallback collision"));
+    assert(compatibilityCollisionLocationModule.errorLoc.file == 0);
+    assert(compatibilityCollisionLocationModule.errorLoc.line == 0);
     assert(GlslIsReservedName("attribute"));
     assert(GlslIsReservedName("gl_Position"));
     assert(GlslIsReservedName("user__name"));
