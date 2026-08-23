@@ -172,6 +172,10 @@ function(add_cg20_success name source)
 endfunction()
 
 add_cg20_success(cg20_smoke tests/cg20/profile/smoke.cg)
+add_cg20_success(cg20_scalar_types tests/cg20/types/scalars.cg)
+# Enabled by Task 5: Cg 2.0 scalar type syntax is not recognized yet; see
+# docs/superpowers/plans/2026-08-23-cg-2-language-ir.md.
+set_tests_properties(cg20_scalar_types PROPERTIES DISABLED TRUE)
 add_test(
     NAME cg20_manifest
     COMMAND ${CMAKE_COMMAND}
@@ -271,8 +275,12 @@ add_generic_regression(reflection reflection.cg
     aa2c396563920d50a7b45a6a06c359ec865faa338de4ad42294143a1243b6d8b)
 add_generic_regression(vertexlight vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
+# Hash updated by "Register Cg 2.0 standard types": interning the new
+# standard-type spelling atoms shifts dynamic atom IDs, which reorders
+# top-level declarations in generic output.  Content is unchanged
+# (verified equal modulo declaration order).
 add_generic_regression(vertexlight4 vertexlight4.cg
-    5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
+    8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
 add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg

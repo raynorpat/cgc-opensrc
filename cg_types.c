@@ -82,6 +82,8 @@ static const CgScalarTraits traits[CG_SCALAR_COUNT] = {
     { "double", 0, 0, 0, 1 }
 };
 
+static Type *standardTypes[CG_SCALAR_COUNT][5][5];
+
 /*
  * GetScalarKind() - Return the canonical scalar kind of a type.
  *
@@ -180,3 +182,118 @@ const char *CgScalarKindName(CgScalarKind kind)
         return traits[CG_SCALAR_NONE].name;
     }
 } // CgScalarKindName
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Standard Type Interning: ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * lKindProperties() - Legacy property bits backing a canonical scalar kind.
+ *
+ * Kinds the canonical enum does not model yet (CG_SCALAR_NONE,
+ * CG_SCALAR_UNDEFINED) get no properties and are never interned.  New
+ * integral kinds share the legacy int base and new floating kinds share
+ * the legacy float base until later tasks retire the four-bit bases;
+ * cfloat/cint keep their const qualifiers.
+ */
+
+static int lKindProperties(CgScalarKind kind)
+{
+    switch (kind) {
+    case CG_SCALAR_CFLOAT:
+        return TYPE_BASE_CFLOAT | TYPE_CATEGORY_SCALAR | TYPE_QUALIFIER_CONST;
+    case CG_SCALAR_CINT:
+        return TYPE_BASE_CINT | TYPE_CATEGORY_SCALAR | TYPE_QUALIFIER_CONST;
+    case CG_SCALAR_BOOL:
+        return TYPE_BASE_BOOLEAN | TYPE_CATEGORY_SCALAR;
+    case CG_SCALAR_CHAR:
+    case CG_SCALAR_UCHAR:
+    case CG_SCALAR_SHORT:
+    case CG_SCALAR_USHORT:
+    case CG_SCALAR_INT:
+    case CG_SCALAR_UINT:
+    case CG_SCALAR_LONG:
+    case CG_SCALAR_ULONG:
+        return TYPE_BASE_INT | TYPE_CATEGORY_SCALAR;
+    case CG_SCALAR_FIXED:
+    case CG_SCALAR_HALF:
+    case CG_SCALAR_FLOAT:
+    case CG_SCALAR_DOUBLE:
+        return TYPE_BASE_FLOAT | TYPE_CATEGORY_SCALAR;
+    default:
+        return 0;
+    }
+} // lKindProperties
+
+/*
+ * GetStandardTypeKind() - Return the interned standard type for a canonical
+ *                         scalar kind and shape.
+ *
+ * Indices are (0,0) for a scalar, (length,0) for a vector, and
+ * (rows,columns) for a matrix.  Shapes outside these ranges, and kinds
+ * with no interned representation, map to UndefinedType.
+ */
+
+Type *GetStandardTypeKind(CgScalarKind kind, int rows, int columns)
+{
+    if (kind >= CG_SCALAR_NONE && kind < CG_SCALAR_COUNT &&
+        rows >= 0 && rows <= 4 && columns >= 0 && columns <= 4 &&
+        (rows > 0 || columns == 0))
+    {
+        if (standardTypes[kind][rows][columns])
+            return standardTypes[kind][rows][columns];
+    }
+    return UndefinedType;
+} // GetStandardTypeKind
+
+/*
+ * InitCgStandardTypes() - Intern every supported standard scalar, vector,
+ *                         and matrix type.
+ *
+ * Vectors are constructed as packed arrays of the scalar type and matrices
+ * as packed arrays of packed row vectors; the scalar kind is stored on
+ * every layer.
+ */
+
+int InitCgStandardTypes(void)
+{
+    CgScalarKind kind;
+
+    for (kind = CG_SCALAR_NONE; kind < CG_SCALAR_COUNT; kind++) {
+        int properties = lKindProperties(kind);
+        int qualifiers = properties & TYPE_QUALIFIER_MASK;
+        int rows, columns, length;
+        Type *scalar, *row;
+
+        if (!properties)
+            continue;
+        scalar = NewType(properties, 1);
+        SetScalarKind(scalar, kind);
+        standardTypes[kind][0][0] = scalar;
+        for (length = 1; length <= 4; length++) {
+            standardTypes[kind][length][0] =
+                NewPackedArrayType(scalar, length, qualifiers);
+        }
+        for (rows = 1; rows <= 4; rows++) {
+            for (columns = 1; columns <= 4; columns++) {
+                row = NewPackedArrayType(scalar, columns, qualifiers);
+                standardTypes[kind][rows][columns] =
+                    NewPackedArrayType(row, rows, qualifiers);
+            }
+        }
+    }
+    return 1;
+} // InitCgStandardTypes
+
+/*
+ * FreeCgStandardTypes() - Reset the interned standard-type registry.
+ *
+ * The interned Type structs stay allocated, exactly like every other
+ * symbol-table type in this compiler; only the registry entries are
+ * cleared so a later InitCgStandardTypes() rebuilds cleanly.
+ */
+
+void FreeCgStandardTypes(void)
+{
+    memset(standardTypes, 0, sizeof(standardTypes));
+} // FreeCgStandardTypes

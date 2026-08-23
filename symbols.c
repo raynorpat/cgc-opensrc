@@ -102,6 +102,37 @@ Symbol *TrueSymb = NULL;
 static int baseTypeNames[TYPE_BASE_LAST_USER + 1] = { 0 };
 static Type *baseTypes[TYPE_BASE_LAST_USER + 1] = { NULL };
 
+// Canonical kinds with user-declarable spellings, in registration order:
+
+static const CgScalarKind declarationKinds[] = {
+    CG_SCALAR_CHAR, CG_SCALAR_UCHAR, CG_SCALAR_SHORT, CG_SCALAR_USHORT,
+    CG_SCALAR_INT, CG_SCALAR_UINT, CG_SCALAR_LONG, CG_SCALAR_ULONG,
+    CG_SCALAR_FIXED, CG_SCALAR_HALF, CG_SCALAR_FLOAT, CG_SCALAR_DOUBLE,
+    CG_SCALAR_BOOL
+};
+
+// Typedef base name for each canonical kind, indexed by kind:
+
+static const char *standardTypeNames[CG_SCALAR_COUNT] = {
+    NULL,      // CG_SCALAR_NONE
+    NULL,      // CG_SCALAR_UNDEFINED
+    "cfloat",  // CG_SCALAR_CFLOAT
+    "cint",    // CG_SCALAR_CINT
+    "bool",
+    "char",
+    "uchar",
+    "short",
+    "ushort",
+    "int",
+    "uint",
+    "long",
+    "ulong",
+    "fixed",
+    "half",
+    "float",
+    "double"
+};
+
 /************************************ Type Name Error Support ********************************/
 
 /*
@@ -116,6 +147,35 @@ void SetScalarTypeName(int base, int name, Type *fType)
         baseTypes[base] = fType;
     }
 } // SetScalarTypeName
+
+/*
+ * RegisterStandardTypeSpellings() - Add typedef symbols for the scalar and
+ *                                    vector spellings of one canonical kind.
+ *
+ * Matrix spellings are deliberately not registered here: predefined
+ * typedefs of those names collide with the scanner's typedef-name lookup
+ * when stdlib.cg (float1x1-float4x4) or user code redefines them, and
+ * bulk-interning the extra atoms reshuffles symbol-tree order enough to
+ * perturb generic-profile output.  Task 5 moves the spellings into the
+ * grammar; the registry itself already interns every matrix shape.
+ *
+ */
+
+static void RegisterStandardTypeSpellings(SourceLoc *loc, Scope *fScope,
+                                          CgScalarKind kind, const char *base)
+{
+    char spelling[16];
+    Type *fType;
+    int len;
+
+    fType = GetStandardTypeKind(kind, 0, 0);
+    AddSymbol(loc, fScope, LookUpAddString(atable, base), fType, TYPEDEF_S);
+    for (len = 1; len <= 4; len++) {
+        sprintf(spelling, "%s%d", base, len);
+        fType = GetStandardTypeKind(kind, len, 0);
+        AddSymbol(loc, fScope, LookUpAddString(atable, spelling), fType, TYPEDEF_S);
+    }
+} // RegisterStandardTypeSpellings
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Symbol Table Fuctions: ////////////////////////////////////
@@ -133,44 +193,49 @@ int InitSymbolTable(CgStruct *Cg)
 
     NextSymbolSourceOrdinal = 1;
 
+    // Intern the canonical standard types referenced below:
+
+    InitCgStandardTypes();
+
     // Create the super-global scope and add predefined types and symbols:
 
     PushScope(NewScopeInPool(mem_CreatePool(0, 0)));
     UndefinedType = NewType(TYPE_BASE_UNDEFINED_TYPE | TYPE_CATEGORY_SCALAR, 0);
-    CFloatType = NewType(TYPE_BASE_CFLOAT | TYPE_CATEGORY_SCALAR | TYPE_QUALIFIER_CONST, 1);
-    CIntType = NewType(TYPE_BASE_CINT | TYPE_CATEGORY_SCALAR | TYPE_QUALIFIER_CONST, 1);
     VoidType = NewType(TYPE_BASE_VOID | TYPE_CATEGORY_SCALAR | TYPE_MISC_VOID, 0);
-    FloatType = NewType(TYPE_BASE_FLOAT | TYPE_CATEGORY_SCALAR, 1);
-    IntType = NewType(TYPE_BASE_INT | TYPE_CATEGORY_SCALAR, 1);
-    BooleanType = NewType(TYPE_BASE_BOOLEAN | TYPE_CATEGORY_SCALAR, 1);
 
-    CFloat1Type = NewPackedArrayType(CFloatType, 1, TYPE_QUALIFIER_CONST);
-    CFloat2Type = NewPackedArrayType(CFloatType, 2, TYPE_QUALIFIER_CONST);
-    CFloat3Type = NewPackedArrayType(CFloatType, 3, TYPE_QUALIFIER_CONST);
-    CFloat4Type = NewPackedArrayType(CFloatType, 4, TYPE_QUALIFIER_CONST);
-    CInt1Type = NewPackedArrayType(CIntType, 1, TYPE_QUALIFIER_CONST);
-    CInt2Type = NewPackedArrayType(CIntType, 2, TYPE_QUALIFIER_CONST);
-    CInt3Type = NewPackedArrayType(CIntType, 3, TYPE_QUALIFIER_CONST);
-    CInt4Type = NewPackedArrayType(CIntType, 4, TYPE_QUALIFIER_CONST);
-    Float1Type = NewPackedArrayType(FloatType, 1, 0);
-    Float2Type = NewPackedArrayType(FloatType, 2, 0);
-    Float3Type = NewPackedArrayType(FloatType, 3, 0);
-    Float4Type = NewPackedArrayType(FloatType, 4, 0);
-    Int1Type = NewPackedArrayType(IntType, 1, 0);
-    Int2Type = NewPackedArrayType(IntType, 2, 0);
-    Int3Type = NewPackedArrayType(IntType, 3, 0);
-    Int4Type = NewPackedArrayType(IntType, 4, 0);
-    Boolean1Type = NewPackedArrayType(BooleanType, 1, 0);
-    Boolean2Type = NewPackedArrayType(BooleanType, 2, 0);
-    Boolean3Type = NewPackedArrayType(BooleanType, 3, 0);
-    Boolean4Type = NewPackedArrayType(BooleanType, 4, 0);
+    // The predefined scalars and packed vectors alias the interned
+    // standard-type registry:
+
+    CFloatType = GetStandardTypeKind(CG_SCALAR_CFLOAT, 0, 0);
+    CIntType = GetStandardTypeKind(CG_SCALAR_CINT, 0, 0);
+    FloatType = GetStandardTypeKind(CG_SCALAR_FLOAT, 0, 0);
+    IntType = GetStandardTypeKind(CG_SCALAR_INT, 0, 0);
+    BooleanType = GetStandardTypeKind(CG_SCALAR_BOOL, 0, 0);
+
+    CFloat1Type = GetStandardTypeKind(CG_SCALAR_CFLOAT, 1, 0);
+    CFloat2Type = GetStandardTypeKind(CG_SCALAR_CFLOAT, 2, 0);
+    CFloat3Type = GetStandardTypeKind(CG_SCALAR_CFLOAT, 3, 0);
+    CFloat4Type = GetStandardTypeKind(CG_SCALAR_CFLOAT, 4, 0);
+    CInt1Type = GetStandardTypeKind(CG_SCALAR_CINT, 1, 0);
+    CInt2Type = GetStandardTypeKind(CG_SCALAR_CINT, 2, 0);
+    CInt3Type = GetStandardTypeKind(CG_SCALAR_CINT, 3, 0);
+    CInt4Type = GetStandardTypeKind(CG_SCALAR_CINT, 4, 0);
+    Float1Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 1, 0);
+    Float2Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 2, 0);
+    Float3Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 3, 0);
+    Float4Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 4, 0);
+    Int1Type = GetStandardTypeKind(CG_SCALAR_INT, 1, 0);
+    Int2Type = GetStandardTypeKind(CG_SCALAR_INT, 2, 0);
+    Int3Type = GetStandardTypeKind(CG_SCALAR_INT, 3, 0);
+    Int4Type = GetStandardTypeKind(CG_SCALAR_INT, 4, 0);
+    Boolean1Type = GetStandardTypeKind(CG_SCALAR_BOOL, 1, 0);
+    Boolean2Type = GetStandardTypeKind(CG_SCALAR_BOOL, 2, 0);
+    Boolean3Type = GetStandardTypeKind(CG_SCALAR_BOOL, 3, 0);
+    Boolean4Type = GetStandardTypeKind(CG_SCALAR_BOOL, 4, 0);
 
     AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "cfloat"), CFloatType, TYPEDEF_S);
     AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "cint"), CIntType, TYPEDEF_S);
     AddSymbol(&dummyLoc, CurrentScope, VOID_SY, VoidType, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, FLOAT_SY, FloatType, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, INT_SY, IntType, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, BOOLEAN_SY, BooleanType, TYPEDEF_S);
 
     AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "cfloat1"), CFloat1Type, TYPEDEF_S);
     AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "cfloat2"), CFloat2Type, TYPEDEF_S);
@@ -180,18 +245,12 @@ int InitSymbolTable(CgStruct *Cg)
     AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "cint2"), CInt2Type, TYPEDEF_S);
     AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "cint3"), CInt3Type, TYPEDEF_S);
     AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "cint4"), CInt4Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "float1"), Float1Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "float2"), Float2Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "float3"), Float3Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "float4"), Float4Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "int1"), Int1Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "int2"), Int2Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "int3"), Int3Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "int4"), Int4Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "bool1"), Boolean1Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "bool2"), Boolean2Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "bool3"), Boolean3Type, TYPEDEF_S);
-    AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "bool4"), Boolean4Type, TYPEDEF_S);
+
+    for (ii = 0; ii < sizeof(declarationKinds)/sizeof(declarationKinds[0]); ii++) {
+        RegisterStandardTypeSpellings(&dummyLoc, CurrentScope,
+                                      declarationKinds[ii],
+                                      standardTypeNames[declarationKinds[ii]]);
+    }
 
     FalseSymb = AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "false"), BooleanType, CONSTANT_S);
     TrueSymb = AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "true"), BooleanType, CONSTANT_S);
@@ -248,6 +307,7 @@ int FreeSymbolTable(CgStruct *Cg)
         // FreeEverythingOwnedByScope(pScope);
         lScope = nScope;
     }
+    FreeCgStandardTypes();
     return 1;
 } // FreeSymbolTable
 
@@ -611,7 +671,9 @@ int IsVoid(const Type *fType)
 
 int IsBoolean(const Type *fType)
 {
-    if (fType && GetScalarKind(fType) == CG_SCALAR_BOOL) {
+    if (fType && (GetScalarKind(fType) == CG_SCALAR_BOOL ||
+                  (GetScalarKind(fType) == CG_SCALAR_NONE &&
+                   IsTypeBase(fType, TYPE_BASE_BOOLEAN)))) {
         return 1;
     } else {
         return 0;

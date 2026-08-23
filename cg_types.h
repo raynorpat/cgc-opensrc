@@ -79,5 +79,8 @@ int CgScalarIsIntegral(CgScalarKind kind);
 int CgScalarIsUnsigned(CgScalarKind kind);
 int CgScalarIsFloating(CgScalarKind kind);
 const char *CgScalarKindName(CgScalarKind kind);
+Type *GetStandardTypeKind(CgScalarKind kind, int rows, int columns);
+int InitCgStandardTypes(void);
+void FreeCgStandardTypes(void);
 
 #endif
