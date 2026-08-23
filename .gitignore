@@ -162,5 +162,8 @@ pip-log.txt
 # Linked worktrees used for isolated feature development
 .worktrees/
 
+# Dedicated Cg 2.0 build directories
+/build-cg20*/
+
 # Mac crap
 .DS_Store

@@ -160,6 +160,28 @@ function(add_glsl_boundary name profile source stage)
     add_glsl_validation(${name} ${profile} ${stage} ${source})
 endfunction()
 
+function(add_cg20_success name source)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=generic
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake
+    )
+endfunction()
+
+add_cg20_success(cg20_smoke tests/cg20/profile/smoke.cg)
+# Enabled by Task 1b: entry-point return-value semantics are not yet
+# implemented; see docs/superpowers/plans/2026-08-23-cg-2-language-ir.md.
+set_tests_properties(cg20_smoke PROPERTIES DISABLED TRUE)
+add_test(
+    NAME cg20_manifest
+    COMMAND ${CMAKE_COMMAND}
+        -DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/cg20/conformance.csv
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_manifest.cmake
+)
+
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
