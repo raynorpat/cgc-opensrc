@@ -632,6 +632,8 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
     if (tag == NULL)
         return 0;
     sourceName = GetAtomString(atable, canonical->str.tag);
+    if (sourceName[0] == '$')
+        return 1;
     name = GlslAllocateSymbolNameForSource(context, tag, sourceName,
                                            &tag->loc);
     if (name == NULL)

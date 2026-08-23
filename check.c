@@ -243,7 +243,16 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                         }
                         outputVar = (expr *) NewSymbNode(VARIABLE_OP, voutVar);
                         lExpr = GenMemberReference(outputVar, outSymb);
-                        rexpr = GenMemberReference(returnVar, retSymb);
+                        if (sourceReturn->returnst.exp->common.type != NULL &&
+                            GetCategory(sourceReturn->returnst.exp->common.type) !=
+                                TYPE_CATEGORY_STRUCT)
+                        {
+                            // Entry returned through a synthesized single-member
+                            // connector: assign the returned value directly:
+                            rexpr = returnVar;
+                        } else {
+                            rexpr = GenMemberReference(returnVar, retSymb);
+                        }
                         if (IsScalar(lSymb->type) || IsVector(lSymb->type, &len)) {
                             lStmt = NewSimpleAssignmentStmt(&program->loc, lExpr, rexpr, 0);
                             stmtlist = ConcatStmts(stmtlist, lStmt);

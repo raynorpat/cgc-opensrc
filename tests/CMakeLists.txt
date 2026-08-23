@@ -172,9 +172,6 @@ function(add_cg20_success name source)
 endfunction()
 
 add_cg20_success(cg20_smoke tests/cg20/profile/smoke.cg)
-# Enabled by Task 1b: entry-point return-value semantics are not yet
-# implemented; see docs/superpowers/plans/2026-08-23-cg-2-language-ir.md.
-set_tests_properties(cg20_smoke PROPERTIES DISABLED TRUE)
 add_test(
     NAME cg20_manifest
     COMMAND ${CMAKE_COMMAND}
@@ -292,6 +289,14 @@ add_glsl_fixture(glslv_passthrough glslv
 add_glsl_fixture(glslf_passthrough glslf
     tests/glsl/profile/fp_passthrough.cg
     tests/glsl/profile/fp_passthrough.expected)
+
+add_glsl_fixture(glslv_scalar_return glslv
+    tests/glsl/profile/vp_scalar_return.cg
+    tests/glsl/profile/vp_scalar_return.expected)
+
+add_glsl_fixture(glslf_scalar_return glslf
+    tests/glsl/profile/fp_scalar_return.cg
+    tests/glsl/profile/fp_scalar_return.expected)
 
 add_glsl_fixture(glslf_control glslf
     tests/glsl/expressions/fp_control.cg
@@ -660,6 +665,9 @@ add_glsl_fixture(glslv_function_local_collision glslv
     tests/glsl/profile/vp_function_local_collision.cg
     tests/glsl/profile/vp_function_local_collision.expected)
 
+add_glsl_diagnostic(glslv_missing_return_semantic glslv
+    tests/glsl/diagnostics/vp_missing_return_semantic.cg 5121 1
+    "must.declare.a.semantic.on.its.return.value")
 add_glsl_diagnostic(glslv_non_square_diagnostic glslv
     tests/glsl/diagnostics/vp_non_square.cg 6209 2
     "square.matrix,.found.*float4x3")

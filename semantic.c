@@ -370,6 +370,44 @@ static void lVerifyConnectorDirection(SourceLoc *loc, int semantics, int IsOutPa
 } // lVerifyConnectorDirection
 
 /*
+ * lSynthesizeEntryReturnConnector() - Wrap a non-struct entry return type in
+ *         a single-member connector struct so downstream profiles see the
+ *         struct-return shape they already handle.  The member's semantic is
+ *         the one recorded on the program's declarator; the member name is
+ *         the semantic atom itself, since binding and return lowering key on
+ *         the semantic when one is present.  Reports
+ *         ERROR_S_PROGRAM_RETURN_NEEDS_SEMANTIC and returns NULL when no
+ *         semantic was recorded.
+ */
+
+static Type *lSynthesizeEntryReturnConnector(SourceLoc *loc, Scope *fScope,
+                                             Symbol *program, Type *rettype)
+{
+    int tag, lname;
+    Scope *members;
+    Symbol *member;
+    Type *connector;
+
+    lname = program->details.fun.semantics;
+    if (!lname) {
+        SemanticError(&program->loc, ERROR_S_PROGRAM_RETURN_NEEDS_SEMANTIC,
+                      GetAtomString(atable, program->name));
+        return NULL;
+    }
+    tag = AddAtom(atable, "$progret");
+    connector = StructHeader(loc, fScope, 0, tag);
+    members = NewScope();
+    members->HasSemantics = 1;
+    members->level = 1;
+    members->IsStructScope = 1;
+    connector->str.members = members;
+    member = DefineVar(loc, members, lname, rettype);
+    member->details.var.semantics = lname;
+    SetStructMemberOffsets(connector);
+    return connector;
+} // lSynthesizeEntryReturnConnector
+
+/*
  * BuildSemanticStructs() - Build the three global semantic type structure,  Check main for
  *         type errors in its arguments.
  */
@@ -544,6 +582,14 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
     rettype = lType->fun.rettype;
     category = GetCategory(rettype);
     if (!IsVoid(rettype)) {
+        if (category != TYPE_CATEGORY_STRUCT) {
+            rettype = lSynthesizeEntryReturnConnector(loc, fScope, program,
+                                                      rettype);
+            if (rettype != NULL) {
+                lType->fun.rettype = rettype;
+                category = TYPE_CATEGORY_STRUCT;
+            }
+        }
         if (category == TYPE_CATEGORY_STRUCT) {
             lVerifyConnectorDirection(&program->loc, rettype->str.semantics, 1);
             lScope = rettype->str.members;
@@ -553,9 +599,6 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
                                              rettype->str.semantics);
                 member = member->next;
             }
-        } else {
-            SemanticError(&program->loc, ERROR_S_PROGRAM_MUST_RETURN_STRUCT,
-                          GetAtomString(atable, program->name));
         }
     }
 

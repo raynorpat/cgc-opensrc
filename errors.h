@@ -252,6 +252,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_SEMANTIC_TYPE_CONFLICT      5118, "variable type conflicts with semantics \"%s\""
 #define ERROR_SS_VAR_SEMANTIC_NOT_VISIBLE   5119, "variable/member \"%s\" has semantic \"%s\" which is not visible in this profile"
 #define ERROR_S_NO_TEXUNITS_AVAILABLE       5120, "no texture units left to bind to \"%s\""
+#define ERROR_S_PROGRAM_RETURN_NEEDS_SEMANTIC 5121, "program \"%s\" must declare a semantic on its return value"
 
 #define ERROR_S_INVALID_INTERNAL_FUNCTION   5201, "invalid internal function declaration for \"%s\""
 

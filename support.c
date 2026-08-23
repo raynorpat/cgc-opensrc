@@ -1377,8 +1377,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     params = AddFormalParamDecls(lScope, fDecl->params);
                     lSymb = DeclareFunc(&fDecl->loc, CurrentScope, NULL, fDecl->name, lType, lScope, params);
                     if (semantics)
-                        SemanticError(loc, ERROR_S_SEMANTICS_NON_VARIABLE,
-                                    GetAtomString(atable, fDecl->name));
+                        lSymb->details.fun.semantics = semantics;
                 } else {
                     if (fDecl->type.type.properties & TYPE_MISC_INTERNAL) {
                         SemanticError(&fDecl->loc, ERROR_S_INTERNAL_FOR_FUN,
@@ -1439,8 +1438,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                 lSymb = DeclareFunc(&fDecl->loc, CurrentScope, lSymb, fDecl->name, lType, lScope, params);
                 lSymb->storageClass = fDecl->type.storageClass;
                 if (semantics)
-                    SemanticError(loc, ERROR_S_SEMANTICS_NON_VARIABLE,
-                                GetAtomString(atable, fDecl->name));
+                    lSymb->details.fun.semantics = semantics;
             } else {
                 if (!IsTypeBase(&fDecl->type.type, TYPE_BASE_UNDEFINED_TYPE)) {
                     SemanticError(&fDecl->loc, ERROR_S_NAME_ALREADY_DEFINED,

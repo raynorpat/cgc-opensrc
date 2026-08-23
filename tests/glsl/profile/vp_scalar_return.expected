@@ -1,0 +1,12 @@
+#version 110
+// cgc-bind attribute cg_POSITION0 POSITION0
+// cgc-bind builtin gl_Position POSITION0
+
+attribute vec4 cg_POSITION0;
+
+void main()
+{
+    vec4 position;
+    position = cg_POSITION0;
+    gl_Position = position;
+}

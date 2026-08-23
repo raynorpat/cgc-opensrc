@@ -119,6 +119,7 @@ static SemanticsDescriptor Semantics_generic[] = {
 // the same thing as aliases
     // Varying input semantics:
     { "ATTRIB",   FLT, 4, REG_AP2V_ATTR0, 16, AP2V_GROUP, SEM_IN | SEM_VARYING, },
+    { "POSITION", FLT, 4, REG_AP2V_ATTR0, 16, AP2V_GROUP, SEM_IN | SEM_VARYING, },
     // Varying output semantics:
     { "POSITION", FLT, 4, REG_V2FR_HPOS, 1, V2FR_GROUP, SEM_OUT | SEM_VARYING, },
     { "FOG",      FLT, 1, REG_V2FR_FOGC, 0, V2FR_GROUP, SEM_OUT | SEM_VARYING, },
@@ -350,6 +351,15 @@ static int BindVaryingSemantic_generic(SourceLoc *loc, Symbol *fSymb,
     for (ii = 0; ii < Cg->theHAL->numSemantics; ii++, semantics++) {
         match = semantics->numregs > 0 ? root : pname;
         if (!strcmp(match, semantics->sname)) {
+            // A semantic may be listed once for input and once for output;
+            // skip entries that do not support the requested direction:
+            if (IsOutVal) {
+                if (!(semantics->properties & SEM_OUT))
+                    continue;
+            } else {
+                if (!(semantics->properties & SEM_IN))
+                    continue;
+            }
             if (semantics->numregs > 0) {
                 if (index >= semantics->numregs) {
                     SemanticError(loc, ERROR_S_SEMANTICS_INDEX_TOO_BIG, pname);
