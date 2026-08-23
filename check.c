@@ -256,9 +256,21 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                 }
                 fStmt = stmtlist;
             } else {
-                // Already reported:
-                // SemanticError(&program->loc, ERROR_S_PROGRAM_MUST_RETURN_STRUCT,
-                //               GetAtomString(atable, program->name));
+                // Scalar or vector return with a semantic, bound by
+                // BuildSemanticStructs() to an implicit $vout member named
+                // after the program:
+                voutVar = Cg->theHAL->varyingOut;
+                voutScope = voutVar->type->str.members;
+                lname = program->details.fun.semantics;
+                outSymb = lname ? LookUpLocalSymbol(voutScope, lname) : NULL;
+                if (outSymb) {
+                    outputVar = (expr *) NewSymbNode(VARIABLE_OP, voutVar);
+                    lExpr = GenMemberReference(outputVar, outSymb);
+                    rexpr = sourceReturn->returnst.exp;
+                    lStmt = NewSimpleAssignmentStmt(&program->loc, lExpr,
+                                                    rexpr, 0);
+                    fStmt = lStmt;
+                }
             }
         }
         if (lstr->preserveReturns) {

@@ -1,0 +1,14 @@
+struct appin {
+    float4 position : POSITION;
+};
+
+struct vout {
+    float4 position : POSITION;
+};
+
+vout main(appin input)
+{
+    vout output;
+    output.position = input.position;
+    return output;
+}
