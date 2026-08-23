@@ -1,0 +1,24 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float4 color : TEXCOORD0,
+                 out float depth : DEPTH)
+{
+    FragmentOut output;
+    int index;
+    output.color = color;
+    depth = 0.25;
+    if (color.x > 0.75) {
+        depth = 0.5;
+        return output;
+    }
+    for (index = 0; index < 1; index = index + 1) {
+        if (color.y > 0.75) {
+            depth = 0.75;
+            return output;
+        }
+    }
+    depth = 1.0;
+    return output;
+}

@@ -1,0 +1,32 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform matrix2
+// cgc-default matrix2 1.0 2.0 3.0 4.0
+// cgc-bind uniform matrix3
+// cgc-default matrix3 11.0 12.0 13.0 14.0 15.0 16.0 17.0 18.0 19.0
+// cgc-bind uniform matrix4
+// cgc-default matrix4 21.0 22.0 23.0 24.0 25.0 26.0 27.0 28.0 29.0 30.0 31.0 32.0 33.0 34.0 35.0 36.0
+// cgc-bind uniform pairs
+// cgc-default pairs 41.0 42.0 43.0 44.0 45.0 46.0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform mat2 matrix2;
+uniform mat3 matrix3;
+uniform mat4 matrix4;
+uniform vec3 pairs[2];
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = matrix4 * position;
+    cg_output.position.xy = matrix2 * cg_output.position.xy + (matrix3 * pairs[0]).xy;
+    gl_Position = cg_output.position;
+}

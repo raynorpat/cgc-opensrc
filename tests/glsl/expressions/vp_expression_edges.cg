@@ -1,0 +1,28 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    float value;
+    bool a;
+    bool b;
+    bool c;
+    bool nested;
+    bool4 mask;
+    value = position.x;
+    value = -(-value);
+    value = +(+value);
+    mask = !(position < 1.0);
+    a = position.x > 0.0;
+    b = position.y > 0.0;
+    c = position.z > 0.0;
+    nested = (a ? b : c) ? a : b;
+    nested = !nested;
+    if (mask.x && nested) {
+        position.x = value;
+    }
+    output.position = position;
+    return output;
+}

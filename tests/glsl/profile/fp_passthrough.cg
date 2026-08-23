@@ -1,0 +1,11 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float2 texcoord : TEXCOORD0,
+                 uniform float4 tint)
+{
+    FragmentOut output;
+    output.color = float4(texcoord.x, texcoord.y, 0.0, 1.0) * tint;
+    return output;
+}

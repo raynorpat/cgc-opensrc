@@ -1,0 +1,15 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+    float depth : DEPTH;
+};
+
+FragmentOut main(float4 windowPosition : WPOS, bool front : FACE)
+{
+    FragmentOut output;
+    if (front)
+        output.color = float4(1.0, 1.0, 1.0, 1.0);
+    else
+        output.color = float4(0.0, 0.0, 0.0, 1.0);
+    output.depth = windowPosition.z;
+    return output;
+}

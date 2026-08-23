@@ -1,0 +1,16 @@
+struct Params {
+    float2 scale;
+    float bias;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0,
+               uniform Params params = { { 1.0, 2.0 }, 3.0 })
+{
+    VertexOut output;
+    output.position = position * params.scale.x + params.bias;
+    return output;
+}

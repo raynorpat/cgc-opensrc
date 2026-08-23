@@ -68,6 +68,7 @@ typedef struct StmtList_Rec {
 typedef enum stmtkind {
     EXPR_STMT, IF_STMT, WHILE_STMT, DO_STMT, FOR_STMT,
     BLOCK_STMT, RETURN_STMT, DISCARD_STMT, COMMENT_STMT,
+    BREAK_STMT, CONTINUE_STMT,
     LAST_STMTKIND
 } stmtkind;
 
@@ -515,6 +516,7 @@ trinary *DupTrinaryNode(const trinary *ftri);
 expr *DupNode(const expr *fExpr);
 
 expr_stmt *NewExprStmt(SourceLoc *loc, expr *fExpr);
+common_stmt *NewSimpleStmt(SourceLoc *loc, stmtkind kind);
 if_stmt *NewIfStmt(SourceLoc *loc, expr *fExpr, stmt *thenStmt, stmt *elseStmt);
 if_stmt *SetThenElseStmts(SourceLoc *loc, stmt *ifStmt, stmt *thenStmt, stmt *elseStmt);
 while_stmt *NewWhileStmt(SourceLoc *loc, stmtkind kind, expr *fExpr, stmt *body);

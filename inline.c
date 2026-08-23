@@ -119,6 +119,11 @@ static stmt *DuplicateStatementTree(stmt *fStmt)
             lStmt = (stmt *) NewCommentStmt(&fStmt->commonst.loc,
                                             GetAtomString(atable, fStmt->commentst.str));
             break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+            lStmt = (stmt *) NewSimpleStmt(&fStmt->commonst.loc,
+                                           fStmt->commonst.kind);
+            break;
         default:
             lStmt = fStmt;
             assert(!"DuplicateStatementTree() - not yet finished");
@@ -157,6 +162,8 @@ static stmt *ConvertReturnStatement(stmt *fStmt, void *arg1, int arg2)
                 lStmt = NULL;
             }
             break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
         default:
             lStmt = fStmt;
             break;

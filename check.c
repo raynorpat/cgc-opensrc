@@ -92,14 +92,88 @@ static int CheckParamsAndLocals(Symbol *funSymb, int IsProgram)
 
 /*
  * BuildProgramReturnAssignments() - Insert a series of assignment statements before each return
- *         statement to set the values of the program's result for these memeners.  (Should only
- *         be applied to the main program.)  Deletes the return statement.
+ *         statement to set the values of the program's result for these members.  (Should only
+ *         be applied to the main program.)  Profiles may preserve nonterminal returns.
  */
 
 struct BuildReturnAssignments {
     Scope *globalScope;
     Symbol *program;
+    stmt *terminalReturn;
+    stmt *entryOutputAssignments;
+    Symbol *returnTemp;
+    int preserveReturns;
 };
+
+static stmt *DuplicateEntryOutputAssignments(stmt *source)
+{
+    stmt *copy;
+    stmt *list;
+
+    list = NULL;
+    while (source != NULL) {
+        assert(source->commonst.kind == EXPR_STMT);
+        copy = (stmt *) NewExprStmt(&source->commonst.loc,
+                                    DupExpr(source->exprst.exp));
+        list = ConcatStmts(list, copy);
+        source = source->commonst.next;
+    }
+    return list;
+}
+
+static int ProgramReturnExprNeedsTemp(expr *fExpr)
+{
+    if (fExpr == NULL)
+        return 0;
+    if (fExpr->common.HasSideEffects)
+        return 1;
+    switch (fExpr->common.kind) {
+    case DECL_N:
+    case SYMB_N:
+    case CONST_N:
+        return 0;
+    case UNARY_N:
+        return ProgramReturnExprNeedsTemp(fExpr->un.arg);
+    case BINARY_N:
+        if (fExpr->bin.op == FUN_CALL_OP ||
+            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+        return ProgramReturnExprNeedsTemp(fExpr->bin.left) ||
+               ProgramReturnExprNeedsTemp(fExpr->bin.right);
+    case TRINARY_N:
+        return ProgramReturnExprNeedsTemp(fExpr->tri.arg1) ||
+               ProgramReturnExprNeedsTemp(fExpr->tri.arg2) ||
+               ProgramReturnExprNeedsTemp(fExpr->tri.arg3);
+    default:
+        assert(!"bad kind to ProgramReturnExprNeedsTemp()");
+        return 1;
+    }
+}
+
+static Symbol *NewProgramReturnTemp(Symbol *program, Type *type,
+                                    SourceLoc *loc)
+{
+    Scope *scope;
+    Symbol *temp;
+    char name[64];
+    int atom;
+    int index;
+
+    scope = program->details.fun.locals;
+    index = 0;
+    do {
+        if (index == 0) {
+            strcpy(name, "cg_return");
+        } else {
+            sprintf(name, "cg_return%d", index);
+        }
+        atom = AddAtom(atable, name);
+        temp = LookUpLocalSymbol(scope, atom);
+        index++;
+    } while (temp != NULL);
+    temp = DefineVar(loc, scope, atom, type);
+    temp->properties |= SYMB_IS_NATIVE_AGGREGATE_TEMP;
+    return temp;
+}
 
 static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
 {
@@ -109,9 +183,11 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
     expr *lExpr, *rexpr, *returnVar, *outputVar;
     Scope *lScope, *gScope, *voutScope;
     stmt *lStmt, *stmtlist;
-    int category, len, lname;
+    stmt *sourceReturn;
+    int category, len, lname, resultMembers, useReturnTemp;
 
     if (fStmt->commonst.kind == RETURN_STMT) {
+        sourceReturn = fStmt;
         lstr = (struct BuildReturnAssignments *) arg1;
         gScope = lstr->globalScope;
         program = lstr->program;
@@ -126,6 +202,31 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                 voutVar = Cg->theHAL->varyingOut;
                 voutScope = voutVar->type->str.members;
                 lScope = rettype->str.members;
+                resultMembers = 0;
+                lSymb = lScope->symbols;
+                while (lSymb) {
+                    lname = lSymb->details.var.semantics ?
+                        lSymb->details.var.semantics : lSymb->name;
+                    outSymb = LookUpLocalSymbol(voutScope, lname);
+                    retSymb = LookUpLocalSymbol(lScope, lSymb->name);
+                    if (outSymb && retSymb)
+                        resultMembers++;
+                    lSymb = lSymb->next;
+                }
+                useReturnTemp = lstr->preserveReturns &&
+                    resultMembers > 1 && ProgramReturnExprNeedsTemp(
+                        sourceReturn->returnst.exp);
+                if (useReturnTemp) {
+                    if (lstr->returnTemp == NULL) {
+                        lstr->returnTemp = NewProgramReturnTemp(
+                            program, rettype, &sourceReturn->commonst.loc);
+                    }
+                    lStmt = NewSimpleAssignmentStmt(
+                        &sourceReturn->commonst.loc,
+                        GenSymb(lstr->returnTemp),
+                        sourceReturn->returnst.exp, 0);
+                    stmtlist = ConcatStmts(stmtlist, lStmt);
+                }
                 lSymb = lScope->symbols;
                 while (lSymb) {
                     // Create an assignment statement of the bound variable to the $vout member:
@@ -134,7 +235,12 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                     retSymb = LookUpLocalSymbol(lScope, lSymb->name);
                     if (outSymb && retSymb) {
                         // outSymb may not be in the symbol table if it's a "hidden" register.
-                        returnVar = DupExpr(fStmt->returnst.exp);
+                        if (useReturnTemp) {
+                            returnVar = GenSymb(lstr->returnTemp);
+                        } else {
+                            returnVar = DupExpr(
+                                sourceReturn->returnst.exp);
+                        }
                         outputVar = (expr *) NewSymbNode(VARIABLE_OP, voutVar);
                         lExpr = GenMemberReference(outputVar, outSymb);
                         rexpr = GenMemberReference(returnVar, retSymb);
@@ -153,6 +259,22 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                 // Already reported:
                 // SemanticError(&program->loc, ERROR_S_PROGRAM_MUST_RETURN_STRUCT,
                 //               GetAtomString(atable, program->name));
+            }
+        }
+        if (lstr->preserveReturns) {
+            if (lstr->entryOutputAssignments != NULL) {
+                if (sourceReturn == lstr->terminalReturn) {
+                    lStmt = lstr->entryOutputAssignments;
+                } else {
+                    lStmt = DuplicateEntryOutputAssignments(
+                        lstr->entryOutputAssignments);
+                }
+                fStmt = ConcatStmts(fStmt, lStmt);
+            }
+            if (sourceReturn != lstr->terminalReturn) {
+                lStmt = (stmt *) NewReturnStmt(
+                    &sourceReturn->commonst.loc, NULL, NULL);
+                fStmt = ConcatStmts(fStmt, lStmt);
             }
         }
     }
@@ -350,6 +472,63 @@ static stmt *CheckForUnsupportedStatements(stmt *fStmt, void *arg1, int arg2)
 } // CheckForUnsupportedStatements
 
 /*
+ * CheckJumpStatements() - Reject loop-control statements outside a loop.
+ *         This is a source-language rule shared by every profile.
+ */
+
+static int CheckJumpStatements(stmt *fStmt, int loopDepth)
+{
+    int count;
+
+    count = 0;
+    for (; fStmt != NULL; fStmt = fStmt->commonst.next) {
+        switch (fStmt->commonst.kind) {
+        case IF_STMT:
+            count += CheckJumpStatements(fStmt->ifst.thenstmt, loopDepth);
+            count += CheckJumpStatements(fStmt->ifst.elsestmt, loopDepth);
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            count += CheckJumpStatements(fStmt->whilest.body,
+                                         loopDepth + 1);
+            break;
+        case FOR_STMT:
+            count += CheckJumpStatements(fStmt->forst.init, loopDepth);
+            count += CheckJumpStatements(fStmt->forst.step, loopDepth);
+            count += CheckJumpStatements(fStmt->forst.body,
+                                         loopDepth + 1);
+            break;
+        case BLOCK_STMT:
+            count += CheckJumpStatements(fStmt->blockst.body, loopDepth);
+            break;
+        case BREAK_STMT:
+            if (loopDepth == 0) {
+                SemanticError(&fStmt->commonst.loc,
+                              ERROR_S_JUMP_NOT_IN_LOOP, "break");
+                count++;
+            }
+            break;
+        case CONTINUE_STMT:
+            if (loopDepth == 0) {
+                SemanticError(&fStmt->commonst.loc,
+                              ERROR_S_JUMP_NOT_IN_LOOP, "continue");
+                count++;
+            }
+            break;
+        case EXPR_STMT:
+        case RETURN_STMT:
+        case DISCARD_STMT:
+        case COMMENT_STMT:
+            break;
+        default:
+            assert(!"bad kind to CheckJumpStatements()");
+            break;
+        }
+    }
+    return count;
+} // CheckJumpStatements
+
+/*
  * BindUnboundUniformMembers() - Bind any members that are currently unbound.  Must be a
  *         uniform pseudo-connector.
  */
@@ -358,15 +537,19 @@ static void BindUnboundUniformMembers(SymbolList *fList)
 {
     Symbol *lSymb;
     Binding *lBind;
+    int errorsBefore;
 
     while (fList != NULL) {
         lSymb = fList->symb;
         if (lSymb) {
             lBind = lSymb->details.var.bind;
             if (lBind && !(lBind->none.properties & BIND_IS_BOUND)) {
+                errorsBefore = GetErrorCount();
                 if (!Cg->theHAL->BindUniformUnbound(&lSymb->loc, lSymb, lBind)) {
-                    SemanticWarning(&lSymb->loc, WARNING_S_CANT_BIND_UNIFORM_VAR,
-                                    GetAtomString(atable, lSymb->name));
+                    if (GetErrorCount() == errorsBefore) {
+                        SemanticWarning(&lSymb->loc, WARNING_S_CANT_BIND_UNIFORM_VAR,
+                                        GetAtomString(atable, lSymb->name));
+                    }
                 }
             }
         }
@@ -388,12 +571,37 @@ static int CheckFunctionDefinition(Scope *fScope, Symbol *funSymb, int IsProgram
         funSymb->flags = BEING_CHECKED;
         lStmt = funSymb->details.fun.statements;
         CheckParamsAndLocals(funSymb, IsProgram);
+        count += CheckJumpStatements(lStmt, 0);
         if (IsProgram) {
             struct BuildReturnAssignments lstr;
+            stmt *terminalReturn;
 
             lstr.globalScope = fScope;
             lstr.program = funSymb;
-            lStmt = PreApplyToStatements(BuildProgramReturnAssignments, lStmt, &lstr, 0);
+            lstr.entryOutputAssignments =
+                funSymb->details.fun.entryOutputAssignments;
+            lstr.returnTemp = NULL;
+            terminalReturn = lStmt;
+            while (terminalReturn != NULL &&
+                   terminalReturn->commonst.next != NULL)
+            {
+                terminalReturn = terminalReturn->commonst.next;
+            }
+            if (terminalReturn != NULL &&
+                terminalReturn->commonst.kind != RETURN_STMT)
+            {
+                terminalReturn = NULL;
+            }
+            lstr.terminalReturn = terminalReturn;
+            lstr.preserveReturns = Cg->theHAL->GetCapsBit(
+                CAPS_PRESERVE_ENTRY_RETURNS);
+            lStmt = PreApplyToStatements(BuildProgramReturnAssignments,
+                                         lStmt, &lstr, 0);
+            if (lstr.preserveReturns && terminalReturn == NULL) {
+                lStmt = ConcatStmts(lStmt,
+                    lstr.entryOutputAssignments);
+            }
+            funSymb->details.fun.statements = lStmt;
         }
         ApplyToTopExpressions(CheckExpressionForUndefinedFunctions, lStmt, &count, 0);
         PostApplyToExpressions(CheckNodeForUnsupportedOperators, lStmt, &count, 0);

@@ -1,0 +1,12 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float4 color : COLOR0,
+                 float4 texcoord : TEXCOORD0,
+                 float4 auxiliary : TEXCOORD1)
+{
+    FragmentOut output;
+    output.color = color + texcoord + auxiliary;
+    return output;
+}

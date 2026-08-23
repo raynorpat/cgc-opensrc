@@ -1,0 +1,24 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform transform
+// cgc-bind uniform scale
+// cgc-default scale 1.0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform mat4 transform;
+uniform float scale;
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = transform * position * scale;
+    gl_Position = cg_output.position;
+}

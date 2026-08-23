@@ -1,0 +1,61 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct Pair
+{
+    vec4 first;
+    vec4 second;
+};
+
+struct Row
+{
+    Pair values[2];
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+int nextIndex(inout int index)
+{
+    index = index + 1;
+    return index;
+}
+
+void main()
+{
+    vec4 position;
+    Row rows[2];
+    Pair source;
+    Pair copied;
+    int outer;
+    int inner;
+    int cg_index;
+    VertexOut cg_output;
+    int cg_index1;
+    int cg_index2;
+    Pair cg_aggregate;
+    int cg_index3;
+    int cg_index4;
+    position = cg_ATTRIB0;
+    source.first = position;
+    source.second = position * 2.0;
+    outer = -1;
+    inner = -1;
+    cg_index = 0;
+    cg_index1 = nextIndex(outer);
+    cg_index2 = nextIndex(inner);
+    rows[cg_index1].values[cg_index2].first = source.first;
+    rows[cg_index1].values[cg_index2].second = source.second;
+    cg_index3 = nextIndex(outer);
+    cg_index4 = nextIndex(inner);
+    cg_aggregate = rows[cg_index3].values[cg_index4];
+    copied.first = cg_aggregate.first;
+    copied.second = cg_aggregate.second;
+    cg_output.position = copied.first + copied.second;
+    gl_Position = cg_output.position;
+}

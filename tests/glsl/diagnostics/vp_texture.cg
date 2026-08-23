@@ -1,0 +1,9 @@
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0,
+               float2 texcoord : ATTRIB1,
+               uniform sampler2D image)
+{
+    VertexOut output;
+    output.position = tex2D(image, texcoord) + position;
+    return output;
+}

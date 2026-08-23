@@ -1,0 +1,39 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut result;
+    float2 row0;
+    float2 row1;
+    float2 pair0;
+    float2 pair1;
+    float3 row2;
+    int2 introw;
+    float2x2 scalar2;
+    float2x2 rows2;
+    float2x2 converted2;
+    float3x3 mixed3;
+    float4x4 scalar4;
+    row0 = float2(101.0, 102.0);
+    row1 = float2(103.0, 104.0);
+    pair0 = float2(11.0, 12.0);
+    pair1 = float2(18.0, 19.0);
+    row2 = float3(14.0, 15.0, 16.0);
+    introw = int2(201, 202);
+    scalar2 = float2x2(1.0, 2.0, 3.0, 4.0);
+    rows2 = float2x2(row0, row1);
+    converted2 = float2x2(introw, 203.0, 204.0);
+    mixed3 = float3x3(pair0, 13.0, row2, 17.0, pair1);
+    scalar4 = float4x4(21.0, 22.0, 23.0, 24.0,
+                       25.0, 26.0, 27.0, 28.0,
+                       29.0, 30.0, 31.0, 32.0,
+                       33.0, 34.0, 35.0, 36.0);
+    result.position = mul(scalar4, position);
+    result.position.xy = mul(scalar2, result.position.xy);
+    result.position.xy = mul(rows2, result.position.xy);
+    result.position.xy = mul(converted2, result.position.xy);
+    result.position.xyz = mul(mixed3, result.position.xyz);
+    return result;
+}

@@ -96,11 +96,14 @@ static int GenerateCode_HAL(SourceLoc *loc, Scope *fScope, Symbol *program);
 slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id)
 {
     slProfile *lProfile;
+    char *profileName;
 
     lProfile = (slProfile *) malloc(sizeof(slProfile));
+    profileName = (char *) malloc(strlen(name) + 1);
+    strcpy(profileName, name);
     lProfile->next = Cg->allProfiles;
     lProfile->InitHAL = InitHAL;
-    lProfile->name = AddAtom(atable, name);
+    lProfile->name = profileName;
     lProfile->id = id;
     Cg->allProfiles = lProfile;
     return lProfile;
@@ -141,7 +144,7 @@ int InitHAL(const char *profileName, const char *entryName)
     Cg->theHAL->entryName = AddAtom(atable, entryName);
     lProfile = Cg->allProfiles;
     while (lProfile) {
-        if (Cg->theHAL->profileName == lProfile->name) {
+        if (!strcmp(profileName, lProfile->name)) {
             Cg->theHAL->InitHAL = lProfile->InitHAL;
             Cg->theHAL->pid = lProfile->id;
             result = Cg->theHAL->InitHAL(Cg->theHAL);
@@ -255,6 +258,9 @@ void AddConstantBinding(Binding *fBind)
     nBindList = (BindingList *) malloc(sizeof(BindingList));
     nBindList->next = NULL;
     nBindList->binding = fBind;
+    nBindList->identity = NULL;
+    nBindList->initializer = NULL;
+    nBindList->type = NULL;
     lBindList = Cg->theHAL->constantBindings;
     if (lBindList) {
         while (lBindList->next)
@@ -270,13 +276,17 @@ void AddConstantBinding(Binding *fBind)
  *
  */
 
-void AddDefaultBinding(Binding *fBind)
+void AddDefaultBinding(Binding *fBind, const void *identity,
+                       const void *initializer, const void *type)
 {
     BindingList *lBindList, *nBindList;
 
     nBindList = (BindingList *) malloc(sizeof(BindingList));
     nBindList->next = NULL;
     nBindList->binding = fBind;
+    nBindList->identity = identity;
+    nBindList->initializer = initializer;
+    nBindList->type = type;
     lBindList = Cg->theHAL->defaultBindings;
     if (lBindList) {
         while (lBindList->next)

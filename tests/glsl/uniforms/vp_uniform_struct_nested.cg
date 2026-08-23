@@ -1,0 +1,27 @@
+struct Sample {
+    float2 offset;
+    float weight;
+};
+
+struct Batch {
+    Sample samples[2];
+    float bias;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+uniform Batch batches[2];
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position;
+    output.position.xy = output.position.xy +
+                         batches[1].samples[0].offset;
+    output.position.z = output.position.z +
+                        batches[0].samples[1].weight;
+    output.position.w = output.position.w + batches[1].bias;
+    return output;
+}

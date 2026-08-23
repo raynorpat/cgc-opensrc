@@ -1,0 +1,39 @@
+struct ValueBox {
+    float4 value;
+};
+
+struct Payload {
+    ValueBox box;
+};
+
+struct Unused {
+    float4 value;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+Payload makePayload(float4 value)
+{
+    Payload payload;
+    payload.box.value = value;
+    return payload;
+}
+
+float4 consume(Payload payload)
+{
+    return payload.box.value;
+}
+
+float4 unreachable(Unused payload)
+{
+    return payload.value;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = consume(makePayload(position));
+    return output;
+}

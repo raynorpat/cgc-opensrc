@@ -1,0 +1,794 @@
+/****************************************************************************\
+Copyright (c) 2002, NVIDIA Corporation.
+
+NVIDIA Corporation("NVIDIA") supplies this software to you in
+consideration of your agreement to the following terms, and your use,
+installation, modification or redistribution of this NVIDIA software
+constitutes acceptance of these terms.  If you do not agree with these
+terms, please do not use, install, modify or redistribute this NVIDIA
+software.
+
+In consideration of your agreement to abide by the following terms, and
+subject to these terms, NVIDIA grants you a personal, non-exclusive
+license, under NVIDIA's copyrights in this original NVIDIA software (the
+"NVIDIA Software"), to use, reproduce, modify and redistribute the
+NVIDIA Software, with or without modifications, in source and/or binary
+forms; provided that if you redistribute the NVIDIA Software, you must
+retain the copyright notice of NVIDIA, this notice and the following
+text and disclaimers in all such redistributions of the NVIDIA Software.
+Neither the name, trademarks, service marks nor logos of NVIDIA
+Corporation may be used to endorse or promote products derived from the
+NVIDIA Software without specific prior written permission from NVIDIA.
+Except as expressly stated in this notice, no other rights or licenses
+express or implied, are granted by NVIDIA herein, including but not
+limited to any patent rights that may be infringed by your derivative
+works or by other works in which the NVIDIA Software may be
+incorporated. No hardware is licensed hereunder.
+
+THE NVIDIA SOFTWARE IS BEING PROVIDED ON AN "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+INCLUDING WITHOUT LIMITATION, WARRANTIES OR CONDITIONS OF TITLE,
+NON-INFRINGEMENT, MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR
+ITS USE AND OPERATION EITHER ALONE OR IN COMBINATION WITH OTHER
+PRODUCTS.
+
+IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY SPECIAL, INDIRECT,
+INCIDENTAL, EXEMPLARY, CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+TO, LOST PROFITS; PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) OR ARISING IN ANY WAY
+OUT OF THE USE, REPRODUCTION, MODIFICATION AND/OR DISTRIBUTION OF THE
+NVIDIA SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER THEORY OF CONTRACT,
+TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF
+NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+\****************************************************************************/
+// glsl_hal.c
+//
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "slglobals.h"
+#include "glsl_hal.h"
+
+static const GlslProfileDesc *GetProfile_glsl(void)
+{
+    return (const GlslProfileDesc *) Cg->theHAL->localData;
+}
+
+static int GlslSemanticParts(const char *name, int *rootLength, int *index)
+{
+    const char *digits;
+    const char *p;
+    int value;
+
+    if (name == NULL || name[0] == '\0')
+        return 0;
+    digits = name + strlen(name);
+    while (digits > name && digits[-1] >= '0' && digits[-1] <= '9')
+        digits--;
+    if (digits == name)
+        return 0;
+    value = 0;
+    for (p = digits; *p != '\0'; p++) {
+        if (value > 1000000)
+            return 0;
+        value = value * 10 + (*p - '0');
+    }
+    *rootLength = (int) (digits - name);
+    *index = value;
+    return 1;
+}
+
+static int GlslSemanticRootEquals(const char *name, int rootLength,
+                                  const char *root)
+{
+    return (int) strlen(root) == rootLength &&
+           !strncmp(name, root, rootLength);
+}
+
+static const char *GlslConnectorName(const GlslProfileDesc *profile,
+                                     const GlslSemanticDesc *semantic,
+                                     int index, int isOutput)
+{
+    ConnectorRegisters *registers;
+    const char *name;
+    int count;
+    int i;
+    int rootLength;
+    int registerIndex;
+
+    if (isOutput) {
+        registers = profile->outputRegs;
+        count = profile->numOutputRegs;
+    } else {
+        registers = profile->inputRegs;
+        count = profile->numInputRegs;
+    }
+    for (i = 0; i < count; i++) {
+        name = registers[i].sname;
+        if (GlslSemanticParts(name, &rootLength, &registerIndex) &&
+            registerIndex == index &&
+            GlslSemanticRootEquals(name, rootLength,
+                                   semantic->canonicalRoot))
+        {
+            return name;
+        }
+    }
+    return NULL;
+}
+
+const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
+                                       int semantic, int isOutput)
+{
+    const GlslSemanticDesc *desc;
+    const char *name;
+    int direction;
+    int i;
+    int index;
+    int rootLength;
+
+    if (profile == NULL || semantic == 0)
+        return NULL;
+    name = GetAtomString(atable, semantic);
+    if (name == NULL)
+        return NULL;
+    for (i = 0; i < profile->numAliases; i++) {
+        if (!strcmp(name, profile->aliases[i].alias)) {
+            name = profile->aliases[i].canonical;
+            break;
+        }
+    }
+    if (!GlslSemanticParts(name, &rootLength, &index))
+        return NULL;
+    direction = isOutput ? SEM_OUT : SEM_IN;
+    for (i = 0; i < profile->numSemanticMap; i++) {
+        desc = &profile->semanticMap[i];
+        if (!(desc->properties & direction) ||
+            !GlslSemanticRootEquals(name, rootLength, desc->root))
+        {
+            continue;
+        }
+        if (index < desc->firstIndex ||
+            index >= desc->firstIndex + desc->count)
+        {
+            return NULL;
+        }
+        switch (desc->interfaceKind) {
+        case GLSL_INTERFACE_POSITION:
+            return "gl_Position";
+        case GLSL_INTERFACE_POINT_SIZE:
+            return "gl_PointSize";
+        case GLSL_INTERFACE_FRAG_COORD:
+            return "gl_FragCoord";
+        case GLSL_INTERFACE_FRONT_FACING:
+            return "gl_FrontFacing";
+        case GLSL_INTERFACE_FRAG_COLOR:
+            return "gl_FragColor";
+        case GLSL_INTERFACE_FRAG_DEPTH:
+            return "gl_FragDepth";
+        case GLSL_INTERFACE_ATTRIBUTE:
+        case GLSL_INTERFACE_VARYING:
+            return GlslConnectorName(profile, desc, index, isOutput);
+        }
+    }
+    return NULL;
+}
+
+static int RegisterNames_glsl(slHAL *hal)
+{
+    const GlslProfileDesc *profile;
+    ConnectorDescriptor *connector;
+    GlslSemanticDesc *semantic;
+    GlslSemanticAlias *alias;
+    static const struct {
+        const char *name;
+        int base;
+    } samplerTypes[] = {
+        { "sampler1D", TYPE_BASE_GLSL_SAMPLER1D },
+        { "sampler2D", TYPE_BASE_GLSL_SAMPLER2D },
+        { "sampler3D", TYPE_BASE_GLSL_SAMPLER3D },
+        { "samplerCUBE", TYPE_BASE_GLSL_SAMPLERCUBE }
+    };
+    SourceLoc loc = { 0, 0 };
+    Symbol *existing;
+    Type *type;
+    int atom;
+    int i, j;
+
+    profile = (const GlslProfileDesc *) hal->localData;
+    for (i = 0; i < profile->numConnectors; i++) {
+        connector = &profile->connectors[i];
+        connector->name = AddAtom(atable, connector->sname);
+        for (j = 0; j < connector->numregs; j++)
+            connector->registers[j].name = AddAtom(atable,
+                                                    connector->registers[j].sname);
+    }
+    for (i = 0; i < profile->numSemanticMap; i++) {
+        semantic = &profile->semanticMap[i];
+        AddAtom(atable, semantic->root);
+        AddAtom(atable, semantic->canonicalRoot);
+    }
+    for (i = 0; i < profile->numAliases; i++) {
+        alias = &profile->aliases[i];
+        AddAtom(atable, alias->alias);
+        AddAtom(atable, alias->canonical);
+    }
+    if (CurrentScope != NULL) {
+        for (i = 0; i < (int) (sizeof(samplerTypes) /
+                               sizeof(samplerTypes[0])); i++)
+        {
+            atom = LookUpAddString(atable, samplerTypes[i].name);
+            existing = LookUpLocalSymbol(CurrentScope, atom);
+            if (existing != NULL) {
+                if (existing->kind != TYPEDEF_S || existing->type == NULL ||
+                    GetBase(existing->type) != samplerTypes[i].base)
+                {
+                    return 0;
+                }
+                continue;
+            }
+            type = NewType(TYPE_CATEGORY_SCALAR | samplerTypes[i].base, 1);
+            if (type == NULL)
+                return 0;
+            SetScalarTypeName(samplerTypes[i].base, atom, type);
+            if (AddSymbol(&loc, CurrentScope, atom, type, TYPEDEF_S) == NULL)
+                return 0;
+        }
+    }
+    return 1;
+}
+
+static int IsTexobjBase_glsl(int base)
+{
+    return base == TYPE_BASE_GLSL_SAMPLER1D ||
+           base == TYPE_BASE_GLSL_SAMPLER2D ||
+           base == TYPE_BASE_GLSL_SAMPLER3D ||
+           base == TYPE_BASE_GLSL_SAMPLERCUBE;
+}
+
+static int IsValidRuntimeBase_glsl(int base)
+{
+    return base == TYPE_BASE_FLOAT || base == TYPE_BASE_INT ||
+           base == TYPE_BASE_BOOLEAN || IsTexobjBase_glsl(base);
+}
+
+static int GetConnectorID_glsl(int name)
+{
+    const GlslProfileDesc *profile;
+    int i;
+
+    profile = GetProfile_glsl();
+    for (i = 0; i < profile->numConnectors; i++) {
+        if (name == profile->connectors[i].name)
+            return profile->connectors[i].cid;
+    }
+    return CID_NONE_ID;
+}
+
+static int GetConnectorAtom_glsl(int cid)
+{
+    const GlslProfileDesc *profile;
+    ConnectorDescriptor *connector;
+
+    profile = GetProfile_glsl();
+    connector = LookupConnectorHAL(profile->connectors, cid,
+                                   profile->numConnectors);
+    return connector ? connector->name : 0;
+}
+
+static int GetConnectorUses_glsl(int cid, int pid)
+{
+    const GlslProfileDesc *profile;
+    ConnectorDescriptor *connector;
+
+    profile = GetProfile_glsl();
+    connector = LookupConnectorHAL(profile->connectors, cid,
+                                   profile->numConnectors);
+    return connector ? connector->properties : CONNECTOR_IS_USELESS;
+}
+
+static const char *GlslUnsupportedOperatorReason(int op)
+{
+    switch (op) {
+    case MOD_OP:
+    case MOD_V_OP:
+    case MOD_SV_OP:
+    case MOD_VS_OP:
+    case ASSIGNMOD_OP:
+        return "remainder (%)";
+    case SHL_OP:
+    case SHL_V_OP:
+        return "left shift";
+    case SHR_OP:
+    case SHR_V_OP:
+        return "right shift";
+    case NOT_OP:
+    case NOT_V_OP:
+        return "bitwise not";
+    case AND_OP:
+    case AND_V_OP:
+    case AND_SV_OP:
+    case AND_VS_OP:
+        return "bitwise and";
+    case XOR_OP:
+    case XOR_V_OP:
+    case XOR_SV_OP:
+    case XOR_VS_OP:
+        return "bitwise xor";
+    case OR_OP:
+    case OR_V_OP:
+    case OR_SV_OP:
+    case OR_VS_OP:
+        return "bitwise or";
+    default:
+        return NULL;
+    }
+}
+
+static int IsValidOperator_glsl(SourceLoc *loc, int name, int op, int subop)
+{
+    const char *reason;
+
+    (void) name;
+    (void) subop;
+    reason = GlslUnsupportedOperatorReason(op);
+    if (reason == NULL)
+        return 1;
+    SemanticError(loc, ERROR_S_GLSL_UNSUPPORTED_OPERATION, reason);
+    return 0;
+}
+
+static int GetConnectorRegister_glsl(int cid, int ByIndex, int ratom,
+                                     Binding *fBind)
+{
+    const GlslProfileDesc *profile;
+    ConnectorDescriptor *connector;
+    int i;
+
+    profile = GetProfile_glsl();
+    connector = LookupConnectorHAL(profile->connectors, cid,
+                                   profile->numConnectors);
+    if (!connector)
+        return 0;
+
+    if (ByIndex) {
+        if (ratom < 0)
+            return connector->numregs;
+        i = ratom;
+    } else {
+        for (i = 0; i < connector->numregs; i++) {
+            if (ratom == connector->registers[i].name)
+                break;
+        }
+    }
+    if (i < 0 || i >= connector->numregs || !fBind)
+        return 0;
+
+    SetSymbolConnectorBindingHAL(fBind, &connector->registers[i]);
+    return 1;
+}
+
+static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
+                                    int semanticAtom, Binding *fBind,
+                                    int IsOutVal)
+{
+    const GlslProfileDesc *profile;
+    const char *semanticName;
+    const char *canonicalName;
+    GlslSemanticDesc *semantic;
+    Type *type;
+    char root[128];
+    char registerName[128];
+    int i, index, len, base, direction, cid, rname;
+
+    profile = GetProfile_glsl();
+    semanticName = GetAtomString(atable, semanticAtom);
+    canonicalName = semanticName;
+    for (i = 0; i < profile->numAliases; i++) {
+        if (!strcmp(semanticName, profile->aliases[i].alias)) {
+            canonicalName = profile->aliases[i].canonical;
+            break;
+        }
+    }
+
+    HasNumericSuffix(canonicalName, root, sizeof(root), &index);
+    direction = IsOutVal ? SEM_OUT : SEM_IN;
+    semantic = profile->semanticMap;
+    for (i = 0; i < profile->numSemanticMap; i++, semantic++) {
+        if (!strcmp(root, semantic->root) &&
+            (semantic->properties & direction))
+        {
+            if (index < semantic->firstIndex ||
+                index >= semantic->firstIndex + semantic->count)
+            {
+                SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
+                return 0;
+            }
+
+            type = fSymb->type;
+            if (IsScalar(type)) {
+                len = 1;
+            } else if (!IsVector(type, &len)) {
+                SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
+                return 0;
+            }
+            base = GetBase(type);
+            if (semantic->interfaceKind == GLSL_INTERFACE_FRONT_FACING) {
+                if (!IsScalar(type) || base != TYPE_BASE_BOOLEAN) {
+                    SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                  semanticName);
+                    return 0;
+                }
+            } else {
+                if (base != TYPE_BASE_FLOAT) {
+                    SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                  semanticName);
+                    return 0;
+                }
+                switch (semantic->interfaceKind) {
+                case GLSL_INTERFACE_POSITION:
+                case GLSL_INTERFACE_POINT_SIZE:
+                case GLSL_INTERFACE_FRAG_COORD:
+                case GLSL_INTERFACE_FRAG_COLOR:
+                case GLSL_INTERFACE_FRAG_DEPTH:
+                    if ((semantic->size == 1 && !IsScalar(type)) ||
+                        (semantic->size > 1 &&
+                         (!IsVector(type, &len) ||
+                          len != semantic->size)))
+                    {
+                        SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                      semanticName);
+                        return 0;
+                    }
+                    break;
+                default:
+                    if (len > semantic->size) {
+                        SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                      semanticName);
+                        return 0;
+                    }
+                    break;
+                }
+            }
+
+            sprintf(registerName, "%s%d", semantic->canonicalRoot, index);
+            rname = AddAtom(atable, registerName);
+            cid = IsOutVal ? profile->outputCid : profile->inputCid;
+            if (!GetConnectorRegister_glsl(cid, 0, rname, fBind)) {
+                SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
+                return 0;
+            }
+
+            fBind->none.properties |= BIND_VARYING;
+            fSymb->properties |= SYMB_IS_CONNECTOR_REGISTER |
+                                 SYMB_CONNECTOR_CAN_READ |
+                                 SYMB_CONNECTOR_CAN_WRITE;
+            if (semantic->properties & SEM_IN) {
+                fBind->none.properties |= BIND_INPUT;
+            }
+            if (semantic->properties & SEM_OUT) {
+                fBind->none.properties |= BIND_OUTPUT;
+            }
+            if (semantic->properties & SEM_REQUIRED)
+                fBind->none.properties |= BIND_WRITE_REQUIRED;
+            return 1;
+        }
+    }
+    SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
+    return 0;
+}
+
+static int BindVaryingUnbound_glsl(SourceLoc *loc, Symbol *fSymb, int name,
+                                   int semantic, Binding *fBind, int IsOutVal)
+{
+    return 0;
+}
+
+static int GlslSanitizedAtom(int atom)
+{
+    const char *source;
+    const char *input;
+    char *sanitized;
+    char *output;
+    size_t size;
+    int result;
+    int previousUnderscore;
+
+    source = GetAtomString(atable, atom);
+    if (source == NULL)
+        return 0;
+    if (!GlslIsReservedName(source))
+        return atom;
+    size = strlen(source) + 4;
+    sanitized = (char *) malloc(size);
+    if (sanitized == NULL)
+        return 0;
+    strcpy(sanitized, "cg_");
+    output = sanitized + 3;
+    input = source;
+    previousUnderscore = 1;
+    while (*input != '\0') {
+        if (*input != '_' || !previousUnderscore)
+            *output++ = *input;
+        previousUnderscore = *input == '_';
+        input++;
+    }
+    *output = '\0';
+    result = AddAtom(atable, sanitized);
+    free(sanitized);
+    return result;
+}
+
+static int BindUniformUnbound_glsl(SourceLoc *loc, Symbol *symbol,
+                                   Binding *binding)
+{
+    int name;
+
+    (void) loc;
+    if (symbol == NULL || symbol->type == NULL || binding == NULL)
+        return 0;
+    name = GlslSanitizedAtom(symbol->name);
+    if (name == 0)
+        return 0;
+    binding->none.kind = BK_SEMANTIC;
+    binding->none.properties |= BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+    binding->none.base = GetBase(symbol->type);
+    binding->none.size = symbol->type->co.size;
+    binding->sem.sname = name;
+    binding->sem.sregno = 0;
+    return 1;
+}
+
+static int GlslResolvedType(Type *source, GlslType *target)
+{
+    GlslBase base;
+    int len;
+    int rows;
+    int cols;
+
+    if (source == NULL || target == NULL)
+        return 0;
+    if (IsMatrix(source, &cols, &rows)) {
+        if (GetBase(source) != TYPE_BASE_FLOAT &&
+            GetBase(source) != TYPE_BASE_CFLOAT) return 0;
+        if (rows != cols || rows < 2 || rows > 4)
+            return 0;
+        *target = GlslMatrixType(rows);
+        return 1;
+    }
+    switch (GetBase(source)) {
+    case TYPE_BASE_FLOAT:
+    case TYPE_BASE_CFLOAT:
+        base = GLSL_BASE_FLOAT;
+        break;
+    case TYPE_BASE_INT:
+    case TYPE_BASE_CINT:
+        base = GLSL_BASE_INT;
+        break;
+    case TYPE_BASE_BOOLEAN:
+        base = GLSL_BASE_BOOL;
+        break;
+    case TYPE_BASE_GLSL_SAMPLER1D:
+        base = GLSL_BASE_SAMPLER1D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLER2D:
+        base = GLSL_BASE_SAMPLER2D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLER3D:
+        base = GLSL_BASE_SAMPLER3D;
+        break;
+    case TYPE_BASE_GLSL_SAMPLERCUBE:
+        base = GLSL_BASE_SAMPLERCUBE;
+        break;
+    default:
+        return 0;
+    }
+    if (IsScalar(source)) {
+        *target = GlslNumericType(base, 1);
+        return 1;
+    }
+    if (IsVector(source, &len) && len >= 1 && len <= 4) {
+        *target = GlslNumericType(base, len);
+        return 1;
+    }
+    return 0;
+}
+
+static int CheckInternalFunction_glsl(Symbol *symbol, int *group)
+{
+    GlslBuiltin builtin;
+    GlslType result;
+    GlslType params[4];
+    TypeList *param;
+    const char *name;
+    int count;
+
+    if (symbol == NULL || symbol->kind != FUNCTION_S ||
+        symbol->type == NULL || group == NULL ||
+        GetCategory(symbol->type) != TYPE_CATEGORY_FUNCTION)
+    {
+        return 0;
+    }
+    name = GetAtomString(atable, symbol->name);
+    if (!GlslIsBuiltinName(name))
+        return 0;
+    if (!GlslResolvedType(symbol->type->fun.rettype, &result)) {
+        SemanticError(&symbol->loc, ERROR_S_GLSL_INTRINSIC, name);
+        return 0;
+    }
+    count = 0;
+    for (param = symbol->type->fun.paramtypes; param != NULL;
+         param = param->next)
+    {
+        if (count >= (int) (sizeof(params) / sizeof(params[0])) ||
+            !GlslResolvedType(param->type, &params[count]))
+        {
+            SemanticError(&symbol->loc, ERROR_S_GLSL_INTRINSIC, name);
+            return 0;
+        }
+        count++;
+    }
+    builtin = GlslLookupBuiltin(name, &result, params, count);
+    if (builtin == GLSL_BUILTIN_NONE) {
+        SemanticError(&symbol->loc, ERROR_S_GLSL_INTRINSIC, name);
+        return 0;
+    }
+    *group = GLSL_BUILTIN_GROUP;
+    return (int) builtin;
+}
+
+static int FreeHAL_glsl(slHAL *hal)
+{
+    hal->localData = NULL;
+    return 1;
+}
+
+static int GetCapsBit_glsl(int bitNumber)
+{
+    switch (bitNumber) {
+    case CAPS_LATE_BINDINGS:
+    case CAPS_INDEXED_ARRAYS:
+    case CAPS_DONT_FLATTEN_IF_STATEMENTS:
+    case CAPS_MATRIX_CONSTRUCTOR_AST:
+    case CAPS_AGGREGATE_DEFAULT_BINDINGS:
+    case CAPS_PRESERVE_ENTRY_RETURNS:
+    case CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int PrintCodeHeader_glsl(FILE *out)
+{
+    fprintf(out, "#version 110\n");
+    return 1;
+}
+
+static void *GlslCompilerAlloc(void *arg, size_t size)
+{
+    return mem_Calloc((MemoryPool *) arg, size, 1);
+}
+
+static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
+{
+    const GlslProfileDesc *profile;
+    GlslModule module;
+    SourceLoc failureLoc;
+    const char *failureReason;
+    int errorCount;
+
+    profile = (const GlslProfileDesc *) Cg->theHAL->localData;
+    GlslInitModule(&module, profile->stage, GlslCompilerAlloc,
+                   CurrentScope->pool);
+    if (!GlslLowerProgram(&module, profile, loc, scope, program)) {
+        failureLoc = program->loc;
+        if (module.errorLoc.file != 0 || module.errorLoc.line != 0) {
+            failureLoc.file = (unsigned short) module.errorLoc.file;
+            failureLoc.line = (unsigned short) module.errorLoc.line;
+        }
+        if (module.resourceName != NULL) {
+            SemanticError(&failureLoc, ERROR_SII_GLSL_RESOURCE_LIMIT,
+                          module.resourceName, module.resourceUsed,
+                          module.resourceAvailable);
+        } else {
+            failureReason = module.errorReason != NULL ?
+                            module.errorReason : "GLSL 1.10 program";
+            switch (module.errorKind) {
+            case GLSL_ERROR_UNSUPPORTED_TYPE:
+                SemanticError(&failureLoc, ERROR_S_GLSL_UNSUPPORTED_TYPE,
+                              failureReason);
+                break;
+            case GLSL_ERROR_STAGE_OPERATION:
+                SemanticError(&failureLoc, ERROR_SS_GLSL_STAGE_OPERATION,
+                              profile->name, failureReason);
+                break;
+            case GLSL_ERROR_INTERFACE_CONFLICT:
+                SemanticError(&failureLoc,
+                              ERROR_S_GLSL_INTERFACE_CONFLICT,
+                              failureReason);
+                break;
+            case GLSL_ERROR_NAME_COLLISION:
+                SemanticError(&failureLoc, ERROR_S_GLSL_NAME_COLLISION,
+                              failureReason);
+                break;
+            case GLSL_ERROR_INTRINSIC:
+                SemanticError(&failureLoc, ERROR_S_GLSL_INTRINSIC,
+                              failureReason);
+                break;
+            case GLSL_ERROR_SAMPLER:
+                SemanticError(&failureLoc, ERROR_S_GLSL_SAMPLER,
+                              failureReason);
+                break;
+            case GLSL_ERROR_NON_SQUARE_MATRIX:
+                SemanticError(&failureLoc,
+                              ERROR_S_GLSL_NON_SQUARE_MATRIX,
+                              failureReason);
+                break;
+            default:
+                SemanticError(&failureLoc,
+                              ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                              failureReason);
+                break;
+            }
+        }
+        return 0;
+    }
+    errorCount = GetErrorCount();
+    if (!GlslWriteModule(Cg->options.outfd, &module)) {
+        if (GetErrorCount() == errorCount) {
+            SemanticError(&program->loc,
+                          ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                          "GLSL 1.10 module writer");
+        }
+        return 0;
+    }
+    return 1;
+}
+
+int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile)
+{
+    hal->FreeHAL = FreeHAL_glsl;
+    hal->RegisterNames = RegisterNames_glsl;
+    hal->GetCapsBit = GetCapsBit_glsl;
+    hal->GetConnectorID = GetConnectorID_glsl;
+    hal->GetConnectorAtom = GetConnectorAtom_glsl;
+    hal->GetConnectorUses = GetConnectorUses_glsl;
+    hal->GetConnectorRegister = GetConnectorRegister_glsl;
+    hal->IsValidOperator = IsValidOperator_glsl;
+    hal->IsTexobjBase = IsTexobjBase_glsl;
+    hal->IsValidRuntimeBase = IsValidRuntimeBase_glsl;
+    hal->CheckInternalFunction = CheckInternalFunction_glsl;
+    hal->BindUniformUnbound = BindUniformUnbound_glsl;
+    hal->BindVaryingSemantic = BindVaryingSemantic_glsl;
+    hal->BindVaryingUnbound = BindVaryingUnbound_glsl;
+    hal->PrintCodeHeader = PrintCodeHeader_glsl;
+    hal->GenerateCode = GenerateCode_glsl;
+
+    hal->vendor = VENDOR_STRING_GLSL;
+    hal->version = VERSION_STRING_GLSL;
+
+    hal->semantics = NULL;
+    hal->numSemantics = 0;
+
+    hal->incid = profile->inputCid;
+    hal->inputCRegs = profile->inputRegs;
+    hal->numInputCRegs = profile->numInputRegs;
+
+    hal->outcid = profile->outputCid;
+    hal->outputCRegs = profile->outputRegs;
+    hal->numOutputCRegs = profile->numOutputRegs;
+
+    hal->comment = "//";
+    hal->localData = (void *) profile;
+
+    return 1;
+}
+
+int RegisterProfiles_glsl(void)
+{
+    RegisterProfile(InitHAL_glslv, PROFILE_GLSLV_NAME, PROFILE_GLSLV_ID);
+    RegisterProfile(InitHAL_glslf, PROFILE_GLSLF_NAME, PROFILE_GLSLF_ID);
+    return 1;
+}

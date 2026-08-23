@@ -1,0 +1,26 @@
+#version 110
+// cgc-bind attribute cg_TEXCOORD0 TEXCOORD0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexIn
+{
+    vec2 texcoord;
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec2 cg_TEXCOORD0;
+
+void main()
+{
+    VertexIn first;
+    VertexIn second;
+    VertexOut cg_output;
+    first.texcoord = cg_TEXCOORD0;
+    second.texcoord = cg_TEXCOORD0;
+    cg_output.position = vec4(first.texcoord.x, first.texcoord.y, second.texcoord.x, second.texcoord.y);
+    gl_Position = cg_output.position;
+}

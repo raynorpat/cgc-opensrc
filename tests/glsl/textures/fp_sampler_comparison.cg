@@ -1,0 +1,12 @@
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(float2 coord : TEXCOORD0,
+                 uniform sampler2D first,
+                 uniform sampler2D second)
+{
+    FragmentOut result;
+    bool same;
+    same = first == second;
+    result.color = same ? float4(1.0, 1.0, 1.0, 1.0) :
+                          float4(0.0, 0.0, 0.0, 0.0);
+    return result;
+}

@@ -1,0 +1,27 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform params
+// cgc-bind builtin gl_Position POSITION0
+
+struct Params
+{
+    vec4 offset;
+    float scale;
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform Params params;
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = position * params.scale + params.offset;
+    gl_Position = cg_output.position;
+}

@@ -1,0 +1,33 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct Data
+{
+    vec4 values[2];
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+void main()
+{
+    vec4 position;
+    Data a;
+    Data b;
+    Data cg_return;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    a.values[0] = position;
+    a.values[1] = position * 2.0;
+    b.values[0] = a.values[0];
+    b.values[1] = a.values[1];
+    cg_return.values[0] = b.values[0];
+    cg_return.values[1] = b.values[1];
+    cg_output.position = cg_return.values[0] + cg_return.values[1];
+    gl_Position = cg_output.position;
+}

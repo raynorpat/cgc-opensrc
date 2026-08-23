@@ -1,0 +1,25 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+float4 adjust(float4 color, float scale)
+{
+    if (scale < 0.0)
+        scale = 0.0;
+    return color * scale;
+}
+
+VertexOut main(float4 position : ATTRIB0, float4 color : ATTRIB1)
+{
+    VertexOut output;
+    float scale;
+    int index;
+    scale = 0.0;
+    for (index = 0; index < 2; index = index + 1) {
+        scale = scale + 0.5;
+    }
+    output.position = position;
+    output.color = adjust(color, scale);
+    return output;
+}

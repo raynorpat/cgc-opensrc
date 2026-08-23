@@ -130,6 +130,8 @@ void ApplyToExpressions(expr *(*pre)(expr *, void *, int),
             fStmt->discardst.cond = ApplyToNodes(pre, post, fStmt->discardst.cond, arg1, arg2);
             break;
         case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
             break;
         default:
             assert(0);
@@ -173,6 +175,8 @@ void ApplyToExpressionsLocal(expr *(*pre)(expr *, void *, int),
             fStmt->discardst.cond = ApplyToNodes(pre, post, fStmt->discardst.cond, arg1, arg2);
             break;
         case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
             break;
         default:
             assert(0);
@@ -221,6 +225,8 @@ void ApplyToTopExpressions(expr *(*fun)(expr *, void *, int), stmt *fStmt, void 
             fStmt->discardst.cond = fun(fStmt->discardst.cond, arg1, arg2);
             break;
         case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
             break;
         default:
             assert(0);
@@ -288,6 +294,8 @@ stmt *ApplyToStatements(stmt *(*pre)(stmt *, void *, int),
         case RETURN_STMT:
         case DISCARD_STMT:
         case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
             break;
         default:
             assert(0);
@@ -354,6 +362,8 @@ void PostApplyToChildStatements(stmt *(*fun)(stmt *, void *, int), stmt *fStmt, 
         case RETURN_STMT:
         case DISCARD_STMT:
         case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
             break;
         default:
             assert(0);

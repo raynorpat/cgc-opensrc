@@ -1,0 +1,28 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform helperTransform
+// cgc-bind uniform values
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform vec4 values[124];
+uniform mat4 helperTransform;
+
+vec4 use_transform(vec4 value)
+{
+    return helperTransform * value;
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = use_transform(position) + values[0] + values[123];
+    gl_Position = cg_output.position;
+}

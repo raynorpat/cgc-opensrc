@@ -1,0 +1,17 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    float1 value;
+    float scalar;
+    float3 repeated;
+    value = float1(position.x);
+    scalar = value.x;
+    repeated = value.xxx;
+    position.x = scalar + repeated.x;
+    output.position = position;
+    return output;
+}

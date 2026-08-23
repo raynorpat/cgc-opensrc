@@ -517,7 +517,7 @@ void TokenizeInput(void)
     printf("    %s_tokendata // data\n", RecordedTokens->name);
     printf("};\n");
 
-    printf("TokenStream %s_stream = { \n", RecordedTokens->name);
+    printf("TokenStream %s_stream = {\n", RecordedTokens->name);
     printf("    NULL, // next\n"
            "    \"%s\", // name\n", Cg->options.sourceFileName);
     printf("    &%s_blockdata, // head\n", RecordedTokens->name);

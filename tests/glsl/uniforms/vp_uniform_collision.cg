@@ -1,0 +1,19 @@
+uniform float output = 2.0;
+
+float use_global(float value)
+{
+    return value * output;
+}
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0,
+               uniform float output = 3.0)
+{
+    VertexOut result;
+    result.position = position * output;
+    result.position.x = result.position.x + use_global(1.0);
+    return result;
+}

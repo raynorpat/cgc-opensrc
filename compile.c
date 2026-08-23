@@ -56,6 +56,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "glsl_hal.h"
 
 /*
  * OpenOutputFile()
@@ -846,6 +847,11 @@ stmt *DuplicateStatement(stmt *fStmt, void *arg1, int arg2)
             lStmt = (stmt *) NewCommentStmt(&fStmt->commonst.loc,
                                             GetAtomString(atable, fStmt->commentst.str));
             break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+            lStmt = (stmt *) NewSimpleStmt(&fStmt->commonst.loc,
+                                           fStmt->commonst.kind);
+            break;
         default:
             lStmt = fStmt;
             assert(!"DuplicateStatement() - not yet finished");
@@ -1505,7 +1511,8 @@ int GetConstIndex(expr *fExpr)
 
 static int IsComma(const expr *fExpr)
 {
-    return fExpr->common.kind == BINARY_N && fExpr->bin.op == COMMA_OP;
+    return fExpr != NULL && fExpr->common.kind == BINARY_N &&
+           fExpr->bin.op == COMMA_OP;
 } // IsComma
 
 /*
@@ -1720,76 +1727,236 @@ stmt *DeconstructMatrices(Scope *fscope, stmt *fStmt)
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * AssignStructMembers() - Assign individual memebers of one struct to another.
+ * AssignAggregate() - Assign individual leaves of one aggregate to another.
  *
  */
 
-static void AssignStructMembers(StmtList *fStatements, int fop, Type *fType, expr *varExpr,
-                                expr *valExpr, expr *condExpr, int VectorCond)
+static void AssignAggregate(StmtList *fStatements, Type *fType,
+                            expr *varExpr, expr *valExpr,
+                            expr *condExpr, int VectorCond)
 {
     expr *lExpr, *mExpr, *rExpr;
-    int base, len, len2;
+    int base, len, len2, index;
     Symbol *lSymb;
     Type *lType;
     stmt *lStmt;
 
-    lSymb = fType->str.members->symbols;
-    while (lSymb) {
-        len = len2 = 0;
-        lType = lSymb->type;
-        if (IsScalar(lType) || IsVector(lType, &len) || IsMatrix(lType, &len, &len2)) {
-            base = GetBase(lType);
+    len = len2 = 0;
+    if (IsScalar(fType) || IsVector(fType, &len) ||
+        IsMatrix(fType, &len, &len2))
+    {
+        base = GetBase(fType);
+        lExpr = DupExpr(varExpr);
+        rExpr = DupExpr(valExpr);
+        if (condExpr != NULL) {
+            if (len2 > 0) {
+                lExpr = GenCondGenAssign(lExpr, rExpr, condExpr);
+            } else if (len > 0) {
+                if (VectorCond) {
+                    lExpr = GenCondSVAssign(lExpr, rExpr, condExpr, base, len);
+                } else {
+                    lExpr = GenCondVAssign(lExpr, rExpr, condExpr, base, len);
+                }
+            } else {
+                lExpr = GenCondSAssign(lExpr, rExpr, condExpr, base);
+            }
+            lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
+        } else {
+            if (len2 > 0) {
+                lExpr = GenMAssign(lExpr, rExpr, base, len, len2);
+            } else if (len > 0) {
+                lExpr = GenVAssign(lExpr, rExpr, base, len);
+            } else {
+                lExpr = GenSAssign(lExpr, rExpr, base);
+            }
+            lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
+        }
+        AppendStatements(fStatements, lStmt);
+        return;
+    }
+
+    switch (GetCategory(fType)) {
+    case TYPE_CATEGORY_STRUCT:
+        lSymb = fType->str.members->symbols;
+        while (lSymb) {
+            lType = lSymb->type;
             lExpr = DupExpr(varExpr);
             mExpr = GenMember(lSymb);
             lExpr = GenMemberSelector(lExpr, mExpr);
             rExpr = DupExpr(valExpr);
             mExpr = GenMember(lSymb);
             rExpr = GenMemberSelector(rExpr, mExpr);
-            if (condExpr != NULL) {
-                if (len2 > 0) {
-                    lExpr = GenCondGenAssign(lExpr, rExpr, condExpr);
-                } else if (len > 0) {
-                    if (VectorCond) {
-                        lExpr = GenCondSVAssign(lExpr, rExpr, condExpr, base, len);
-                    } else {
-                        lExpr = GenCondVAssign(lExpr, rExpr, condExpr, base, len);
-                    }
-                } else {
-                    lExpr = GenCondSAssign(lExpr, rExpr, condExpr, base);
-                }
-                lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
-            } else {
-                if (len2 > 0) {
-                    lExpr = GenMAssign(lExpr, rExpr, base, len, len2);
-                } else if (len > 0) {
-                    lExpr = GenVAssign(lExpr, rExpr, base, len);
-                } else {
-                    lExpr = GenSAssign(lExpr, rExpr, base);
-                }
-                lStmt = (stmt *) NewExprStmt(Cg->pLastSourceLoc, lExpr);
-            }
-            AppendStatements(fStatements, lStmt);
-        } else {
-            switch (GetCategory(lType)) {
-            case TYPE_CATEGORY_STRUCT:
-                lExpr = DupExpr(varExpr);
-                mExpr = GenMember(lSymb);
-                lExpr = GenMemberSelector(lExpr, mExpr);
-                rExpr = DupExpr(valExpr);
-                mExpr = GenMember(lSymb);
-                rExpr = GenMemberSelector(rExpr, mExpr);
-                AssignStructMembers(fStatements, fop, lType, lExpr, rExpr, condExpr, VectorCond);
-                break;
-            case TYPE_CATEGORY_ARRAY:
-                // XYZZY Not Done Yet XYZZY //
-                break;
-            default:
-                break;
-            }
+            AssignAggregate(fStatements, lType, lExpr, rExpr,
+                            condExpr, VectorCond);
+            lSymb = lSymb->next;
         }
-        lSymb = lSymb->next;
+        break;
+    case TYPE_CATEGORY_ARRAY:
+        lType = fType->arr.eltype;
+        for (index = 0; index < fType->arr.numels; index++) {
+            lExpr = NewIndexOperator(Cg->pLastSourceLoc,
+                                     DupExpr(varExpr),
+                                     GenIntConst(index));
+            rExpr = NewIndexOperator(Cg->pLastSourceLoc,
+                                     DupExpr(valExpr),
+                                     GenIntConst(index));
+            AssignAggregate(fStatements, lType, lExpr, rExpr,
+                            condExpr, VectorCond);
+        }
+        break;
+    default:
+        break;
     }
-} // AssignStructMembers
+} // AssignAggregate
+
+typedef struct FlattenStructAssignmentsData_Rec {
+    Scope *scope;
+    int normalizeOperands;
+} FlattenStructAssignmentsData;
+
+static int AggregateContainsArray(Type *fType)
+{
+    Symbol *member;
+    int len;
+    int len2;
+
+    len = len2 = 0;
+    if (IsScalar(fType) || IsVector(fType, &len) ||
+        IsMatrix(fType, &len, &len2)) return 0;
+
+    switch (GetCategory(fType)) {
+    case TYPE_CATEGORY_ARRAY:
+        return 1;
+    case TYPE_CATEGORY_STRUCT:
+        for (member = fType->str.members->symbols; member != NULL;
+             member = member->next)
+        {
+            if (AggregateContainsArray(member->type))
+                return 1;
+        }
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static int AggregateExprNeedsMaterialization(expr *fExpr)
+{
+    if (fExpr == NULL)
+        return 0;
+    if (fExpr->common.HasSideEffects)
+        return 1;
+    switch (fExpr->common.kind) {
+    case DECL_N:
+    case SYMB_N:
+    case CONST_N:
+        return 0;
+    case UNARY_N:
+        return AggregateExprNeedsMaterialization(fExpr->un.arg);
+    case BINARY_N:
+        if (fExpr->bin.op == FUN_CALL_OP ||
+            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+        return AggregateExprNeedsMaterialization(fExpr->bin.left) ||
+               AggregateExprNeedsMaterialization(fExpr->bin.right);
+    case TRINARY_N:
+        return AggregateExprNeedsMaterialization(fExpr->tri.arg1) ||
+               AggregateExprNeedsMaterialization(fExpr->tri.arg2) ||
+               AggregateExprNeedsMaterialization(fExpr->tri.arg3);
+    default:
+        return 1;
+    }
+}
+
+static Symbol *NewAggregateFlattenTemp(FlattenStructAssignmentsData *fData,
+                                       Type *fType, SourceLoc *fLoc,
+                                       const char *fPrefix, int fNative)
+{
+    Symbol *temp;
+    Type *tempType;
+    char name[64];
+    int atom;
+    int index;
+
+    index = 0;
+    do {
+        if (index == 0) {
+            strcpy(name, fPrefix);
+        } else {
+            sprintf(name, "%s%d", fPrefix, index);
+        }
+        atom = AddAtom(atable, name);
+        temp = LookUpLocalSymbol(fData->scope, atom);
+        index++;
+    } while (temp != NULL);
+    tempType = DupType(fType);
+    tempType->co.properties &= ~(TYPE_DOMAIN_MASK | TYPE_QUALIFIER_MASK);
+    temp = DefineVar(fLoc, fData->scope, atom, tempType);
+    if (fNative)
+        temp->properties |= SYMB_IS_NATIVE_AGGREGATE_TEMP;
+    return temp;
+}
+
+static void NormalizeAggregateIndices(FlattenStructAssignmentsData *fData,
+                                      StmtList *fStatements, expr *fExpr,
+                                      SourceLoc *fLoc)
+{
+    Symbol *temp;
+    stmt *tempAssignment;
+
+    if (fExpr == NULL)
+        return;
+    switch (fExpr->common.kind) {
+    case UNARY_N:
+        NormalizeAggregateIndices(fData, fStatements, fExpr->un.arg,
+                                  fLoc);
+        break;
+    case BINARY_N:
+        NormalizeAggregateIndices(fData, fStatements, fExpr->bin.left,
+                                  fLoc);
+        NormalizeAggregateIndices(fData, fStatements, fExpr->bin.right,
+                                  fLoc);
+        if (fExpr->bin.op == ARRAY_INDEX_OP &&
+            AggregateExprNeedsMaterialization(fExpr->bin.right))
+        {
+            temp = NewAggregateFlattenTemp(fData,
+                                           fExpr->bin.right->common.type,
+                                           fLoc, "cg_index", 0);
+            tempAssignment = NewSimpleAssignmentStmt(
+                fLoc, GenSymb(temp), fExpr->bin.right, 0);
+            AppendStatements(fStatements, tempAssignment);
+            fExpr->bin.right = GenSymb(temp);
+        }
+        break;
+    case TRINARY_N:
+        NormalizeAggregateIndices(fData, fStatements, fExpr->tri.arg1,
+                                  fLoc);
+        NormalizeAggregateIndices(fData, fStatements, fExpr->tri.arg2,
+                                  fLoc);
+        NormalizeAggregateIndices(fData, fStatements, fExpr->tri.arg3,
+                                  fLoc);
+        break;
+    default:
+        break;
+    }
+}
+
+static int IsPreservedAggregateTempAssignment(expr *fExpr)
+{
+    expr *left;
+
+    if (!Cg->theHAL->GetCapsBit(CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS))
+        return 0;
+    if (IsAssignCondSVOp(fExpr)) {
+        left = fExpr->tri.arg1;
+    } else {
+        left = fExpr->bin.left;
+    }
+    return left != NULL && left->common.kind == SYMB_N &&
+           left->sym.symbol != NULL &&
+           (left->sym.symbol->properties &
+            SYMB_IS_NATIVE_AGGREGATE_TEMP) != 0;
+}
 
 /*
  * FlattenStructAssignment() - Convert struct assignments into multiple assignments of members.
@@ -1800,7 +1967,9 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
 {
     stmt *rStmt;
     expr *eExpr, *lExpr, *rExpr, *cExpr;
-    int lop, lsubop;
+    FlattenStructAssignmentsData *data;
+    Symbol *aggregateTemp;
+    stmt *tempAssignment;
     StmtList lStatements;
     Type *lType;
 
@@ -1811,25 +1980,64 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
             if (IsAssignSVOp(eExpr)) {
                 lType = eExpr->bin.type;
                 if (IsStruct(lType)) {
+                    if (IsPreservedAggregateTempAssignment(eExpr))
+                        return fStmt;
+                    data = (FlattenStructAssignmentsData *) arg1;
+                    lStatements.first = NULL;
+                    lStatements.last = NULL;
                     if (IsAssignCondSVOp(eExpr)) {
-                        lop = eExpr->tri.op;
                         lExpr = eExpr->tri.arg1;
                         cExpr = eExpr->tri.arg2;
                         rExpr = eExpr->tri.arg3;
                         if (IsScalar(cExpr->common.type)) {
-                            AssignStructMembers(&lStatements, lop, lType, lExpr, rExpr, cExpr, 0);
+                            AssignAggregate(&lStatements, lType, lExpr,
+                                            rExpr, cExpr, 0);
                         } else {
-                            AssignStructMembers(&lStatements, lop, lType, lExpr, rExpr, cExpr, 1);
+                            AssignAggregate(&lStatements, lType, lExpr,
+                                            rExpr, cExpr, 1);
                         }
                         rStmt = lStatements.first;
                     } else {
-                        lop = eExpr->bin.op;
                         lExpr = eExpr->bin.left;
                         rExpr = eExpr->bin.right;
-                        lsubop = eExpr->bin.subop;
-                        lStatements.first = NULL;
-                        lStatements.last = NULL;
-                        AssignStructMembers(&lStatements, lop, lType, lExpr, rExpr, NULL, 0);
+                        if (data->normalizeOperands &&
+                            AggregateExprNeedsMaterialization(rExpr) &&
+                            AggregateContainsArray(lType))
+                        {
+                            if (Cg->theHAL->pid == PROFILE_GLSLV_ID ||
+                                Cg->theHAL->pid == PROFILE_GLSLF_ID)
+                            {
+                                SemanticError(&fStmt->commonst.loc,
+                                    ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                                    "side-effecting aggregate with arrays");
+                            } else {
+                                SemanticError(&fStmt->commonst.loc,
+                                    ERROR_S_UNSUPPORTED_PROFILE_OP,
+                                    "side-effecting aggregate with arrays");
+                            }
+                            return fStmt;
+                        }
+                        if (data->normalizeOperands) {
+                            NormalizeAggregateIndices(data, &lStatements,
+                                                      lExpr,
+                                                      &fStmt->commonst.loc);
+                            NormalizeAggregateIndices(data, &lStatements,
+                                                      rExpr,
+                                                      &fStmt->commonst.loc);
+                            if (AggregateExprNeedsMaterialization(rExpr)) {
+                                aggregateTemp = NewAggregateFlattenTemp(
+                                    data, lType, &fStmt->commonst.loc,
+                                    "cg_aggregate", 1);
+                                tempAssignment = NewSimpleAssignmentStmt(
+                                    &fStmt->commonst.loc,
+                                    GenSymb(aggregateTemp), rExpr, 0);
+                                AppendStatements(&lStatements,
+                                                 tempAssignment);
+                                rExpr = GenSymb(aggregateTemp);
+                            }
+                        }
+                        AssignAggregate(&lStatements, lType, lExpr,
+                                        rExpr, NULL, 0);
                         rStmt = lStatements.first;
                     }
                 } else {
@@ -1839,6 +2047,8 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
                 rStmt = fStmt;
             }
             break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
         default:
             rStmt = fStmt;
             break;
@@ -1856,9 +2066,13 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
 
 static stmt *FlattenStructAssignments(Scope *fScope, stmt *fStmt)
 {
+    FlattenStructAssignmentsData data;
     stmt *lStmt;
 
-    lStmt = PreApplyToStatements(FlattenStructAssignment, fStmt, NULL, 0);
+    data.scope = fScope;
+    data.normalizeOperands = Cg->theHAL->GetCapsBit(
+        CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS);
+    lStmt = PreApplyToStatements(FlattenStructAssignment, fStmt, &data, 0);
     return lStmt;
 } // FlattenStructAssignments
 
@@ -2168,6 +2382,10 @@ static stmt *FlattenIfStatementsStmt(stmt *fStmt, void *arg1, int flevel)
                 }
                 fStmt->discardst.cond->un.arg = ifvar;
             }
+            rStmt = fStmt;
+            break;
+        case BREAK_STMT:
+        case CONTINUE_STMT:
             rStmt = fStmt;
             break;
         default:

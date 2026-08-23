@@ -1,0 +1,16 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float2 texcoord : TEXCOORD0,
+                 uniform float4 tint)
+{
+    FragmentOut output;
+    if (texcoord.x < 0.0)
+        discard;
+    if (texcoord.y > 1.0)
+        output.color = tint;
+    else
+        output.color = tint * texcoord.y;
+    return output;
+}

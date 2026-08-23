@@ -47,8 +47,30 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "slglobals.h"
+
+static int IsValidStreamName(const char *name)
+{
+    const unsigned char *p;
+    size_t length;
+
+    if (name == NULL)
+        return 0;
+    length = strlen(name);
+    if (length == 0 || length > 255)
+        return 0;
+    p = (const unsigned char *) name;
+    if (!((*p >= 'A' && *p <= 'Z') ||
+          (*p >= 'a' && *p <= 'z') || *p == '_')) return 0;
+    for (p++; *p != '\0'; p++) {
+        if (!((*p >= 'A' && *p <= 'Z') ||
+              (*p >= 'a' && *p <= 'z') ||
+              (*p >= '0' && *p <= '9') || *p == '_')) return 0;
+    }
+    return 1;
+}
 
 int main(int ac, char **av) {
     InitCgStruct();
@@ -59,11 +81,19 @@ int main(int ac, char **av) {
     }
     if (!InitScanner(Cg))
         return 1;
-    if (ac != 2 || !SetInputFile(av[1])) {
-        fprintf(stderr, "usage: %s filename\n", av[0]);
+    if (ac != 2 && ac != 3) {
+        fprintf(stderr, "usage: %s filename [stream-name]\n", av[0]);
         return 1;
     }
-    Cg->options.sourceFileName = av[1];
+    if (ac == 3 && !IsValidStreamName(av[2])) {
+        fprintf(stderr, "invalid stream name: expected a C identifier\n");
+        return 1;
+    }
+    if (!SetInputFile(av[1])) {
+        fprintf(stderr, "usage: %s filename [stream-name]\n", av[0]);
+        return 1;
+    }
+    Cg->options.sourceFileName = ac == 3 ? av[2] : av[1];
     TokenizeInput();
     return 0;
 }

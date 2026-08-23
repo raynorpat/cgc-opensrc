@@ -345,6 +345,7 @@ void BPrintStmtList(stmt *fstmt)
 static void lBPrintStmt(stmt *fstmt, int level)
 {
     stmt *lstmt;
+    expr *condition;
 
     switch (fstmt->exprst.kind) {
     case EXPR_STMT:
@@ -419,12 +420,26 @@ static void lBPrintStmt(stmt *fstmt, int level)
     case DISCARD_STMT:
         lIndent(level);
         printf("discard\n");
-        if (fstmt->discardst.cond)
-            lBPrintExpression(fstmt->discardst.cond, level + 1);
+        condition = fstmt->discardst.cond;
+        if (condition != NULL && condition->common.kind == UNARY_N &&
+            condition->un.op == KILL_OP)
+        {
+            condition = condition->un.arg;
+        }
+        if (condition != NULL)
+            lBPrintExpression(condition, level + 1);
         break;
     case COMMENT_STMT:
         lIndent(level);
         printf("// %s\n", GetAtomString(atable, fstmt->commentst.str));
+        break;
+    case BREAK_STMT:
+        lIndent(level);
+        printf("break;\n");
+        break;
+    case CONTINUE_STMT:
+        lIndent(level);
+        printf("continue;\n");
         break;
     default:
         lIndent(level);
@@ -749,6 +764,9 @@ void lPrintExpr(expr *fexpr)
     int ii, mask, len;
     unsigned int uval;
     char s[16], tag;
+
+    if (fexpr == NULL)
+        return;
 
     switch (fexpr->common.kind) {
     case SYMB_N:
@@ -1143,6 +1161,7 @@ static void lPrintStmtList(stmt *fstmt, int level, const char *fcomment)
 static void lPrintStmt(stmt *fstmt, int level, const char *fcomment)
 {
     stmt *lstmt;
+    expr *condition;
 
     switch (fstmt->exprst.kind) {
     case EXPR_STMT:
@@ -1246,15 +1265,29 @@ static void lPrintStmt(stmt *fstmt, int level, const char *fcomment)
     case DISCARD_STMT:
         lIndent(level);
         printf("discard");
-        if (fstmt->discardst.cond) {
+        condition = fstmt->discardst.cond;
+        if (condition != NULL && condition->common.kind == UNARY_N &&
+            condition->un.op == KILL_OP)
+        {
+            condition = condition->un.arg;
+        }
+        if (condition != NULL) {
             printf(" ");
-            lPrintExpr(fstmt->discardst.cond);
+            lPrintExpr(condition);
         }
         printf(";\n");
         break;
     case COMMENT_STMT:
         lIndent(level);
         printf("// %s\n", GetAtomString(atable, fstmt->commentst.str));
+        break;
+    case BREAK_STMT:
+        lIndent(level);
+        printf("break;\n");
+        break;
+    case CONTINUE_STMT:
+        lIndent(level);
+        printf("continue;\n");
         break;
     default:
         lIndent(level);

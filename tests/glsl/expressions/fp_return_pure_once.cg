@@ -1,0 +1,19 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+    float depth : DEPTH;
+};
+
+FragmentOut makeOutput(float4 color, float state)
+{
+    FragmentOut output;
+    output.color = color * state;
+    output.depth = state;
+    return output;
+}
+
+FragmentOut main(float4 color : TEXCOORD0)
+{
+    float cg_return;
+    cg_return = 0.5;
+    return makeOutput(color, cg_return);
+}

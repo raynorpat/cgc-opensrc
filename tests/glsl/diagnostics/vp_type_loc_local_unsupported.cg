@@ -1,0 +1,9 @@
+typedef packed int2 int2x2[2];
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0)
+{
+    int2x2 localMatrix;
+    VertexOut output;
+    output.position = position;
+    return output;
+}

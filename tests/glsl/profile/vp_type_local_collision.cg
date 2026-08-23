@@ -1,0 +1,10 @@
+struct gl_Foo {
+    float4 position : POSITION;
+};
+
+gl_Foo main(float4 position : ATTRIB0)
+{
+    gl_Foo cg_gl_Foo;
+    cg_gl_Foo.position = position;
+    return cg_gl_Foo;
+}

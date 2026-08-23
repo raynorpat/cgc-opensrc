@@ -1,0 +1,40 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind attribute cg_ATTRIB1 ATTRIB1
+// cgc-bind varying cg_COLOR0 COLOR0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+    vec4 color;
+};
+
+attribute vec4 cg_ATTRIB0;
+attribute vec4 cg_ATTRIB1;
+varying vec4 cg_COLOR0;
+
+void main()
+{
+    vec4 position;
+    vec4 color;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    color = cg_ATTRIB1;
+    cg_output.position = position;
+    cg_output.color = color;
+    if (color.x > 0.5)
+    {
+        if (position.x < 0.0)
+        {
+            cg_output.color = vec4(1.0, 1.0, 1.0, 1.0);
+            gl_Position = cg_output.position;
+            cg_COLOR0 = cg_output.color;
+            return;
+        }
+        cg_output.color = vec4(0.5, 0.5, 0.5, 1.0);
+    }
+    cg_output.color = color;
+    gl_Position = cg_output.position;
+    cg_COLOR0 = cg_output.color;
+}

@@ -1,0 +1,12 @@
+function(prepare_config_output actual)
+    if(NOT DEFINED CONFIG OR CONFIG STREQUAL "")
+        return()
+    endif()
+    get_filename_component(actual_dir "${actual}" DIRECTORY)
+    get_filename_component(actual_config "${actual_dir}" NAME)
+    if(NOT actual_config STREQUAL CONFIG)
+        message(FATAL_ERROR
+            "test output ${actual} is not isolated under ${CONFIG}")
+    endif()
+    file(MAKE_DIRECTORY "${actual_dir}")
+endfunction()

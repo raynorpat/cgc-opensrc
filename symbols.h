@@ -119,6 +119,7 @@ typedef enum StrorageClass {
 #define SYMB_CONNECTOR_CAN_READ     0x000020    // Symbol is a readable connector hw register
 #define SYMB_CONNECTOR_CAN_WRITE    0x000040    // Symbol is a writable connector hw register
 #define SYMB_NEEDS_BINDING          0x000080    // Symbol is a non-static global and has not yet been bound
+#define SYMB_IS_NATIVE_AGGREGATE_TEMP 0x000100  // Compiler aggregate temporary safe for native assignment
 
 // Typedefs for things defined in "support.h":
 
@@ -222,6 +223,7 @@ struct FunSymbol_Rec {
     Scope *locals;
     Symbol *params;
     union stmt_rec *statements;
+    union stmt_rec *entryOutputAssignments;
     Symbol *overload;   // List of overloaded versions of this function
     int flags;          // Used when resolving overloaded reference
     short group;        // Built-in function group
@@ -248,6 +250,7 @@ struct Symbol_Rec {
     int name;       // Name atom
     Type *type;     // Type descriptor
     SourceLoc loc;
+    int sourceOrdinal; // Stable source declaration order
     symbolkind kind;
     int properties; // Symbol properties
     StorageClass storageClass;

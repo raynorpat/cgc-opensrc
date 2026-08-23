@@ -1,0 +1,42 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+float grouped(float a, float b, float c)
+{
+    float value;
+    value = a + (b - c);
+    value = value + (a + (b + c));
+    value = value + (a * (b / c));
+    value = value + (a * (b * c));
+    return value;
+}
+
+bool groupedLogic(float a, float b, float c)
+{
+    bool left;
+    bool middle;
+    bool right;
+    left = a < b;
+    middle = b < c;
+    right = c < a;
+    return left == (middle == right) && (left || middle);
+}
+
+float choose(bool left, bool middle, float a, float b, float c)
+{
+    return left ? middle ? a : b : middle ? b : c;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    float value;
+    bool logic;
+    value = grouped(position.x, position.y, position.z);
+    logic = groupedLogic(position.x, position.y, position.z);
+    position.x = choose(logic, position.w > 0.0, value, position.y,
+                        position.z);
+    output.position = position;
+    return output;
+}

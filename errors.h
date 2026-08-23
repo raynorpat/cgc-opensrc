@@ -163,6 +163,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_D_OUT_PARAM_NOT_SAME_TYPE     1113, "actual parameter #%d must be same type as formal out parameter"
 #define ERROR_S_NON_UNIFORM_PARAM_INIT      1114, "only uniform parameters can be initialized \"%s\""
 #define ERROR_S_NO_COMPAT_OVERLOADED_FUN    1115, "unable to find compatible overloaded function \"%s\""
+#define ERROR_S_JUMP_NOT_IN_LOOP            1116, "\"%s\" statement is not within a loop"
 
 #define ERROR___QSTN_SCALAR_3RD_OPND_EXPECTED   1201, "expected scalar third operand to \"? :\""
 #define ERROR___QSTN_VECTOR_3RD_OPND_EXPECTED   1202, "expected vector third operand to \"? :\""
@@ -265,6 +266,17 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_UNSUPPORTED_PROFILE_OP      5508, "the operator \"%s\" is not supported by this profile"
 
 // Numbers 6000 to 6999 are reserved for profile specific messages
+
+#define ERROR_S_GLSL_UNSUPPORTED_TYPE       6200, "GLSL 1.10 does not support type \"%s\""
+#define ERROR_S_GLSL_UNSUPPORTED_OPERATION  6201, "GLSL 1.10 does not support operation \"%s\""
+#define ERROR_SS_GLSL_STAGE_OPERATION       6202, "%s profile does not support operation \"%s\""
+#define ERROR_S_GLSL_SEMANTIC               6203, "GLSL profile cannot bind semantic \"%s\""
+#define ERROR_S_GLSL_INTERFACE_CONFLICT     6204, "GLSL interface conflicts at semantic \"%s\""
+#define ERROR_S_GLSL_NAME_COLLISION         6205, "GLSL name cannot be resolved for \"%s\""
+#define ERROR_S_GLSL_INTRINSIC              6206, "GLSL 1.10 has no exact intrinsic for \"%s\""
+#define ERROR_SII_GLSL_RESOURCE_LIMIT       6207, "GLSL portable %s limit exceeded: %d used, %d available"
+#define ERROR_S_GLSL_SAMPLER                6208, "GLSL 1.10 does not support sampler feature \"%s\""
+#define ERROR_S_GLSL_NON_SQUARE_MATRIX      6209, "GLSL 1.10 requires a square matrix, found \"%s\""
 
 // Warnings:
 

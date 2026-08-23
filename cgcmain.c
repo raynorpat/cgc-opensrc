@@ -52,13 +52,16 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "glsl_hal.h"
 
 // Profile registration functions:
 
 int RegisterProfiles_generic(void);
+int RegisterProfiles_glsl(void);
 
 static int (*RegistrationFunctions[])(void) = {
     RegisterProfiles_generic,
+    RegisterProfiles_glsl,
 };
 
 int CommandLineArgs(int argc, char **argv, int pass);
@@ -67,6 +70,7 @@ int main(int argc, char **argv)
 {
     const char *copyright = "(c) 2001-2002 NVIDIA Corp.";
     int numerrors, ii;
+    TokenStream *stdlibStream;
 
     if (!InitCgStruct()) {
         return 1;
@@ -79,6 +83,7 @@ int main(int argc, char **argv)
     }
     if (!InitScanner(Cg))
         return 1;
+    AddAtom(atable, Cg->options.profileString);
     for (ii = 0; ii < sizeof(RegistrationFunctions)/sizeof(RegistrationFunctions[0]); ii++)
         RegistrationFunctions[ii]();
     if (!CommandLineArgs(argc, argv, 1))
@@ -105,7 +110,14 @@ int main(int argc, char **argv)
             return 1;
         PrintOptions(argc, argv);
         if (!Cg->options.NoStdlib) {
-            if (!ReadFromTokenStream(&stdlib_cg_stream,
+            if (Cg->theHAL->pid == PROFILE_GLSLV_ID ||
+                Cg->theHAL->pid == PROFILE_GLSLF_ID)
+            {
+                stdlibStream = &stdlib_cg_stream;
+            } else {
+                stdlibStream = &stdlibgeneric_cg_stream;
+            }
+            if (!ReadFromTokenStream(stdlibStream,
                                      LookUpAddString(atable, "<stdlib>"),
                                      StartGlobalScope))
             {
@@ -150,7 +162,7 @@ void PrintHelp()
     printf("supported profiles:\n");
     ii = 0;
     while ((lProfile = EnumerateProfiles(ii++)))
-        printf("    \"%s\"\n", GetAtomString(atable, lProfile->name));
+        printf("    \"%s\"\n", lProfile->name);
 } // PrintHelp
 
 int CommandLineArgs(int argc, char **argv, int pass)

@@ -1,0 +1,31 @@
+#version 110
+// cgc-bind builtin gl_FragCoord WPOS0
+// cgc-bind builtin gl_FrontFacing FACE0
+// cgc-bind builtin gl_FragColor COLOR0
+// cgc-bind builtin gl_FragDepth DEPTH0
+
+struct FragmentOut
+{
+    vec4 color;
+    float depth;
+};
+
+void main()
+{
+    vec4 windowPosition;
+    bool front;
+    FragmentOut cg_output;
+    windowPosition = gl_FragCoord;
+    front = gl_FrontFacing;
+    if (front)
+    {
+        cg_output.color = vec4(1.0, 1.0, 1.0, 1.0);
+    }
+    else
+    {
+        cg_output.color = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+    cg_output.depth = windowPosition.z;
+    gl_FragColor = cg_output.color;
+    gl_FragDepth = cg_output.depth;
+}

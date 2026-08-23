@@ -79,11 +79,15 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_LATE_BINDINGS              5
 #define CAPS_INDEXED_ARRAYS             6
 #define CAPS_DONT_FLATTEN_IF_STATEMENTS 7
+#define CAPS_MATRIX_CONSTRUCTOR_AST     8
+#define CAPS_AGGREGATE_DEFAULT_BINDINGS 9
+#define CAPS_PRESERVE_ENTRY_RETURNS    10
+#define CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS 11
 
 struct slProfile_Rec {
     slProfile *next;
     int (*InitHAL)(slHAL *);
-    int name;
+    const char *name;
     int id;
 };
 
@@ -216,6 +220,7 @@ ConnectorDescriptor *LookupConnectorHAL(ConnectorDescriptor *connectors, int cid
 void SetSymbolConnectorBindingHAL(Binding *fBind, ConnectorRegisters *fConn);
 
 void AddConstantBinding(Binding *fBind);
-void AddDefaultBinding(Binding *fBind);
+void AddDefaultBinding(Binding *fBind, const void *identity,
+    const void *initializer, const void *type);
 
 #endif // !defined(__HAL_H)

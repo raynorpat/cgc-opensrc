@@ -1,0 +1,42 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0,
+               uniform int scalarIntPositive = 1.9,
+               uniform int scalarIntNegative = -1.9,
+               uniform int intValues[4] = {
+                   { 1.9 }, { -1.9 }, { 2.1 }, { -2.1 }
+               },
+               uniform int intEdges[2] = {
+                   { 2147483520.0 }, { -2147483648.0 }
+               },
+               uniform bool scalarBoolPositive = 2,
+               uniform bool scalarBoolNegative = -3,
+               uniform bool boolValues[5] = {
+                   { 0 }, { 2 }, { -3 }, { 0.5 }, { -0.5 }
+               },
+               uniform float scalarFloat = -4,
+               uniform float floatValues[3] = {
+                   { 1 }, { -2 }, { 3 }
+               },
+               uniform int2 vectorInts[2] = {
+                   (int2) float2(4.9, -4.9),
+                   (int2) float2(5.1, -5.1)
+               },
+               uniform int2 implicitVectorInts[2] = {
+                   { 10.9, -10.9 }, { 11.1, -11.1 }
+               },
+               uniform bool3 vectorBools[1] = {
+                   (bool3) float3(0.0, -2.0, 3.0)
+               },
+               uniform bool2 implicitVectorBools[2] = {
+                   { 0, 2 }, { -3, 0.5 }
+               },
+               uniform float2x2 matrixFloats =
+                   float2x2(int2(6, 7), int2(8, 9)))
+{
+    VertexOut output;
+    output.position = position;
+    return output;
+}

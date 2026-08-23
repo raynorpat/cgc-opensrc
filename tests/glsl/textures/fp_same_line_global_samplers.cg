@@ -1,0 +1,14 @@
+uniform sampler2D z, a;
+
+float4 sampleBoth(float2 coord)
+{
+    return tex2D(a, coord) + tex2D(z, coord);
+}
+
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(float2 coord : TEXCOORD0)
+{
+    FragmentOut result;
+    result.color = sampleBoth(coord);
+    return result;
+}

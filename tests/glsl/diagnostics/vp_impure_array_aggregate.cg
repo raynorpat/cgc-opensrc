@@ -1,0 +1,31 @@
+struct Pair {
+    float4 first;
+    float4 second;
+};
+
+struct Data {
+    Pair values[2];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+Data makeData(float4 value)
+{
+    Data result;
+    result.values[0].first = value;
+    result.values[0].second = value;
+    result.values[1].first = value;
+    result.values[1].second = value;
+    return result;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    Data copied;
+    VertexOut output;
+    copied = makeData(position);
+    output.position = copied.values[0].first;
+    return output;
+}

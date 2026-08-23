@@ -1,0 +1,7 @@
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(float3 coord : TEXCOORD0, uniform sampler3D image)
+{
+    FragmentOut output;
+    output.color = tex3D(image, coord);
+    return output;
+}

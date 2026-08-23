@@ -1,0 +1,62 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+int next_int(inout int value)
+{
+    value = value + 1;
+    return value;
+}
+
+int2 next_irow(inout int value)
+{
+    value = value + 2;
+    return int2(value, value + 10);
+}
+
+float2x2 make_int_scalars(inout int state0, inout int state1,
+                          inout int state2, inout int state3)
+{
+    return float2x2(next_int(state0), next_int(state1),
+                    next_int(state2), next_int(state3));
+}
+
+float2x2 make_int_rows(inout int state0, inout int state1)
+{
+    return float2x2(next_irow(state0), next_irow(state1));
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut result;
+    int state0;
+    int state1;
+    int state2;
+    int state3;
+    float2x2 scalar2;
+    float2x2 rows2;
+    float2x2 mixed2;
+    float3x3 scalar3;
+    float4x4 scalar4;
+    result.position = position;
+    state0 = 1;
+    state1 = 2;
+    state2 = 3;
+    state3 = 4;
+    scalar2 = float2x2(1, 2, 3, 4);
+    scalar3 = float3x3(11, 12, 13, 14, 15, 16, 17, 18, 19);
+    scalar4 = float4x4(21, 22, 23, 24,
+                       25, 26, 27, 28,
+                       29, 30, 31, 32,
+                       33, 34, 35, 36);
+    mixed2 = float2x2(41, 42.0, 43, 44.0);
+    rows2 = make_int_rows(state0, state1);
+    result.position.xy = mul(scalar2, result.position.xy);
+    result.position.xyz = mul(scalar3, result.position.xyz);
+    result.position = mul(scalar4, result.position);
+    result.position.xy = mul(mixed2, result.position.xy);
+    result.position.xy = mul(rows2, result.position.xy);
+    scalar2 = make_int_scalars(state0, state1, state2, state3);
+    result.position.xy = mul(scalar2, result.position.xy);
+    return result;
+}

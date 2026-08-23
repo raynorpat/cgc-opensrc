@@ -1,0 +1,18 @@
+struct VertexOut { float4 position : POSITION; };
+void scalePosition(inout float4 value, float factor)
+{
+    value = value * factor;
+}
+void copyPosition(float4 value, out float4 result)
+{
+    result = value;
+}
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    float4 copied;
+    scalePosition(position, 2.0);
+    copyPosition(position, copied);
+    output.position = copied;
+    return output;
+}

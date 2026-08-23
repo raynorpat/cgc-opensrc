@@ -1,0 +1,27 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform cg_output
+// cgc-bind builtin gl_Position POSITION0
+
+struct cg_gl_Data
+{
+    vec4 cg_gl_value;
+    vec4 cg_gl_value_1;
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform cg_gl_Data cg_output;
+
+void main()
+{
+    vec4 position;
+    VertexOut result;
+    position = cg_ATTRIB0;
+    result.position = position + cg_output.cg_gl_value + cg_output.cg_gl_value_1;
+    gl_Position = result.position;
+}

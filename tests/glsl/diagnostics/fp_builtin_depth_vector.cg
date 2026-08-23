@@ -1,0 +1,10 @@
+struct FragmentOut {
+    float1 depth : DEPTH;
+};
+
+FragmentOut main(float depth : TEXCOORD0)
+{
+    FragmentOut output;
+    output.depth = float1(depth);
+    return output;
+}

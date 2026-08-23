@@ -1,0 +1,11 @@
+struct TransformBlock {
+    float2x3 transforms[2];
+};
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0,
+               uniform TransformBlock block)
+{
+    VertexOut output;
+    output.position = position;
+    return output;
+}

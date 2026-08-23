@@ -21,6 +21,12 @@ add_executable(cgc
     constfold.c
     cpp.c
     generic_hal.c
+    glsl_ir.c
+    glsl_lower.c
+    glsl_codegen.c
+    glsl_hal.c
+    glslv_hal.c
+    glslf_hal.c
     hal.c
     inline.c
     memory.c
@@ -65,6 +71,7 @@ add_custom_target(regenerate_stdlib
         -DTOKENIZE=$<TARGET_FILE:tokenize>
         -DINPUT=stdlib.cg
         -DOUTPUT=stdlib.c
+        -DTEMP=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/stdlib_generic.cg
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
     DEPENDS
         tokenize
@@ -79,10 +86,11 @@ find_package(BISON QUIET)
 if(BISON_FOUND)
     add_custom_target(regenerate_parser
         COMMAND ${BISON_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/parser.y
-            --defines=${CMAKE_CURRENT_SOURCE_DIR}/parser.h
-            --output=${CMAKE_CURRENT_SOURCE_DIR}/parser.c
+            parser.y
+            --defines=parser.h
+            --output=parser.c
         DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/parser.y
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         VERBATIM
     )
 else()

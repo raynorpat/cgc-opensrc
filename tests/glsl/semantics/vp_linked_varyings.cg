@@ -1,0 +1,27 @@
+struct cg_COLOR0 {
+    float4 value;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+    float4 texcoord : TEXCOORD0;
+    float4 auxiliary : TEXCOORD1;
+};
+
+VertexOut main(float4 position : POSITION,
+               float4 color : COLOR0,
+               float4 texcoord : TEXCOORD0,
+               uniform float4 cg_TEXCOORD0)
+{
+    cg_COLOR0 holder;
+    float4 cg_TEXCOORD1;
+    VertexOut output;
+    holder.value = color;
+    cg_TEXCOORD1 = texcoord + cg_TEXCOORD0;
+    output.position = position;
+    output.color = holder.value;
+    output.texcoord = texcoord;
+    output.auxiliary = cg_TEXCOORD1;
+    return output;
+}

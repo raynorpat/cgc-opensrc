@@ -496,6 +496,22 @@ expr_stmt *NewExprStmt(SourceLoc *loc, expr *fExpr)
 } // NewExprStmt
 
 /*
+ * NewSimpleStmt() - Create a leaf statement with no expression or children.
+ *
+ */
+
+common_stmt *NewSimpleStmt(SourceLoc *loc, stmtkind kind)
+{
+    common_stmt *lStmt;
+
+    lStmt = (common_stmt *) malloc(sizeof(common_stmt));
+    lStmt->kind = kind;
+    lStmt->next = NULL;
+    lStmt->loc = *loc;
+    return lStmt;
+} // NewSimpleStmt
+
+/*
  * NewIfStmt() - Create an expression statement.
  *
  */
@@ -640,7 +656,13 @@ discard_stmt *NewDiscardStmt(SourceLoc *loc, expr *fExpr)
     } else {
         len = 0;
     }
-    fExpr = (expr *) NewUnopSubNode(KILL_OP, SUBOP_V(len, TYPE_BASE_BOOLEAN), fExpr);
+    if (fExpr == NULL || fExpr->common.kind != UNARY_N ||
+        fExpr->un.op != KILL_OP)
+    {
+        fExpr = (expr *) NewUnopSubNode(KILL_OP,
+                                        SUBOP_V(len, TYPE_BASE_BOOLEAN),
+                                        fExpr);
+    }
     lStmt->cond = fExpr;
     return lStmt;
 } // NewDiscardStmt
@@ -1155,7 +1177,16 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                 } else {
                     subop = SUBOP_V(vlen, GetBase(vType));
                     dExpr->bin.left = (expr *) NewUnopSubNode(VECTOR_V_OP, subop, dExpr->bin.left);
-                    dExpr->bin.left->un.type = GetStandardType(GetBase(vType), vlen, 0);
+                    if (Cg->theHAL->GetCapsBit(
+                            CAPS_AGGREGATE_DEFAULT_BINDINGS) &&
+                        !IsVector(vType, NULL) &&
+                        !IsMatrix(vType, NULL, NULL))
+                    {
+                        dExpr->bin.left->un.type = vType;
+                    } else {
+                        dExpr->bin.left->un.type =
+                            GetStandardType(GetBase(vType), vlen, 0);
+                    }
                     return 1;
                 }
             } else {
@@ -1763,16 +1794,20 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
         }
     }
     if (lSymb->type->properties & TYPE_MISC_INTERNAL) {
-        index = Cg->theHAL->CheckInternalFunction(lSymb, &group);
-        if (index) {
-            //
-            // lSymb->InternalIndex = index; etc.
-            //
-            lSymb->properties |= SYMB_IS_DEFINED | SYMB_IS_BUILTIN;
-            lSymb->details.fun.group = group;
-            lSymb->details.fun.index = index;
-        } else {
-            SemanticError(loc, ERROR_S_INVALID_INTERNAL_FUNCTION, GetAtomString(atable, atom));
+        {
+            int errorsBefore = GetErrorCount();
+            index = Cg->theHAL->CheckInternalFunction(lSymb, &group);
+            if (index) {
+                //
+                // lSymb->InternalIndex = index; etc.
+                //
+                lSymb->properties |= SYMB_IS_DEFINED | SYMB_IS_BUILTIN;
+                lSymb->details.fun.group = group;
+                lSymb->details.fun.index = index;
+            } else if (GetErrorCount() == errorsBefore) {
+                SemanticError(loc, ERROR_S_INVALID_INTERNAL_FUNCTION,
+                              GetAtomString(atable, atom));
+            }
         }
     }
 
@@ -1950,6 +1985,13 @@ int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int Ig
 
     ToPacked = (toType->properties & TYPE_MISC_PACKED) != 0;
     FromPacked = (fromType->properties & TYPE_MISC_PACKED) != 0;
+    if (Explicit && IsSameUnqualifiedType(toType, fromType) &&
+        Cg->theHAL->IsTexobjBase(GetBase(toType)) &&
+        !Cg->theHAL->IsValidScalarCast(GetBase(toType),
+                                       GetBase(fromType), Explicit))
+    {
+        return 0;
+    }
     if (IsSameUnqualifiedType(toType, fromType) &&
         ((ToPacked == FromPacked) || IgnorePacked))
     {
@@ -2694,6 +2736,8 @@ expr *NewMatrixSwizzleOperator(SourceLoc *loc, expr *fExpr, int ident)
 expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
 {
     int len = 0, HasError = 0, size = 0, lbase, nbase, lNumeric, nNumeric, vlen, vlen2;
+    int IsMatrixConstructor = 0;
+    int MatrixRowSize = 0;
     unary *result = NULL;
     expr *lExpr;
     Type *lType, *rType;
@@ -2706,6 +2750,10 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
             size = vlen;
         } else if (IsMatrix(fType, &vlen, &vlen2)) {
             size = vlen*vlen2;
+            if (Cg->theHAL->GetCapsBit(CAPS_MATRIX_CONSTRUCTOR_AST)) {
+                IsMatrixConstructor = 1;
+                MatrixRowSize = vlen;
+            }
         } else {
             SemanticError(loc, ERROR___INVALID_TYPE_FUNCTION);
             rType = UndefinedType;
@@ -2726,19 +2774,26 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
         }
         if (IsScalar(lType)) {
             vlen = 1;
-#if 000 // Unifdefout this to allow things like: "{ vec3, float }"
-        } else if (IsVector(lType, &vlen)) {
-            /* Nothing to do. */
-#endif
+        } else if (IsMatrixConstructor && IsVector(lType, &vlen)) {
+            /* Matrix rows may combine scalars and vectors. */
         } else {
             SemanticError(loc, ERROR___VECTOR_CONSTR_NOT_SCALAR);
             HasError = 1;
             break;
         }
+        if (IsMatrixConstructor) {
+            if (vlen > size - len ||
+                vlen > MatrixRowSize - len % MatrixRowSize)
+            {
+                SemanticError(loc, ERROR___TOO_MUCH_DATA_TYPE_FUN);
+                HasError = 1;
+                break;
+            }
+        }
         if (len == 0) {
             nbase = lbase;
             nNumeric = lNumeric;
-        } else if (len + vlen <= 4) {
+        } else if (IsMatrixConstructor || len + vlen <= 4) {
             if (lNumeric == nNumeric) {
                 if (nNumeric) {
                     nbase = Cg->theHAL->GetBinOpBase(VECTOR_V_OP, nbase, lbase, 0, 0);
@@ -2770,12 +2825,19 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
         while (lExpr) {
             lType = lExpr->common.type;
             lbase = GetBase(lType);
-            if (lbase != nbase)
-                lExpr->bin.left = CastScalarVectorMatrix(lExpr->bin.left, lbase, nbase, 0, 0);
+            if (lbase != nbase) {
+                vlen = 0;
+                IsVector(lType, &vlen);
+                lExpr->bin.left = CastScalarVectorMatrix(
+                    lExpr->bin.left, lbase, nbase, vlen, 0);
+            }
             lExpr = lExpr->bin.right;
         }
-        result = NewUnopSubNode(VECTOR_V_OP, SUBOP_V(len, nbase), fExpr);
-        result->type = GetStandardType(nbase, len, 0);
+        /* VECTOR_V_OP has no room for a 16-component matrix length. */
+        result = NewUnopSubNode(VECTOR_V_OP,
+            SUBOP_V(IsMatrixConstructor ? 0 : len, nbase), fExpr);
+        result->type = IsMatrixConstructor ? rType :
+            GetStandardType(nbase, len, 0);
     }
     if (!result) {
         result = NewUnopSubNode(VECTOR_V_OP, 0, fExpr);

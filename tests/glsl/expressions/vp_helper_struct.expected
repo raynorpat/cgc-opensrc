@@ -1,0 +1,41 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct ValueBox
+{
+    vec4 value;
+};
+
+struct Payload
+{
+    ValueBox box;
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+Payload makePayload(vec4 value)
+{
+    Payload payload;
+    payload.box.value = value;
+    return payload;
+}
+
+vec4 consume(Payload payload)
+{
+    return payload.box.value;
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = consume(makePayload(position));
+    gl_Position = cg_output.position;
+}

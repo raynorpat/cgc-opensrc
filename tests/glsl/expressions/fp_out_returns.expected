@@ -1,0 +1,42 @@
+#version 110
+// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+// cgc-bind builtin gl_FragColor COLOR0
+// cgc-bind builtin gl_FragDepth DEPTH0
+
+struct FragmentOut
+{
+    vec4 color;
+};
+
+varying vec4 cg_TEXCOORD0;
+
+void main()
+{
+    vec4 color;
+    float depth;
+    FragmentOut cg_output;
+    int index;
+    color = cg_TEXCOORD0;
+    cg_output.color = color;
+    depth = 0.25;
+    if (color.x > 0.75)
+    {
+        depth = 0.5;
+        gl_FragColor = cg_output.color;
+        gl_FragDepth = depth;
+        return;
+    }
+    for (index = 0; index < 1; index = index + 1)
+    {
+        if (color.y > 0.75)
+        {
+            depth = 0.75;
+            gl_FragColor = cg_output.color;
+            gl_FragDepth = depth;
+            return;
+        }
+    }
+    depth = 1.0;
+    gl_FragColor = cg_output.color;
+    gl_FragDepth = depth;
+}

@@ -203,7 +203,14 @@ expr *ConstantFoldNode(expr *fexpr, void *_arg1, int arg2)
     case UNARY_N:
         base = SUBOP_GET_T(fexpr->un.subop);
         len = SUBOP_GET_S(fexpr->un.subop);
-        if (fexpr->un.op == VECTOR_V_OP && IsConstList(fexpr->un.arg)) {
+        if (fexpr->un.op == VECTOR_V_OP &&
+            (!IsMatrix(fexpr->common.type, NULL, NULL) ||
+             !Cg->theHAL->GetCapsBit(CAPS_MATRIX_CONSTRUCTOR_AST)) &&
+            (!Cg->theHAL->GetCapsBit(CAPS_AGGREGATE_DEFAULT_BINDINGS) ||
+             GetCategory(fexpr->common.type) != TYPE_CATEGORY_ARRAY ||
+             IsVector(fexpr->common.type, NULL) ||
+             IsMatrix(fexpr->common.type, NULL, NULL)) &&
+            IsConstList(fexpr->un.arg)) {
             constlist_iter      iter;
             DB (printf("fold VECTOR_V_OP[%d:%d]", len, base);
                 DumpConstList(fexpr->un.arg, base);

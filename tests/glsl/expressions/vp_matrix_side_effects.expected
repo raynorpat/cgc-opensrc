@@ -1,0 +1,100 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+mat2 cg_construct_mat2_v2_v2_1(vec2 arg0, vec2 arg1)
+{
+    return mat2(arg0.x, arg1.x, arg0.y, arg1.y);
+}
+
+mat2 cg_construct_mat2_f_f_f_f(float arg0, float arg1, float arg2, float arg3)
+{
+    return mat2(arg0, arg2, arg1, arg3);
+}
+
+mat3 cg_construct_mat3_v2_f_v3_f_v2(vec2 arg0, float arg1, vec3 arg2, float arg3, vec2 arg4)
+{
+    return mat3(arg0.x, arg2.x, arg3, arg0.y, arg2.y, arg4.x, arg1, arg2.z, arg4.y);
+}
+
+float cg_construct_mat2_v2_v2(float value)
+{
+    return value + 100.0;
+}
+
+vec2 next_row(inout float value)
+{
+    value = value + 1.0;
+    return vec2(value, value + 10.0);
+}
+
+float next_scalar(inout float value)
+{
+    value = value + 2.0;
+    return value;
+}
+
+vec3 next_row3(inout float value)
+{
+    value = value + 3.0;
+    return vec3(value, value + 10.0, value + 20.0);
+}
+
+mat2 make2(inout float state0, inout float state1)
+{
+    return cg_construct_mat2_v2_v2_1(next_row(state0), next_row(state1));
+}
+
+mat2 make2_again(inout float state0, inout float state1)
+{
+    return cg_construct_mat2_v2_v2_1(next_row(state0), next_row(state1));
+}
+
+mat2 make2_scalars(inout float state0, inout float state1, inout float state2, inout float state3)
+{
+    return cg_construct_mat2_f_f_f_f(next_scalar(state0), next_scalar(state1), next_scalar(state2), next_scalar(state3));
+}
+
+mat3 make3(inout float state0, inout float state1, inout float state2, inout float state3, inout float state4)
+{
+    return cg_construct_mat3_v2_f_v3_f_v2(next_row(state0), next_scalar(state1), next_row3(state2), next_scalar(state3), next_row(state4));
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut result;
+    float state0;
+    float state1;
+    float state2;
+    float state3;
+    float state4;
+    mat2 matrix2;
+    mat3 matrix3;
+    position = cg_ATTRIB0;
+    result.position = position;
+    state0 = 1.0;
+    state1 = 2.0;
+    state2 = 3.0;
+    state3 = 4.0;
+    state4 = 5.0;
+    if (position.x > 0.0)
+    {
+        matrix2 = make2(state0, state1);
+        result.position.xy = matrix2 * result.position.xy;
+    }
+    matrix2 = make2_again(state0, state1);
+    matrix2 = make2_scalars(state0, state1, state2, state3);
+    matrix3 = make3(state0, state1, state2, state3, state4);
+    result.position.xy = matrix2 * result.position.xy;
+    result.position.xyz = matrix3 * result.position.xyz;
+    result.position.x = result.position.x + cg_construct_mat2_v2_v2(state4);
+    gl_Position = result.position;
+}

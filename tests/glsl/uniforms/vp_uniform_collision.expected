@@ -1,0 +1,31 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform cg_output_1
+// cgc-default cg_output_1 2.0
+// cgc-bind uniform cg_output
+// cgc-default cg_output 3.0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform float cg_output;
+uniform float cg_output_1;
+
+float use_global(float value)
+{
+    return value * cg_output_1;
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut result;
+    position = cg_ATTRIB0;
+    result.position = position * cg_output;
+    result.position.x = result.position.x + use_global(1.0);
+    gl_Position = result.position;
+}

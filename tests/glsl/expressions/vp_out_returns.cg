@@ -1,0 +1,27 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+VertexOut main(float4 position : ATTRIB0,
+               float4 selector : ATTRIB1,
+               out float pointSize : PSIZE)
+{
+    VertexOut output;
+    int index;
+    output.position = position;
+    output.color = selector;
+    pointSize = 1.0;
+    if (selector.x > 0.5) {
+        pointSize = 2.0;
+        return output;
+    }
+    for (index = 0; index < 1; index = index + 1) {
+        if (selector.y > 0.5) {
+            pointSize = 3.0;
+            return output;
+        }
+    }
+    pointSize = 4.0;
+    return output;
+}

@@ -1,0 +1,38 @@
+struct Pair {
+    float4 first;
+    float4 second;
+};
+
+struct Row {
+    Pair values[2];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+int nextIndex(inout int index)
+{
+    index = index + 1;
+    return index;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    Row rows[2];
+    Pair source;
+    Pair copied;
+    int outer;
+    int inner;
+    int cg_index;
+    VertexOut output;
+    source.first = position;
+    source.second = position * 2.0;
+    outer = -1;
+    inner = -1;
+    cg_index = 0;
+    rows[nextIndex(outer)].values[nextIndex(inner)] = source;
+    copied = rows[nextIndex(outer)].values[nextIndex(inner)];
+    output.position = copied.first + copied.second;
+    return output;
+}

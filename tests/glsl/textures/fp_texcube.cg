@@ -1,0 +1,11 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float3 direction : TEXCOORD0,
+                 uniform samplerCUBE environment)
+{
+    FragmentOut output;
+    output.color = texCUBE(environment, direction);
+    return output;
+}

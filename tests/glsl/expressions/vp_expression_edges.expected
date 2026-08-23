@@ -1,0 +1,38 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    float value;
+    bool a;
+    bool b;
+    bool c;
+    bool nested;
+    bvec4 mask;
+    position = cg_ATTRIB0;
+    value = position.x;
+    value = -(-value);
+    value = +(+value);
+    mask = not(lessThan(position, vec4(1.0)));
+    a = position.x > 0.0;
+    b = position.y > 0.0;
+    c = position.z > 0.0;
+    nested = (a ? b : c) ? a : b;
+    nested = !nested;
+    if (mask.x && nested)
+    {
+        position.x = value;
+    }
+    cg_output.position = position;
+    gl_Position = cg_output.position;
+}

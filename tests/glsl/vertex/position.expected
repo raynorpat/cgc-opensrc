@@ -1,0 +1,53 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind attribute cg_ATTRIB1 ATTRIB1
+// cgc-bind attribute cg_ATTRIB2 ATTRIB2
+// cgc-bind varying cg_COLOR0 COLOR0
+// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+// cgc-bind uniform object_matrix
+// cgc-bind uniform objviewproj_matrix
+// cgc-bind uniform lightdir
+// cgc-bind uniform lightcolor
+// cgc-bind uniform ambientcolor
+// cgc-bind builtin gl_Position POSITION0
+
+struct appdata
+{
+    vec4 position;
+    vec4 color;
+    vec4 texcoord;
+};
+
+struct vf20
+{
+    vec4 HPOS;
+    vec4 COL0;
+    vec4 TEX0;
+};
+
+attribute vec4 cg_ATTRIB0;
+attribute vec4 cg_ATTRIB1;
+attribute vec4 cg_ATTRIB2;
+varying vec4 cg_COLOR0;
+varying vec4 cg_TEXCOORD0;
+uniform mat3 object_matrix;
+uniform mat4 objviewproj_matrix;
+uniform vec3 lightdir;
+uniform vec3 lightcolor;
+uniform vec3 ambientcolor;
+
+void main()
+{
+    appdata I;
+    vf20 O;
+    float diffuse;
+    I.position = cg_ATTRIB0;
+    I.color = cg_ATTRIB1;
+    I.texcoord = cg_ATTRIB2;
+    O.HPOS = objviewproj_matrix * I.position;
+    O.COL0 = I.color;
+    O.TEX0 = I.texcoord;
+    gl_Position = O.HPOS;
+    cg_COLOR0 = O.COL0;
+    cg_TEXCOORD0 = O.TEX0;
+}

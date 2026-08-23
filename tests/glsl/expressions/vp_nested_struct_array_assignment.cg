@@ -1,0 +1,28 @@
+struct Leaf {
+    float4 values[2];
+};
+
+struct Data {
+    Leaf leaves[2];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    Data source;
+    Data copied;
+    VertexOut output;
+    source.leaves[0].values[0] = position;
+    source.leaves[0].values[1] = position * 2.0;
+    source.leaves[1].values[0] = position * 3.0;
+    source.leaves[1].values[1] = position * 4.0;
+    copied = source;
+    output.position = copied.leaves[0].values[0] +
+                      copied.leaves[0].values[1] +
+                      copied.leaves[1].values[0] +
+                      copied.leaves[1].values[1];
+    return output;
+}

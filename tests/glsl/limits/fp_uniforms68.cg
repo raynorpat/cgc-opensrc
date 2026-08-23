@@ -1,0 +1,7 @@
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(uniform float4 values[17])
+{
+    FragmentOut output;
+    output.color = values[0];
+    return output;
+}

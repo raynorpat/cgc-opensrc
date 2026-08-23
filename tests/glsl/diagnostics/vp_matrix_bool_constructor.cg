@@ -1,0 +1,13 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut result;
+    float2x2 matrix;
+    matrix = float2x2(true, false, true, false);
+    result.position = position;
+    result.position.xy = mul(matrix, result.position.xy);
+    return result;
+}

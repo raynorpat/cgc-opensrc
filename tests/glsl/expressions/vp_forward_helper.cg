@@ -1,0 +1,22 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+float4 later(float4 value);
+
+float4 earlier(float4 value)
+{
+    return later(value);
+}
+
+float4 later(float4 value)
+{
+    return value + 1.0;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = earlier(position);
+    return output;
+}

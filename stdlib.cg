@@ -22,6 +22,151 @@ typedef packed float1 float1x1[1];
 // various useful library functions can be defined here, to make up
 // the standard library
 
+#ifdef PROFILE_GLSLV
+#define PROFILE_GLSL 1
+#endif
+#ifdef PROFILE_GLSLF
+#define PROFILE_GLSL 1
+#endif
+
+#ifdef PROFILE_GLSL
+
+__internal float2 mul(float2x2 matrix, float2 value);
+__internal float3 mul(float3x3 matrix, float3 value);
+__internal float4 mul(float4x4 matrix, float4 value);
+
+__internal float dot(float left, float right);
+__internal float dot(float2 left, float2 right);
+__internal float dot(float3 left, float3 right);
+__internal float dot(float4 left, float4 right);
+__internal float3 cross(float3 left, float3 right);
+
+__internal float normalize(float value);
+__internal float2 normalize(float2 value);
+__internal float3 normalize(float3 value);
+__internal float4 normalize(float4 value);
+__internal float length(float value);
+__internal float length(float2 value);
+__internal float length(float3 value);
+__internal float length(float4 value);
+__internal float distance(float left, float right);
+__internal float distance(float2 left, float2 right);
+__internal float distance(float3 left, float3 right);
+__internal float distance(float4 left, float4 right);
+__internal float reflect(float incident, float normal);
+__internal float2 reflect(float2 incident, float2 normal);
+__internal float3 reflect(float3 incident, float3 normal);
+__internal float4 reflect(float4 incident, float4 normal);
+__internal float refract(float incident, float normal, float eta);
+__internal float2 refract(float2 incident, float2 normal, float eta);
+__internal float3 refract(float3 incident, float3 normal, float eta);
+__internal float4 refract(float4 incident, float4 normal, float eta);
+
+__internal float min(float left, float right);
+__internal float2 min(float2 left, float2 right);
+__internal float3 min(float3 left, float3 right);
+__internal float4 min(float4 left, float4 right);
+__internal float max(float left, float right);
+__internal float2 max(float2 left, float2 right);
+__internal float3 max(float3 left, float3 right);
+__internal float4 max(float4 left, float4 right);
+__internal float clamp(float value, float low, float high);
+__internal float2 clamp(float2 value, float2 low, float2 high);
+__internal float3 clamp(float3 value, float3 low, float3 high);
+__internal float4 clamp(float4 value, float4 low, float4 high);
+__internal float2 clamp(float2 value, float low, float high);
+__internal float3 clamp(float3 value, float low, float high);
+__internal float4 clamp(float4 value, float low, float high);
+__internal float lerp(float left, float right, float amount);
+__internal float2 lerp(float2 left, float2 right, float2 amount);
+__internal float3 lerp(float3 left, float3 right, float3 amount);
+__internal float4 lerp(float4 left, float4 right, float4 amount);
+__internal float2 lerp(float2 left, float2 right, float amount);
+__internal float3 lerp(float3 left, float3 right, float amount);
+__internal float4 lerp(float4 left, float4 right, float amount);
+
+__internal float abs(float value);
+__internal float2 abs(float2 value);
+__internal float3 abs(float3 value);
+__internal float4 abs(float4 value);
+__internal float sign(float value);
+__internal float2 sign(float2 value);
+__internal float3 sign(float3 value);
+__internal float4 sign(float4 value);
+__internal float floor(float value);
+__internal float2 floor(float2 value);
+__internal float3 floor(float3 value);
+__internal float4 floor(float4 value);
+__internal float ceil(float value);
+__internal float2 ceil(float2 value);
+__internal float3 ceil(float3 value);
+__internal float4 ceil(float4 value);
+__internal float sqrt(float value);
+__internal float2 sqrt(float2 value);
+__internal float3 sqrt(float3 value);
+__internal float4 sqrt(float4 value);
+__internal float rsqrt(float value);
+__internal float2 rsqrt(float2 value);
+__internal float3 rsqrt(float3 value);
+__internal float4 rsqrt(float4 value);
+__internal float frac(float value);
+__internal float2 frac(float2 value);
+__internal float3 frac(float3 value);
+__internal float4 frac(float4 value);
+__internal float saturate(float value);
+__internal float2 saturate(float2 value);
+__internal float3 saturate(float3 value);
+__internal float4 saturate(float4 value);
+
+__internal float exp(float value);
+__internal float2 exp(float2 value);
+__internal float3 exp(float3 value);
+__internal float4 exp(float4 value);
+__internal float exp2(float value);
+__internal float2 exp2(float2 value);
+__internal float3 exp2(float3 value);
+__internal float4 exp2(float4 value);
+__internal float log(float value);
+__internal float2 log(float2 value);
+__internal float3 log(float3 value);
+__internal float4 log(float4 value);
+__internal float log2(float value);
+__internal float2 log2(float2 value);
+__internal float3 log2(float3 value);
+__internal float4 log2(float4 value);
+__internal float sin(float value);
+__internal float2 sin(float2 value);
+__internal float3 sin(float3 value);
+__internal float4 sin(float4 value);
+__internal float cos(float value);
+__internal float2 cos(float2 value);
+__internal float3 cos(float3 value);
+__internal float4 cos(float4 value);
+__internal float tan(float value);
+__internal float2 tan(float2 value);
+__internal float3 tan(float3 value);
+__internal float4 tan(float4 value);
+__internal float asin(float value);
+__internal float2 asin(float2 value);
+__internal float3 asin(float3 value);
+__internal float4 asin(float4 value);
+__internal float acos(float value);
+__internal float2 acos(float2 value);
+__internal float3 acos(float3 value);
+__internal float4 acos(float4 value);
+__internal float atan(float value);
+__internal float2 atan(float2 value);
+__internal float3 atan(float3 value);
+__internal float4 atan(float4 value);
+
+// CGC_GLSL_TEXTURES_BEGIN
+__internal float4 tex1D(sampler1D image, float coord);
+__internal float4 tex2D(sampler2D image, float2 coord);
+__internal float4 tex3D(sampler3D image, float3 coord);
+__internal float4 texCUBE(samplerCUBE image, float3 coord);
+// CGC_GLSL_TEXTURES_END
+#else
+
 float dot(float1 a, float1 b) { return a.x*b.x; }
 float dot(float2 a, float2 b) { return a.x*b.x + a.y*b.y; }
 float dot(float3 a, float3 b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
@@ -100,4 +245,6 @@ float1 max(float1 a, float1 b) { return a>b ? a : b; }
 float2 max(float2 a, float2 b) { return a>b ? a : b; }
 float3 max(float3 a, float3 b) { return a>b ? a : b; }
 float4 max(float4 a, float4 b) { return a>b ? a : b; }
+
+#endif /* PROFILE_GLSL */
 

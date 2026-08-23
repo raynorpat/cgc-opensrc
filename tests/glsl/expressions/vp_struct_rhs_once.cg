@@ -1,0 +1,31 @@
+struct Pair {
+    float4 first;
+    float4 second;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+Pair makePair(float4 value, inout float state)
+{
+    Pair result;
+    state = state + 1.0;
+    result.first = value * state;
+    result.second = value + state;
+    return result;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    Pair cg_aggregate;
+    Pair copied;
+    float state;
+    VertexOut output;
+    cg_aggregate.first = position;
+    cg_aggregate.second = position;
+    state = 0.0;
+    copied = makePair(position, state);
+    output.position = copied.first + copied.second + state;
+    return output;
+}

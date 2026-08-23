@@ -1,0 +1,59 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind attribute cg_ATTRIB1 ATTRIB1
+// cgc-bind attribute cg_ATTRIB2 ATTRIB2
+// cgc-bind varying cg_COLOR0 COLOR0
+// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+// cgc-bind uniform object_matrix
+// cgc-bind uniform objviewproj_matrix
+// cgc-bind uniform lightdir
+// cgc-bind uniform lightcolor
+// cgc-bind uniform ambientcolor
+// cgc-bind builtin gl_Position POSITION0
+
+struct appdata
+{
+    vec4 position;
+    vec3 normal;
+    vec4 color;
+};
+
+struct vf20
+{
+    vec4 HPOS;
+    vec4 COL0;
+    vec4 TEX0;
+};
+
+attribute vec4 cg_ATTRIB0;
+attribute vec3 cg_ATTRIB1;
+attribute vec4 cg_ATTRIB2;
+varying vec4 cg_COLOR0;
+varying vec4 cg_TEXCOORD0;
+uniform mat3 object_matrix;
+uniform mat4 objviewproj_matrix;
+uniform vec3 lightdir[4];
+uniform vec3 lightcolor[4];
+uniform vec3 ambientcolor;
+
+vec3 diffuse(vec3 normal, vec3 lightv, vec3 color)
+{
+    return max(dot(normal, lightv), float(0)) * color;
+}
+
+void main()
+{
+    appdata I;
+    vf20 O;
+    vec3 norm;
+    I.position = cg_ATTRIB0;
+    I.normal = cg_ATTRIB1;
+    I.color = cg_ATTRIB2;
+    O.HPOS = objviewproj_matrix * I.position;
+    norm = object_matrix * I.normal;
+    O.COL0.xyz = I.color.xyz * diffuse(norm, lightdir[0], lightcolor[0]) * diffuse(norm, lightdir[1], lightcolor[1]) * diffuse(norm, lightdir[2], lightcolor[2]) * diffuse(norm, lightdir[3], lightcolor[3]) + ambientcolor;
+    O.COL0.w = I.color.w;
+    gl_Position = O.HPOS;
+    cg_COLOR0 = O.COL0;
+    cg_TEXCOORD0 = O.TEX0;
+}

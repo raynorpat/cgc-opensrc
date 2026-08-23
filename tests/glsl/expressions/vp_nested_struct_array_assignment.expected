@@ -1,0 +1,39 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct Leaf
+{
+    vec4 values[2];
+};
+
+struct Data
+{
+    Leaf leaves[2];
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+void main()
+{
+    vec4 position;
+    Data source;
+    Data copied;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    source.leaves[0].values[0] = position;
+    source.leaves[0].values[1] = position * 2.0;
+    source.leaves[1].values[0] = position * 3.0;
+    source.leaves[1].values[1] = position * 4.0;
+    copied.leaves[0].values[0] = source.leaves[0].values[0];
+    copied.leaves[0].values[1] = source.leaves[0].values[1];
+    copied.leaves[1].values[0] = source.leaves[1].values[0];
+    copied.leaves[1].values[1] = source.leaves[1].values[1];
+    cg_output.position = copied.leaves[0].values[0] + copied.leaves[0].values[1] + copied.leaves[1].values[0] + copied.leaves[1].values[1];
+    gl_Position = cg_output.position;
+}

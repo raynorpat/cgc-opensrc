@@ -1,0 +1,7 @@
+struct Input : FOO {
+    float4 p : POSITION;
+};
+void main(Input input)
+{
+    return;
+}

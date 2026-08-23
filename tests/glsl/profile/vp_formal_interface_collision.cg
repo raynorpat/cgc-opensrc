@@ -1,0 +1,10 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 cg_ATTRIB0 : ATTRIB0)
+{
+    VertexOut output;
+    output.position = cg_ATTRIB0;
+    return output;
+}
