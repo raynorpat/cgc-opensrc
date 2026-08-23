@@ -337,6 +337,8 @@ GlslBuiltin GlslLookupBuiltin(const char *name, const GlslType *result,
     const GlslType *params, int paramCount);
 const char *GlslBuiltinSpelling(GlslBuiltin builtin);
 int GlslTypeComponentCount(const GlslType *type);
+int GlslParseSamplerUnit(const char *text, int *unit);
+int GlslSamplerUnitMatches(const char *text, int unit);
 int GlslIsReservedName(const char *name);
 GlslDecl *GlslNewDecl(GlslModule *module, GlslStorage storage,
     GlslType type, const char *name);

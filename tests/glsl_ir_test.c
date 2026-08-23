@@ -79,6 +79,25 @@ static void *DirtyAlloc(void *arg, size_t size)
     return memory;
 }
 
+static void ExpectModuleRejected(const char *label,
+                                 const GlslModule *module)
+{
+    FILE *writer;
+    int wrote;
+    long size;
+
+    writer = tmpfile();
+    assert(writer != NULL);
+    wrote = GlslWriteModule(writer, module);
+    size = ftell(writer);
+    if (wrote || size != 0) {
+        fprintf(stderr, "%s unexpectedly wrote %ld bytes\n", label, size);
+        fclose(writer);
+        exit(2);
+    }
+    assert(!fclose(writer));
+}
+
 int main(void)
 {
     GlslModule module;
@@ -96,6 +115,8 @@ int main(void)
     GlslDecl *secondDecl;
     GlslDecl *samplerDecl;
     GlslDecl *secondSamplerDecl;
+    GlslDecl *thirdSamplerDecl;
+    GlslDecl *numericDecl;
     GlslExpr *expr;
     GlslExpr *secondExpr;
     GlslExpr *conditionExpr;
@@ -105,6 +126,9 @@ int main(void)
     GlslFunction *function;
     GlslFunction *secondFunction;
     GlslBinding *binding;
+    GlslBinding *firstBinding;
+    GlslBinding *secondBinding;
+    GlslBinding *thirdBinding;
     GlslDecl *decls;
     GlslStmt *stmts;
     GlslFunction *functions;
@@ -121,11 +145,13 @@ int main(void)
     FILE *writer;
     float infinity;
     float nanValue;
+    float samplerDefault;
     GlslType builtinParams[3];
     GlslType arrayElement;
     GlslType arrayType;
     GlslType structType;
     GlslDecl structMembers[2];
+    GlslStmt *savedBody;
     static const char *builtinSpellings[] = {
         NULL,
         "mul", "dot", "cross", "normalize", "reflect", "refract",
@@ -137,6 +163,12 @@ int main(void)
     };
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(GlslSamplerUnitMatches("0", 0));
+    assert(GlslSamplerUnitMatches("1", 1));
+    assert(!GlslSamplerUnitMatches("0", 1));
+    assert(!GlslSamplerUnitMatches("1", 0));
+    assert(!GlslSamplerUnitMatches("01", 1));
+    assert(!GlslSamplerUnitMatches("2147483648", 1));
     assert(!strcmp(GlslAllocateName(&module, "position"), "position"));
     assert(!strcmp(GlslAllocateName(&module, "attribute"), "cg_attribute"));
     assert(!strcmp(GlslAllocateName(&module, "gl_Position"), "cg_gl_Position"));
@@ -654,16 +686,16 @@ int main(void)
     assert(samplerDecl != NULL && secondSamplerDecl != NULL);
     GlslAppendDecl(&samplerModule.globals, samplerDecl);
     GlslAppendDecl(&samplerModule.globals, secondSamplerDecl);
-    binding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
-                             "first", "0");
-    assert(binding != NULL);
-    binding->declaration = samplerDecl;
-    samplerModule.bindings = binding;
-    binding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
-                             "second", "1");
-    assert(binding != NULL);
-    binding->declaration = secondSamplerDecl;
-    samplerModule.bindings->next = binding;
+    firstBinding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
+                                  "first", "0");
+    assert(firstBinding != NULL);
+    firstBinding->declaration = samplerDecl;
+    samplerModule.bindings = firstBinding;
+    secondBinding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
+                                   "second", "1");
+    assert(secondBinding != NULL);
+    secondBinding->declaration = secondSamplerDecl;
+    samplerModule.bindings->next = secondBinding;
     conditionExpr = GlslNewExpr(&samplerModule, GLSL_EXPR_BOOL,
                                 GlslNumericType(GLSL_BASE_BOOL, 1));
     expr = GlslNewExpr(&samplerModule, GLSL_EXPR_CONDITIONAL, type);
@@ -729,6 +761,143 @@ int main(void)
     assert(GlslWriteModule(writer, &samplerModule));
     assert(ftell(writer) > 0);
     assert(!fclose(writer));
+
+    expr->next = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
+                             GlslNumericType(GLSL_BASE_FLOAT, 2));
+    assert(expr->next != NULL);
+    expr->next->u.symbol = secondSamplerDecl;
+    secondExpr->u.call.arguments = expr;
+    ExpectModuleRejected("sampler coordinate advertised as float2",
+                         &samplerModule);
+    expr->next = coordExpr;
+
+    stmt->u.expression = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
+                                     GlslNumericType(GLSL_BASE_FLOAT, 1));
+    assert(stmt->u.expression != NULL);
+    stmt->u.expression->u.symbol = samplerDecl;
+    ExpectModuleRejected("sampler symbol advertised as float",
+                         &samplerModule);
+    stmt->u.expression = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
+                                     GlslNumericType(GLSL_BASE_INT, 1));
+    assert(stmt->u.expression != NULL);
+    stmt->u.expression->u.symbol = samplerDecl;
+    ExpectModuleRejected("sampler symbol advertised as int",
+                         &samplerModule);
+    stmt->u.expression = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
+                                     GlslNumericType(GLSL_BASE_BOOL, 1));
+    assert(stmt->u.expression != NULL);
+    stmt->u.expression->u.symbol = samplerDecl;
+    ExpectModuleRejected("sampler symbol advertised as bool",
+                         &samplerModule);
+
+    numericDecl = GlslNewDecl(&samplerModule, GLSL_STORAGE_UNIFORM,
+        GlslNumericType(GLSL_BASE_FLOAT, 1), "number");
+    assert(numericDecl != NULL);
+    secondSamplerDecl->next = numericDecl;
+    stmt->u.expression = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
+                                     GlslNumericType(GLSL_BASE_INT, 1));
+    assert(stmt->u.expression != NULL);
+    stmt->u.expression->u.symbol = numericDecl;
+    ExpectModuleRejected("ordinary symbol type mismatch", &samplerModule);
+    secondSamplerDecl->next = NULL;
+    stmt->u.expression = secondExpr;
+
+    firstBinding->next = NULL;
+    ExpectModuleRejected("sampler global without binding", &samplerModule);
+    firstBinding->next = secondBinding;
+
+    secondBinding->declaration = NULL;
+    ExpectModuleRejected("sampler binding without declaration",
+                         &samplerModule);
+    secondBinding->declaration = secondSamplerDecl;
+
+    secondBinding->declaration = samplerDecl;
+    secondBinding->name = "first";
+    ExpectModuleRejected("duplicate sampler declaration binding",
+                         &samplerModule);
+    secondBinding->declaration = secondSamplerDecl;
+    secondBinding->name = "second";
+
+    secondSamplerDecl->name = "first";
+    secondBinding->name = "first";
+    ExpectModuleRejected("duplicate sampler global name", &samplerModule);
+    secondSamplerDecl->name = "second";
+    secondBinding->name = "second";
+
+    secondBinding->semantic = "0";
+    ExpectModuleRejected("duplicate sampler unit", &samplerModule);
+    secondBinding->semantic = "2";
+    ExpectModuleRejected("fragment sampler unit two", &samplerModule);
+    secondBinding->semantic = "01";
+    ExpectModuleRejected("leading-zero sampler unit", &samplerModule);
+    secondBinding->semantic = "+1";
+    ExpectModuleRejected("noncanonical sampler unit", &samplerModule);
+    secondBinding->semantic = "2147483648";
+    ExpectModuleRejected("overflowing sampler unit", &samplerModule);
+    secondBinding->semantic = "1";
+
+    secondBinding->name = "wrong";
+    ExpectModuleRejected("wrong sampler binding name", &samplerModule);
+    secondBinding->name = "second";
+
+    secondSamplerDecl->next = numericDecl;
+    secondBinding->declaration = numericDecl;
+    secondBinding->name = "number";
+    ExpectModuleRejected("wrong sampler binding type", &samplerModule);
+    secondBinding->declaration = secondSamplerDecl;
+    secondBinding->name = "second";
+    secondSamplerDecl->next = NULL;
+
+    samplerDefault = 1.0f;
+    secondBinding->defaultCount = 1;
+    secondBinding->defaultValues = &samplerDefault;
+    ExpectModuleRejected("sampler binding default metadata",
+                         &samplerModule);
+    secondBinding->defaultCount = 0;
+    secondBinding->defaultValues = NULL;
+
+    savedBody = function->body;
+    function->body = NULL;
+    samplerModule.stage = GLSL_STAGE_VERTEX;
+    samplerModule.bindings = NULL;
+    ExpectModuleRejected("vertex sampler global", &samplerModule);
+    samplerModule.bindings = firstBinding;
+    ExpectModuleRejected("vertex sampler binding", &samplerModule);
+    samplerModule.stage = GLSL_STAGE_FRAGMENT;
+    function->body = savedBody;
+
+    samplerDecl->next = NULL;
+    firstBinding->next = NULL;
+    firstBinding->semantic = "1";
+    ExpectModuleRejected("single sampler on unit one", &samplerModule);
+    firstBinding->semantic = "0";
+    samplerDecl->next = secondSamplerDecl;
+    firstBinding->next = secondBinding;
+
+    firstBinding->semantic = "1";
+    secondBinding->semantic = "0";
+    ExpectModuleRejected("reversed sampler units", &samplerModule);
+    firstBinding->semantic = "0";
+    secondBinding->semantic = "2";
+    ExpectModuleRejected("noncontiguous sampler units", &samplerModule);
+    secondBinding->semantic = "1";
+
+    samplerDecl->next = NULL;
+    ExpectModuleRejected("sampler binding without sampler global",
+                         &samplerModule);
+    samplerDecl->next = secondSamplerDecl;
+
+    thirdSamplerDecl = GlslNewDecl(&samplerModule, GLSL_STORAGE_SAMPLER,
+        GlslNumericType(GLSL_BASE_SAMPLER2D, 1), "third");
+    thirdBinding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
+                                  "third", "2");
+    assert(thirdSamplerDecl != NULL && thirdBinding != NULL);
+    thirdBinding->declaration = thirdSamplerDecl;
+    secondSamplerDecl->next = thirdSamplerDecl;
+    secondBinding->next = thirdBinding;
+    ExpectModuleRejected("third sampler binding", &samplerModule);
+    secondSamplerDecl->next = NULL;
+    secondBinding->next = NULL;
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     writer = tmpfile();

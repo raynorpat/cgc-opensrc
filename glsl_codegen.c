@@ -89,6 +89,27 @@ static int GlslSamplerType(const GlslType *type)
            GlslSimpleType(type, GLSL_BASE_SAMPLERCUBE, 1);
 }
 
+static int GlslSymbolTypesEqual(const GlslType *left,
+                                const GlslType *right, int depth)
+{
+    if (left == NULL || right == NULL || depth > 64 ||
+        left->base != right->base || left->len != right->len ||
+        left->rows != right->rows || left->cols != right->cols ||
+        left->arraySize != right->arraySize ||
+        left->members != right->members ||
+        (left->structName == NULL) != (right->structName == NULL) ||
+        (left->elementType == NULL) != (right->elementType == NULL))
+    {
+        return 0;
+    }
+    if (left->structName != NULL &&
+        strcmp(left->structName, right->structName)) return 0;
+    if (left->elementType != NULL)
+        return GlslSymbolTypesEqual(left->elementType,
+                                    right->elementType, depth + 1);
+    return 1;
+}
+
 static int GlslTypeContainsSampler(const GlslType *type, int depth)
 {
     const GlslDecl *member;
@@ -119,13 +140,9 @@ static int GlslDeclInList(const GlslDecl *list, const GlslDecl *target)
 
 static int GlslSamplerUnitText(const char *text)
 {
-    if (text == NULL || *text == '\0')
-        return 0;
-    for (; *text != '\0'; text++) {
-        if (*text < '0' || *text > '9')
-            return 0;
-    }
-    return 1;
+    int unit;
+
+    return GlslParseSamplerUnit(text, &unit);
 }
 
 static const GlslBinding *GlslFindSamplerBinding(const GlslModule *module,
@@ -227,7 +244,10 @@ static int GlslValidateExpr(const GlslModule *module,
         GlslTypeContainsSampler(&expr->type, 0)) return 0;
     switch (expr->kind) {
     case GLSL_EXPR_SYMBOL:
-        return expr->u.symbol != NULL && expr->u.symbol->name != NULL;
+        return expr->u.symbol != NULL && expr->u.symbol->name != NULL &&
+               !GlslTypeContainsSampler(&expr->u.symbol->type, 0) &&
+               GlslSymbolTypesEqual(&expr->type,
+                                    &expr->u.symbol->type, 0);
     case GLSL_EXPR_INT:
     case GLSL_EXPR_BOOL:
         return 1;
@@ -362,6 +382,76 @@ static int GlslValidateStmtList(const GlslModule *module,
     return 1;
 }
 
+static int GlslValidateSamplerBindings(const GlslModule *module)
+{
+    const GlslBinding *binding;
+    const GlslBinding *match;
+    const GlslDecl *decl;
+    int bindingCount;
+    int expectedUnit;
+    int matchCount;
+    int namedDeclCount;
+    int samplerCount;
+    int unit;
+
+    bindingCount = 0;
+    for (binding = module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->storage != GLSL_STORAGE_SAMPLER)
+            continue;
+        bindingCount++;
+        if (module->stage != GLSL_STAGE_FRAGMENT || bindingCount > 2 ||
+            binding->declaration == NULL ||
+            !GlslDeclInList(module->globals, binding->declaration) ||
+            binding->declaration->storage != GLSL_STORAGE_SAMPLER ||
+            !GlslSamplerType(&binding->declaration->type) ||
+            binding->name == NULL || binding->declaration->name == NULL ||
+            strcmp(binding->name, binding->declaration->name) ||
+            !GlslParseSamplerUnit(binding->semantic, &unit) ||
+            binding->interfaceKey != NULL || binding->isOutput ||
+            binding->defaultCount != 0 ||
+            binding->defaultValues != NULL) return 0;
+        namedDeclCount = 0;
+        for (decl = module->globals; decl != NULL; decl = decl->next) {
+            if (decl->storage == GLSL_STORAGE_SAMPLER &&
+                decl->name != NULL && !strcmp(binding->name, decl->name))
+            {
+                namedDeclCount++;
+            }
+        }
+        if (namedDeclCount != 1)
+            return 0;
+    }
+
+    samplerCount = 0;
+    expectedUnit = 0;
+    for (decl = module->globals; decl != NULL; decl = decl->next) {
+        if (decl->storage != GLSL_STORAGE_SAMPLER)
+            continue;
+        samplerCount++;
+        if (module->stage != GLSL_STAGE_FRAGMENT || samplerCount > 2 ||
+            !GlslSamplerType(&decl->type)) return 0;
+        match = NULL;
+        matchCount = 0;
+        for (binding = module->bindings; binding != NULL;
+             binding = binding->next)
+        {
+            if (binding->storage == GLSL_STORAGE_SAMPLER &&
+                binding->declaration == decl)
+            {
+                match = binding;
+                matchCount++;
+            }
+        }
+        if (matchCount != 1 || match == NULL ||
+            !GlslSamplerUnitMatches(match->semantic,
+                                    expectedUnit)) return 0;
+        expectedUnit++;
+    }
+    return samplerCount == bindingCount;
+}
+
 static int GlslValidateModule(const GlslModule *module)
 {
     const GlslBinding *binding;
@@ -398,7 +488,8 @@ static int GlslValidateModule(const GlslModule *module)
         if (decl->name == NULL ||
             !GlslValidateDecls(decl->members, 0)) return 0;
     }
-    if (!GlslValidateDecls(module->globals, 1)) return 0;
+    if (!GlslValidateDecls(module->globals, 1) ||
+        !GlslValidateSamplerBindings(module)) return 0;
     for (function = module->functions; function != NULL;
          function = function->next)
     {

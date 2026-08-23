@@ -2813,6 +2813,7 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     Binding *sourceBinding;
     Symbol *symbol;
     int coordLen;
+    int sourceBase;
 
     if (builtin < GLSL_BUILTIN_TEX1D ||
         builtin > GLSL_BUILTIN_TEXCUBE) return 1;
@@ -2823,18 +2824,22 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     switch (builtin) {
     case GLSL_BUILTIN_TEX1D:
         samplerBase = GLSL_BASE_SAMPLER1D;
+        sourceBase = TYPE_BASE_GLSL_SAMPLER1D;
         coordLen = 1;
         break;
     case GLSL_BUILTIN_TEX2D:
         samplerBase = GLSL_BASE_SAMPLER2D;
+        sourceBase = TYPE_BASE_GLSL_SAMPLER2D;
         coordLen = 2;
         break;
     case GLSL_BUILTIN_TEX3D:
         samplerBase = GLSL_BASE_SAMPLER3D;
+        sourceBase = TYPE_BASE_GLSL_SAMPLER3D;
         coordLen = 3;
         break;
     case GLSL_BUILTIN_TEXCUBE:
         samplerBase = GLSL_BASE_SAMPLERCUBE;
+        sourceBase = TYPE_BASE_GLSL_SAMPLERCUBE;
         coordLen = 3;
         break;
     default:
@@ -2867,18 +2872,24 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     if (decl->storage != GLSL_STORAGE_SAMPLER ||
         !GlslTypesEqual(&decl->type, &samplerType) ||
         symbol == NULL || symbol->kind != VARIABLE_S ||
+        symbol->type == NULL ||
         GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM ||
-        !Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) ||
+        GetCategory(symbol->type) != TYPE_CATEGORY_SCALAR ||
+        GetBase(symbol->type) != sourceBase ||
         binding == NULL || binding->storage != GLSL_STORAGE_SAMPLER ||
-        binding->declaration != decl || binding->semantic == NULL ||
-        binding->semantic[0] == '\0' || sourceBinding == NULL ||
+        binding->declaration != decl || binding->name == NULL ||
+        decl->name == NULL || strcmp(binding->name, decl->name) ||
+        sourceBinding == NULL ||
         sourceBinding->none.kind != BK_TEXUNIT ||
         sourceBinding->none.properties !=
             (BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM) ||
+        sourceBinding->none.lname != symbol->name ||
         sourceBinding->none.base != GetBase(symbol->type) ||
         sourceBinding->none.size != symbol->type->co.size ||
         sourceBinding->texunit.unitno < 0 ||
-        sourceBinding->texunit.unitno >= context->profile->limits.textureUnits)
+        sourceBinding->texunit.unitno >= context->profile->limits.textureUnits ||
+        !GlslSamplerUnitMatches(binding->semantic,
+                                sourceBinding->texunit.unitno))
     {
         GlslRecordFailure(context,
             "texture sampler argument must be a direct bound uniform");

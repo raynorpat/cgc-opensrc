@@ -792,6 +792,41 @@ int GlslTypeComponentCount(const GlslType *type)
     return GlslTypeComponentCountInternal(type, NULL);
 }
 
+int GlslParseSamplerUnit(const char *text, int *unit)
+{
+    int digit;
+    int value;
+
+    if (text == NULL || unit == NULL || text[0] == '\0')
+        return 0;
+    if (text[0] == '0') {
+        if (text[1] != '\0')
+            return 0;
+        *unit = 0;
+        return 1;
+    }
+    if (text[0] < '1' || text[0] > '9')
+        return 0;
+    value = 0;
+    for (; *text != '\0'; text++) {
+        if (*text < '0' || *text > '9')
+            return 0;
+        digit = *text - '0';
+        if (value > (INT_MAX - digit) / 10)
+            return 0;
+        value = value * 10 + digit;
+    }
+    *unit = value;
+    return 1;
+}
+
+int GlslSamplerUnitMatches(const char *text, int unit)
+{
+    int parsedUnit;
+
+    return GlslParseSamplerUnit(text, &parsedUnit) && parsedUnit == unit;
+}
+
 int GlslIsReservedName(const char *name)
 {
     int high;
