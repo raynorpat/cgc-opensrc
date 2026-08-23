@@ -29,6 +29,7 @@ add_executable(cgc
     glslf_hal.c
     hal.c
     inline.c
+    language.c
     memory.c
     parser.c
     printutils.c

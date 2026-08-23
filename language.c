@@ -42,51 +42,28 @@ TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF
 NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 \****************************************************************************/
 
-//
-// cgstruct.c
-//
+#include <string.h>
+#include "language.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#include "slglobals.h"
-
-CgStruct *Cg = NULL;
-
-/*
- * InitCgStruct() - Initilaize the CG structure.
- *
- */
-
-int InitCgStruct(void)
+int ParseCgLanguageVersion(const char *text, CgLanguageVersion *version)
 {
-    int len;
-    char *p;
+    if (!strcmp(text, "1.1")) {
+        *version = CG_LANGUAGE_1_1;
+        return 1;
+    }
+    if (!strcmp(text, "2.0")) {
+        *version = CG_LANGUAGE_2_0;
+        return 1;
+    }
+    return 0;
+}
 
-    Cg = (CgStruct *) malloc(sizeof(CgStruct));
-    if (Cg == NULL)
-        return 0;
+const char *CgLanguageVersionString(CgLanguageVersion version)
+{
+    return version == CG_LANGUAGE_1_1 ? "1.1" : "2.0";
+}
 
-    // Initialize public members:
-
-    Cg->pLastSourceLoc = &Cg->lastSourceLoc;
-    Cg->DebugLevel = 0;
-    p = (char *) &Cg->options;
-    len = sizeof(Cg->options);
-    while (--len >= 0)
-        p[len] = 0;
-    Cg->options.languageVersion = CG_LANGUAGE_DEFAULT;
-    Cg->bindings = NULL;
-    Cg->allProfiles = NULL;
-    Cg->theHAL = NULL;
-
-    // Initialize private members:
-
-    Cg->lastSourceLoc.file = 0;
-    Cg->lastSourceLoc.line = 0;
-    return 1;
-} // InitCgStruct
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////// End of cgstruct.c //////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////
+int CgLanguageAtLeast(CgLanguageVersion actual, CgLanguageVersion required)
+{
+    return actual >= required;
+}

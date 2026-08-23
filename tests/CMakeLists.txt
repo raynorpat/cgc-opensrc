@@ -236,6 +236,15 @@ add_test(
     COMMAND glsl_semantics_unit
 )
 
+add_executable(cg_language_unit
+    ${PROJECT_SOURCE_DIR}/language.c
+    cg_language_test.c
+)
+target_include_directories(cg_language_unit PRIVATE ${PROJECT_SOURCE_DIR})
+set_target_properties(cg_language_unit PROPERTIES
+    C_STANDARD 90 C_STANDARD_REQUIRED YES C_EXTENSIONS YES)
+add_test(NAME cg_language_unit COMMAND cg_language_unit)
+
 add_generic_regression(position position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
 add_generic_regression(reflection reflection.cg

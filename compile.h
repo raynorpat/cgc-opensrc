@@ -47,11 +47,14 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if !defined(__COMPILE_H)
 #define __COMPILE_H 1
 
+#include "language.h"
+
 int InitCgStruct(void);
 
 typedef struct Options_Rec{
     const char *profileString;
     const char *entryName;
+    CgLanguageVersion languageVersion;
     const char *sourceFileName;
     const char *outputFileName;
     const char *listFileName;

@@ -155,7 +155,7 @@ void PrintHelp()
     slProfile *lProfile;
     int ii;
 
-    printf("usage: cgc [-quiet] [-nocode] [-nostdlib] [-longprogs] [-v] [-Dmacro[=value]] \n           [-profile id] [-entry id] [-o ofile] [file.cg]\n");
+    printf("usage: cgc [-quiet] [-nocode] [-nostdlib] [-longprogs] [-v] [-Dmacro[=value]] \n           [-version 1.1|2.0] [-profile id] [-entry id] [-o ofile] [file.cg]\n");
 #if defined(CGC_DEBUG_THE_COMPILER)
     printf("           [-atom] [-scan] [-tree] [-node] [-final] [-trap] [-comments] [-cdbg0]\n");
 #endif
@@ -261,6 +261,15 @@ int CommandLineArgs(int argc, char **argv, int pass)
             } else if (!strcmp(argv[ii], "-help") || !strcmp(argv[ii], "-h")) {
                 if (pass == 1)
                     PrintHelp();
+            } else if (!strcmp(argv[ii], "-version")) {
+                ii++;
+                if (pass == 0) {
+                    if (ii >= argc ||
+                        !ParseCgLanguageVersion(argv[ii], &Cg->options.languageVersion)) {
+                        printf(OPENSL_TAG ": invalid language version after \"-version\"\n");
+                        return 0;
+                    }
+                }
             } else if (!strcmp(argv[ii], "-profile")) {
                 ii++;
                 if (pass == 0) {

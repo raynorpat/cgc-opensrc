@@ -42,51 +42,23 @@ TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF
 NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 \****************************************************************************/
 
-//
-// cgstruct.c
-//
+#if defined(NDEBUG)
+#undef NDEBUG
+#endif
+#include <assert.h>
+#include <string.h>
+#include "language.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#include "slglobals.h"
-
-CgStruct *Cg = NULL;
-
-/*
- * InitCgStruct() - Initilaize the CG structure.
- *
- */
-
-int InitCgStruct(void)
+int main(void)
 {
-    int len;
-    char *p;
+    CgLanguageVersion version;
 
-    Cg = (CgStruct *) malloc(sizeof(CgStruct));
-    if (Cg == NULL)
-        return 0;
-
-    // Initialize public members:
-
-    Cg->pLastSourceLoc = &Cg->lastSourceLoc;
-    Cg->DebugLevel = 0;
-    p = (char *) &Cg->options;
-    len = sizeof(Cg->options);
-    while (--len >= 0)
-        p[len] = 0;
-    Cg->options.languageVersion = CG_LANGUAGE_DEFAULT;
-    Cg->bindings = NULL;
-    Cg->allProfiles = NULL;
-    Cg->theHAL = NULL;
-
-    // Initialize private members:
-
-    Cg->lastSourceLoc.file = 0;
-    Cg->lastSourceLoc.line = 0;
-    return 1;
-} // InitCgStruct
-
-///////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////// End of cgstruct.c //////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////
+    assert(CG_LANGUAGE_DEFAULT == CG_LANGUAGE_2_0);
+    assert(ParseCgLanguageVersion("1.1", &version));
+    assert(version == CG_LANGUAGE_1_1);
+    assert(ParseCgLanguageVersion("2.0", &version));
+    assert(version == CG_LANGUAGE_2_0);
+    assert(!ParseCgLanguageVersion("2.1", &version));
+    assert(!strcmp(CgLanguageVersionString(CG_LANGUAGE_2_0), "2.0"));
+    return 0;
+}
