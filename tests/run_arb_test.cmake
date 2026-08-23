@@ -22,6 +22,8 @@ function(normalize_arb input output_name)
         normalized "${normalized}")
     string(REGEX REPLACE "(^|\n)# command line args:[^\n]*\n" "\\1"
         normalized "${normalized}")
+    string(REGEX REPLACE "(^|\n)# End of program\n?$" "\\1"
+        normalized "${normalized}")
     set(${output_name} "${normalized}" PARENT_SCOPE)
 endfunction()
 

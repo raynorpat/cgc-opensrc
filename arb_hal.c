@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "arb_ir.h"
 #include "arb_hal.h"
 
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
@@ -538,11 +539,28 @@ static int PrintCodeHeader_arb(FILE *out)
 } // PrintCodeHeader_arb
 
 /*
- * GenerateCode_arb() - Placeholder until the lowering and code-generation
- *         modules are added.
+ * GenerateCode_arb() - Run the validated generation transaction: lower to
+ *         IR, legalize and allocate, validate resources, and only then
+ *         write binding metadata and assembly.  A failure before emission
+ *         leaves the output file without backend material.
  */
 
 int GenerateCode_arb(SourceLoc *loc, Scope *fScope, Symbol *program)
 {
-    return 1;
+    ArbHALData *data = (ArbHALData *) Cg->theHAL->localData;
+    ArbProgram ir;
+    int ok;
+
+    ArbInitProgram(&ir, data->profile->stage);
+    ok = ArbLowerProgram(&ir, data->profile, program);
+    if (ok)
+        ok = ArbLegalizeAndAllocate(&ir, data->profile, loc);
+    if (ok)
+        ok = ArbValidateResources(&ir, data->profile, loc);
+    if (ok) {
+        ArbWriteBindingMetadata(Cg->options.outfd, Cg->theHAL, program);
+        ok = ArbWriteProgram(Cg->options.outfd, &ir, data->profile);
+    }
+    ArbFreeProgram(&ir);
+    return ok;
 } // GenerateCode_arb

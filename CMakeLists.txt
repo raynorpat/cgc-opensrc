@@ -42,6 +42,9 @@ add_executable(cgc
     support_iter.c
     symbols.c
     tokens.c
+    arb_ir.c
+    arb_lower.c
+    arb_codegen.c
 )
 
 add_executable(tokenize

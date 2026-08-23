@@ -141,4 +141,16 @@ int ArbInternConstant(ArbProgram *program, const float *value, int size);
 ArbIRStatus ArbValidateIR(const ArbProgram *program);
 int ArbIsTextureOpcode(ArbOpcode opcode);
 
+// Lowering and backend transaction (arb_lower.c / arb_codegen.c):
+
+int ArbLowerProgram(ArbProgram *ir, const ArbProfileDesc *profile,
+                    Symbol *program);
+int ArbLegalizeAndAllocate(ArbProgram *ir, const ArbProfileDesc *profile,
+                           SourceLoc *loc);
+int ArbValidateResources(ArbProgram *ir, const ArbProfileDesc *profile,
+                         SourceLoc *loc);
+int ArbWriteProgram(FILE *out, const ArbProgram *program,
+                    const ArbProfileDesc *profile);
+void ArbWriteBindingMetadata(FILE *out, slHAL *fHAL, Symbol *program);
+
 #endif /* !defined(__ARB_IR_H) */

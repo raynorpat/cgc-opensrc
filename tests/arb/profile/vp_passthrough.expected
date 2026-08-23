@@ -1,0 +1,10 @@
+!!ARBvp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbvp1
+#program main
+#var float4 input.position : $vin.POSITION : POSITION : 0 : 1
+#var float4 main.position : $vout.POSITION : HPOS : -1 : 1
+MOV result.position, vertex.position;
+END
+# 1 instructions, 0 R-regs

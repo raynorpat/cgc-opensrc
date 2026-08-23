@@ -1032,3 +1032,7 @@ set_target_properties(arb_ir_tests PROPERTIES
     C_EXTENSIONS YES
 )
 add_test(NAME arb_ir_unit COMMAND arb_ir_tests)
+
+add_arb_fixture(arbvp1_passthrough arbvp1
+    tests/arb/profile/vp_passthrough.cg
+    tests/arb/profile/vp_passthrough.expected)
