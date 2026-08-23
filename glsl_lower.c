@@ -134,6 +134,23 @@ static void GlslRecordFailureKind(GlslLowerContext *context,
     GlslRecordFailure(context, reason);
 }
 
+static void GlslRecordFailureKindAt(GlslLowerContext *context,
+                                    GlslErrorKind kind,
+                                    const char *reason,
+                                    const SourceLoc *loc)
+{
+    SourceLoc savedLoc;
+
+    if (loc == NULL) {
+        GlslRecordFailureKind(context, kind, reason);
+        return;
+    }
+    savedLoc = context->statementLoc;
+    context->statementLoc = *loc;
+    GlslRecordFailureKind(context, kind, reason);
+    context->statementLoc = savedLoc;
+}
+
 static const char *GlslUnsupportedExprReason(const expr *source)
 {
     if (source != NULL && source->common.kind == BINARY_N) {
@@ -311,7 +328,7 @@ static GlslDecl *GlslFindStruct(GlslLowerContext *context, Type *type)
 }
 
 static int GlslLowerType(GlslLowerContext *context, Type *source,
-                         GlslType *target)
+                         GlslType *target, const SourceLoc *loc)
 {
     GlslDecl *structDecl;
     GlslBase glslBase;
@@ -333,16 +350,17 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
     }
     if (IsMatrix(source, &cols, &rows)) {
         if (base != TYPE_BASE_FLOAT && base != TYPE_BASE_CFLOAT) {
-            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
-                                  "matrix");
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                    "matrix", loc);
             return 0;
         }
         if (rows != cols || rows < 2 || rows > 4) {
             sprintf(matrixName, "%s%dx%d", GetBaseTypeNameString(base),
                     rows, cols);
-            GlslRecordFailureKind(context, GLSL_ERROR_NON_SQUARE_MATRIX,
-                                  GlslCopyText(context->module,
-                                               matrixName));
+            GlslRecordFailureKindAt(context,
+                                    GLSL_ERROR_NON_SQUARE_MATRIX,
+                                    GlslCopyText(context->module,
+                                                 matrixName), loc);
             return 0;
         }
         *target = GlslMatrixType(rows);
@@ -388,7 +406,7 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
         return 1;
     }
     if (category == TYPE_CATEGORY_ARRAY && source->arr.numels > 0 &&
-        GlslLowerType(context, source->arr.eltype, &elementType))
+        GlslLowerType(context, source->arr.eltype, &elementType, loc))
     {
         element = (GlslType *) context->module->alloc(
             context->module->allocArg, sizeof(GlslType));
@@ -440,7 +458,7 @@ static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
     const char *sourceName;
     const char *name;
 
-    if (!GlslLowerType(context, symbol->type, &type))
+    if (!GlslLowerType(context, symbol->type, &type, &symbol->loc))
         return NULL;
     sourceName = GetAtomString(atable, symbol->name);
     if (nameSpace != NULL) {
@@ -480,6 +498,21 @@ static int GlslCollectMembers(GlslLowerContext *context, Scope *memberScope,
 
 static int GlslEnsureType(GlslLowerContext *context, Type *type);
 
+static int GlslEnsureTypeAt(GlslLowerContext *context, Type *type,
+                            const SourceLoc *loc)
+{
+    SourceLoc savedLoc;
+    int result;
+
+    if (loc == NULL)
+        return GlslEnsureType(context, type);
+    savedLoc = context->statementLoc;
+    context->statementLoc = *loc;
+    result = GlslEnsureType(context, type);
+    context->statementLoc = savedLoc;
+    return result;
+}
+
 static int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
 {
     const char *name;
@@ -492,14 +525,15 @@ static int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
         if (Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) &&
             GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM)
         {
-            context->statementLoc = symbol->loc;
-            GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
-                                  "samplers must be uniforms");
+            GlslRecordFailureKindAt(context, GLSL_ERROR_SAMPLER,
+                                    "samplers must be uniforms",
+                                    &symbol->loc);
             return 0;
         }
         name = GetAtomString(atable, symbol->name);
         if (name != NULL && name[0] != '$' &&
-            !GlslEnsureType(context, symbol->type)) return 0;
+            !GlslEnsureTypeAt(context, symbol->type,
+                              &symbol->loc)) return 0;
     }
     return GlslEnsureSymbolTypes(context, symbol->right);
 }
@@ -511,12 +545,12 @@ static int GlslEnsureParameterTypes(GlslLowerContext *context,
         if (Cg->theHAL->IsTexobjBase(GetBase(formal->type)) &&
             GetDomain(formal->type) != TYPE_DOMAIN_UNIFORM)
         {
-            context->statementLoc = formal->loc;
-            GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
-                                  "samplers must be uniforms");
+            GlslRecordFailureKindAt(context, GLSL_ERROR_SAMPLER,
+                                    "samplers must be uniforms",
+                                    &formal->loc);
             return 0;
         }
-        if (!GlslEnsureType(context, formal->type))
+        if (!GlslEnsureTypeAt(context, formal->type, &formal->loc))
             return 0;
     }
     return 1;
@@ -733,8 +767,9 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
                               "sampler arrays or aggregates");
         return 0;
     }
-    if (!GlslEnsureType(context, symbol->type) ||
-        !GlslLowerType(context, symbol->type, &type)) return 0;
+    if (!GlslEnsureTypeAt(context, symbol->type, &symbol->loc) ||
+        !GlslLowerType(context, symbol->type, &type,
+                       &symbol->loc)) return 0;
     storage = Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) ?
               GLSL_STORAGE_SAMPLER : GLSL_STORAGE_UNIFORM;
     sourceName = GetAtomString(atable, symbol->name);
@@ -1606,7 +1641,8 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
     interfaceName = GlslCanonicalInterfaceName(context->profile,
         sourceBinding->conn.rname, isOutput);
     if (canonical == NULL || interfaceName == NULL ||
-        !GlslLowerType(context, member->type, &type)) return NULL;
+        !GlslLowerType(context, member->type, &type,
+                       &member->loc)) return NULL;
     if (GlslHasInterfaceBinding(context, interfaceName, isOutput)) {
         context->statementLoc = member->loc;
         GlslRecordFailureKind(context, GLSL_ERROR_INTERFACE_CONFLICT,
@@ -1757,12 +1793,14 @@ static int GlslCollectHelper(GlslLowerContext *context, Symbol *symbol)
         }
         return 1;
     }
-    if (!GlslEnsureType(context, symbol->type->fun.rettype) ||
+    if (!GlslEnsureTypeAt(context, symbol->type->fun.rettype,
+                          &symbol->loc) ||
         !GlslEnsureParameterTypes(context, symbol->details.fun.params) ||
         symbol->details.fun.locals == NULL ||
         !GlslEnsureSymbolTypes(context,
                                symbol->details.fun.locals->symbols) ||
-        !GlslLowerType(context, symbol->type->fun.rettype, &result))
+        !GlslLowerType(context, symbol->type->fun.rettype, &result,
+                       &symbol->loc))
     {
         GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
                               "GLSL helper type");
@@ -1832,8 +1870,10 @@ static int GlslMappedSignatureEqual(GlslLowerContext *context,
     leftParam = left->details.fun.params;
     rightParam = right->details.fun.params;
     while (leftParam != NULL && rightParam != NULL) {
-        if (!GlslLowerType(context, leftParam->type, &leftType) ||
-            !GlslLowerType(context, rightParam->type, &rightType) ||
+        if (!GlslLowerType(context, leftParam->type, &leftType,
+                           &leftParam->loc) ||
+            !GlslLowerType(context, rightParam->type, &rightType,
+                           &rightParam->loc) ||
             !GlslTypesEqual(&leftType, &rightType)) return 0;
         leftParam = leftParam->next;
         rightParam = rightParam->next;
@@ -1854,7 +1894,8 @@ static int GlslBuildSignature(GlslLowerContext *context,
     for (parameter = symbol->details.fun.params; parameter != NULL;
          parameter = parameter->next)
     {
-        if (!GlslLowerType(context, parameter->type, &type)) return 0;
+        if (!GlslLowerType(context, parameter->type, &type,
+                           &parameter->loc)) return 0;
         typeName = GlslTypeName(&type);
         if (typeName == NULL || used + strlen(typeName) + 2 > size) return 0;
         if (used != 0)
@@ -3272,7 +3313,9 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
     Symbol *member;
     const char *comparison;
 
-    if (source == NULL || !GlslLowerType(context, source->common.type, &type)) {
+    if (source == NULL ||
+        !GlslLowerType(context, source->common.type, &type, NULL))
+    {
         GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
                               "GLSL 1.10 expression type");
         return NULL;
@@ -3929,7 +3972,7 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     result = program->type->fun.rettype;
     if (GetCategory(result) != TYPE_CATEGORY_STRUCT ||
         !GlslValidateEntryInterfaces(&context, program) ||
-        !GlslEnsureType(&context, result) ||
+        !GlslEnsureTypeAt(&context, result, &program->loc) ||
         !GlslEnsureParameterTypes(&context,
                                   program->details.fun.params) ||
         program->details.fun.locals == NULL ||

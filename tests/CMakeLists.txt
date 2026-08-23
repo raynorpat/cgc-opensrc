@@ -599,6 +599,30 @@ add_glsl_diagnostic(glslf_samplers_limit glslf
 add_glsl_diagnostic(glslv_intrinsic_diagnostic glslv
     tests/glsl/diagnostics/vp_bad_intrinsic.cg 6206 1
     "no.exact.intrinsic.*rsqrt")
+add_glsl_diagnostic(glslv_type_loc_local glslv
+    tests/glsl/diagnostics/vp_type_loc_local.cg 6209 5
+    "square.matrix,.found.*float2x3")
+add_glsl_diagnostic(glslv_type_loc_local_unsupported glslv
+    tests/glsl/diagnostics/vp_type_loc_local_unsupported.cg 6200 5
+    "does.not.support.type.*matrix")
+add_glsl_diagnostic(glslv_type_loc_entry_uniform glslv
+    tests/glsl/diagnostics/vp_type_loc_entry_uniform.cg 6209 4
+    "square.matrix,.found.*float2x3")
+add_glsl_diagnostic(glslv_type_loc_global_uniform glslv
+    tests/glsl/diagnostics/vp_type_loc_global_uniform.cg 6209 1
+    "square.matrix,.found.*float2x3")
+add_glsl_diagnostic(glslv_type_loc_helper_formal glslv
+    tests/glsl/diagnostics/vp_type_loc_helper_formal.cg 6209 3
+    "square.matrix,.found.*float2x3")
+add_glsl_diagnostic(glslv_type_loc_helper_result glslv
+    tests/glsl/diagnostics/vp_type_loc_helper_result.cg 6209 1
+    "square.matrix,.found.*float2x3")
+add_glsl_diagnostic(glslv_type_loc_helper_local glslv
+    tests/glsl/diagnostics/vp_type_loc_helper_local.cg 6209 3
+    "square.matrix,.found.*float2x3")
+add_glsl_diagnostic(glslv_type_loc_struct_member glslv
+    tests/glsl/diagnostics/vp_type_loc_struct_member.cg 6209 2
+    "square.matrix,.found.*float2x3")
 add_glsl_boundary(glslv_attributes_boundary glslv
     tests/glsl/limits/vp_attributes16.cg vert)
 add_glsl_boundary(glslv_varyings_boundary glslv
@@ -682,7 +706,7 @@ add_glsl_failure(glslv_nonfinite_infinity
 add_glsl_failure(glslv_nonfinite_nan
     tests/glsl/diagnostics/vp_nonfinite_nan.cg 6 non-finite)
 add_glsl_profile_failure(glslv_nonsquare_matrix glslv
-    tests/glsl/diagnostics/vp_nonsquare_matrix.cg 6209 5 "square.matrix")
+    tests/glsl/diagnostics/vp_nonsquare_matrix.cg 6209 6 "square.matrix")
 add_glsl_profile_failure(glslv_matrix_bool_constructor glslv
     tests/glsl/diagnostics/vp_matrix_bool_constructor.cg 6200 9
     "matrix constructor argument type")

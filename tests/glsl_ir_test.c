@@ -114,6 +114,7 @@ int main(void)
     GlslModule countModule;
     GlslModule gapModule;
     GlslModule overflowModule;
+    GlslModule identityModule;
     GlslModule scopedModule;
     GlslModule visibleModule;
     GlslModule nonfiniteModule;
@@ -364,13 +365,17 @@ int main(void)
         "value"));
     assert(!strcmp(GlslAllocateSymbolName(&module, &secondIdentity, "value"),
         "value_1"));
-    assert(!strcmp(GlslAllocateSymbolName(&module, &globalIdentity,
-                                          "position"), "position_2"));
-    assert(!strcmp(GlslAllocateSymbolName(&module, &globalIdentity,
-                                          "renamed_position"),
-                   "position_2"));
-    assert(!strcmp(GlslAllocateSymbolName(&module, &localIdentity,
-                                          "position"), "position_3"));
+    GlslInitModule(&identityModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(!strcmp(GlslAllocateSymbolName(&identityModule,
+                                          &globalIdentity,
+                                          "position"), "position"));
+    assert(!strcmp(GlslAllocateSymbolName(&identityModule,
+                                          &globalIdentity,
+                                          "position"),
+                   "position"));
+    assert(!strcmp(GlslAllocateSymbolName(&identityModule,
+                                          &localIdentity,
+                                          "position"), "position_1"));
 
     GlslInitModule(&visibleModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!strcmp(GlslAllocateSymbolName(&visibleModule,

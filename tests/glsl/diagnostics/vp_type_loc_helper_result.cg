@@ -1,0 +1,12 @@
+float2x3 make_transform(float4 position)
+{
+    return float2x3(position.xyz, position.xyz);
+}
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    make_transform(position);
+    output.position = position;
+    return output;
+}

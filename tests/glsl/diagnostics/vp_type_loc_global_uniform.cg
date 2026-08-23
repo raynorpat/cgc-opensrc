@@ -1,0 +1,8 @@
+uniform float2x3 globalTransform;
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position * globalTransform._m00;
+    return output;
+}
