@@ -151,6 +151,11 @@ add_generic_regression(vertexlight4 vertexlight4.cg
     5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
+add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg
+    0a03690bd59c1ed3ed7f8799845b4468157ff57743c72bb2bf0cd6d54345bea1)
+add_generic_regression(helper_discard
+    tests/glsl/diagnostics/generic_helper_discard.cg
+    4afadd12ac3af8acdb484c0e26a854dfa0fb7f9e3d8d31d64bf6ebf37e4cf058)
 add_generic_diagnostic(generic_matrix_scalar2_baseline
     tests/glsl/diagnostics/generic_matrix_scalar2.cg 1035 9
     "assignment.of.incompatible.types")
@@ -205,6 +210,18 @@ add_glsl_fixture(glslf_interfaces glslf
 add_glsl_fixture(glslf_helper_discard glslf
     tests/glsl/expressions/fp_helper_discard.cg
     tests/glsl/expressions/fp_helper_discard.expected)
+
+add_glsl_fixture(glslf_vector_discard glslf
+    tests/glsl/expressions/fp_vector_discard.cg
+    tests/glsl/expressions/fp_vector_discard.expected)
+
+add_glsl_fixture(glslv_early_return glslv
+    tests/glsl/expressions/vp_early_return.cg
+    tests/glsl/expressions/vp_early_return.expected)
+
+add_glsl_fixture(glslf_early_return glslf
+    tests/glsl/expressions/fp_early_return.cg
+    tests/glsl/expressions/fp_early_return.expected)
 
 add_glsl_fixture(glslf_uniform_components_64 glslf
     tests/glsl/limits/fp_uniform_components_64.cg
@@ -346,6 +363,32 @@ add_glsl_failure(glslv_unsupported_lowering
     tests/glsl/profile/vp_unsupported_operator.cg 9 remainder)
 add_glsl_failure(glslv_discard
     tests/glsl/diagnostics/vp_discard.cg 8 "discard.in.vertex.shader")
+add_glsl_profile_failure(glslv_builtin_position_width glslv
+    tests/glsl/diagnostics/vp_builtin_position_width.cg 5108 2 semantic)
+add_glsl_profile_failure(glslf_builtin_position_width glslf
+    tests/glsl/diagnostics/fp_builtin_position_width.cg 5108 5 semantic)
+add_glsl_profile_failure(glslf_builtin_color_width glslf
+    tests/glsl/diagnostics/fp_builtin_color_width.cg 5108 2 semantic)
+add_glsl_profile_failure(glslf_builtin_depth_vector glslf
+    tests/glsl/diagnostics/fp_builtin_depth_vector.cg 5108 2 semantic)
+add_glsl_profile_failure(glslv_duplicate_input glslv
+    tests/glsl/diagnostics/vp_duplicate_input.cg 5508 6
+    "duplicate.interface")
+add_glsl_profile_failure(glslv_duplicate_output glslv
+    tests/glsl/diagnostics/vp_duplicate_output.cg 5508 3
+    "duplicate.interface")
+add_glsl_profile_failure(glslf_duplicate_input glslf
+    tests/glsl/diagnostics/fp_duplicate_input.cg 5508 6
+    "duplicate.interface")
+add_glsl_profile_failure(glslf_duplicate_builtin_input glslf
+    tests/glsl/diagnostics/fp_duplicate_builtin_input.cg 5508 6
+    "duplicate.interface")
+add_glsl_profile_failure(glslf_duplicate_output glslf
+    tests/glsl/diagnostics/fp_duplicate_output.cg 5508 3
+    "duplicate.interface")
+add_glsl_profile_failure(glslf_numeric_discard glslf
+    tests/glsl/diagnostics/fp_numeric_discard.cg 1018 8
+    "Boolean.expression.expected")
 add_glsl_failure(glslv_constant_remainder
     tests/glsl/diagnostics/vp_constant_remainder.cg 6 remainder)
 add_glsl_failure(glslv_constant_shift_left

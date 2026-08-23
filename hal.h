@@ -81,6 +81,7 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_DONT_FLATTEN_IF_STATEMENTS 7
 #define CAPS_MATRIX_CONSTRUCTOR_AST     8
 #define CAPS_AGGREGATE_DEFAULT_BINDINGS 9
+#define CAPS_PRESERVE_ENTRY_RETURNS    10
 
 struct slProfile_Rec {
     slProfile *next;

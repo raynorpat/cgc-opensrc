@@ -1,0 +1,20 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+VertexOut main(float4 position : ATTRIB0, float4 color : ATTRIB1)
+{
+    VertexOut output;
+    output.position = position;
+    output.color = color;
+    if (color.x > 0.5) {
+        if (position.x < 0.0) {
+            output.color = float4(1.0, 1.0, 1.0, 1.0);
+            return output;
+        }
+        output.color = float4(0.5, 0.5, 0.5, 1.0);
+    }
+    output.color = color;
+    return output;
+}

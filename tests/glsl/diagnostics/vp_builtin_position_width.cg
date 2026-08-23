@@ -1,0 +1,10 @@
+struct VertexOut {
+    float3 position : POSITION;
+};
+
+VertexOut main(float3 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position;
+    return output;
+}

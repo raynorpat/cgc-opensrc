@@ -1,0 +1,17 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+inline float4 keep(float4 value)
+{
+    if (value.x < 0.0)
+        discard;
+    return value;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = keep(position);
+    return output;
+}

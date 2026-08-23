@@ -370,8 +370,25 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
             if (semantic->interfaceKind == GLSL_INTERFACE_FRONT_FACING) {
                 if (!IsScalar(type) || base != TYPE_BASE_BOOLEAN)
                     return 0;
-            } else if (base != TYPE_BASE_FLOAT || len > semantic->size) {
-                return 0;
+            } else {
+                if (base != TYPE_BASE_FLOAT)
+                    return 0;
+                switch (semantic->interfaceKind) {
+                case GLSL_INTERFACE_POSITION:
+                case GLSL_INTERFACE_POINT_SIZE:
+                case GLSL_INTERFACE_FRAG_COORD:
+                case GLSL_INTERFACE_FRAG_COLOR:
+                case GLSL_INTERFACE_FRAG_DEPTH:
+                    if ((semantic->size == 1 && !IsScalar(type)) ||
+                        (semantic->size > 1 &&
+                         (!IsVector(type, &len) ||
+                          len != semantic->size))) return 0;
+                    break;
+                default:
+                    if (len > semantic->size)
+                        return 0;
+                    break;
+                }
             }
 
             sprintf(registerName, "%s%d", semantic->canonicalRoot, index);
@@ -548,6 +565,7 @@ static int GetCapsBit_glsl(int bitNumber)
     case CAPS_DONT_FLATTEN_IF_STATEMENTS:
     case CAPS_MATRIX_CONSTRUCTOR_AST:
     case CAPS_AGGREGATE_DEFAULT_BINDINGS:
+    case CAPS_PRESERVE_ENTRY_RETURNS:
         return 1;
     default:
         return 0;

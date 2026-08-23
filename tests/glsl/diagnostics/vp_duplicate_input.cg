@@ -1,0 +1,11 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float2 first : TEXCOORD,
+               float3 second : TEXCOORD0)
+{
+    VertexOut output;
+    output.position = float4(first.x, first.y, second.x, 1.0);
+    return output;
+}

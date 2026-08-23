@@ -92,13 +92,15 @@ static int CheckParamsAndLocals(Symbol *funSymb, int IsProgram)
 
 /*
  * BuildProgramReturnAssignments() - Insert a series of assignment statements before each return
- *         statement to set the values of the program's result for these memeners.  (Should only
- *         be applied to the main program.)  Deletes the return statement.
+ *         statement to set the values of the program's result for these members.  (Should only
+ *         be applied to the main program.)  Profiles may preserve nonterminal returns.
  */
 
 struct BuildReturnAssignments {
     Scope *globalScope;
     Symbol *program;
+    stmt *terminalReturn;
+    int preserveReturns;
 };
 
 static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
@@ -109,9 +111,11 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
     expr *lExpr, *rexpr, *returnVar, *outputVar;
     Scope *lScope, *gScope, *voutScope;
     stmt *lStmt, *stmtlist;
+    stmt *sourceReturn;
     int category, len, lname;
 
     if (fStmt->commonst.kind == RETURN_STMT) {
+        sourceReturn = fStmt;
         lstr = (struct BuildReturnAssignments *) arg1;
         gScope = lstr->globalScope;
         program = lstr->program;
@@ -154,6 +158,13 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                 // SemanticError(&program->loc, ERROR_S_PROGRAM_MUST_RETURN_STRUCT,
                 //               GetAtomString(atable, program->name));
             }
+        }
+        if (lstr->preserveReturns &&
+            sourceReturn != lstr->terminalReturn)
+        {
+            lStmt = (stmt *) NewReturnStmt(&sourceReturn->commonst.loc,
+                                           NULL, NULL);
+            fStmt = ConcatStmts(fStmt, lStmt);
         }
     }
     return fStmt;
@@ -448,10 +459,27 @@ static int CheckFunctionDefinition(Scope *fScope, Symbol *funSymb, int IsProgram
         count += CheckJumpStatements(lStmt, 0);
         if (IsProgram) {
             struct BuildReturnAssignments lstr;
+            stmt *terminalReturn;
 
             lstr.globalScope = fScope;
             lstr.program = funSymb;
-            lStmt = PreApplyToStatements(BuildProgramReturnAssignments, lStmt, &lstr, 0);
+            terminalReturn = lStmt;
+            while (terminalReturn != NULL &&
+                   terminalReturn->commonst.next != NULL)
+            {
+                terminalReturn = terminalReturn->commonst.next;
+            }
+            if (terminalReturn != NULL &&
+                terminalReturn->commonst.kind != RETURN_STMT)
+            {
+                terminalReturn = NULL;
+            }
+            lstr.terminalReturn = terminalReturn;
+            lstr.preserveReturns = Cg->theHAL->GetCapsBit(
+                CAPS_PRESERVE_ENTRY_RETURNS);
+            lStmt = PreApplyToStatements(BuildProgramReturnAssignments,
+                                         lStmt, &lstr, 0);
+            funSymb->details.fun.statements = lStmt;
         }
         ApplyToTopExpressions(CheckExpressionForUndefinedFunctions, lStmt, &count, 0);
         PostApplyToExpressions(CheckNodeForUnsupportedOperators, lStmt, &count, 0);

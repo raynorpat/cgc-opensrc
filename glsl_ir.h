@@ -293,6 +293,7 @@ struct GlslBinding_Rec {
     GlslStorage storage;
     const char *name;
     const char *semantic;
+    const char *interfaceKey;
     GlslLoc loc;
     GlslDecl *declaration;
     int isOutput;

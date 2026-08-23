@@ -1,0 +1,12 @@
+struct FragmentOut {
+    float4 color : COLOR;
+    float4 duplicateColor : COLOR0;
+};
+
+FragmentOut main(float4 color : TEXCOORD0)
+{
+    FragmentOut output;
+    output.color = color;
+    output.duplicateColor = color;
+    return output;
+}

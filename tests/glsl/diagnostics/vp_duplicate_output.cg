@@ -1,0 +1,12 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float4 duplicatePosition : HPOS;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position;
+    output.duplicatePosition = position;
+    return output;
+}

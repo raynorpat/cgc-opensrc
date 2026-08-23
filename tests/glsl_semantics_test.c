@@ -621,6 +621,11 @@ static void CheckVertex(void)
     assert(lastSemanticError == 5102);
     CheckRejectedBinding(&hal, "NORMAL", 1, TYPE_BASE_FLOAT, 3);
     CheckRejectedBinding(&hal, "NORMAL", 0, TYPE_BASE_FLOAT, 4);
+    CheckRejectedBinding(&hal, "POSITION", 1, TYPE_BASE_FLOAT, 3);
+    CheckRejectedBinding(&hal, "HPOS", 1, TYPE_BASE_FLOAT, 2);
+    CheckRejectedBinding(&hal, "PSIZE", 1, TYPE_BASE_FLOAT, 2);
+    CheckRejectedVectorBinding(&hal, "PSIZE", 1,
+                               TYPE_BASE_FLOAT, 1);
 
     memset(&loc, 0, sizeof(loc));
     memset(&symbol, 0, sizeof(symbol));
@@ -691,6 +696,11 @@ static void CheckFragment(void)
     CheckRejectedVectorBinding(&hal, "FACE", 0, TYPE_BASE_BOOLEAN, 1);
     CheckRejectedVectorBinding(&hal, "FACE", 0, TYPE_BASE_BOOLEAN, 2);
     CheckRejectedBinding(&hal, "FACE", 0, TYPE_BASE_FLOAT, 1);
+    CheckRejectedBinding(&hal, "WPOS", 0, TYPE_BASE_FLOAT, 3);
+    CheckRejectedBinding(&hal, "POSITION", 0, TYPE_BASE_FLOAT, 2);
+    CheckRejectedBinding(&hal, "COLOR", 1, TYPE_BASE_FLOAT, 3);
+    CheckRejectedVectorBinding(&hal, "DEPTH", 1,
+                               TYPE_BASE_FLOAT, 1);
 
     assert(!hal.BindVaryingUnbound(NULL, NULL, 0, 0, NULL, 1));
 }

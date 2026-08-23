@@ -476,6 +476,7 @@ int main(void)
     assert(binding->storage == GLSL_STORAGE_BUILTIN);
     assert(!strcmp(binding->name, "gl_Position"));
     assert(!strcmp(binding->semantic, "POSITION"));
+    assert(binding->interfaceKey == NULL);
     assert(binding->loc.file == 0);
     assert(binding->loc.line == 0);
     assert(binding->declaration == NULL);

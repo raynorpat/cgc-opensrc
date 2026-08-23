@@ -1,0 +1,11 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float4 position : POSITION,
+                 float4 windowPosition : WPOS)
+{
+    FragmentOut output;
+    output.color = position + windowPosition;
+    return output;
+}

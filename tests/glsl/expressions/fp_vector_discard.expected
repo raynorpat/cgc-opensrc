@@ -1,0 +1,48 @@
+#version 110
+// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+// cgc-bind builtin gl_FragColor COLOR0
+
+struct FragmentOut
+{
+    vec4 color;
+};
+
+varying vec4 cg_TEXCOORD0;
+
+vec4 shade(vec4 value)
+{
+    bool scalar;
+    bvec2 pair;
+    bvec3 triple;
+    bvec4 quad;
+    scalar = value.x < 0.0;
+    pair = lessThan(value.xy, vec2(0.0, 0.0));
+    triple = lessThan(value.xyz, vec3(0.0, 0.0, 0.0));
+    quad = lessThan(value, vec4(0.0, 0.0, 0.0, 0.0));
+    if (scalar)
+    {
+        discard;
+    }
+    if (any(pair))
+    {
+        discard;
+    }
+    if (any(triple))
+    {
+        discard;
+    }
+    if (any(quad))
+    {
+        discard;
+    }
+    return value;
+}
+
+void main()
+{
+    vec4 value;
+    FragmentOut cg_output;
+    value = cg_TEXCOORD0;
+    cg_output.color = shade(value);
+    gl_FragColor = cg_output.color;
+}

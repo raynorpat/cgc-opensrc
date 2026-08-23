@@ -1288,6 +1288,22 @@ static void GlslInsertBinding(GlslBinding **list, GlslBinding *binding)
     *place = binding;
 }
 
+static int GlslHasInterfaceBinding(GlslLowerContext *context,
+                                   const char *interfaceKey,
+                                   int isOutput)
+{
+    GlslBinding *binding;
+
+    for (binding = context->module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->interfaceKey != NULL &&
+            binding->isOutput == isOutput &&
+            !strcmp(binding->interfaceKey, interfaceKey)) return 1;
+    }
+    return 0;
+}
+
 static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
                                     Symbol *member)
 {
@@ -1320,6 +1336,11 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
         sourceBinding->conn.rname, isOutput);
     if (canonical == NULL || interfaceName == NULL ||
         !GlslLowerType(context, member->type, &type)) return NULL;
+    if (GlslHasInterfaceBinding(context, interfaceName, isOutput)) {
+        context->statementLoc = member->loc;
+        GlslRecordFailure(context, "duplicate interface semantic");
+        return NULL;
+    }
     if (!strncmp(interfaceName, "gl_", 3)) {
         storage = GLSL_STORAGE_BUILTIN;
         name = interfaceName;
@@ -1343,6 +1364,7 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
     decl->identity = member;
     GlslSetLoc(&decl->loc, &member->loc);
     binding->declaration = decl;
+    binding->interfaceKey = interfaceName;
     binding->isOutput = isOutput;
     GlslSetLoc(&binding->loc, &member->loc);
     if (storage != GLSL_STORAGE_BUILTIN)
@@ -3209,16 +3231,39 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
             if (source->discardst.cond->un.arg == NULL) {
                 target = GlslNewStmt(context->module, GLSL_STMT_DISCARD);
             } else {
+                GlslExpr *condition;
+                GlslExpr *reduction;
                 GlslStmt *discard;
+                GlslType boolType;
 
                 target = GlslNewStmt(context->module, GLSL_STMT_IF);
                 discard = GlslNewStmt(context->module, GLSL_STMT_DISCARD);
                 if (target == NULL || discard == NULL)
                     return 0;
-                target->u.ifStmt.condition = GlslLowerExpr(
+                condition = GlslLowerExpr(
                     context, source->discardst.cond->un.arg);
-                if (target->u.ifStmt.condition == NULL)
+                if (condition == NULL ||
+                    condition->type.base != GLSL_BASE_BOOL ||
+                    condition->type.rows != 0 || condition->type.cols != 0 ||
+                    condition->type.arraySize != 0 ||
+                    condition->type.structName != NULL ||
+                    condition->type.elementType != NULL ||
+                    condition->type.len < 1 || condition->type.len > 4)
+                {
+                    GlslRecordFailure(context, "discard condition type");
                     return 0;
+                }
+                if (condition->type.len > 1) {
+                    boolType = GlslNumericType(GLSL_BASE_BOOL, 1);
+                    reduction = GlslNewExpr(context->module,
+                                            GLSL_EXPR_CALL, boolType);
+                    if (reduction == NULL)
+                        return 0;
+                    reduction->u.call.name = "any";
+                    reduction->u.call.arguments = condition;
+                    condition = reduction;
+                }
+                target->u.ifStmt.condition = condition;
                 GlslSetLoc(&discard->loc, &source->commonst.loc);
                 target->u.ifStmt.trueBranch = discard;
             }

@@ -1,0 +1,18 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float4 color : COLOR0, bool front : FACE)
+{
+    FragmentOut output;
+    output.color = color;
+    if (front) {
+        if (color.x > 0.5) {
+            output.color = float4(1.0, 1.0, 1.0, 1.0);
+            return output;
+        }
+        output.color = float4(0.5, 0.5, 0.5, 1.0);
+    }
+    output.color = float4(0.0, 0.0, 0.0, 1.0);
+    return output;
+}

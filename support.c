@@ -656,7 +656,13 @@ discard_stmt *NewDiscardStmt(SourceLoc *loc, expr *fExpr)
     } else {
         len = 0;
     }
-    fExpr = (expr *) NewUnopSubNode(KILL_OP, SUBOP_V(len, TYPE_BASE_BOOLEAN), fExpr);
+    if (fExpr == NULL || fExpr->common.kind != UNARY_N ||
+        fExpr->un.op != KILL_OP)
+    {
+        fExpr = (expr *) NewUnopSubNode(KILL_OP,
+                                        SUBOP_V(len, TYPE_BASE_BOOLEAN),
+                                        fExpr);
+    }
     lStmt->cond = fExpr;
     return lStmt;
 } // NewDiscardStmt
