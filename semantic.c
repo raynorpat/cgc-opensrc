@@ -160,7 +160,7 @@ static void lNewUniformSemantic(int gname, Symbol *fSymb, int semantics)
 
 static int lBindUniformVariable(Symbol *fSymb, int gname, int IsParameter)
 {
-    int category, domain, qualifiers, OK;
+    int category, domain, qualifiers, OK, errorsBefore;
     BindingTree *ltree;
     Binding *lBind;
     SymbolList **lList, *mList, *nList;
@@ -183,13 +183,14 @@ static int lBindUniformVariable(Symbol *fSymb, int gname, int IsParameter)
         lBind->none.properties = BIND_INPUT | BIND_UNIFORM;
         ltree = LookupBinding(gname, fSymb->name);
         if (ltree) {
+            errorsBefore = GetErrorCount();
             if (Cg->theHAL->BindUniformPragma(&fSymb->loc, fSymb, lBind, &ltree->binding)) {
                 if (!(lBind->none.properties & BIND_UNIFORM)) {
                     SemanticError(&fSymb->loc, ERROR_S_NON_UNIF_BIND_TO_UNIF_VAR,
                                   GetAtomString(atable, fSymb->name));
                     lList = NULL;
                 }
-            } else {
+            } else if (GetErrorCount() == errorsBefore) {
                 SemanticError(&fSymb->loc, ERROR_S_INCOMPATIBLE_BIND_DIRECTIVE,
                               GetAtomString(atable, fSymb->name));
                 lList = NULL;
@@ -232,7 +233,7 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int 
     BindingTree *ltree;
     Binding *lBind;
     Scope *lScope;
-    int lname;
+    int lname, errorsBefore;
 
     lSymb = NULL;
     category = GetCategory(fSymb->type);
@@ -251,6 +252,7 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int 
                                 GetAtomString(atable, fSymb->name));
             }
             lname = fSymb->details.var.semantics;
+            errorsBefore = GetErrorCount();
             if (Cg->theHAL->BindVaryingSemantic(&fSymb->loc, fSymb, lname, lBind, IsOutVal)) {
                 if (lBind->none.properties & BIND_INPUT) {
                     if (IsOutVal) {
@@ -265,7 +267,7 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int 
                     }
                     lScope = Cg->theHAL->varyingOut->type->str.members;
                 }
-            } else {
+            } else if (GetErrorCount() == errorsBefore) {
                 SemanticError(&fSymb->loc, ERROR_S_UNKNOWN_SEMANTICS,
                               GetAtomString(atable, fSymb->name));
             }
@@ -273,6 +275,7 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int 
             // If no semantics, check for #pragma bind directive.
             lname = fSymb->name;
             if (ltree) {
+                errorsBefore = GetErrorCount();
                 if (Cg->theHAL->BindVaryingPragma(&fSymb->loc, fSymb, lBind, &ltree->binding, IsOutVal)) {
                     if (lBind->none.properties & BIND_UNIFORM) {
                         SemanticError(&fSymb->loc, ERROR_S_UNIF_BIND_TO_NON_UNIF_VAR,
@@ -284,19 +287,20 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int 
                             lScope = Cg->theHAL->varyingOut->type->str.members;
                         }
                     }
-                } else {
+                } else if (GetErrorCount() == errorsBefore) {
                     SemanticError(&fSymb->loc, ERROR_S_INCOMPATIBLE_BIND_DIRECTIVE,
                                   GetAtomString(atable, fSymb->name));
                 }
             } else {
                 // If no semantics or #pragma bind, get default binding from profile if it allows them:
+                errorsBefore = GetErrorCount();
                 if (Cg->theHAL->BindVaryingUnbound(&fSymb->loc, fSymb, lname, structSemantics, lBind, IsOutVal)) {
                     if (IsOutVal) {
                         lScope = Cg->theHAL->varyingOut->type->str.members;
                     } else {
                         lScope = Cg->theHAL->varyingIn->type->str.members;
                     }
-                } else {
+                } else if (GetErrorCount() == errorsBefore) {
                     SemanticError(&fSymb->loc, ERROR_S_SEMANTIC_NOT_DEFINED_VOUT,
                                   GetAtomString(atable, fSymb->name));
                 }

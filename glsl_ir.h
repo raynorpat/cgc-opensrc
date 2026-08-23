@@ -56,6 +56,20 @@ enum GlslStage_Enum {
 
 typedef enum GlslStage_Enum GlslStage;
 
+typedef enum GlslErrorKind_Enum {
+    GLSL_ERROR_NONE,
+    GLSL_ERROR_UNSUPPORTED_TYPE,
+    GLSL_ERROR_UNSUPPORTED_OPERATION,
+    GLSL_ERROR_STAGE_OPERATION,
+    GLSL_ERROR_SEMANTIC,
+    GLSL_ERROR_INTERFACE_CONFLICT,
+    GLSL_ERROR_NAME_COLLISION,
+    GLSL_ERROR_INTRINSIC,
+    GLSL_ERROR_RESOURCE_LIMIT,
+    GLSL_ERROR_SAMPLER,
+    GLSL_ERROR_NON_SQUARE_MATRIX
+} GlslErrorKind;
+
 typedef void *(*GlslAllocFn)(void *arg, size_t size);
 
 typedef enum GlslBase_Enum {
@@ -315,6 +329,7 @@ typedef struct GlslModule_Rec {
     GlslFunction *entry;
     GlslBinding *bindings;
     GlslLoc errorLoc;
+    GlslErrorKind errorKind;
     const char *errorReason;
     const char *resourceName;
     int resourceUsed;
@@ -335,11 +350,14 @@ GlslType GlslMatrixType(int size);
 const char *GlslTypeName(const GlslType *type);
 GlslBuiltin GlslLookupBuiltin(const char *name, const GlslType *result,
     const GlslType *params, int paramCount);
+int GlslIsBuiltinName(const char *name);
 const char *GlslBuiltinSpelling(GlslBuiltin builtin);
 int GlslTypeComponentCount(const GlslType *type);
 int GlslParseSamplerUnit(const char *text, int *unit);
 int GlslSamplerUnitMatches(const char *text, int unit);
 int GlslIsReservedName(const char *name);
+int GlslReservedNameCount(void);
+const char *GlslReservedNameAt(int index);
 GlslDecl *GlslNewDecl(GlslModule *module, GlslStorage storage,
     GlslType type, const char *name);
 GlslExpr *GlslNewExpr(GlslModule *module, GlslExprKind kind, GlslType type);

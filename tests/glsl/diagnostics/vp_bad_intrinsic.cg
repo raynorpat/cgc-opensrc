@@ -1,0 +1,9 @@
+__internal float4 rsqrt(float4 left, float4 right);
+
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = rsqrt(position, position);
+    return output;
+}

@@ -56,6 +56,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "glsl_hal.h"
 
 /*
  * OpenOutputFile()
@@ -2003,9 +2004,17 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
                             AggregateExprNeedsMaterialization(rExpr) &&
                             AggregateContainsArray(lType))
                         {
-                            SemanticError(&fStmt->commonst.loc,
-                                ERROR_S_UNSUPPORTED_PROFILE_OP,
-                                "side-effecting aggregate with arrays");
+                            if (Cg->theHAL->pid == PROFILE_GLSLV_ID ||
+                                Cg->theHAL->pid == PROFILE_GLSLF_ID)
+                            {
+                                SemanticError(&fStmt->commonst.loc,
+                                    ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                                    "side-effecting aggregate with arrays");
+                            } else {
+                                SemanticError(&fStmt->commonst.loc,
+                                    ERROR_S_UNSUPPORTED_PROFILE_OP,
+                                    "side-effecting aggregate with arrays");
+                            }
                             return fStmt;
                         }
                         if (data->normalizeOperands) {

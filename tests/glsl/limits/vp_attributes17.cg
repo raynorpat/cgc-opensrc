@@ -1,0 +1,29 @@
+struct AppData {
+    float4 position : POSITION;
+    float4 a0 : ATTRIB0;
+    float4 a1 : ATTRIB1;
+    float4 a2 : ATTRIB2;
+    float4 a3 : ATTRIB3;
+    float4 a4 : ATTRIB4;
+    float4 a5 : ATTRIB5;
+    float4 a6 : ATTRIB6;
+    float4 a7 : ATTRIB7;
+    float4 a8 : ATTRIB8;
+    float4 a9 : ATTRIB9;
+    float4 a10 : ATTRIB10;
+    float4 a11 : ATTRIB11;
+    float4 a12 : ATTRIB12;
+    float4 a13 : ATTRIB13;
+    float4 a14 : ATTRIB14;
+    float4 a15 : ATTRIB15;
+};
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(AppData input)
+{
+    VertexOut output;
+    output.position = input.position + input.a0 + input.a1 + input.a2 +
+        input.a3 + input.a4 + input.a5 + input.a6 + input.a7 + input.a8 +
+        input.a9 + input.a10 + input.a11 + input.a12 + input.a13 +
+        input.a14 + input.a15;
+    return output;
+}

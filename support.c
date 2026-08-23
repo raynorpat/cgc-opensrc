@@ -1794,16 +1794,20 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
         }
     }
     if (lSymb->type->properties & TYPE_MISC_INTERNAL) {
-        index = Cg->theHAL->CheckInternalFunction(lSymb, &group);
-        if (index) {
-            //
-            // lSymb->InternalIndex = index; etc.
-            //
-            lSymb->properties |= SYMB_IS_DEFINED | SYMB_IS_BUILTIN;
-            lSymb->details.fun.group = group;
-            lSymb->details.fun.index = index;
-        } else {
-            SemanticError(loc, ERROR_S_INVALID_INTERNAL_FUNCTION, GetAtomString(atable, atom));
+        {
+            int errorsBefore = GetErrorCount();
+            index = Cg->theHAL->CheckInternalFunction(lSymb, &group);
+            if (index) {
+                //
+                // lSymb->InternalIndex = index; etc.
+                //
+                lSymb->properties |= SYMB_IS_DEFINED | SYMB_IS_BUILTIN;
+                lSymb->details.fun.group = group;
+                lSymb->details.fun.index = index;
+            } else if (GetErrorCount() == errorsBefore) {
+                SemanticError(loc, ERROR_S_INVALID_INTERNAL_FUNCTION,
+                              GetAtomString(atable, atom));
+            }
         }
     }
 

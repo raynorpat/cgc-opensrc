@@ -369,22 +369,30 @@ static void CheckInternalFunctions(slHAL *hal)
 
     MakeVector(&vector, &vectorElement, TYPE_BASE_FLOAT, 3);
     group = 0;
+    semanticErrorCount = 0;
     assert(hal->CheckInternalFunction(&symbol, &group) == 0);
     assert(group == 0);
+    assert(semanticErrorCount == 1);
+    assert(lastSemanticError == 6206);
 
     MakeVector(&result, &vectorElement, TYPE_BASE_FLOAT, 3);
     MakeMatrix(&matrix, &row, &rowElement, 3);
     matrix.arr.properties = (matrix.arr.properties & ~TYPE_BASE_MASK) |
                             TYPE_BASE_INT;
     group = 0;
+    semanticErrorCount = 0;
     assert(hal->CheckInternalFunction(&symbol, &group) == 0);
     assert(group == 0);
+    assert(semanticErrorCount == 1);
+    assert(lastSemanticError == 6206);
 
     symbol.name = AddAtom(atable, "user_mul");
     MakeVector(&vector, &vectorElement, TYPE_BASE_FLOAT, 4);
     group = 0;
+    semanticErrorCount = 0;
     assert(hal->CheckInternalFunction(&symbol, &group) == 0);
     assert(group == 0);
+    assert(semanticErrorCount == 0);
 
     symbol.name = AddAtom(atable, "tex2D");
     MakeVector(&result, &vectorElement, TYPE_BASE_FLOAT, 4);
@@ -399,8 +407,11 @@ static void CheckInternalFunctions(slHAL *hal)
 
     MakeScalar(&sampler, TYPE_BASE_GLSL_SAMPLER3D);
     group = 0;
+    semanticErrorCount = 0;
     assert(hal->CheckInternalFunction(&symbol, &group) == 0);
     assert(group == 0);
+    assert(semanticErrorCount == 1);
+    assert(lastSemanticError == 6206);
 }
 
 static ConnectorRegisters *FindRegister(const GlslProfileDesc *profile,
@@ -668,7 +679,7 @@ static void CheckVertex(void)
     semanticErrorCount = 0;
     CheckRejectedBinding(&hal, "TEXCOORD8", 0, TYPE_BASE_FLOAT, 4);
     assert(semanticErrorCount == 1);
-    assert(lastSemanticError == 5102);
+    assert(lastSemanticError == 6203);
     CheckRejectedBinding(&hal, "NORMAL", 1, TYPE_BASE_FLOAT, 3);
     CheckRejectedBinding(&hal, "NORMAL", 0, TYPE_BASE_FLOAT, 4);
     CheckRejectedBinding(&hal, "POSITION", 1, TYPE_BASE_FLOAT, 3);
@@ -778,7 +789,7 @@ static void CheckOperatorFilter(void)
         semanticErrorCount = 0;
         assert(!hal.IsValidOperator(&loc, 0, rejected[i], 0));
         assert(semanticErrorCount == 1);
-        assert(lastSemanticError == 5508);
+        assert(lastSemanticError == 6201);
     }
     semanticErrorCount = 0;
     for (i = 0; i < NUMELS(accepted); i++)
@@ -808,7 +819,7 @@ static void CheckGenerateCodeWriterFailure(void)
     writeModuleResult = 0;
     semanticErrorCount = 0;
     assert(!hal.GenerateCode(&loc, &scope, &program));
-    if (semanticErrorCount != 1 || lastSemanticError != 5508) {
+    if (semanticErrorCount != 1 || lastSemanticError != 6201) {
         fprintf(stderr,
                 "writer failure produced %d diagnostics, last C%04d\n",
                 semanticErrorCount, lastSemanticError);

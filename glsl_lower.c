@@ -119,7 +119,19 @@ static void GlslRecordFailure(GlslLowerContext *context, const char *reason)
         return;
     context->module->errorLoc.file = context->statementLoc.file;
     context->module->errorLoc.line = context->statementLoc.line;
+    if (context->module->errorKind == GLSL_ERROR_NONE)
+        context->module->errorKind = GLSL_ERROR_UNSUPPORTED_OPERATION;
     context->module->errorReason = reason;
+}
+
+static void GlslRecordFailureKind(GlslLowerContext *context,
+                                  GlslErrorKind kind,
+                                  const char *reason)
+{
+    if (context->module->errorReason != NULL)
+        return;
+    context->module->errorKind = kind;
+    GlslRecordFailure(context, reason);
 }
 
 static const char *GlslUnsupportedExprReason(const expr *source)
@@ -310,6 +322,7 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
     int len;
     int rows;
     int cols;
+    char matrixName[32];
 
     if (source == NULL || target == NULL)
         return 0;
@@ -320,11 +333,16 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
     }
     if (IsMatrix(source, &cols, &rows)) {
         if (base != TYPE_BASE_FLOAT && base != TYPE_BASE_CFLOAT) {
-            GlslRecordFailure(context, "GLSL 1.10 matrix type");
+            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                  "matrix");
             return 0;
         }
         if (rows != cols || rows < 2 || rows > 4) {
-            GlslRecordFailure(context, "non-square GLSL matrix");
+            sprintf(matrixName, "%s%dx%d", GetBaseTypeNameString(base),
+                    rows, cols);
+            GlslRecordFailureKind(context, GLSL_ERROR_NON_SQUARE_MATRIX,
+                                  GlslCopyText(context->module,
+                                               matrixName));
             return 0;
         }
         *target = GlslMatrixType(rows);
@@ -475,7 +493,8 @@ static int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
             GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM)
         {
             context->statementLoc = symbol->loc;
-            GlslRecordFailure(context, "samplers must be uniforms");
+            GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                                  "samplers must be uniforms");
             return 0;
         }
         name = GetAtomString(atable, symbol->name);
@@ -493,7 +512,8 @@ static int GlslEnsureParameterTypes(GlslLowerContext *context,
             GetDomain(formal->type) != TYPE_DOMAIN_UNIFORM)
         {
             context->statementLoc = formal->loc;
-            GlslRecordFailure(context, "samplers must be uniforms");
+            GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                                  "samplers must be uniforms");
             return 0;
         }
         if (!GlslEnsureType(context, formal->type))
@@ -596,7 +616,8 @@ static int GlslSortStructs(GlslLowerContext *context)
             }
         }
         if (best == NULL) {
-            GlslRecordFailure(context, "recursive GLSL structure");
+            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                  "recursive GLSL structure");
             return 0;
         }
         decl = *best;
@@ -708,7 +729,8 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
         GetCategory(symbol->type) != TYPE_CATEGORY_SCALAR)
     {
         context->statementLoc = symbol->loc;
-        GlslRecordFailure(context, "sampler arrays or aggregates");
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                              "sampler arrays or aggregates");
         return 0;
     }
     if (!GlslEnsureType(context, symbol->type) ||
@@ -885,7 +907,8 @@ static int GlslValidateUniformLimit(GlslLowerContext *context)
                 (unsigned short) binding->loc.file;
             context->statementLoc.line =
                 (unsigned short) binding->loc.line;
-            GlslRecordFailure(context, "uniform component count");
+            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                  "uniform component count");
             return 0;
         }
         if (componentCount > limit - used) {
@@ -898,6 +921,83 @@ static int GlslValidateUniformLimit(GlslLowerContext *context)
             return 0;
         }
         used += componentCount;
+    }
+    return 1;
+}
+
+static int GlslRecordResourceLimit(GlslLowerContext *context,
+                                   const GlslBinding *binding,
+                                   const char *resourceName,
+                                   int used, int available)
+{
+    context->module->errorKind = GLSL_ERROR_RESOURCE_LIMIT;
+    context->module->errorLoc = binding->loc;
+    context->module->resourceName = resourceName;
+    context->module->resourceUsed = used;
+    context->module->resourceAvailable = available;
+    return 0;
+}
+
+static int GlslValidateInterfaceLimits(GlslLowerContext *context)
+{
+    GlslBinding *binding;
+    int attributes;
+    int varyingComponents;
+    int fragmentColors;
+    int components;
+
+    attributes = 0;
+    varyingComponents = 0;
+    fragmentColors = 0;
+    for (binding = context->module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->declaration == NULL)
+            continue;
+        if (binding->storage == GLSL_STORAGE_ATTRIBUTE) {
+            attributes++;
+            if (attributes > context->profile->limits.attributes) {
+                return GlslRecordResourceLimit(context, binding,
+                    "vertex attributes", attributes,
+                    context->profile->limits.attributes);
+            }
+        } else if (binding->storage == GLSL_STORAGE_VARYING) {
+            components = GlslTypeComponentCount(
+                &binding->declaration->type);
+            if (components <= 0 ||
+                components > INT_MAX - varyingComponents)
+            {
+                context->statementLoc.file =
+                    (unsigned short) binding->loc.file;
+                context->statementLoc.line =
+                    (unsigned short) binding->loc.line;
+                GlslRecordFailureKind(context,
+                                      GLSL_ERROR_UNSUPPORTED_TYPE,
+                                      "interface value");
+                return 0;
+            }
+            varyingComponents += components;
+            if (varyingComponents >
+                context->profile->limits.varyingComponents)
+            {
+                return GlslRecordResourceLimit(context, binding,
+                    "varying components", varyingComponents,
+                    context->profile->limits.varyingComponents);
+            }
+        } else if (context->profile->stage == GLSL_STAGE_FRAGMENT &&
+                   binding->storage == GLSL_STORAGE_BUILTIN &&
+                   binding->isOutput && binding->name != NULL &&
+                   !strcmp(binding->name, "gl_FragColor"))
+        {
+            fragmentColors++;
+            if (fragmentColors >
+                context->profile->limits.colorOutputs)
+            {
+                return GlslRecordResourceLimit(context, binding,
+                    "fragment color outputs", fragmentColors,
+                    context->profile->limits.colorOutputs);
+            }
+        }
     }
     return 1;
 }
@@ -939,7 +1039,8 @@ static int GlslAllocateTextureUnits(GlslLowerContext *context)
                 (unsigned short) binding->loc.file;
             context->statementLoc.line =
                 (unsigned short) binding->loc.line;
-            GlslRecordFailure(context, "sampler binding");
+            GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                                  "sampler binding");
             return 0;
         }
         sourceBinding->none.kind = BK_TEXUNIT;
@@ -1019,7 +1120,8 @@ static int GlslAppendTypedDefaultValue(GlslLowerContext *context,
     }
     baseClass = GlslDefaultBaseClassOf(base);
     if (baseClass == GLSL_DEFAULT_BASE_INVALID) {
-        GlslRecordFailure(context, "uniform default conversion type");
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "uniform default conversion type");
         return 0;
     }
     if (baseClass == GLSL_DEFAULT_BASE_FLOAT &&
@@ -1049,7 +1151,8 @@ static int GlslConvertDefaultValue(GlslLowerContext *context,
     if (sourceClass == GLSL_DEFAULT_BASE_INVALID ||
         targetClass == GLSL_DEFAULT_BASE_INVALID)
     {
-        GlslRecordFailure(context, "uniform default conversion type");
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "uniform default conversion type");
         return 0;
     }
     if (sourceClass == GLSL_DEFAULT_BASE_FLOAT &&
@@ -1095,7 +1198,8 @@ static int GlslConvertDefaultValue(GlslLowerContext *context,
             converted.i = value->value.i != 0;
         break;
     default:
-        GlslRecordFailure(context, "uniform default conversion type");
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "uniform default conversion type");
         return 0;
     }
     value->base = targetBase;
@@ -1221,7 +1325,8 @@ static int GlslDefaultTargetBase(GlslLowerContext *context, GlslBase base)
     case GLSL_BASE_BOOL:
         return TYPE_BASE_BOOLEAN;
     default:
-        GlslRecordFailure(context, "uniform default destination type");
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "uniform default destination type");
         return TYPE_BASE_NO_TYPE;
     }
 }
@@ -1290,7 +1395,8 @@ static int GlslStoreDefaultType(GlslLowerContext *context,
         if (type->rows <= 0 || type->cols <= 0 ||
             type->rows > INT_MAX / type->cols)
         {
-            GlslRecordFailure(context, "uniform default destination type");
+            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                  "uniform default destination type");
             return 0;
         }
         len = type->rows * type->cols;
@@ -1503,7 +1609,8 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
         !GlslLowerType(context, member->type, &type)) return NULL;
     if (GlslHasInterfaceBinding(context, interfaceName, isOutput)) {
         context->statementLoc = member->loc;
-        GlslRecordFailure(context, "duplicate interface semantic");
+        GlslRecordFailureKind(context, GLSL_ERROR_INTERFACE_CONFLICT,
+                              interfaceName);
         return NULL;
     }
     if (!strncmp(interfaceName, "gl_", 3)) {
@@ -1638,7 +1745,8 @@ static int GlslCollectHelper(GlslLowerContext *context, Symbol *symbol)
     }
     if (Cg->theHAL->IsTexobjBase(GetBase(symbol->type->fun.rettype))) {
         context->statementLoc = symbol->loc;
-        GlslRecordFailure(context, "sampler helper result");
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                              "sampler helper result");
         return 0;
     }
     function = GlslFindFunction(context->module, symbol);
@@ -1656,7 +1764,8 @@ static int GlslCollectHelper(GlslLowerContext *context, Symbol *symbol)
                                symbol->details.fun.locals->symbols) ||
         !GlslLowerType(context, symbol->type->fun.rettype, &result))
     {
-        GlslRecordFailure(context, "GLSL helper type");
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "GLSL helper type");
         return 0;
     }
     function = GlslNewFunction(context->module, result, NULL);
@@ -1981,7 +2090,8 @@ static GlslExpr *GlslLowerTextureArguments(GlslLowerContext *context,
         source->bin.right->bin.op != FUN_ARG_OP ||
         source->bin.right->bin.right != NULL)
     {
-        GlslRecordFailure(context, "GLSL texture intrinsic signature");
+        GlslRecordFailureKind(context, GLSL_ERROR_INTRINSIC,
+                              "texture intrinsic");
         return NULL;
     }
     samplerSource = source->bin.left;
@@ -1989,7 +2099,7 @@ static GlslExpr *GlslLowerTextureArguments(GlslLowerContext *context,
         samplerSource->sym.op != VARIABLE_OP ||
         samplerSource->sym.symbol == NULL)
     {
-        GlslRecordFailure(context,
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
             "texture sampler argument must be a direct bound uniform");
         return NULL;
     }
@@ -1997,7 +2107,7 @@ static GlslExpr *GlslLowerTextureArguments(GlslLowerContext *context,
     if (decl == NULL || decl->storage != GLSL_STORAGE_SAMPLER ||
         !GlslIsSamplerType(&decl->type))
     {
-        GlslRecordFailure(context,
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
             "texture sampler argument must be a direct bound uniform");
         return NULL;
     }
@@ -2631,9 +2741,11 @@ static GlslExpr *GlslLowerImpureMatrixConstructor(
             !GlslMatrixNumericParameterType(&argument->type) ||
             componentCount > type->rows * type->cols - argument->type.len)
         {
-            if (!GlslMatrixNumericParameterType(&argument->type))
-                GlslRecordFailure(context,
-                                  "matrix constructor argument type");
+            if (!GlslMatrixNumericParameterType(&argument->type)) {
+                GlslRecordFailureKind(context,
+                                      GLSL_ERROR_UNSUPPORTED_TYPE,
+                                      "matrix constructor argument type");
+            }
             return NULL;
         }
         parameters[parameterCount++] = argument->type;
@@ -2705,9 +2817,11 @@ static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
         if (!GlslMatrixNumericParameterType(&argument->type) ||
             count > size * size - componentCount)
         {
-            if (!GlslMatrixNumericParameterType(&argument->type))
-                GlslRecordFailure(context,
-                                  "matrix constructor argument type");
+            if (!GlslMatrixNumericParameterType(&argument->type)) {
+                GlslRecordFailureKind(context,
+                                      GLSL_ERROR_UNSUPPORTED_TYPE,
+                                      "matrix constructor argument type");
+            }
             return NULL;
         }
         if (componentCount == 1) {
@@ -2810,7 +2924,6 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     GlslBase samplerBase;
     GlslBinding *binding;
     GlslDecl *decl;
-    Binding *sourceBinding;
     Symbol *symbol;
     int coordLen;
     int sourceBase;
@@ -2818,7 +2931,8 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     if (builtin < GLSL_BUILTIN_TEX1D ||
         builtin > GLSL_BUILTIN_TEXCUBE) return 1;
     if (context->profile->stage != GLSL_STAGE_FRAGMENT) {
-        GlslRecordFailure(context, "texture sampling in vertex shader");
+        GlslRecordFailureKind(context, GLSL_ERROR_STAGE_OPERATION,
+                              "texture sampling");
         return 0;
     }
     switch (builtin) {
@@ -2854,13 +2968,14 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
         !GlslTypesEqual(&arguments->next->type, &coordType) ||
         !GlslTypesEqual(result, &resultType))
     {
-        GlslRecordFailure(context, "GLSL texture intrinsic signature");
+        GlslRecordFailureKind(context, GLSL_ERROR_INTRINSIC,
+                              GlslBuiltinSpelling(builtin));
         return 0;
     }
     if (arguments->kind != GLSL_EXPR_SYMBOL ||
         arguments->u.symbol == NULL)
     {
-        GlslRecordFailure(context,
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
             "texture sampler argument must be a direct bound uniform");
         return 0;
     }
@@ -2868,7 +2983,6 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     symbol = (Symbol *) decl->identity;
     binding = symbol != NULL ?
               GlslFindUniformBinding(context->module, symbol) : NULL;
-    sourceBinding = symbol != NULL ? symbol->details.var.bind : NULL;
     if (decl->storage != GLSL_STORAGE_SAMPLER ||
         !GlslTypesEqual(&decl->type, &samplerType) ||
         symbol == NULL || symbol->kind != VARIABLE_S ||
@@ -2878,20 +2992,9 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
         GetBase(symbol->type) != sourceBase ||
         binding == NULL || binding->storage != GLSL_STORAGE_SAMPLER ||
         binding->declaration != decl || binding->name == NULL ||
-        decl->name == NULL || strcmp(binding->name, decl->name) ||
-        sourceBinding == NULL ||
-        sourceBinding->none.kind != BK_TEXUNIT ||
-        sourceBinding->none.properties !=
-            (BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM) ||
-        sourceBinding->none.lname != symbol->name ||
-        sourceBinding->none.base != GetBase(symbol->type) ||
-        sourceBinding->none.size != symbol->type->co.size ||
-        sourceBinding->texunit.unitno < 0 ||
-        sourceBinding->texunit.unitno >= context->profile->limits.textureUnits ||
-        !GlslSamplerUnitMatches(binding->semantic,
-                                sourceBinding->texunit.unitno))
+        decl->name == NULL || strcmp(binding->name, decl->name))
     {
-        GlslRecordFailure(context,
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
             "texture sampler argument must be a direct bound uniform");
         return 0;
     }
@@ -3170,11 +3273,13 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
     const char *comparison;
 
     if (source == NULL || !GlslLowerType(context, source->common.type, &type)) {
-        GlslRecordFailure(context, "GLSL 1.10 expression type");
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "GLSL 1.10 expression type");
         return NULL;
     }
     if (GlslIsSamplerType(&type)) {
-        GlslRecordFailure(context, "opaque sampler expression");
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                              "opaque sampler expression");
         return NULL;
     }
     if (source->common.kind == SYMB_N && source->sym.op == VARIABLE_OP) {
@@ -3550,7 +3655,8 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
             break;
         case DISCARD_STMT:
             if (context->module->stage != GLSL_STAGE_FRAGMENT) {
-                GlslRecordFailure(context, "discard in vertex shader");
+                GlslRecordFailureKind(context, GLSL_ERROR_STAGE_OPERATION,
+                                      "discard");
                 return 0;
             }
             if (source->discardst.cond == NULL ||
@@ -3582,7 +3688,9 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
                     condition->type.elementType != NULL ||
                     condition->type.len < 1 || condition->type.len > 4)
                 {
-                    GlslRecordFailure(context, "discard condition type");
+                    GlslRecordFailureKind(context,
+                                          GLSL_ERROR_UNSUPPORTED_TYPE,
+                                          "discard condition type");
                     return 0;
                 }
                 if (condition->type.len > 1) {
@@ -3713,7 +3821,8 @@ static int GlslValidateInterfaceSource(GlslLowerContext *context,
         if (current->source == source)
             return 1;
         context->statementLoc = source->loc;
-        GlslRecordFailure(context, "duplicate interface semantic");
+        GlslRecordFailureKind(context, GLSL_ERROR_INTERFACE_CONFLICT,
+                              interfaceKey);
         return 0;
     }
     record = (GlslInterfaceSource *) context->module->alloc(
@@ -3829,8 +3938,6 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
         !GlslCollectCallsInStatements(&context,
                                       program->details.fun.statements) ||
         !GlslCollectUniforms(&context, program) ||
-        !GlslAllocateTextureUnits(&context) ||
-        !GlslValidateUniformLimit(&context) ||
         !GlslSortStructs(&context) ||
         !GlslAssignHelperNames(&context)) return GlslLowerError(&context);
     if (!GlslCollectDefaults(&context))
@@ -3863,5 +3970,11 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     }
     GlslPrependMatrixHelpers(&context);
     GlslPrependMatrixSelectorHelpers(&context);
+    if (!GlslValidateUniformLimit(&context) ||
+        !GlslAllocateTextureUnits(&context) ||
+        !GlslValidateInterfaceLimits(&context))
+    {
+        return GlslLowerError(&context);
+    }
     return module->errors == 0;
 }

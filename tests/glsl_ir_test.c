@@ -53,6 +53,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "errors.h"
 #include "glsl_ir.h"
 
 int GlslWriteModule(FILE *out, const GlslModule *module);
@@ -96,6 +97,13 @@ static void ExpectModuleRejected(const char *label,
         exit(2);
     }
     assert(!fclose(writer));
+}
+
+static int DiagnosticMatches(int code, const char *message,
+                             int expectedCode,
+                             const char *expectedMessage)
+{
+    return code == expectedCode && !strcmp(message, expectedMessage);
 }
 
 int main(void)
@@ -163,6 +171,26 @@ int main(void)
     };
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+    assert(DiagnosticMatches(ERROR_S_GLSL_UNSUPPORTED_TYPE, 6200,
+        "GLSL 1.10 does not support type \"%s\""));
+    assert(DiagnosticMatches(ERROR_S_GLSL_UNSUPPORTED_OPERATION, 6201,
+        "GLSL 1.10 does not support operation \"%s\""));
+    assert(DiagnosticMatches(ERROR_SS_GLSL_STAGE_OPERATION, 6202,
+        "%s profile does not support operation \"%s\""));
+    assert(DiagnosticMatches(ERROR_S_GLSL_SEMANTIC, 6203,
+        "GLSL profile cannot bind semantic \"%s\""));
+    assert(DiagnosticMatches(ERROR_S_GLSL_INTERFACE_CONFLICT, 6204,
+        "GLSL interface conflicts at semantic \"%s\""));
+    assert(DiagnosticMatches(ERROR_S_GLSL_NAME_COLLISION, 6205,
+        "GLSL name cannot be resolved for \"%s\""));
+    assert(DiagnosticMatches(ERROR_S_GLSL_INTRINSIC, 6206,
+        "GLSL 1.10 has no exact intrinsic for \"%s\""));
+    assert(DiagnosticMatches(ERROR_SII_GLSL_RESOURCE_LIMIT, 6207,
+        "GLSL portable %s limit exceeded: %d used, %d available"));
+    assert(DiagnosticMatches(ERROR_S_GLSL_SAMPLER, 6208,
+        "GLSL 1.10 does not support sampler feature \"%s\""));
+    assert(DiagnosticMatches(ERROR_S_GLSL_NON_SQUARE_MATRIX, 6209,
+        "GLSL 1.10 requires a square matrix, found \"%s\""));
     assert(GlslSamplerUnitMatches("0", 0));
     assert(GlslSamplerUnitMatches("1", 1));
     assert(!GlslSamplerUnitMatches("0", 1));
@@ -193,6 +221,20 @@ int main(void)
     }
     assert(GlslBuiltinSpelling(GLSL_BUILTIN_NONE) == NULL);
     assert(GlslBuiltinSpelling((GlslBuiltin) 999) == NULL);
+
+    type = GlslNumericType(GLSL_BASE_FLOAT, 4);
+    builtinParams[0] = type;
+    assert(GlslLookupBuiltin("rsqrt", &type, builtinParams, 1) ==
+           GLSL_BUILTIN_RSQRT);
+    builtinParams[1] = type;
+    builtinParams[2] = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    assert(GlslLookupBuiltin("lerp", &type, builtinParams, 3) ==
+           GLSL_BUILTIN_LERP);
+    assert(GlslLookupBuiltin("unknown", &type, builtinParams, 1) ==
+           GLSL_BUILTIN_NONE);
+    assert(GlslIsBuiltinName("rsqrt"));
+    assert(GlslIsBuiltinName("lerp"));
+    assert(!GlslIsBuiltinName("unknown"));
 
     builtinParams[0] = GlslMatrixType(4);
     builtinParams[1] = GlslNumericType(GLSL_BASE_FLOAT, 4);
@@ -276,6 +318,9 @@ int main(void)
 
     type = GlslNumericType(GLSL_BASE_FLOAT, 4);
     assert(GlslTypeComponentCount(&type) == 4);
+    arrayType = type;
+    arrayType.arraySize = 17;
+    assert(GlslTypeComponentCount(&arrayType) == 68);
     type = GlslMatrixType(3);
     assert(GlslTypeComponentCount(&type) == 9);
     arrayElement = GlslMatrixType(2);
@@ -319,6 +364,13 @@ int main(void)
         "value"));
     assert(!strcmp(GlslAllocateSymbolName(&module, &secondIdentity, "value"),
         "value_1"));
+    assert(!strcmp(GlslAllocateSymbolName(&module, &globalIdentity,
+                                          "position"), "position_2"));
+    assert(!strcmp(GlslAllocateSymbolName(&module, &globalIdentity,
+                                          "renamed_position"),
+                   "position_2"));
+    assert(!strcmp(GlslAllocateSymbolName(&module, &localIdentity,
+                                          "position"), "position_3"));
 
     GlslInitModule(&visibleModule, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!strcmp(GlslAllocateSymbolName(&visibleModule,
@@ -359,6 +411,19 @@ int main(void)
     assert(GlslIsReservedName("gl_Position"));
     assert(GlslIsReservedName("user__name"));
     assert(!GlslIsReservedName("user_name"));
+    for (index = 0; index < GlslReservedNameCount(); index++) {
+        const char *reserved;
+
+        reserved = GlslReservedNameAt(index);
+        assert(reserved != NULL);
+        assert(GlslIsReservedName(reserved));
+        emitted = GlslAllocateDistinctName(&module, reserved);
+        assert(emitted != NULL);
+        assert(!strncmp(emitted, "cg_", 3));
+        assert(!GlslIsReservedName(emitted));
+    }
+    assert(GlslReservedNameAt(-1) == NULL);
+    assert(GlslReservedNameAt(GlslReservedNameCount()) == NULL);
     emitted = GlslAllocateName(&module, "user__name");
     assert(!strcmp(emitted, "cg_user_name"));
     assert(!GlslIsReservedName(emitted));

@@ -1,0 +1,12 @@
+struct AppData {
+    float4 first : ATTRIB0;
+    float2 second : ATTRIB0;
+};
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(AppData input)
+{
+    VertexOut output;
+    output.position = input.first +
+        float4(input.second.x, input.second.y, 0.0, 0.0);
+    return output;
+}

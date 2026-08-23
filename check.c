@@ -537,15 +537,19 @@ static void BindUnboundUniformMembers(SymbolList *fList)
 {
     Symbol *lSymb;
     Binding *lBind;
+    int errorsBefore;
 
     while (fList != NULL) {
         lSymb = fList->symb;
         if (lSymb) {
             lBind = lSymb->details.var.bind;
             if (lBind && !(lBind->none.properties & BIND_IS_BOUND)) {
+                errorsBefore = GetErrorCount();
                 if (!Cg->theHAL->BindUniformUnbound(&lSymb->loc, lSymb, lBind)) {
-                    SemanticWarning(&lSymb->loc, WARNING_S_CANT_BIND_UNIFORM_VAR,
-                                    GetAtomString(atable, lSymb->name));
+                    if (GetErrorCount() == errorsBefore) {
+                        SemanticWarning(&lSymb->loc, WARNING_S_CANT_BIND_UNIFORM_VAR,
+                                        GetAtomString(atable, lSymb->name));
+                    }
                 }
             }
         }

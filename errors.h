@@ -267,7 +267,16 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Numbers 6000 to 6999 are reserved for profile specific messages
 
+#define ERROR_S_GLSL_UNSUPPORTED_TYPE       6200, "GLSL 1.10 does not support type \"%s\""
+#define ERROR_S_GLSL_UNSUPPORTED_OPERATION  6201, "GLSL 1.10 does not support operation \"%s\""
+#define ERROR_SS_GLSL_STAGE_OPERATION       6202, "%s profile does not support operation \"%s\""
+#define ERROR_S_GLSL_SEMANTIC               6203, "GLSL profile cannot bind semantic \"%s\""
+#define ERROR_S_GLSL_INTERFACE_CONFLICT     6204, "GLSL interface conflicts at semantic \"%s\""
+#define ERROR_S_GLSL_NAME_COLLISION         6205, "GLSL name cannot be resolved for \"%s\""
+#define ERROR_S_GLSL_INTRINSIC              6206, "GLSL 1.10 has no exact intrinsic for \"%s\""
 #define ERROR_SII_GLSL_RESOURCE_LIMIT       6207, "GLSL portable %s limit exceeded: %d used, %d available"
+#define ERROR_S_GLSL_SAMPLER                6208, "GLSL 1.10 does not support sampler feature \"%s\""
+#define ERROR_S_GLSL_NON_SQUARE_MATRIX      6209, "GLSL 1.10 requires a square matrix, found \"%s\""
 
 // Warnings:
 

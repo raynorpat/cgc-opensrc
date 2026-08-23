@@ -1,0 +1,11 @@
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(float2 texcoord : TEXCOORD0,
+                 uniform sampler2D first,
+                 uniform sampler2D second,
+                 uniform sampler2D third)
+{
+    FragmentOut output;
+    output.color = tex2D(first, texcoord) + tex2D(second, texcoord) +
+        tex2D(third, texcoord);
+    return output;
+}

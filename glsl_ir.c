@@ -279,8 +279,11 @@ static const char *GlslAllocate(GlslModule *module, const void *nameSpace,
         emitted = base;
     } else {
         if (nameCount > (size_t) INT_MAX - 1 ||
-            nameCount > (size_t) -1 - 2)
+            nameCount > (size_t) -1 - 2) {
+            module->errorKind = GLSL_ERROR_NAME_COLLISION;
+            module->errorReason = source;
             return NULL;
+        }
         limit = (int) nameCount + 1;
         occupied = (unsigned char *) malloc(nameCount + 2);
         if (occupied == NULL)
@@ -298,6 +301,8 @@ static const char *GlslAllocate(GlslModule *module, const void *nameSpace,
         }
         if (suffix > limit) {
             free(occupied);
+            module->errorKind = GLSL_ERROR_NAME_COLLISION;
+            module->errorReason = source;
             return NULL;
         }
         free(occupied);
@@ -547,6 +552,11 @@ static GlslBuiltin GlslBuiltinFromName(const char *name)
     return GLSL_BUILTIN_NONE;
 }
 
+int GlslIsBuiltinName(const char *name)
+{
+    return GlslBuiltinFromName(name) != GLSL_BUILTIN_NONE;
+}
+
 static int GlslBuiltinUnary(GlslBuiltin builtin)
 {
     switch (builtin) {
@@ -745,6 +755,16 @@ static int GlslTypeComponentCountInternal(const GlslType *type,
             return 0;
         return elementCount * type->arraySize;
     }
+    if (type->arraySize > 0 && type->structName == NULL &&
+        type->members == NULL && type->rows == 0 && type->cols == 0 &&
+        (type->base == GLSL_BASE_FLOAT || type->base == GLSL_BASE_INT ||
+         type->base == GLSL_BASE_BOOL) &&
+        type->len >= 1 && type->len <= 4)
+    {
+        if (type->len > INT_MAX / type->arraySize)
+            return 0;
+        return type->len * type->arraySize;
+    }
     if (type->arraySize != 0 || type->base == GLSL_BASE_VOID ||
         type->base == GLSL_BASE_SAMPLER1D ||
         type->base == GLSL_BASE_SAMPLER2D ||
@@ -853,6 +873,18 @@ int GlslIsReservedName(const char *name)
             low = middle + 1;
     }
     return 0;
+}
+
+int GlslReservedNameCount(void)
+{
+    return (int) (sizeof(reservedNames) / sizeof(reservedNames[0]));
+}
+
+const char *GlslReservedNameAt(int index)
+{
+    if (index < 0 || index >= GlslReservedNameCount())
+        return NULL;
+    return reservedNames[index];
 }
 
 GlslDecl *GlslNewDecl(GlslModule *module, GlslStorage storage, GlslType type,

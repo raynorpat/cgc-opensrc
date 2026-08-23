@@ -32,7 +32,7 @@ function(add_glsl_failure name source expected_line reason)
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
-            -DCODE=5508
+            -DCODE=6201
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
@@ -98,6 +98,37 @@ function(add_glsl_profile_failure name profile source code expected_line reason)
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+    )
+endfunction()
+
+function(add_glsl_diagnostic name profile source code expected_line message)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
+            -DCODE=${code}
+            -DEXPECTED_LINE=${expected_line}
+            -DMESSAGE=${message}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic.cmake
+    )
+endfunction()
+
+function(add_glsl_boundary name profile source stage)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DSTAGE=${stage}
+            -DGLSLANG_VALIDATOR=${GLSLANG_VALIDATOR}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_boundary.cmake
     )
 endfunction()
 
@@ -258,15 +289,15 @@ add_glsl_profile_failure(glslf_third_sampler glslf
     "3.used,.2.available")
 
 add_glsl_profile_failure(glslv_sampler glslv
-    tests/glsl/textures/vp_sampler.cg 6207 4
-    "1.used,.0.available")
+    tests/glsl/textures/vp_sampler.cg 6202 7
+    "texture.sampling")
 
 add_glsl_profile_failure(glslf_local_sampler glslf
-    tests/glsl/textures/fp_local_sampler.cg 5508 6
+    tests/glsl/textures/fp_local_sampler.cg 6208 6
     "samplers.must.be.uniforms")
 
 add_glsl_profile_failure(glslf_sampler_array glslf
-    tests/glsl/textures/fp_sampler_array.cg 5508 3
+    tests/glsl/textures/fp_sampler_array.cg 6208 3
     "sampler.arrays.or.aggregates")
 
 add_glsl_profile_failure(glslf_sampler_default glslf
@@ -274,15 +305,15 @@ add_glsl_profile_failure(glslf_sampler_default glslf
     "invalid.initialization")
 
 add_glsl_profile_failure(glslf_sampler_helper_return glslf
-    tests/glsl/textures/fp_sampler_helper_return.cg 5508 3
+    tests/glsl/textures/fp_sampler_helper_return.cg 6208 3
     "sampler.helper.result")
 
 add_glsl_profile_failure(glslf_sampler_conditional glslf
-    tests/glsl/textures/fp_sampler_conditional.cg 5508 7
+    tests/glsl/textures/fp_sampler_conditional.cg 6208 7
     "texture.sampler.argument.must.be.a.direct.bound.uniform")
 
 add_glsl_profile_failure(glslf_sampler_assignment glslf
-    tests/glsl/textures/fp_sampler_assignment.cg 5508 7
+    tests/glsl/textures/fp_sampler_assignment.cg 6208 7
     "opaque.sampler.expression")
 
 add_glsl_profile_failure(glslf_sampler_cast glslf
@@ -298,11 +329,11 @@ add_glsl_profile_failure(glslf_sampler_comparison glslf
     "must.be.numeric")
 
 add_glsl_profile_failure(glslf_sampler_helper_parameter glslf
-    tests/glsl/textures/fp_sampler_helper_parameter.cg 5508 1
+    tests/glsl/textures/fp_sampler_helper_parameter.cg 6208 1
     "samplers.must.be.uniforms")
 
 add_glsl_profile_failure(glslf_sampler_struct glslf
-    tests/glsl/textures/fp_sampler_struct.cg 5508 1
+    tests/glsl/textures/fp_sampler_struct.cg 6208 1
     "samplers.must.be.uniforms")
 
 add_glsl_profile_failure(glslf_invalid_texture_coord glslf
@@ -538,57 +569,100 @@ add_glsl_fixture(glslv_function_local_collision glslv
     tests/glsl/profile/vp_function_local_collision.cg
     tests/glsl/profile/vp_function_local_collision.expected)
 
+add_glsl_diagnostic(glslv_non_square_diagnostic glslv
+    tests/glsl/diagnostics/vp_non_square.cg 6209 2
+    "square.matrix,.found.*float4x3")
+add_glsl_diagnostic(glslv_texture_diagnostic glslv
+    tests/glsl/diagnostics/vp_texture.cg 6202 7
+    "glslv.profile.does.not.support.operation.*texture.sampling")
+add_glsl_diagnostic(glslv_bitwise_diagnostic glslv
+    tests/glsl/diagnostics/vp_bitwise.cg 6201 6
+    "does.not.support.operation.*bitwise.and")
+add_glsl_diagnostic(glslf_color1_diagnostic glslf
+    tests/glsl/diagnostics/fp_color1.cg 6203 1
+    "cannot.bind.semantic.*COLOR1")
+add_glsl_diagnostic(glslv_duplicate_semantic_diagnostic glslv
+    tests/glsl/diagnostics/vp_duplicate_semantic.cg 6204 3
+    "interface.conflicts.at.semantic.*ATTRIB0")
+add_glsl_diagnostic(glslv_attributes_limit glslv
+    tests/glsl/limits/vp_attributes17.cg 6207 18
+    "attribute.*17.used,.16.available")
+add_glsl_diagnostic(glslv_varyings_limit glslv
+    tests/glsl/limits/vp_varyings36.cg 6207 11
+    "varying.*36.used,.32.available")
+add_glsl_diagnostic(glslf_uniforms_limit glslf
+    tests/glsl/limits/fp_uniforms68.cg 6207 2
+    "fragment.uniform.components.*68.used,.64.available")
+add_glsl_diagnostic(glslf_samplers_limit glslf
+    tests/glsl/limits/fp_samplers3.cg 6207 5
+    "fragment.texture.units.*3.used,.2.available")
+add_glsl_diagnostic(glslv_intrinsic_diagnostic glslv
+    tests/glsl/diagnostics/vp_bad_intrinsic.cg 6206 1
+    "no.exact.intrinsic.*rsqrt")
+add_glsl_boundary(glslv_attributes_boundary glslv
+    tests/glsl/limits/vp_attributes16.cg vert)
+add_glsl_boundary(glslv_varyings_boundary glslv
+    tests/glsl/limits/vp_varyings32.cg vert)
+add_glsl_boundary(glslv_uniforms_boundary glslv
+    tests/glsl/limits/vp_uniform_components_512.cg vert)
+add_glsl_boundary(glslf_uniforms_boundary glslf
+    tests/glsl/limits/fp_uniform_components_64.cg frag)
+add_glsl_boundary(glslf_samplers_boundary glslf
+    tests/glsl/textures/fp_two_samplers.cg frag)
+add_glsl_boundary(glslf_color_boundary glslf
+    tests/glsl/profile/fp_passthrough.cg frag)
+
 add_glsl_failure(glslv_unsupported_lowering
     tests/glsl/profile/vp_unsupported_operator.cg 9 remainder)
-add_glsl_failure(glslv_discard
-    tests/glsl/diagnostics/vp_discard.cg 8 "discard.in.vertex.shader")
+add_glsl_profile_failure(glslv_discard glslv
+    tests/glsl/diagnostics/vp_discard.cg 6202 8 discard)
 add_glsl_profile_failure(glslv_impure_array_aggregate glslv
-    tests/glsl/diagnostics/vp_impure_array_aggregate.cg 5508 28
+    tests/glsl/diagnostics/vp_impure_array_aggregate.cg 6201 28
     "side-effecting.aggregate.with.arrays")
 add_glsl_profile_failure(glslv_builtin_position_width glslv
-    tests/glsl/diagnostics/vp_builtin_position_width.cg 5108 2 semantic)
+    tests/glsl/diagnostics/vp_builtin_position_width.cg 6203 2 POSITION)
 add_glsl_profile_failure(glslf_builtin_position_width glslf
-    tests/glsl/diagnostics/fp_builtin_position_width.cg 5108 5 semantic)
+    tests/glsl/diagnostics/fp_builtin_position_width.cg 6203 5 WPOS)
 add_glsl_profile_failure(glslf_builtin_color_width glslf
-    tests/glsl/diagnostics/fp_builtin_color_width.cg 5108 2 semantic)
+    tests/glsl/diagnostics/fp_builtin_color_width.cg 6203 2 COLOR)
 add_glsl_profile_failure(glslf_builtin_depth_vector glslf
-    tests/glsl/diagnostics/fp_builtin_depth_vector.cg 5108 2 semantic)
+    tests/glsl/diagnostics/fp_builtin_depth_vector.cg 6203 2 DEPTH)
 add_glsl_profile_failure(glslv_duplicate_input glslv
-    tests/glsl/diagnostics/vp_duplicate_input.cg 5508 6
-    "duplicate.interface")
+    tests/glsl/diagnostics/vp_duplicate_input.cg 6204 6
+    "interface.conflicts")
 add_glsl_profile_failure(glslv_duplicate_output glslv
-    tests/glsl/diagnostics/vp_duplicate_output.cg 5508 3
-    "duplicate.interface")
+    tests/glsl/diagnostics/vp_duplicate_output.cg 6204 3
+    "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_input glslf
-    tests/glsl/diagnostics/fp_duplicate_input.cg 5508 6
-    "duplicate.interface")
+    tests/glsl/diagnostics/fp_duplicate_input.cg 6204 6
+    "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_builtin_input glslf
-    tests/glsl/diagnostics/fp_duplicate_builtin_input.cg 5508 6
-    "duplicate.interface")
+    tests/glsl/diagnostics/fp_duplicate_builtin_input.cg 6204 6
+    "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_output glslf
-    tests/glsl/diagnostics/fp_duplicate_output.cg 5508 3
-    "duplicate.interface")
+    tests/glsl/diagnostics/fp_duplicate_output.cg 6204 3
+    "interface.conflicts")
 add_glsl_profile_failure(glslf_numeric_discard glslf
     tests/glsl/diagnostics/fp_numeric_discard.cg 1018 8
     "Boolean.expression.expected")
 add_glsl_profile_failure(glslv_duplicate_exact_input_same glslv
-    tests/glsl/diagnostics/vp_duplicate_exact_input_same.cg 5508 6
-    "duplicate.interface")
+    tests/glsl/diagnostics/vp_duplicate_exact_input_same.cg 6204 6
+    "interface.conflicts")
 add_glsl_profile_failure(glslv_duplicate_exact_input_type glslv
-    tests/glsl/diagnostics/vp_duplicate_exact_input_type.cg 5508 6
-    "duplicate.interface")
+    tests/glsl/diagnostics/vp_duplicate_exact_input_type.cg 6204 6
+    "interface.conflicts")
 add_glsl_profile_failure(glslv_duplicate_exact_output glslv
-    tests/glsl/diagnostics/vp_duplicate_exact_output.cg 5508 4
-    "duplicate.interface")
+    tests/glsl/diagnostics/vp_duplicate_exact_output.cg 6204 4
+    "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_exact_input_same glslf
-    tests/glsl/diagnostics/fp_duplicate_exact_input_same.cg 5508 6
-    "duplicate.interface")
+    tests/glsl/diagnostics/fp_duplicate_exact_input_same.cg 6204 6
+    "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_exact_input_type glslf
-    tests/glsl/diagnostics/fp_duplicate_exact_input_type.cg 5508 6
-    "duplicate.interface")
+    tests/glsl/diagnostics/fp_duplicate_exact_input_type.cg 6204 6
+    "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_exact_output glslf
-    tests/glsl/diagnostics/fp_duplicate_exact_output.cg 5508 3
-    "duplicate.interface")
+    tests/glsl/diagnostics/fp_duplicate_exact_output.cg 6204 3
+    "interface.conflicts")
 add_glsl_failure(glslv_constant_remainder
     tests/glsl/diagnostics/vp_constant_remainder.cg 6 remainder)
 add_glsl_failure(glslv_constant_shift_left
@@ -607,10 +681,10 @@ add_glsl_failure(glslv_nonfinite_infinity
     tests/glsl/diagnostics/vp_nonfinite_infinity.cg 6 non-finite)
 add_glsl_failure(glslv_nonfinite_nan
     tests/glsl/diagnostics/vp_nonfinite_nan.cg 6 non-finite)
-add_glsl_failure(glslv_nonsquare_matrix
-    tests/glsl/diagnostics/vp_nonsquare_matrix.cg 5 "non-square GLSL matrix")
-add_glsl_failure(glslv_matrix_bool_constructor
-    tests/glsl/diagnostics/vp_matrix_bool_constructor.cg 9
+add_glsl_profile_failure(glslv_nonsquare_matrix glslv
+    tests/glsl/diagnostics/vp_nonsquare_matrix.cg 6209 5 "square.matrix")
+add_glsl_profile_failure(glslv_matrix_bool_constructor glslv
+    tests/glsl/diagnostics/vp_matrix_bool_constructor.cg 6200 9
     "matrix constructor argument type")
 add_glsl_failure(glslv_aggregate_default_int_range
     tests/glsl/diagnostics/vp_aggregate_default_int_range.cg 6
@@ -765,7 +839,7 @@ add_test(
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslf
         -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/glsl/diagnostics/face_vector.cg
-        -DCODE=5108
+        -DCODE=6203
         -P ${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/check_diagnostic.cmake
 )
 

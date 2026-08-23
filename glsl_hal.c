@@ -335,7 +335,7 @@ static int IsValidOperator_glsl(SourceLoc *loc, int name, int op, int subop)
     reason = GlslUnsupportedOperatorReason(op);
     if (reason == NULL)
         return 1;
-    SemanticError(loc, ERROR_S_UNSUPPORTED_PROFILE_OP, reason);
+    SemanticError(loc, ERROR_S_GLSL_UNSUPPORTED_OPERATION, reason);
     return 0;
 }
 
@@ -402,8 +402,7 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
             if (index < semantic->firstIndex ||
                 index >= semantic->firstIndex + semantic->count)
             {
-                SemanticError(loc, ERROR_S_SEMANTICS_INDEX_TOO_BIG,
-                              semanticName);
+                SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
                 return 0;
             }
 
@@ -411,17 +410,22 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
             if (IsScalar(type)) {
                 len = 1;
             } else if (!IsVector(type, &len)) {
-                SemanticError(loc, ERROR_S_SEM_VAR_NOT_SCALAR_VECTOR,
-                              GetAtomString(atable, fSymb->name));
+                SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
                 return 0;
             }
             base = GetBase(type);
             if (semantic->interfaceKind == GLSL_INTERFACE_FRONT_FACING) {
-                if (!IsScalar(type) || base != TYPE_BASE_BOOLEAN)
+                if (!IsScalar(type) || base != TYPE_BASE_BOOLEAN) {
+                    SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                  semanticName);
                     return 0;
+                }
             } else {
-                if (base != TYPE_BASE_FLOAT)
+                if (base != TYPE_BASE_FLOAT) {
+                    SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                  semanticName);
                     return 0;
+                }
                 switch (semantic->interfaceKind) {
                 case GLSL_INTERFACE_POSITION:
                 case GLSL_INTERFACE_POINT_SIZE:
@@ -431,11 +435,19 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
                     if ((semantic->size == 1 && !IsScalar(type)) ||
                         (semantic->size > 1 &&
                          (!IsVector(type, &len) ||
-                          len != semantic->size))) return 0;
+                          len != semantic->size)))
+                    {
+                        SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                      semanticName);
+                        return 0;
+                    }
                     break;
                 default:
-                    if (len > semantic->size)
+                    if (len > semantic->size) {
+                        SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                      semanticName);
                         return 0;
+                    }
                     break;
                 }
             }
@@ -443,8 +455,10 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
             sprintf(registerName, "%s%d", semantic->canonicalRoot, index);
             rname = AddAtom(atable, registerName);
             cid = IsOutVal ? profile->outputCid : profile->inputCid;
-            if (!GetConnectorRegister_glsl(cid, 0, rname, fBind))
+            if (!GetConnectorRegister_glsl(cid, 0, rname, fBind)) {
+                SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
                 return 0;
+            }
 
             fBind->none.properties |= BIND_VARYING;
             fSymb->properties |= SYMB_IS_CONNECTOR_REGISTER |
@@ -461,6 +475,7 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
             return 1;
         }
     }
+    SemanticError(loc, ERROR_S_GLSL_SEMANTIC, semanticName);
     return 0;
 }
 
@@ -591,23 +606,34 @@ static int CheckInternalFunction_glsl(Symbol *symbol, int *group)
 
     if (symbol == NULL || symbol->kind != FUNCTION_S ||
         symbol->type == NULL || group == NULL ||
-        GetCategory(symbol->type) != TYPE_CATEGORY_FUNCTION ||
-        !GlslResolvedType(symbol->type->fun.rettype, &result))
+        GetCategory(symbol->type) != TYPE_CATEGORY_FUNCTION)
     {
         return 0;
     }
     name = GetAtomString(atable, symbol->name);
+    if (!GlslIsBuiltinName(name))
+        return 0;
+    if (!GlslResolvedType(symbol->type->fun.rettype, &result)) {
+        SemanticError(&symbol->loc, ERROR_S_GLSL_INTRINSIC, name);
+        return 0;
+    }
     count = 0;
     for (param = symbol->type->fun.paramtypes; param != NULL;
          param = param->next)
     {
         if (count >= (int) (sizeof(params) / sizeof(params[0])) ||
-            !GlslResolvedType(param->type, &params[count])) return 0;
+            !GlslResolvedType(param->type, &params[count]))
+        {
+            SemanticError(&symbol->loc, ERROR_S_GLSL_INTRINSIC, name);
+            return 0;
+        }
         count++;
     }
     builtin = GlslLookupBuiltin(name, &result, params, count);
-    if (builtin == GLSL_BUILTIN_NONE)
+    if (builtin == GLSL_BUILTIN_NONE) {
+        SemanticError(&symbol->loc, ERROR_S_GLSL_INTRINSIC, name);
         return 0;
+    }
     *group = GLSL_BUILTIN_GROUP;
     return (int) builtin;
 }
@@ -669,15 +695,51 @@ static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
         } else {
             failureReason = module.errorReason != NULL ?
                             module.errorReason : "GLSL 1.10 program";
-            SemanticError(&failureLoc, ERROR_S_UNSUPPORTED_PROFILE_OP,
-                          failureReason);
+            switch (module.errorKind) {
+            case GLSL_ERROR_UNSUPPORTED_TYPE:
+                SemanticError(&failureLoc, ERROR_S_GLSL_UNSUPPORTED_TYPE,
+                              failureReason);
+                break;
+            case GLSL_ERROR_STAGE_OPERATION:
+                SemanticError(&failureLoc, ERROR_SS_GLSL_STAGE_OPERATION,
+                              profile->name, failureReason);
+                break;
+            case GLSL_ERROR_INTERFACE_CONFLICT:
+                SemanticError(&failureLoc,
+                              ERROR_S_GLSL_INTERFACE_CONFLICT,
+                              failureReason);
+                break;
+            case GLSL_ERROR_NAME_COLLISION:
+                SemanticError(&failureLoc, ERROR_S_GLSL_NAME_COLLISION,
+                              failureReason);
+                break;
+            case GLSL_ERROR_INTRINSIC:
+                SemanticError(&failureLoc, ERROR_S_GLSL_INTRINSIC,
+                              failureReason);
+                break;
+            case GLSL_ERROR_SAMPLER:
+                SemanticError(&failureLoc, ERROR_S_GLSL_SAMPLER,
+                              failureReason);
+                break;
+            case GLSL_ERROR_NON_SQUARE_MATRIX:
+                SemanticError(&failureLoc,
+                              ERROR_S_GLSL_NON_SQUARE_MATRIX,
+                              failureReason);
+                break;
+            default:
+                SemanticError(&failureLoc,
+                              ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                              failureReason);
+                break;
+            }
         }
         return 0;
     }
     errorCount = GetErrorCount();
     if (!GlslWriteModule(Cg->options.outfd, &module)) {
         if (GetErrorCount() == errorCount) {
-            SemanticError(&program->loc, ERROR_S_UNSUPPORTED_PROFILE_OP,
+            SemanticError(&program->loc,
+                          ERROR_S_GLSL_UNSUPPORTED_OPERATION,
                           "GLSL 1.10 module writer");
         }
         return 0;
