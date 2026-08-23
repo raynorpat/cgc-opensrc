@@ -1488,12 +1488,12 @@ int GetConstIndex(expr *fExpr)
         switch (fExpr->co.op) {
         case ICONST_OP:
         case BCONST_OP:
-            return fExpr->co.val[0].i;
+            return (int) fExpr->co.val[0].value.i;
             break;
         case FCONST_OP:
         case HCONST_OP:
         case XCONST_OP:
-            return (int) fExpr->co.val[0].f;
+            return (int) fExpr->co.val[0].value.f;
             break;
         default:
             break;

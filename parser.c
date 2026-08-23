@@ -118,9 +118,10 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define NO_PARSER 1
 #include "slglobals.h"
+#include "cg_numeric.h"
 
 
-#line 124 "parser.c"
+#line 125 "parser.c"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -725,29 +726,29 @@ static const yytype_int8 yytranslate[] =
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_int16 yyrline[] =
 {
-       0,   256,   256,   257,   264,   266,   269,   271,   273,   277,
-     284,   286,   291,   293,   295,   297,   299,   301,   303,   308,
-     310,   312,   314,   316,   318,   320,   324,   326,   330,   332,
-     340,   342,   344,   346,   348,   350,   352,   354,   356,   358,
-     360,   362,   364,   366,   368,   370,   372,   374,   376,   388,
-     396,   404,   406,   414,   416,   424,   426,   428,   437,   439,
-     441,   445,   450,   452,   456,   457,   460,   464,   465,   468,
-     487,   487,   492,   493,   500,   502,   506,   508,   512,   514,
-     516,   518,   520,   524,   529,   530,   532,   549,   551,   555,
-     557,   562,   563,   566,   572,   585,   587,   589,   593,   595,
-     607,   609,   613,   621,   622,   623,   625,   633,   634,   636,
-     638,   640,   642,   647,   648,   651,   653,   657,   659,   667,
-     668,   670,   672,   674,   676,   678,   686,   690,   698,   699,
-     701,   703,   711,   712,   714,   722,   723,   725,   733,   734,
-     736,   738,   740,   748,   749,   751,   759,   760,   768,   769,
-     777,   778,   786,   787,   795,   796,   804,   805,   809,   817,
-     828,   830,   834,   842,   843,   846,   847,   848,   849,   850,
-     851,   852,   855,   856,   863,   865,   873,   875,   883,   887,
-     889,   893,   901,   903,   907,   911,   919,   920,   924,   925,
-     933,   934,   938,   940,   942,   944,   946,   948,   950,   958,
-     960,   962,   966,   968,   973,   977,   979,   982,   983,   997,
-     999,  1006,  1008,  1016,  1019,  1022,  1025,  1028,  1031,  1033,
-    1041,  1043,  1047,  1051,  1055
+       0,   258,   258,   259,   266,   268,   271,   273,   275,   279,
+     286,   288,   293,   295,   297,   299,   301,   303,   305,   310,
+     312,   314,   316,   318,   320,   322,   326,   328,   332,   334,
+     342,   344,   346,   348,   350,   352,   354,   356,   358,   360,
+     362,   364,   366,   368,   370,   372,   374,   376,   378,   390,
+     398,   406,   408,   416,   418,   426,   428,   430,   439,   441,
+     443,   447,   452,   454,   458,   459,   462,   466,   467,   470,
+     489,   489,   494,   495,   502,   504,   508,   510,   514,   516,
+     518,   520,   522,   526,   531,   532,   534,   551,   553,   557,
+     559,   564,   565,   568,   574,   587,   589,   591,   595,   597,
+     609,   611,   615,   623,   624,   625,   627,   635,   636,   638,
+     640,   642,   644,   649,   650,   653,   655,   659,   661,   669,
+     670,   672,   674,   676,   678,   680,   688,   692,   700,   701,
+     703,   705,   713,   714,   716,   724,   725,   727,   735,   736,
+     738,   740,   742,   750,   751,   753,   761,   762,   770,   771,
+     779,   780,   788,   789,   797,   798,   806,   807,   811,   819,
+     830,   832,   836,   844,   845,   848,   849,   850,   851,   852,
+     853,   854,   857,   858,   865,   867,   875,   877,   885,   889,
+     891,   895,   903,   905,   909,   913,   921,   922,   926,   927,
+     935,   936,   940,   942,   944,   946,   948,   950,   952,   960,
+     962,   964,   968,   970,   975,   979,   981,   984,   985,   999,
+    1001,  1008,  1010,  1018,  1021,  1024,  1027,  1030,  1033,  1035,
+    1045,  1047,  1049,  1051,  1053
 };
 #endif
 
@@ -1874,1002 +1875,1002 @@ yyreduce:
   switch (yyn)
     {
   case 4: /* external_declaration: declaration  */
-#line 265 "parser.y"
+#line 267 "parser.y"
                               { (yyval.dummy) = GlobalInitStatements(CurrentScope, (yyvsp[0].sc_stmt)); }
-#line 1880 "parser.c"
+#line 1881 "parser.c"
     break;
 
   case 6: /* declaration: declaration_specifiers ';'  */
-#line 270 "parser.y"
+#line 272 "parser.y"
                               { (yyval.sc_stmt) = NULL; }
-#line 1886 "parser.c"
+#line 1887 "parser.c"
     break;
 
   case 7: /* declaration: declaration_specifiers init_declarator_list ';'  */
-#line 272 "parser.y"
+#line 274 "parser.y"
                               { (yyval.sc_stmt) = (yyvsp[-1].sc_stmt); }
-#line 1892 "parser.c"
+#line 1893 "parser.c"
     break;
 
   case 8: /* declaration: ERROR_SY ';'  */
-#line 274 "parser.y"
+#line 276 "parser.y"
                               { RecordErrorPos(Cg->tokenLoc); (yyval.sc_stmt) = NULL; }
-#line 1898 "parser.c"
+#line 1899 "parser.c"
     break;
 
   case 9: /* abstract_declaration: abstract_declaration_specifiers abstract_declarator  */
-#line 278 "parser.y"
+#line 280 "parser.y"
                               { (yyval.sc_decl) = (yyvsp[0].sc_decl); }
-#line 1904 "parser.c"
+#line 1905 "parser.c"
     break;
 
   case 10: /* declaration_specifiers: abstract_declaration_specifiers  */
-#line 285 "parser.y"
+#line 287 "parser.y"
                               { (yyval.sc_type) = (yyvsp[0].sc_type); }
-#line 1910 "parser.c"
+#line 1911 "parser.c"
     break;
 
   case 11: /* declaration_specifiers: TYPEDEF_SY abstract_declaration_specifiers  */
-#line 287 "parser.y"
+#line 289 "parser.y"
                               { SetTypeMisc(Cg->tokenLoc, &CurrentDeclTypeSpecs, TYPE_MISC_TYPEDEF); (yyval.sc_type) = (yyvsp[0].sc_type); }
-#line 1916 "parser.c"
+#line 1917 "parser.c"
     break;
 
   case 12: /* abstract_declaration_specifiers: abstract_declaration_specifiers2  */
-#line 292 "parser.y"
+#line 294 "parser.y"
                               { (yyval.sc_type) = (yyvsp[0].sc_type); }
-#line 1922 "parser.c"
+#line 1923 "parser.c"
     break;
 
   case 13: /* abstract_declaration_specifiers: type_qualifier abstract_declaration_specifiers  */
-#line 294 "parser.y"
+#line 296 "parser.y"
                               { SetTypeQualifiers(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[-1].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1928 "parser.c"
+#line 1929 "parser.c"
     break;
 
   case 14: /* abstract_declaration_specifiers: storage_class abstract_declaration_specifiers  */
-#line 296 "parser.y"
+#line 298 "parser.y"
                               { SetStorageClass(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[-1].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1934 "parser.c"
+#line 1935 "parser.c"
     break;
 
   case 15: /* abstract_declaration_specifiers: type_domain abstract_declaration_specifiers  */
-#line 298 "parser.y"
+#line 300 "parser.y"
                               { SetTypeDomain(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[-1].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1940 "parser.c"
+#line 1941 "parser.c"
     break;
 
   case 16: /* abstract_declaration_specifiers: in_out abstract_declaration_specifiers  */
-#line 300 "parser.y"
+#line 302 "parser.y"
                               { SetTypeQualifiers(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[-1].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1946 "parser.c"
+#line 1947 "parser.c"
     break;
 
   case 17: /* abstract_declaration_specifiers: function_specifier abstract_declaration_specifiers  */
-#line 302 "parser.y"
+#line 304 "parser.y"
                               { SetTypeMisc(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[-1].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1952 "parser.c"
+#line 1953 "parser.c"
     break;
 
   case 18: /* abstract_declaration_specifiers: PACKED_SY abstract_declaration_specifiers  */
-#line 304 "parser.y"
+#line 306 "parser.y"
                               { SetTypePacked(Cg->tokenLoc, &CurrentDeclTypeSpecs); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1958 "parser.c"
+#line 1959 "parser.c"
     break;
 
   case 19: /* abstract_declaration_specifiers2: type_specifier  */
-#line 309 "parser.y"
+#line 311 "parser.y"
                               { (yyval.sc_type) = *SetDType(&CurrentDeclTypeSpecs, (yyvsp[0].sc_ptype)); }
-#line 1964 "parser.c"
+#line 1965 "parser.c"
     break;
 
   case 20: /* abstract_declaration_specifiers2: abstract_declaration_specifiers2 type_qualifier  */
-#line 311 "parser.y"
+#line 313 "parser.y"
                               { SetTypeQualifiers(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[0].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1970 "parser.c"
+#line 1971 "parser.c"
     break;
 
   case 21: /* abstract_declaration_specifiers2: abstract_declaration_specifiers2 storage_class  */
-#line 313 "parser.y"
+#line 315 "parser.y"
                               { SetStorageClass(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[0].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1976 "parser.c"
+#line 1977 "parser.c"
     break;
 
   case 22: /* abstract_declaration_specifiers2: abstract_declaration_specifiers2 type_domain  */
-#line 315 "parser.y"
+#line 317 "parser.y"
                               { SetTypeDomain(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[0].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1982 "parser.c"
+#line 1983 "parser.c"
     break;
 
   case 23: /* abstract_declaration_specifiers2: abstract_declaration_specifiers2 in_out  */
-#line 317 "parser.y"
+#line 319 "parser.y"
                               { SetTypeQualifiers(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[0].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1988 "parser.c"
+#line 1989 "parser.c"
     break;
 
   case 24: /* abstract_declaration_specifiers2: abstract_declaration_specifiers2 function_specifier  */
-#line 319 "parser.y"
+#line 321 "parser.y"
                               { SetTypeMisc(Cg->tokenLoc, &CurrentDeclTypeSpecs, (yyvsp[0].sc_int)); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 1994 "parser.c"
+#line 1995 "parser.c"
     break;
 
   case 25: /* abstract_declaration_specifiers2: abstract_declaration_specifiers2 PACKED_SY  */
-#line 321 "parser.y"
+#line 323 "parser.y"
                               { SetTypePacked(Cg->tokenLoc, &CurrentDeclTypeSpecs); (yyval.sc_type) = CurrentDeclTypeSpecs; }
-#line 2000 "parser.c"
+#line 2001 "parser.c"
     break;
 
   case 26: /* init_declarator_list: init_declarator  */
-#line 325 "parser.y"
+#line 327 "parser.y"
                               { (yyval.sc_stmt) = (yyvsp[0].sc_stmt); }
-#line 2006 "parser.c"
+#line 2007 "parser.c"
     break;
 
   case 27: /* init_declarator_list: init_declarator_list ',' init_declarator  */
-#line 327 "parser.y"
+#line 329 "parser.y"
                               { (yyval.sc_stmt) = AddStmt((yyvsp[-2].sc_stmt), (yyvsp[0].sc_stmt)); }
-#line 2012 "parser.c"
+#line 2013 "parser.c"
     break;
 
   case 28: /* init_declarator: declarator  */
-#line 331 "parser.y"
+#line 333 "parser.y"
                               { (yyval.sc_stmt) = Init_Declarator(Cg->tokenLoc, CurrentScope, (yyvsp[0].sc_decl), NULL); }
-#line 2018 "parser.c"
+#line 2019 "parser.c"
     break;
 
   case 29: /* init_declarator: declarator '=' initializer  */
-#line 333 "parser.y"
+#line 335 "parser.y"
                               { (yyval.sc_stmt) = Init_Declarator(Cg->tokenLoc, CurrentScope, (yyvsp[-2].sc_decl), (yyvsp[0].sc_expr)); }
-#line 2024 "parser.c"
+#line 2025 "parser.c"
     break;
 
   case 30: /* type_specifier: INT_SY  */
-#line 341 "parser.y"
+#line 343 "parser.y"
                               { (yyval.sc_ptype) = LookUpTypeSymbol(NULL, INT_SY); }
-#line 2030 "parser.c"
+#line 2031 "parser.c"
     break;
 
   case 31: /* type_specifier: FLOAT_SY  */
-#line 343 "parser.y"
+#line 345 "parser.y"
                               { (yyval.sc_ptype) = LookUpTypeSymbol(NULL, FLOAT_SY); }
-#line 2036 "parser.c"
+#line 2037 "parser.c"
     break;
 
   case 32: /* type_specifier: VOID_SY  */
-#line 345 "parser.y"
+#line 347 "parser.y"
                               { (yyval.sc_ptype) = LookUpTypeSymbol(NULL, VOID_SY); }
-#line 2042 "parser.c"
+#line 2043 "parser.c"
     break;
 
   case 33: /* type_specifier: BOOLEAN_SY  */
-#line 347 "parser.y"
+#line 349 "parser.y"
                               { (yyval.sc_ptype) = LookUpTypeSymbol(NULL, BOOLEAN_SY); }
-#line 2048 "parser.c"
+#line 2049 "parser.c"
     break;
 
   case 34: /* type_specifier: TEXOBJ_SY  */
-#line 349 "parser.y"
+#line 351 "parser.y"
                               { (yyval.sc_ptype) = LookUpTypeSymbol(NULL, TEXOBJ_SY); }
-#line 2054 "parser.c"
+#line 2055 "parser.c"
     break;
 
   case 35: /* type_specifier: CHAR_SY  */
-#line 351 "parser.y"
+#line 353 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 0); }
-#line 2060 "parser.c"
+#line 2061 "parser.c"
     break;
 
   case 36: /* type_specifier: SHORT_SY  */
-#line 353 "parser.y"
+#line 355 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 0); }
-#line 2066 "parser.c"
+#line 2067 "parser.c"
     break;
 
   case 37: /* type_specifier: LONG_SY  */
-#line 355 "parser.y"
+#line 357 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 0); }
-#line 2072 "parser.c"
+#line 2073 "parser.c"
     break;
 
   case 38: /* type_specifier: HALF_SY  */
-#line 357 "parser.y"
+#line 359 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 0); }
-#line 2078 "parser.c"
+#line 2079 "parser.c"
     break;
 
   case 39: /* type_specifier: FIXED_SY  */
-#line 359 "parser.y"
+#line 361 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 0); }
-#line 2084 "parser.c"
+#line 2085 "parser.c"
     break;
 
   case 40: /* type_specifier: DOUBLE_SY  */
-#line 361 "parser.y"
+#line 363 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 0); }
-#line 2090 "parser.c"
+#line 2091 "parser.c"
     break;
 
   case 41: /* type_specifier: UNSIGNED_SY  */
-#line 363 "parser.y"
+#line 365 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 0); }
-#line 2096 "parser.c"
+#line 2097 "parser.c"
     break;
 
   case 42: /* type_specifier: UNSIGNED_SY CHAR_SY  */
-#line 365 "parser.y"
+#line 367 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 1); }
-#line 2102 "parser.c"
+#line 2103 "parser.c"
     break;
 
   case 43: /* type_specifier: UNSIGNED_SY SHORT_SY  */
-#line 367 "parser.y"
+#line 369 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 1); }
-#line 2108 "parser.c"
+#line 2109 "parser.c"
     break;
 
   case 44: /* type_specifier: UNSIGNED_SY INT_SY  */
-#line 369 "parser.y"
+#line 371 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 1); }
-#line 2114 "parser.c"
+#line 2115 "parser.c"
     break;
 
   case 45: /* type_specifier: UNSIGNED_SY LONG_SY  */
-#line 371 "parser.y"
+#line 373 "parser.y"
                               { (yyval.sc_ptype) = ResolveScalarTypeSpecifier(Cg->tokenLoc, (yyvsp[0].sc_token), 1); }
-#line 2120 "parser.c"
+#line 2121 "parser.c"
     break;
 
   case 46: /* type_specifier: struct_or_connector_specifier  */
-#line 373 "parser.y"
+#line 375 "parser.y"
                               { (yyval.sc_ptype) = (yyvsp[0].sc_ptype); }
-#line 2126 "parser.c"
+#line 2127 "parser.c"
     break;
 
   case 47: /* type_specifier: type_identifier  */
-#line 375 "parser.y"
+#line 377 "parser.y"
                               { (yyval.sc_ptype) = LookUpTypeSymbol(NULL, (yyvsp[0].sc_ident)); }
-#line 2132 "parser.c"
+#line 2133 "parser.c"
     break;
 
   case 48: /* type_specifier: error  */
-#line 377 "parser.y"
+#line 379 "parser.y"
                               {
                                 SemanticParseError(Cg->tokenLoc, ERROR_S_TYPE_NAME_EXPECTED,
                                                    GetAtomString(atable, Cg->mostRecentToken /* yychar */));
                                 (yyval.sc_ptype) = UndefinedType;
                               }
-#line 2142 "parser.c"
+#line 2143 "parser.c"
     break;
 
   case 49: /* type_qualifier: CONST_SY  */
-#line 389 "parser.y"
+#line 391 "parser.y"
                               { (yyval.sc_int) = TYPE_QUALIFIER_CONST; }
-#line 2148 "parser.c"
+#line 2149 "parser.c"
     break;
 
   case 50: /* type_domain: UNIFORM_SY  */
-#line 397 "parser.y"
+#line 399 "parser.y"
                               { (yyval.sc_int) = TYPE_DOMAIN_UNIFORM; }
-#line 2154 "parser.c"
+#line 2155 "parser.c"
     break;
 
   case 51: /* storage_class: STATIC_SY  */
-#line 405 "parser.y"
+#line 407 "parser.y"
                               { (yyval.sc_int) = (int) SC_STATIC; }
-#line 2160 "parser.c"
+#line 2161 "parser.c"
     break;
 
   case 52: /* storage_class: EXTERN_SY  */
-#line 407 "parser.y"
+#line 409 "parser.y"
                               { (yyval.sc_int) = (int) SC_EXTERN; }
-#line 2166 "parser.c"
+#line 2167 "parser.c"
     break;
 
   case 53: /* function_specifier: INLINE_SY  */
-#line 415 "parser.y"
+#line 417 "parser.y"
                               { (yyval.sc_int) = TYPE_MISC_INLINE; }
-#line 2172 "parser.c"
+#line 2173 "parser.c"
     break;
 
   case 54: /* function_specifier: INTERNAL_SY  */
-#line 417 "parser.y"
+#line 419 "parser.y"
                               { (yyval.sc_int) = TYPE_MISC_INTERNAL; }
-#line 2178 "parser.c"
+#line 2179 "parser.c"
     break;
 
   case 55: /* in_out: IN_SY  */
-#line 425 "parser.y"
+#line 427 "parser.y"
                               { (yyval.sc_int) = TYPE_QUALIFIER_IN; }
-#line 2184 "parser.c"
+#line 2185 "parser.c"
     break;
 
   case 56: /* in_out: OUT_SY  */
-#line 427 "parser.y"
+#line 429 "parser.y"
                               { (yyval.sc_int) = TYPE_QUALIFIER_OUT; }
-#line 2190 "parser.c"
+#line 2191 "parser.c"
     break;
 
   case 57: /* in_out: INOUT_SY  */
-#line 429 "parser.y"
+#line 431 "parser.y"
                               { (yyval.sc_int) = TYPE_QUALIFIER_INOUT; }
-#line 2196 "parser.c"
+#line 2197 "parser.c"
     break;
 
   case 58: /* struct_or_connector_specifier: struct_or_connector_header struct_compound_header struct_declaration_list '}'  */
-#line 438 "parser.y"
+#line 440 "parser.y"
                               { (yyval.sc_ptype) = SetStructMembers(Cg->tokenLoc, (yyvsp[-3].sc_ptype), PopScope()); }
-#line 2202 "parser.c"
+#line 2203 "parser.c"
     break;
 
   case 59: /* struct_or_connector_specifier: untagged_struct_header struct_compound_header struct_declaration_list '}'  */
-#line 440 "parser.y"
+#line 442 "parser.y"
                               { (yyval.sc_ptype) = SetStructMembers(Cg->tokenLoc, (yyvsp[-3].sc_ptype), PopScope()); }
-#line 2208 "parser.c"
+#line 2209 "parser.c"
     break;
 
   case 60: /* struct_or_connector_specifier: struct_or_connector_header  */
-#line 442 "parser.y"
+#line 444 "parser.y"
                               { (yyval.sc_ptype) = (yyvsp[0].sc_ptype); }
-#line 2214 "parser.c"
+#line 2215 "parser.c"
     break;
 
   case 61: /* struct_compound_header: compound_header  */
-#line 446 "parser.y"
+#line 448 "parser.y"
                               { CurrentScope->IsStructScope = 1; (yyval.dummy) = (yyvsp[0].dummy); }
-#line 2220 "parser.c"
+#line 2221 "parser.c"
     break;
 
   case 62: /* struct_or_connector_header: STRUCT_SY struct_identifier  */
-#line 451 "parser.y"
+#line 453 "parser.y"
                               { (yyval.sc_ptype) = StructHeader(Cg->tokenLoc, CurrentScope, 0, (yyvsp[0].sc_ident)); }
-#line 2226 "parser.c"
+#line 2227 "parser.c"
     break;
 
   case 63: /* struct_or_connector_header: STRUCT_SY struct_identifier ':' semantics_identifier  */
-#line 453 "parser.y"
+#line 455 "parser.y"
                               { (yyval.sc_ptype) = StructHeader(Cg->tokenLoc, CurrentScope, (yyvsp[0].sc_ident), (yyvsp[-2].sc_ident)); }
-#line 2232 "parser.c"
+#line 2233 "parser.c"
     break;
 
   case 66: /* untagged_struct_header: STRUCT_SY  */
-#line 461 "parser.y"
+#line 463 "parser.y"
                               { (yyval.sc_ptype) = StructHeader(Cg->tokenLoc, CurrentScope, 0, 0); }
-#line 2238 "parser.c"
+#line 2239 "parser.c"
     break;
 
   case 69: /* struct_declaration: declaration  */
-#line 469 "parser.y"
+#line 471 "parser.y"
                             { (yyval.sc_stmt) = (yyvsp[0].sc_stmt); }
-#line 2244 "parser.c"
+#line 2245 "parser.c"
     break;
 
   case 70: /* $@1: %empty  */
-#line 487 "parser.y"
+#line 489 "parser.y"
                               { PushScope(NewScope()); }
-#line 2250 "parser.c"
+#line 2251 "parser.c"
     break;
 
   case 71: /* annotation: '<' $@1 annotation_decl_list '>'  */
-#line 488 "parser.y"
+#line 490 "parser.y"
                               { (yyval.sc_stmt) = (yyvsp[-1].sc_stmt); PopScope(); }
-#line 2256 "parser.c"
+#line 2257 "parser.c"
     break;
 
   case 72: /* annotation_decl_list: %empty  */
-#line 492 "parser.y"
+#line 494 "parser.y"
                               { (yyval.sc_stmt) = 0; }
-#line 2262 "parser.c"
+#line 2263 "parser.c"
     break;
 
   case 74: /* declarator: semantic_declarator  */
-#line 501 "parser.y"
+#line 503 "parser.y"
                               { (yyval.sc_decl) = (yyvsp[0].sc_decl); }
-#line 2268 "parser.c"
+#line 2269 "parser.c"
     break;
 
   case 75: /* declarator: semantic_declarator annotation  */
-#line 503 "parser.y"
+#line 505 "parser.y"
                               { (yyval.sc_decl) = (yyvsp[-1].sc_decl); }
-#line 2274 "parser.c"
+#line 2275 "parser.c"
     break;
 
   case 76: /* semantic_declarator: basic_declarator  */
-#line 507 "parser.y"
+#line 509 "parser.y"
                               { (yyval.sc_decl) = Declarator(Cg->tokenLoc, (yyvsp[0].sc_decl), 0); }
-#line 2280 "parser.c"
+#line 2281 "parser.c"
     break;
 
   case 77: /* semantic_declarator: basic_declarator ':' semantics_identifier  */
-#line 509 "parser.y"
+#line 511 "parser.y"
                               { (yyval.sc_decl) = Declarator(Cg->tokenLoc, (yyvsp[-2].sc_decl), (yyvsp[0].sc_ident)); }
-#line 2286 "parser.c"
+#line 2287 "parser.c"
     break;
 
   case 78: /* basic_declarator: identifier  */
-#line 513 "parser.y"
+#line 515 "parser.y"
                               { (yyval.sc_decl) = NewDeclNode(Cg->tokenLoc, (yyvsp[0].sc_ident), &CurrentDeclTypeSpecs); }
-#line 2292 "parser.c"
+#line 2293 "parser.c"
     break;
 
   case 79: /* basic_declarator: basic_declarator '[' INTCONST_SY ']'  */
-#line 515 "parser.y"
-                              { (yyval.sc_decl) = Array_Declarator(Cg->tokenLoc, (yyvsp[-3].sc_decl), (yyvsp[-1].sc_int), 0); }
-#line 2298 "parser.c"
+#line 517 "parser.y"
+                              { (yyval.sc_decl) = Array_Declarator(Cg->tokenLoc, (yyvsp[-3].sc_decl), (int) (yyvsp[-1].sc_literal).value.i, 0); }
+#line 2299 "parser.c"
     break;
 
   case 80: /* basic_declarator: basic_declarator '[' ']'  */
-#line 517 "parser.y"
+#line 519 "parser.y"
                               { (yyval.sc_decl) = Array_Declarator(Cg->tokenLoc, (yyvsp[-2].sc_decl), 0 , 1); }
-#line 2304 "parser.c"
+#line 2305 "parser.c"
     break;
 
   case 81: /* basic_declarator: function_decl_header parameter_list ')'  */
-#line 519 "parser.y"
+#line 521 "parser.y"
                               { (yyval.sc_decl) = SetFunTypeParams(CurrentScope, (yyvsp[-2].sc_decl), (yyvsp[-1].sc_decl), (yyvsp[-1].sc_decl)); }
-#line 2310 "parser.c"
+#line 2311 "parser.c"
     break;
 
   case 82: /* basic_declarator: function_decl_header abstract_parameter_list ')'  */
-#line 521 "parser.y"
+#line 523 "parser.y"
                               { (yyval.sc_decl) = SetFunTypeParams(CurrentScope, (yyvsp[-2].sc_decl), (yyvsp[-1].sc_decl), NULL); }
-#line 2316 "parser.c"
+#line 2317 "parser.c"
     break;
 
   case 83: /* function_decl_header: basic_declarator '('  */
-#line 525 "parser.y"
+#line 527 "parser.y"
                               { (yyval.sc_decl) = FunctionDeclHeader(&(yyvsp[-1].sc_decl)->loc, CurrentScope, (yyvsp[-1].sc_decl)); }
-#line 2322 "parser.c"
+#line 2323 "parser.c"
     break;
 
   case 84: /* abstract_declarator: %empty  */
-#line 529 "parser.y"
+#line 531 "parser.y"
                               { (yyval.sc_decl) = NewDeclNode(Cg->tokenLoc, 0, &CurrentDeclTypeSpecs); }
-#line 2328 "parser.c"
+#line 2329 "parser.c"
     break;
 
   case 85: /* abstract_declarator: abstract_declarator '[' INTCONST_SY ']'  */
-#line 531 "parser.y"
-                              { (yyval.sc_decl) = Array_Declarator(Cg->tokenLoc, (yyvsp[-3].sc_decl), (yyvsp[-1].sc_int), 0); }
-#line 2334 "parser.c"
+#line 533 "parser.y"
+                              { (yyval.sc_decl) = Array_Declarator(Cg->tokenLoc, (yyvsp[-3].sc_decl), (int) (yyvsp[-1].sc_literal).value.i, 0); }
+#line 2335 "parser.c"
     break;
 
   case 86: /* abstract_declarator: abstract_declarator '[' ']'  */
-#line 533 "parser.y"
+#line 535 "parser.y"
                               { (yyval.sc_decl) = Array_Declarator(Cg->tokenLoc, (yyvsp[-2].sc_decl), 0 , 1); }
-#line 2340 "parser.c"
+#line 2341 "parser.c"
     break;
 
   case 87: /* parameter_list: parameter_declaration  */
-#line 550 "parser.y"
+#line 552 "parser.y"
                               { (yyval.sc_decl) = (yyvsp[0].sc_decl); }
-#line 2346 "parser.c"
+#line 2347 "parser.c"
     break;
 
   case 88: /* parameter_list: parameter_list ',' parameter_declaration  */
-#line 552 "parser.y"
+#line 554 "parser.y"
                               { (yyval.sc_decl) = AddDecl((yyvsp[-2].sc_decl), (yyvsp[0].sc_decl)); }
-#line 2352 "parser.c"
+#line 2353 "parser.c"
     break;
 
   case 89: /* parameter_declaration: declaration_specifiers declarator  */
-#line 556 "parser.y"
+#line 558 "parser.y"
                               { (yyval.sc_decl) = Param_Init_Declarator(Cg->tokenLoc, CurrentScope, (yyvsp[0].sc_decl), NULL); }
-#line 2358 "parser.c"
+#line 2359 "parser.c"
     break;
 
   case 90: /* parameter_declaration: declaration_specifiers declarator '=' initializer  */
-#line 558 "parser.y"
+#line 560 "parser.y"
                               { (yyval.sc_decl) = Param_Init_Declarator(Cg->tokenLoc, CurrentScope, (yyvsp[-2].sc_decl), (yyvsp[0].sc_expr)); }
-#line 2364 "parser.c"
+#line 2365 "parser.c"
     break;
 
   case 91: /* abstract_parameter_list: %empty  */
-#line 562 "parser.y"
+#line 564 "parser.y"
                               { (yyval.sc_decl) = NULL; }
-#line 2370 "parser.c"
+#line 2371 "parser.c"
     break;
 
   case 93: /* non_empty_abstract_parameter_list: abstract_declaration  */
-#line 567 "parser.y"
+#line 569 "parser.y"
                               {
                                 if (IsVoid(&(yyvsp[0].sc_decl)->type.type))
                                     CurrentScope->HasVoidParameter = 1;
                                 (yyval.sc_decl) = (yyvsp[0].sc_decl);
                               }
-#line 2380 "parser.c"
+#line 2381 "parser.c"
     break;
 
   case 94: /* non_empty_abstract_parameter_list: non_empty_abstract_parameter_list ',' abstract_declaration  */
-#line 573 "parser.y"
+#line 575 "parser.y"
                               {
                                 if (CurrentScope->HasVoidParameter || IsVoid(&(yyvsp[-2].sc_decl)->type.type)) {
                                     SemanticError(Cg->tokenLoc, ERROR___VOID_NOT_ONLY_PARAM);
                                 }
                                 (yyval.sc_decl) = AddDecl((yyvsp[-2].sc_decl), (yyvsp[0].sc_decl));
                               }
-#line 2391 "parser.c"
+#line 2392 "parser.c"
     break;
 
   case 95: /* initializer: expression  */
-#line 586 "parser.y"
+#line 588 "parser.y"
                               { (yyval.sc_expr) = Initializer(Cg->tokenLoc, (yyvsp[0].sc_expr)); }
-#line 2397 "parser.c"
+#line 2398 "parser.c"
     break;
 
   case 96: /* initializer: '{' initializer_list '}'  */
-#line 588 "parser.y"
+#line 590 "parser.y"
                               { (yyval.sc_expr) = Initializer(Cg->tokenLoc, (yyvsp[-1].sc_expr)); }
-#line 2403 "parser.c"
+#line 2404 "parser.c"
     break;
 
   case 97: /* initializer: '{' initializer_list ',' '}'  */
-#line 590 "parser.y"
+#line 592 "parser.y"
                               { (yyval.sc_expr) = Initializer(Cg->tokenLoc, (yyvsp[-2].sc_expr)); }
-#line 2409 "parser.c"
+#line 2410 "parser.c"
     break;
 
   case 98: /* initializer_list: initializer  */
-#line 594 "parser.y"
+#line 596 "parser.y"
                               { (yyval.sc_expr) = InitializerList(Cg->tokenLoc, (yyvsp[0].sc_expr), NULL); }
-#line 2415 "parser.c"
+#line 2416 "parser.c"
     break;
 
   case 99: /* initializer_list: initializer_list ',' initializer  */
-#line 596 "parser.y"
+#line 598 "parser.y"
                               { (yyval.sc_expr) = InitializerList(Cg->tokenLoc, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2421 "parser.c"
+#line 2422 "parser.c"
     break;
 
   case 100: /* variable: basic_variable  */
-#line 608 "parser.y"
+#line 610 "parser.y"
                               { (yyval.sc_expr) = (yyvsp[0].sc_expr); }
-#line 2427 "parser.c"
+#line 2428 "parser.c"
     break;
 
   case 101: /* variable: scope_identifier COLONCOLON_SY basic_variable  */
-#line 610 "parser.y"
+#line 612 "parser.y"
                               { (yyval.sc_expr) = (yyvsp[0].sc_expr); }
-#line 2433 "parser.c"
+#line 2434 "parser.c"
     break;
 
   case 102: /* basic_variable: variable_identifier  */
-#line 614 "parser.y"
+#line 616 "parser.y"
                               { (yyval.sc_expr) = BasicVariable(Cg->tokenLoc, (yyvsp[0].sc_ident)); }
-#line 2439 "parser.c"
+#line 2440 "parser.c"
     break;
 
   case 105: /* primary_expression: '(' expression ')'  */
-#line 624 "parser.y"
+#line 626 "parser.y"
                               { (yyval.sc_expr) = (yyvsp[-1].sc_expr); }
-#line 2445 "parser.c"
+#line 2446 "parser.c"
     break;
 
   case 106: /* primary_expression: type_specifier '(' expression_list ')'  */
-#line 626 "parser.y"
+#line 628 "parser.y"
                               { (yyval.sc_expr) = NewVectorConstructor(Cg->tokenLoc, (yyvsp[-3].sc_ptype), (yyvsp[-1].sc_expr)); }
-#line 2451 "parser.c"
+#line 2452 "parser.c"
     break;
 
   case 108: /* postfix_expression: postfix_expression PLUSPLUS_SY  */
-#line 635 "parser.y"
+#line 637 "parser.y"
                               { (yyval.sc_expr) = (expr *) NewUnopNode(POSTINC_OP, (yyvsp[-1].sc_expr)); }
-#line 2457 "parser.c"
+#line 2458 "parser.c"
     break;
 
   case 109: /* postfix_expression: postfix_expression MINUSMINUS_SY  */
-#line 637 "parser.y"
+#line 639 "parser.y"
                               { (yyval.sc_expr) = (expr *) NewUnopNode(POSTDEC_OP, (yyvsp[-1].sc_expr)); }
-#line 2463 "parser.c"
+#line 2464 "parser.c"
     break;
 
   case 110: /* postfix_expression: postfix_expression '.' member_identifier  */
-#line 639 "parser.y"
+#line 641 "parser.y"
                               { (yyval.sc_expr) = NewMemberSelectorOrSwizzleOrWriteMaskOperator(Cg->tokenLoc, (yyvsp[-2].sc_expr), (yyvsp[0].sc_ident)); }
-#line 2469 "parser.c"
+#line 2470 "parser.c"
     break;
 
   case 111: /* postfix_expression: postfix_expression '[' expression ']'  */
-#line 641 "parser.y"
+#line 643 "parser.y"
                               { (yyval.sc_expr) = NewIndexOperator(Cg->tokenLoc, (yyvsp[-3].sc_expr), (yyvsp[-1].sc_expr)); }
-#line 2475 "parser.c"
+#line 2476 "parser.c"
     break;
 
   case 112: /* postfix_expression: postfix_expression '(' actual_argument_list ')'  */
-#line 643 "parser.y"
+#line 645 "parser.y"
                               { (yyval.sc_expr) = NewFunctionCallOperator(Cg->tokenLoc, (yyvsp[-3].sc_expr), (yyvsp[-1].sc_expr)); }
-#line 2481 "parser.c"
+#line 2482 "parser.c"
     break;
 
   case 113: /* actual_argument_list: %empty  */
-#line 647 "parser.y"
+#line 649 "parser.y"
                                 { (yyval.sc_expr) = NULL; }
-#line 2487 "parser.c"
+#line 2488 "parser.c"
     break;
 
   case 115: /* non_empty_argument_list: expression  */
-#line 652 "parser.y"
+#line 654 "parser.y"
                               { (yyval.sc_expr) = ArgumentList(Cg->tokenLoc, NULL, (yyvsp[0].sc_expr)); }
-#line 2493 "parser.c"
+#line 2494 "parser.c"
     break;
 
   case 116: /* non_empty_argument_list: non_empty_argument_list ',' expression  */
-#line 654 "parser.y"
+#line 656 "parser.y"
                               { (yyval.sc_expr) = ArgumentList(Cg->tokenLoc, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2499 "parser.c"
+#line 2500 "parser.c"
     break;
 
   case 117: /* expression_list: expression  */
-#line 658 "parser.y"
+#line 660 "parser.y"
                               { (yyval.sc_expr) = ExpressionList(Cg->tokenLoc, NULL, (yyvsp[0].sc_expr)); }
-#line 2505 "parser.c"
+#line 2506 "parser.c"
     break;
 
   case 118: /* expression_list: expression_list ',' expression  */
-#line 660 "parser.y"
+#line 662 "parser.y"
                               { (yyval.sc_expr) = ExpressionList(Cg->tokenLoc, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2511 "parser.c"
+#line 2512 "parser.c"
     break;
 
   case 120: /* unary_expression: PLUSPLUS_SY unary_expression  */
-#line 669 "parser.y"
+#line 671 "parser.y"
                               { (yyval.sc_expr) = (expr *) NewUnopNode(PREINC_OP, (yyvsp[0].sc_expr)); }
-#line 2517 "parser.c"
+#line 2518 "parser.c"
     break;
 
   case 121: /* unary_expression: MINUSMINUS_SY unary_expression  */
-#line 671 "parser.y"
+#line 673 "parser.y"
                               { (yyval.sc_expr) = (expr *) NewUnopNode(PREDEC_OP, (yyvsp[0].sc_expr)); }
-#line 2523 "parser.c"
+#line 2524 "parser.c"
     break;
 
   case 122: /* unary_expression: '+' unary_expression  */
-#line 673 "parser.y"
+#line 675 "parser.y"
                               { (yyval.sc_expr) = NewUnaryOperator(Cg->tokenLoc, POS_OP, '+', (yyvsp[0].sc_expr), 0); }
-#line 2529 "parser.c"
+#line 2530 "parser.c"
     break;
 
   case 123: /* unary_expression: '-' unary_expression  */
-#line 675 "parser.y"
+#line 677 "parser.y"
                               { (yyval.sc_expr) = NewUnaryOperator(Cg->tokenLoc, NEG_OP, '-', (yyvsp[0].sc_expr), 0); }
-#line 2535 "parser.c"
+#line 2536 "parser.c"
     break;
 
   case 124: /* unary_expression: '!' unary_expression  */
-#line 677 "parser.y"
+#line 679 "parser.y"
                               { (yyval.sc_expr) = NewUnaryOperator(Cg->tokenLoc, BNOT_OP, '!', (yyvsp[0].sc_expr), 0); }
-#line 2541 "parser.c"
+#line 2542 "parser.c"
     break;
 
   case 125: /* unary_expression: '~' unary_expression  */
-#line 679 "parser.y"
+#line 681 "parser.y"
                               { (yyval.sc_expr) = NewUnaryOperator(Cg->tokenLoc, NOT_OP, '~', (yyvsp[0].sc_expr), 1); }
-#line 2547 "parser.c"
+#line 2548 "parser.c"
     break;
 
   case 127: /* cast_expression: '(' abstract_declaration ')' cast_expression  */
-#line 691 "parser.y"
+#line 693 "parser.y"
                               { (yyval.sc_expr) = NewCastOperator(Cg->tokenLoc, (yyvsp[0].sc_expr), GetTypePointer(&(yyvsp[-2].sc_decl)->loc, &(yyvsp[-2].sc_decl)->type)); }
-#line 2553 "parser.c"
+#line 2554 "parser.c"
     break;
 
   case 129: /* multiplicative_expression: multiplicative_expression '*' cast_expression  */
-#line 700 "parser.y"
+#line 702 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, MUL_OP, '*', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 0); }
-#line 2559 "parser.c"
+#line 2560 "parser.c"
     break;
 
   case 130: /* multiplicative_expression: multiplicative_expression '/' cast_expression  */
-#line 702 "parser.y"
+#line 704 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, DIV_OP, '/', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 0); }
-#line 2565 "parser.c"
+#line 2566 "parser.c"
     break;
 
   case 131: /* multiplicative_expression: multiplicative_expression '%' cast_expression  */
-#line 704 "parser.y"
+#line 706 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, MOD_OP, '%', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 1); }
-#line 2571 "parser.c"
+#line 2572 "parser.c"
     break;
 
   case 133: /* additive_expression: additive_expression '+' multiplicative_expression  */
-#line 713 "parser.y"
+#line 715 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, ADD_OP, '+', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 0); }
-#line 2577 "parser.c"
+#line 2578 "parser.c"
     break;
 
   case 134: /* additive_expression: additive_expression '-' multiplicative_expression  */
-#line 715 "parser.y"
+#line 717 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, SUB_OP, '-', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 0); }
-#line 2583 "parser.c"
+#line 2584 "parser.c"
     break;
 
   case 136: /* shift_expression: shift_expression LL_SY additive_expression  */
-#line 724 "parser.y"
+#line 726 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, SHL_OP, LL_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 1); }
-#line 2589 "parser.c"
+#line 2590 "parser.c"
     break;
 
   case 137: /* shift_expression: shift_expression GG_SY additive_expression  */
-#line 726 "parser.y"
+#line 728 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, SHR_OP, GG_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 1); }
-#line 2595 "parser.c"
+#line 2596 "parser.c"
     break;
 
   case 139: /* relational_expression: relational_expression '<' shift_expression  */
-#line 735 "parser.y"
+#line 737 "parser.y"
                               { (yyval.sc_expr) = NewBinaryComparisonOperator(Cg->tokenLoc, LT_OP, '<', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2601 "parser.c"
+#line 2602 "parser.c"
     break;
 
   case 140: /* relational_expression: relational_expression '>' shift_expression  */
-#line 737 "parser.y"
+#line 739 "parser.y"
                               { (yyval.sc_expr) = NewBinaryComparisonOperator(Cg->tokenLoc, GT_OP, '>', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2607 "parser.c"
+#line 2608 "parser.c"
     break;
 
   case 141: /* relational_expression: relational_expression LE_SY shift_expression  */
-#line 739 "parser.y"
+#line 741 "parser.y"
                               { (yyval.sc_expr) = NewBinaryComparisonOperator(Cg->tokenLoc, LE_OP, LE_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2613 "parser.c"
+#line 2614 "parser.c"
     break;
 
   case 142: /* relational_expression: relational_expression GE_SY shift_expression  */
-#line 741 "parser.y"
+#line 743 "parser.y"
                               { (yyval.sc_expr) = NewBinaryComparisonOperator(Cg->tokenLoc, GE_OP, GE_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2619 "parser.c"
+#line 2620 "parser.c"
     break;
 
   case 144: /* equality_expression: equality_expression EQ_SY relational_expression  */
-#line 750 "parser.y"
+#line 752 "parser.y"
                               { (yyval.sc_expr) = NewBinaryComparisonOperator(Cg->tokenLoc, EQ_OP, EQ_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2625 "parser.c"
+#line 2626 "parser.c"
     break;
 
   case 145: /* equality_expression: equality_expression NE_SY relational_expression  */
-#line 752 "parser.y"
+#line 754 "parser.y"
                               { (yyval.sc_expr) = NewBinaryComparisonOperator(Cg->tokenLoc, NE_OP, NE_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2631 "parser.c"
+#line 2632 "parser.c"
     break;
 
   case 147: /* AND_expression: AND_expression '&' equality_expression  */
-#line 761 "parser.y"
+#line 763 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, AND_OP, '&', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 1); }
-#line 2637 "parser.c"
+#line 2638 "parser.c"
     break;
 
   case 149: /* exclusive_OR_expression: exclusive_OR_expression '^' AND_expression  */
-#line 770 "parser.y"
+#line 772 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, XOR_OP, '^', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 1); }
-#line 2643 "parser.c"
+#line 2644 "parser.c"
     break;
 
   case 151: /* inclusive_OR_expression: inclusive_OR_expression '|' exclusive_OR_expression  */
-#line 779 "parser.y"
+#line 781 "parser.y"
                               { (yyval.sc_expr) = NewBinaryOperator(Cg->tokenLoc, OR_OP, '|', (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 1); }
-#line 2649 "parser.c"
+#line 2650 "parser.c"
     break;
 
   case 153: /* logical_AND_expression: logical_AND_expression AND_SY inclusive_OR_expression  */
-#line 788 "parser.y"
+#line 790 "parser.y"
                               { (yyval.sc_expr) = NewBinaryBooleanOperator(Cg->tokenLoc, BAND_OP, AND_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2655 "parser.c"
+#line 2656 "parser.c"
     break;
 
   case 155: /* logical_OR_expression: logical_OR_expression OR_SY logical_AND_expression  */
-#line 797 "parser.y"
+#line 799 "parser.y"
                               { (yyval.sc_expr) = NewBinaryBooleanOperator(Cg->tokenLoc, BOR_OP, OR_SY, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2661 "parser.c"
+#line 2662 "parser.c"
     break;
 
   case 157: /* conditional_expression: conditional_test '?' expression ':' conditional_expression  */
-#line 806 "parser.y"
+#line 808 "parser.y"
                               { (yyval.sc_expr) = NewConditionalOperator(Cg->tokenLoc, (yyvsp[-4].sc_expr), (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2667 "parser.c"
+#line 2668 "parser.c"
     break;
 
   case 158: /* conditional_test: logical_OR_expression  */
-#line 810 "parser.y"
+#line 812 "parser.y"
                               {  (yyval.sc_expr) = CheckBooleanExpr(Cg->tokenLoc, (yyvsp[0].sc_expr), 1); }
-#line 2673 "parser.c"
+#line 2674 "parser.c"
     break;
 
   case 160: /* function_definition: function_definition_header block_item_list '}'  */
-#line 829 "parser.y"
+#line 831 "parser.y"
                               { DefineFunction(Cg->tokenLoc, CurrentScope, (yyvsp[-2].sc_decl), (yyvsp[-1].sc_stmt)); PopScope(); }
-#line 2679 "parser.c"
+#line 2680 "parser.c"
     break;
 
   case 161: /* function_definition: function_definition_header '}'  */
-#line 831 "parser.y"
+#line 833 "parser.y"
                               { DefineFunction(Cg->tokenLoc, CurrentScope, (yyvsp[-1].sc_decl), NULL); PopScope(); }
-#line 2685 "parser.c"
+#line 2686 "parser.c"
     break;
 
   case 162: /* function_definition_header: declaration_specifiers declarator '{'  */
-#line 835 "parser.y"
+#line 837 "parser.y"
                               { (yyval.sc_decl) = Function_Definition_Header(Cg->tokenLoc, (yyvsp[-1].sc_decl)); }
-#line 2691 "parser.c"
+#line 2692 "parser.c"
     break;
 
   case 174: /* discard_statement: DISCARD_SY ';'  */
-#line 864 "parser.y"
+#line 866 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewDiscardStmt(Cg->tokenLoc, NULL); }
-#line 2697 "parser.c"
+#line 2698 "parser.c"
     break;
 
   case 175: /* discard_statement: DISCARD_SY expression ';'  */
-#line 866 "parser.y"
+#line 868 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewDiscardStmt(Cg->tokenLoc, CheckBooleanExpr(Cg->tokenLoc, (yyvsp[-1].sc_expr), 1)); }
-#line 2703 "parser.c"
+#line 2704 "parser.c"
     break;
 
   case 176: /* jump_statement: BREAK_SY ';'  */
-#line 874 "parser.y"
+#line 876 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewSimpleStmt(Cg->tokenLoc, BREAK_STMT); }
-#line 2709 "parser.c"
+#line 2710 "parser.c"
     break;
 
   case 177: /* jump_statement: CONTINUE_SY ';'  */
-#line 876 "parser.y"
+#line 878 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewSimpleStmt(Cg->tokenLoc, CONTINUE_STMT); }
-#line 2715 "parser.c"
+#line 2716 "parser.c"
     break;
 
   case 178: /* if_statement: if_header balanced_statement ELSE_SY balanced_statement  */
-#line 884 "parser.y"
+#line 886 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) SetThenElseStmts(Cg->tokenLoc, (yyvsp[-3].sc_stmt), (yyvsp[-2].sc_stmt), (yyvsp[0].sc_stmt)); }
-#line 2721 "parser.c"
+#line 2722 "parser.c"
     break;
 
   case 179: /* dangling_if: if_header statement  */
-#line 888 "parser.y"
+#line 890 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) SetThenElseStmts(Cg->tokenLoc, (yyvsp[-1].sc_stmt), (yyvsp[0].sc_stmt), NULL); }
-#line 2727 "parser.c"
+#line 2728 "parser.c"
     break;
 
   case 180: /* dangling_if: if_header balanced_statement ELSE_SY dangling_statement  */
-#line 890 "parser.y"
+#line 892 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) SetThenElseStmts(Cg->tokenLoc, (yyvsp[-3].sc_stmt), (yyvsp[-2].sc_stmt), (yyvsp[0].sc_stmt)); }
-#line 2733 "parser.c"
+#line 2734 "parser.c"
     break;
 
   case 181: /* if_header: IF_SY '(' boolean_scalar_expression ')'  */
-#line 894 "parser.y"
+#line 896 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewIfStmt(Cg->tokenLoc, (yyvsp[-1].sc_expr), NULL, NULL); ; }
-#line 2739 "parser.c"
+#line 2740 "parser.c"
     break;
 
   case 182: /* compound_statement: compound_header block_item_list compound_tail  */
-#line 902 "parser.y"
+#line 904 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewBlockStmt(Cg->tokenLoc, (yyvsp[-1].sc_stmt)); }
-#line 2745 "parser.c"
+#line 2746 "parser.c"
     break;
 
   case 183: /* compound_statement: compound_header compound_tail  */
-#line 904 "parser.y"
+#line 906 "parser.y"
                               { (yyval.sc_stmt) = NULL; }
-#line 2751 "parser.c"
+#line 2752 "parser.c"
     break;
 
   case 184: /* compound_header: '{'  */
-#line 908 "parser.y"
+#line 910 "parser.y"
                               { PushScope(NewScope()); CurrentScope->funindex = NextFunctionIndex; }
-#line 2757 "parser.c"
+#line 2758 "parser.c"
     break;
 
   case 185: /* compound_tail: '}'  */
-#line 912 "parser.y"
+#line 914 "parser.y"
                               {
                                 if (Cg->options.DumpParseTree)
                                     PrintScopeDeclarations();
                                 PopScope();
                               }
-#line 2767 "parser.c"
+#line 2768 "parser.c"
     break;
 
   case 187: /* block_item_list: block_item_list block_item  */
-#line 921 "parser.y"
+#line 923 "parser.y"
                               { (yyval.sc_stmt) = AddStmt((yyvsp[-1].sc_stmt), (yyvsp[0].sc_stmt)); }
-#line 2773 "parser.c"
+#line 2774 "parser.c"
     break;
 
   case 189: /* block_item: statement  */
-#line 926 "parser.y"
+#line 928 "parser.y"
                               { (yyval.sc_stmt) = CheckStmt((yyvsp[0].sc_stmt)); }
-#line 2779 "parser.c"
+#line 2780 "parser.c"
     break;
 
   case 191: /* expression_statement: ';'  */
-#line 935 "parser.y"
+#line 937 "parser.y"
                               { (yyval.sc_stmt) = NULL; }
-#line 2785 "parser.c"
+#line 2786 "parser.c"
     break;
 
   case 192: /* expression_statement2: postfix_expression '=' expression  */
-#line 939 "parser.y"
+#line 941 "parser.y"
                               { (yyval.sc_stmt) = NewSimpleAssignmentStmt(Cg->tokenLoc, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr), 0); }
-#line 2791 "parser.c"
+#line 2792 "parser.c"
     break;
 
   case 193: /* expression_statement2: expression  */
-#line 941 "parser.y"
+#line 943 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewExprStmt(Cg->tokenLoc, (yyvsp[0].sc_expr)); }
-#line 2797 "parser.c"
+#line 2798 "parser.c"
     break;
 
   case 194: /* expression_statement2: postfix_expression ASSIGNMINUS_SY expression  */
-#line 943 "parser.y"
+#line 945 "parser.y"
                               { (yyval.sc_stmt) = NewCompoundAssignmentStmt(Cg->tokenLoc, ASSIGNMINUS_OP, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2803 "parser.c"
+#line 2804 "parser.c"
     break;
 
   case 195: /* expression_statement2: postfix_expression ASSIGNMOD_SY expression  */
-#line 945 "parser.y"
+#line 947 "parser.y"
                               { (yyval.sc_stmt) = NewCompoundAssignmentStmt(Cg->tokenLoc, ASSIGNMOD_OP, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2809 "parser.c"
+#line 2810 "parser.c"
     break;
 
   case 196: /* expression_statement2: postfix_expression ASSIGNPLUS_SY expression  */
-#line 947 "parser.y"
+#line 949 "parser.y"
                               { (yyval.sc_stmt) = NewCompoundAssignmentStmt(Cg->tokenLoc, ASSIGNPLUS_OP, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2815 "parser.c"
+#line 2816 "parser.c"
     break;
 
   case 197: /* expression_statement2: postfix_expression ASSIGNSLASH_SY expression  */
-#line 949 "parser.y"
+#line 951 "parser.y"
                               { (yyval.sc_stmt) = NewCompoundAssignmentStmt(Cg->tokenLoc, ASSIGNSLASH_OP, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2821 "parser.c"
+#line 2822 "parser.c"
     break;
 
   case 198: /* expression_statement2: postfix_expression ASSIGNSTAR_SY expression  */
-#line 951 "parser.y"
+#line 953 "parser.y"
                               { (yyval.sc_stmt) = NewCompoundAssignmentStmt(Cg->tokenLoc, ASSIGNSTAR_OP, (yyvsp[-2].sc_expr), (yyvsp[0].sc_expr)); }
-#line 2827 "parser.c"
+#line 2828 "parser.c"
     break;
 
   case 199: /* iteration_statement: WHILE_SY '(' boolean_scalar_expression ')' balanced_statement  */
-#line 959 "parser.y"
+#line 961 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewWhileStmt(Cg->tokenLoc, WHILE_STMT, (yyvsp[-2].sc_expr), (yyvsp[0].sc_stmt)); }
-#line 2833 "parser.c"
+#line 2834 "parser.c"
     break;
 
   case 200: /* iteration_statement: DO_SY statement WHILE_SY '(' boolean_scalar_expression ')' ';'  */
-#line 961 "parser.y"
+#line 963 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewWhileStmt(Cg->tokenLoc, DO_STMT, (yyvsp[-2].sc_expr), (yyvsp[-5].sc_stmt)); }
-#line 2839 "parser.c"
+#line 2840 "parser.c"
     break;
 
   case 201: /* iteration_statement: FOR_SY '(' for_expression_opt ';' boolean_expression_opt ';' for_expression_opt ')' balanced_statement  */
-#line 963 "parser.y"
+#line 965 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewForStmt(Cg->tokenLoc, (yyvsp[-6].sc_stmt), (yyvsp[-4].sc_expr), (yyvsp[-2].sc_stmt), (yyvsp[0].sc_stmt)); }
-#line 2845 "parser.c"
+#line 2846 "parser.c"
     break;
 
   case 202: /* dangling_iteration: WHILE_SY '(' boolean_scalar_expression ')' dangling_statement  */
-#line 967 "parser.y"
+#line 969 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewWhileStmt(Cg->tokenLoc, WHILE_STMT, (yyvsp[-2].sc_expr), (yyvsp[0].sc_stmt)); }
-#line 2851 "parser.c"
+#line 2852 "parser.c"
     break;
 
   case 203: /* dangling_iteration: FOR_SY '(' for_expression_opt ';' boolean_expression_opt ';' for_expression_opt ')' dangling_statement  */
-#line 969 "parser.y"
+#line 971 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewForStmt(Cg->tokenLoc, (yyvsp[-6].sc_stmt), (yyvsp[-4].sc_expr), (yyvsp[-2].sc_stmt), (yyvsp[0].sc_stmt)); }
-#line 2857 "parser.c"
+#line 2858 "parser.c"
     break;
 
   case 204: /* boolean_scalar_expression: expression  */
-#line 974 "parser.y"
+#line 976 "parser.y"
                               {  (yyval.sc_expr) = CheckBooleanExpr(Cg->tokenLoc, (yyvsp[0].sc_expr), 0); }
-#line 2863 "parser.c"
+#line 2864 "parser.c"
     break;
 
   case 206: /* for_expression_opt: %empty  */
-#line 979 "parser.y"
+#line 981 "parser.y"
                               { (yyval.sc_stmt) = NULL; }
-#line 2869 "parser.c"
+#line 2870 "parser.c"
     break;
 
   case 208: /* for_expression: for_expression ',' expression_statement2  */
-#line 984 "parser.y"
+#line 986 "parser.y"
                               {
                                 stmt *lstmt = (yyvsp[-2].sc_stmt);
                                 if (lstmt) {
@@ -2881,83 +2882,77 @@ yyreduce:
                                     (yyval.sc_stmt) = (yyvsp[0].sc_stmt);
                                 }
                               }
-#line 2885 "parser.c"
+#line 2886 "parser.c"
     break;
 
   case 210: /* boolean_expression_opt: %empty  */
-#line 999 "parser.y"
+#line 1001 "parser.y"
                               { (yyval.sc_expr) = NULL; }
-#line 2891 "parser.c"
+#line 2892 "parser.c"
     break;
 
   case 211: /* return_statement: RETURN_SY expression ';'  */
-#line 1007 "parser.y"
+#line 1009 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewReturnStmt(Cg->tokenLoc, CurrentScope, (yyvsp[-1].sc_expr)); }
-#line 2897 "parser.c"
+#line 2898 "parser.c"
     break;
 
   case 212: /* return_statement: RETURN_SY ';'  */
-#line 1009 "parser.y"
+#line 1011 "parser.y"
                               { (yyval.sc_stmt) = (stmt *) NewReturnStmt(Cg->tokenLoc, CurrentScope, NULL); }
-#line 2903 "parser.c"
+#line 2904 "parser.c"
     break;
 
   case 218: /* identifier: IDENT_SY  */
-#line 1032 "parser.y"
+#line 1034 "parser.y"
                               { (yyval.sc_ident) = (yyvsp[0].sc_ident); }
-#line 2909 "parser.c"
+#line 2910 "parser.c"
     break;
 
   case 219: /* identifier: RESERVED_SY  */
-#line 1034 "parser.y"
+#line 1036 "parser.y"
                               {
+                                /* SemanticError, not SemanticParseError: the
+                                 * latter is gated by AllowSemanticParseErrors */
                                 SemanticError(Cg->tokenLoc, ERROR_S_RESERVED_WORD,
                                               GetAtomString(atable, (yyvsp[0].sc_token)));
                                 (yyval.sc_ident) = (yyvsp[0].sc_token);
                               }
-#line 2919 "parser.c"
+#line 2922 "parser.c"
     break;
 
   case 220: /* constant: INTCONST_SY  */
-#line 1042 "parser.y"
-                              { (yyval.sc_expr) = (expr *) NewIConstNode(ICONST_OP, (yyvsp[0].sc_int), TYPE_BASE_CINT); }
-#line 2925 "parser.c"
+#line 1046 "parser.y"
+                              { (yyval.sc_expr) = (expr *) NewNumericConstNode(ICONST_OP, &(yyvsp[0].sc_literal)); }
+#line 2928 "parser.c"
     break;
 
   case 221: /* constant: CFLOATCONST_SY  */
-#line 1044 "parser.y"
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, ' ');
-                                (yyval.sc_expr) = (expr *) NewFConstNode(FCONST_OP, (yyvsp[0].sc_fval), base);
-                              }
-#line 2933 "parser.c"
+#line 1048 "parser.y"
+                              { (yyval.sc_expr) = (expr *) NewNumericConstNode(FCONST_OP, &(yyvsp[0].sc_literal)); }
+#line 2934 "parser.c"
     break;
 
   case 222: /* constant: FLOATCONST_SY  */
-#line 1048 "parser.y"
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'f');
-                                (yyval.sc_expr) = (expr *) NewFConstNode(FCONST_OP, (yyvsp[0].sc_fval), base);
-                              }
-#line 2941 "parser.c"
+#line 1050 "parser.y"
+                              { (yyval.sc_expr) = (expr *) NewNumericConstNode(FCONST_OP, &(yyvsp[0].sc_literal)); }
+#line 2940 "parser.c"
     break;
 
   case 223: /* constant: FLOATHCONST_SY  */
 #line 1052 "parser.y"
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'h');
-                                (yyval.sc_expr) = (expr *) NewFConstNode(FCONST_OP, (yyvsp[0].sc_fval), base);
-                              }
-#line 2949 "parser.c"
+                              { (yyval.sc_expr) = (expr *) NewNumericConstNode(FCONST_OP, &(yyvsp[0].sc_literal)); }
+#line 2946 "parser.c"
     break;
 
   case 224: /* constant: FLOATXCONST_SY  */
-#line 1056 "parser.y"
-                              {int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'x');
-                                (yyval.sc_expr) = (expr *) NewFConstNode(FCONST_OP, (yyvsp[0].sc_fval), base);
-                              }
-#line 2957 "parser.c"
+#line 1054 "parser.y"
+                              { (yyval.sc_expr) = (expr *) NewNumericConstNode(FCONST_OP, &(yyvsp[0].sc_literal)); }
+#line 2952 "parser.c"
     break;
 
 
-#line 2961 "parser.c"
+#line 2956 "parser.c"
 
       default: break;
     }
@@ -3150,6 +3145,6 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 1072 "parser.y"
+#line 1068 "parser.y"
 
 

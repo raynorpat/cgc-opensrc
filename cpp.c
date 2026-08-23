@@ -190,9 +190,10 @@ static int CPPdefine()
             do {
                 int old_lval, old_token;
                 old_token = ReadToken(symb->details.mac.body);
-                old_lval = yylval.sc_int;
+                old_lval = (int) yylval.sc_literal.value.i;
                 token = ReadToken(mac.body);
-                if (token != old_token || yylval.sc_int != old_lval) {
+                if (token != old_token ||
+                    (int) yylval.sc_literal.value.i != old_lval) {
                 error:
                     SemanticWarning(Cg->tokenLoc, WARNING___CPP_MACRO_REDEFINED,
                                     GetAtomString(atable, name));
@@ -362,7 +363,7 @@ int eval(int token, int prec, int *res, int *err)
             goto error;
         }
     } else if (token == INTCONST_SY) {
-        *res = yylval.sc_int;
+        *res = (int) yylval.sc_literal.value.i;
         token = Cg->currentInput->scan(Cg->currentInput);
     } else if (token == '(') {
         token = Cg->currentInput->scan(Cg->currentInput);
@@ -456,7 +457,7 @@ static int CPPinclude()
 
 static int CPPline(int token) {
     if (token == INTCONST_SY) {
-        int line = yylval.sc_int;
+        int line = (int) yylval.sc_literal.value.i;
         token = Cg->currentInput->scan(Cg->currentInput);
         if (token == STRCONST_SY) {
             Cg->currentInput->name = yylval.sc_ident;
@@ -529,13 +530,15 @@ static int CPPpragma(void)
                     }
                     if (token == INTCONST_SY) {
                         if (numfvals == 0 && !NegSign) {
-                            ival = yylval.sc_int;
+                            ival = (int) yylval.sc_literal.value.i;
                             HasIval = 1;
                         }
                         if (NegSign)
-                            yylval.sc_int = -yylval.sc_int;
+                            yylval.sc_literal.value.i =
+                                -yylval.sc_literal.value.i;
                         if (numfvals < 4) {
-                            fval[numfvals] = (float) yylval.sc_int;
+                            fval[numfvals] =
+                                (float) yylval.sc_literal.value.i;
                             numfvals++;
                         } else {
                             err = 1;
@@ -544,9 +547,11 @@ static int CPPpragma(void)
                         NEXTTOKEN;
                     } else if (token == CFLOATCONST_SY) {
                         if (NegSign)
-                            yylval.sc_fval = -yylval.sc_fval;
+                            yylval.sc_literal.value.f =
+                                -yylval.sc_literal.value.f;
                         if (numfvals < 4) {
-                            fval[numfvals] = yylval.sc_fval;
+                            fval[numfvals] =
+                                (float) yylval.sc_literal.value.f;
                             numfvals++;
                         } else {
                             err = 1;
@@ -735,7 +740,8 @@ int MacroExpand(int atom)
     int                 i, token, depth;
 
     if (atom == __LINE__Atom) {
-        yylval.sc_int = Cg->currentInput->line;
+        CgNumericSetSigned(&yylval.sc_literal, CG_SCALAR_CINT,
+                           Cg->currentInput->line);
         UngetToken(INTCONST_SY);
         return 1;
     }
@@ -849,7 +855,7 @@ int PredefineMacro(char *def) {
             RecordToken(mac.body, token);
         PopEofSrc();
     } else {
-        yylval.sc_int = 1;
+        CgNumericSetSigned(&yylval.sc_literal, CG_SCALAR_CINT, 1);
         RecordToken(mac.body, INTCONST_SY);
     }
     symb = LookUpSymbol(macros, LookUpAddString(atable, name));

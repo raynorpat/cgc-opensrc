@@ -130,11 +130,12 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 56 "parser.y"
+#line 57 "parser.y"
 
     int    sc_token;
     int    sc_int;
     float  sc_fval;
+    CgNumericValue sc_literal;
     int    sc_ident;
     spec   sc_specifiers;
     dtype  sc_type;
@@ -146,7 +147,7 @@ union YYSTYPE
     /* Dummy palce holder: */
     int    dummy;
 
-#line 150 "parser.h"
+#line 151 "parser.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

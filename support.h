@@ -51,6 +51,9 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OPENSL_TAG "cgc"
 
+#include "cg_types.h"
+#include "cg_numeric.h"
+
 // Typedefs for things defined here in "support.h":
 
 typedef struct dtype_rec dtype;
@@ -350,10 +353,12 @@ struct symb_rec {
     Symbol *symbol;
 };
 
-typedef union scalar_constant_rec {
-    float f;
-    int i;
-} scalar_constant;
+/*
+ * Scalar constants carry their canonical kind with the datum, so folding and
+ * lowering can honor typed literals without re-deriving width or signedness:
+ */
+
+typedef CgNumericValue scalar_constant;
 
 typedef struct constant_rec {
     nodekind kind;
@@ -501,6 +506,7 @@ constant *NewIConstNode(opcode op, int fval, int base);
 constant *NewBConstNode(opcode op, int fval, int base);
 constant *NewFConstNode(opcode op, float fval, int base);
 constant *NewFConstNodeV(opcode op, float *fval, int len, int base);
+constant *NewNumericConstNode(opcode op, const CgNumericValue *value);
 unary *NewUnopNode(opcode op, expr *arg);
 unary *NewUnopSubNode(opcode op, int subop, expr *arg);
 binary *NewBinopNode(opcode op, expr *left, expr *right);

@@ -1212,7 +1212,7 @@ static int GlslAppendTypedDefaultValue(GlslLowerContext *context,
         return 0;
     }
     if (baseClass == GLSL_DEFAULT_BASE_FLOAT &&
-        !GlslFiniteDefaultFloat(value->f))
+        !GlslFiniteDefaultFloat((float) value->value.f))
     {
         GlslRecordFailure(context, "uniform default finite value");
         return 0;
@@ -1243,7 +1243,7 @@ static int GlslConvertDefaultValue(GlslLowerContext *context,
         return 0;
     }
     if (sourceClass == GLSL_DEFAULT_BASE_FLOAT &&
-        !GlslFiniteDefaultFloat(value->value.f))
+        !GlslFiniteDefaultFloat((float) value->value.value.f))
     {
         GlslRecordFailure(context, "uniform default finite value");
         return 0;
@@ -1251,19 +1251,19 @@ static int GlslConvertDefaultValue(GlslLowerContext *context,
     switch (targetClass) {
     case GLSL_DEFAULT_BASE_FLOAT:
         if (sourceClass == GLSL_DEFAULT_BASE_FLOAT)
-            converted.f = value->value.f;
+            converted.value.f = value->value.value.f;
         else if (sourceClass == GLSL_DEFAULT_BASE_INT)
-            converted.f = (float) value->value.i;
+            converted.value.f = (float) value->value.value.i;
         else
-            converted.f = value->value.i ? 1.0f : 0.0f;
-        if (!GlslFiniteDefaultFloat(converted.f)) {
+            converted.value.f = value->value.value.i ? 1.0f : 0.0f;
+        if (!GlslFiniteDefaultFloat((float) converted.value.f)) {
             GlslRecordFailure(context, "uniform default finite value");
             return 0;
         }
         break;
     case GLSL_DEFAULT_BASE_INT:
         if (sourceClass == GLSL_DEFAULT_BASE_FLOAT) {
-            floating = (double) value->value.f;
+            floating = (double) value->value.value.f;
             if (floating < (double) INT_MIN ||
                 floating > (double) INT_MAX)
             {
@@ -1271,18 +1271,18 @@ static int GlslConvertDefaultValue(GlslLowerContext *context,
                                   "uniform default conversion range");
                 return 0;
             }
-            converted.i = (int) floating;
+            converted.value.i = (int) floating;
         } else if (sourceClass == GLSL_DEFAULT_BASE_INT) {
-            converted.i = value->value.i;
+            converted.value.i = (int) value->value.value.i;
         } else {
-            converted.i = value->value.i ? 1 : 0;
+            converted.value.i = value->value.value.i ? 1 : 0;
         }
         break;
     case GLSL_DEFAULT_BASE_BOOL:
         if (sourceClass == GLSL_DEFAULT_BASE_FLOAT)
-            converted.i = value->value.f != 0.0f;
+            converted.value.i = value->value.value.f != 0.0f;
         else
-            converted.i = value->value.i != 0;
+            converted.value.i = value->value.value.i != 0;
         break;
     default:
         GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
@@ -1440,10 +1440,10 @@ static int GlslStoreDefaultLeaf(GlslLowerContext *context, GlslBase base,
                                      targetBase)) return 0;
         if (targetClass == GLSL_DEFAULT_BASE_FLOAT) {
             if (!GlslAppendDefaultValue(context, values, capacity, count,
-                    typedValues[*index].value.f)) return 0;
+                    (float) typedValues[*index].value.value.f)) return 0;
         } else {
             if (!GlslAppendDefaultValue(context, values, capacity, count,
-                    (float) typedValues[*index].value.i)) return 0;
+                    (float) typedValues[*index].value.value.i)) return 0;
         }
         (*index)++;
     }
@@ -2250,9 +2250,9 @@ static GlslExpr *GlslLowerConstant(GlslLowerContext *context, expr *source,
 
     if (type->base == GLSL_BASE_FLOAT) {
         for (i = 0; i < type->len; i++) {
-            if (source->co.val[i].f != source->co.val[i].f ||
-                source->co.val[i].f > FLT_MAX ||
-                source->co.val[i].f < -FLT_MAX)
+            if (source->co.val[i].value.f != source->co.val[i].value.f ||
+                source->co.val[i].value.f > FLT_MAX ||
+                source->co.val[i].value.f < -FLT_MAX)
             {
                 GlslRecordFailure(context,
                                   "non-finite floating-point constant");
@@ -2263,17 +2263,17 @@ static GlslExpr *GlslLowerConstant(GlslLowerContext *context, expr *source,
 
     if (type->len == 1) {
         if (type->base == GLSL_BASE_FLOAT)
-            return GlslNewLiteral(context, type->base, 0, source->co.val[0].f);
-        return GlslNewLiteral(context, type->base, source->co.val[0].i, 0.0f);
+            return GlslNewLiteral(context, type->base, 0, source->co.val[0].value.f);
+        return GlslNewLiteral(context, type->base, (int) source->co.val[0].value.i, 0.0f);
     }
     target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
     if (target == NULL)
         return NULL;
     for (i = 0; i < type->len; i++) {
         if (type->base == GLSL_BASE_FLOAT)
-            item = GlslNewLiteral(context, type->base, 0, source->co.val[i].f);
+            item = GlslNewLiteral(context, type->base, 0, source->co.val[i].value.f);
         else
-            item = GlslNewLiteral(context, type->base, source->co.val[i].i, 0.0f);
+            item = GlslNewLiteral(context, type->base, (int) source->co.val[i].value.i, 0.0f);
         if (item == NULL)
             return NULL;
         GlslAppendExpr(&target->u.construct.arguments, item);

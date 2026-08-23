@@ -173,6 +173,7 @@ endfunction()
 
 add_cg20_success(cg20_smoke tests/cg20/profile/smoke.cg)
 add_cg20_success(cg20_scalar_types tests/cg20/types/scalars.cg)
+add_cg20_success(cg20_literal_suffixes tests/cg20/literals/suffixes.cg)
 add_test(
     NAME cg20_reserved_word
     COMMAND ${CMAKE_COMMAND}
@@ -181,6 +182,16 @@ add_test(
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word.cg
         -DCODE=1300
         -DMESSAGE=reserved.word
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+add_test(
+    NAME cg20_literal_overflow
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/literal_overflow.cg
+        -DCODE=130
+        -DMESSAGE="literal_overflow\\.cg\\(3\\)"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
 )
 add_test(
@@ -258,6 +269,7 @@ add_test(NAME cg_language_unit COMMAND cg_language_unit)
 
 add_executable(cg_types_unit
     ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c

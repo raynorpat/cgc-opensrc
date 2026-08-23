@@ -120,72 +120,130 @@ symb *NewSymbNode(opcode op, Symbol *fSymb)
 } // NewSymbNode
 
 /*
- * NewIConstNode() - Create a new integer constant node.
+ * lLegacyBaseForKind() - Legacy four-bit base caching a canonical scalar
+ *                        kind in "constant.subop".  Kinds without a base of
+ *                        their own share the int or float legacy base.
  *
  */
- 
-constant *NewIConstNode(opcode op, int fval, int base)
+
+static int lLegacyBaseForKind(CgScalarKind kind)
+{
+    switch (kind) {
+    case CG_SCALAR_CFLOAT:
+        return TYPE_BASE_CFLOAT;
+    case CG_SCALAR_CINT:
+        return TYPE_BASE_CINT;
+    case CG_SCALAR_BOOL:
+        return TYPE_BASE_BOOLEAN;
+    case CG_SCALAR_CHAR:
+    case CG_SCALAR_UCHAR:
+    case CG_SCALAR_SHORT:
+    case CG_SCALAR_USHORT:
+    case CG_SCALAR_INT:
+    case CG_SCALAR_UINT:
+    case CG_SCALAR_LONG:
+    case CG_SCALAR_ULONG:
+        return TYPE_BASE_INT;
+    case CG_SCALAR_FIXED:
+    case CG_SCALAR_HALF:
+    case CG_SCALAR_FLOAT:
+    case CG_SCALAR_DOUBLE:
+        return TYPE_BASE_FLOAT;
+    default:
+        return TYPE_BASE_UNDEFINED_TYPE;
+    }
+} // lLegacyBaseForKind
+
+/*
+ * lKindForLegacyBase() - Canonical kind a legacy constructor's base stands
+ *                        for; unknown bases keep the compile-time kinds.
+ *
+ */
+
+static CgScalarKind lKindForLegacyBase(int base)
+{
+    switch (base) {
+    case TYPE_BASE_CFLOAT:
+        return CG_SCALAR_CFLOAT;
+    case TYPE_BASE_BOOLEAN:
+        return CG_SCALAR_BOOL;
+    case TYPE_BASE_INT:
+        return CG_SCALAR_INT;
+    case TYPE_BASE_FLOAT:
+        return CG_SCALAR_FLOAT;
+    default:
+        return CG_SCALAR_CINT;
+    }
+} // lKindForLegacyBase
+
+/*
+ * NewNumericConstNode() - Create a constant node holding one typed value.
+ *
+ * The node type comes from the interned standard types for the value's
+ * canonical kind, and the legacy subop cache records the old four-bit base
+ * when the kind has one.
+ *
+ */
+
+constant *NewNumericConstNode(opcode op, const CgNumericValue *value)
 {
     constant *pconst;
 
     assert(NodeKind[op] == CONST_N);
+    assert(value);
     pconst = (constant *) malloc(sizeof(constant));
     pconst->kind = CONST_N;
-    pconst->type = GetStandardType(base, 0, 0);
+    pconst->type = GetStandardTypeKind(value->kind, 0, 0);
     pconst->IsLValue = 0;
     pconst->IsConst = 0;
     pconst->HasSideEffects = 0;
     pconst->op = op;
-    pconst->subop = SUBOP__(base);
-    pconst->val[0].i = fval;
+    pconst->subop = SUBOP__(lLegacyBaseForKind(value->kind));
+    pconst->val[0] = *value;
     pconst->tempptr[0] = 0;
     return pconst;
+} // NewNumericConstNode
+
+/*
+ * NewIConstNode() - Create a new integer constant node.
+ *
+ */
+
+constant *NewIConstNode(opcode op, int fval, int base)
+{
+    CgNumericValue value;
+
+    assert(NodeKind[op] == CONST_N);
+    CgNumericSetSigned(&value, lKindForLegacyBase(base), fval);
+    return NewNumericConstNode(op, &value);
 } // NewIConstNode
 
 /*
  * NewBConstNode() - Create a new Boolean constant node.
  *
  */
- 
+
 constant *NewBConstNode(opcode op, int fval, int base)
 {
-    constant *pconst;
+    CgNumericValue value;
 
     assert(NodeKind[op] == CONST_N);
-    pconst = (constant *) malloc(sizeof(constant));
-    pconst->kind = CONST_N;
-    pconst->type = GetStandardType(base, 0, 0);
-    pconst->IsLValue = 0;
-    pconst->IsConst = 0;
-    pconst->HasSideEffects = 0;
-    pconst->op = op;
-    pconst->subop = SUBOP__(base);
-    pconst->val[0].i = fval;
-    pconst->tempptr[0] = 0;
-    return pconst;
+    CgNumericSetSigned(&value, lKindForLegacyBase(base), (fval != 0));
+    return NewNumericConstNode(op, &value);
 } // NewBConstNode
 
 /*
  * NewFConstNode() - Create a new floating point constant node.
  *
  */
- 
+
 constant *NewFConstNode(opcode op, float fval, int base)
 {
-    constant *pconst;
+    CgNumericValue value;
 
     assert(NodeKind[op] == CONST_N);
-    pconst = (constant *) malloc(sizeof(constant));
-    pconst->kind = CONST_N;
-    pconst->type = GetStandardType(base, 0, 0);
-    pconst->IsLValue = 0;
-    pconst->IsConst = 0;
-    pconst->HasSideEffects = 0;
-    pconst->op = op;
-    pconst->subop = SUBOP__(base);
-    pconst->val[0].f = fval;
-    pconst->tempptr[0] = 0;
-    return pconst;
+    CgNumericSetFloat(&value, lKindForLegacyBase(base), fval);
+    return NewNumericConstNode(op, &value);
 } // NewFConstNode
 
 /*
@@ -196,6 +254,7 @@ constant *NewFConstNode(opcode op, float fval, int base)
 constant *NewFConstNodeV(opcode op, float *fval, int len, int base)
 {
     constant *pconst;
+    CgScalarKind kind;
     int ii;
 
     assert(NodeKind[op] == CONST_N);
@@ -207,8 +266,11 @@ constant *NewFConstNodeV(opcode op, float *fval, int len, int base)
     pconst->HasSideEffects = 0;
     pconst->op = op;
     pconst->subop = SUBOP_V(len, base);
-    for (ii = 0; ii < len; ii++)
-        pconst->val[ii].f = fval[ii];
+    kind = lKindForLegacyBase(base);
+    for (ii = 0; ii < len; ii++) {
+        pconst->val[ii].kind = kind;
+        pconst->val[ii].value.f = fval[ii];
+    }
     pconst->tempptr[0] = 0;
     return pconst;
 } // NewFConstNodeV
@@ -2797,6 +2859,20 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
     if (fType) {
         rType = fType;
         if (IsScalar(fType)) {
+            /* A scalar type applied to one scalar argument is a cast,
+             * not a length-one vector construction: */
+            if (fExpr && fExpr->common.kind == BINARY_N &&
+                fExpr->bin.op == EXPR_LIST_OP &&
+                fExpr->bin.right == NULL)
+            {
+                lbase = GetBase(fExpr->bin.left->common.type);
+                if ((Cg->theHAL->IsNumericBase(lbase) ||
+                     lbase == TYPE_BASE_BOOLEAN) &&
+                    IsScalar(fExpr->bin.left->common.type))
+                {
+                    return NewCastOperator(loc, fExpr->bin.left, rType);
+                }
+            }
             size = 1;
         } else if (IsVector(fType, &vlen)) {
             size = vlen;

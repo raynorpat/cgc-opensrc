@@ -70,6 +70,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR___HEX_CONST_OVERFLOW           126, "hex constant overflow"
 #define ERROR___ERROR_IN_HEX_CONSTANT        127, "error in hex constant"
 #define ERROR___OCT_CONST_OVERFLOW           128, "octal constant overflow"
+#define ERROR___MALFORMED_LITERAL_SUFFIX     129, "malformed numeric constant suffix"
+#define ERROR___LITERAL_CONST_OVERFLOW       130, "numeric constant overflow"
 
 // Parser errors
 

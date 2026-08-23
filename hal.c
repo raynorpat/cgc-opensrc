@@ -710,12 +710,12 @@ static int ConvertConstant_HAL(const scalar_constant *fval, int fbase, int tbase
         switch (tbase) {
         case TYPE_BASE_CFLOAT:
         case TYPE_BASE_FLOAT:
-            lexpr = (expr *) NewFConstNode(FCONST_OP, fval->f, tbase);
+            lexpr = (expr *) NewFConstNode(FCONST_OP, fval->value.f, tbase);
             *fexpr = lexpr;
             break;
         case TYPE_BASE_CINT:
         case TYPE_BASE_INT:
-            lexpr = (expr *) NewIConstNode(ICONST_OP, (int) fval->f, tbase);
+            lexpr = (expr *) NewIConstNode(ICONST_OP, (int) fval->value.f, tbase);
             *fexpr = lexpr;
             break;
         default:
@@ -727,12 +727,12 @@ static int ConvertConstant_HAL(const scalar_constant *fval, int fbase, int tbase
         switch (tbase) {
         case TYPE_BASE_CFLOAT:
         case TYPE_BASE_FLOAT:
-            lexpr = (expr *) NewFConstNode(FCONST_OP, (float) fval->i, tbase);
+            lexpr = (expr *) NewFConstNode(FCONST_OP, (float) fval->value.i, tbase);
             *fexpr = lexpr;
             break;
         case TYPE_BASE_CINT:
         case TYPE_BASE_INT:
-            lexpr = (expr *) NewIConstNode(ICONST_OP, fval->i, tbase);
+            lexpr = (expr *) NewIConstNode(ICONST_OP, (int) fval->value.i, tbase);
             *fexpr = lexpr;
             break;
         default:

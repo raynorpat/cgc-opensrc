@@ -55,6 +55,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "cg_types.h"
+#include "cg_numeric.h"
 
 CgStruct *Cg;
 Scope *CurrentScope;
@@ -124,6 +125,21 @@ int main(void)
     assert(IsMatrix(GetStandardTypeKind(CG_SCALAR_DOUBLE, 4, 4), NULL, NULL));
     assert(GetStandardTypeKind(CG_SCALAR_FLOAT, 4, 4) ==
            GetStandardTypeKind(CG_SCALAR_FLOAT, 4, 4));
+
+    {
+        CgNumericValue input;
+        CgNumericValue output;
+
+        CgNumericSetSigned(&input, CG_SCALAR_LONG, -2);
+        assert(CgNumericConvert(&output, CG_SCALAR_ULONG, &input));
+        assert(output.kind == CG_SCALAR_ULONG);
+        CgNumericSetFloat(&input, CG_SCALAR_FIXED, 3.0);
+        assert(CgNumericNormalize(&output, &input));
+        assert(output.value.f < 2.0);
+        CgNumericSetFloat(&input, CG_SCALAR_HALF, 1.0 / 3.0);
+        assert(CgNumericNormalize(&output, &input));
+        assert(output.kind == CG_SCALAR_HALF);
+    }
 
     FreeSymbolTable(Cg);
     FreeAtomTable(atable);

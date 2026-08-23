@@ -15,6 +15,7 @@ add_executable(cgc
     atom.c
     binding.c
     cgcmain.c
+    cg_numeric.c
     cg_types.c
     cgstruct.c
     check.c
@@ -45,6 +46,7 @@ add_executable(cgc
 
 add_executable(tokenize
     atom.c
+    cg_numeric.c
     cgstruct.c
     language.c
     scanner.c

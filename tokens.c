@@ -256,6 +256,8 @@ void DeleteTokenStream(TokenStream *pTok)
 void RecordToken(TokenStream *pTok, int token)
 {
     const char *s;
+    float lval;
+    int lival;
 
     // token = lCompressToken(token);
     if (token > 256)
@@ -275,10 +277,12 @@ void RecordToken(TokenStream *pTok, int token)
     case FLOATCONST_SY:
     case FLOATHCONST_SY:
     case FLOATXCONST_SY:
-        lAdd4Bytes(pTok, (unsigned char *) &yylval.sc_fval);
+        lval = (float) yylval.sc_literal.value.f;
+        lAdd4Bytes(pTok, (unsigned char *) &lval);
         break;
     case INTCONST_SY:
-        lAdd4Bytes(pTok, (unsigned char *) &yylval.sc_int);
+        lival = (int) yylval.sc_literal.value.i;
+        lAdd4Bytes(pTok, (unsigned char *) &lival);
         break;
     case '(':
         lAddByte(pTok, (unsigned char)(yylval.sc_int ? 1 : 0));
@@ -309,7 +313,8 @@ int ReadToken(TokenStream *pTok)
 {
     char symbol_name[MAX_SYMBOL_NAME_LEN + 1];
     char string_val[MAX_STRING_LEN + 1];
-    int ltoken, len;
+    int ltoken, len, lival;
+    float lval;
     char ch;
 
     ltoken = lReadByte(pTok);
@@ -350,10 +355,17 @@ int ReadToken(TokenStream *pTok)
         case FLOATCONST_SY:
         case FLOATHCONST_SY:
         case FLOATXCONST_SY:
-            lRead4Bytes(pTok, (unsigned char *) &yylval.sc_fval);
+            lRead4Bytes(pTok, (unsigned char *) &lval);
+            CgNumericSetFloat(&yylval.sc_literal,
+                              ltoken == CFLOATCONST_SY ? CG_SCALAR_CFLOAT :
+                              ltoken == FLOATCONST_SY ? CG_SCALAR_FLOAT :
+                              ltoken == FLOATHCONST_SY ? CG_SCALAR_HALF :
+                              CG_SCALAR_FIXED,
+                              lval);
             break;
         case INTCONST_SY:
-            lRead4Bytes(pTok, (unsigned char *) &yylval.sc_int);
+            lRead4Bytes(pTok, (unsigned char *) &lival);
+            CgNumericSetSigned(&yylval.sc_literal, CG_SCALAR_CINT, lival);
             break;
         case '(':
             yylval.sc_int = lReadByte(pTok);
@@ -472,10 +484,10 @@ void TokenizeInput(void)
         case FLOATCONST_SY:
         case FLOATHCONST_SY:
         case FLOATXCONST_SY:
-            printf(" = %g9.6", yylval.sc_fval);
+            printf(" = %g9.6", yylval.sc_literal.value.f);
             break;
         case INTCONST_SY:
-            printf(" = %d", yylval.sc_int);
+            printf(" = %d", (int) yylval.sc_literal.value.i);
             break;
         }
         printf("\n");
@@ -544,10 +556,10 @@ void DumpTokenStream(FILE *fp, TokenStream *s) {
         case FLOATCONST_SY:
         case FLOATHCONST_SY:
         case FLOATXCONST_SY:
-            printf("%g9.6 ", yylval.sc_fval);
+            printf("%g9.6 ", yylval.sc_literal.value.f);
             break;
         case INTCONST_SY:
-            printf("%d ", yylval.sc_int);
+            printf("%d ", (int) yylval.sc_literal.value.i);
             break;
         default:
             if (token >= 127)

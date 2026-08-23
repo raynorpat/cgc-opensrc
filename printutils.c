@@ -213,7 +213,7 @@ static void lBPrintExpression(expr *fexpr, int level)
             case CONST_N:
                 switch (fexpr->co.op) {
                 case ICONST_OP:
-                    printf("%d", fexpr->co.val[0].i);
+                    printf("%d", (int) fexpr->co.val[0].value.i);
                     break;
                 case ICONST_V_OP:
                     nn = SUBOP_GET_S(subop);
@@ -221,18 +221,19 @@ static void lBPrintExpression(expr *fexpr, int level)
                     for (ii = 0; ii < nn; ii++) {
                         if (ii > 0)
                             printf(", ");
-                        printf("%d", fexpr->co.val[ii].i);
+                        printf("%d", (int) fexpr->co.val[ii].value.i);
                     }
                     printf(" }");
                     break;
                 case BCONST_OP:
-                    bval = fexpr->co.val[0].i;
+                    bval = (int) fexpr->co.val[0].value.i;
                     if (bval == 0) {
                         printf("false");
                     } else if (bval == 1) {
                         printf("true");
                     } else {
-                        printf("<<bad-bool-%08x>>", fexpr->co.val[0].i);
+                        printf("<<bad-bool-%08x>>",
+                               (unsigned) fexpr->co.val[0].value.i);
                     }
                     break;
                 case BCONST_V_OP:
@@ -241,13 +242,14 @@ static void lBPrintExpression(expr *fexpr, int level)
                     for (ii = 0; ii < nn; ii++) {
                         if (ii > 0)
                             printf(", ");
-                        bval = fexpr->co.val[ii].i;
+                        bval = (int) fexpr->co.val[ii].value.i;
                         if (bval == 0) {
                             printf("false");
                         } else if (bval == 1) {
                             printf("true");
                         } else {
-                            printf("<<bad-bool-%08x>>", fexpr->co.val[ii].i);
+                            printf("<<bad-bool-%08x>>",
+                                   (unsigned) fexpr->co.val[ii].value.i);
                         }
                     }
                     printf(" }");
@@ -255,7 +257,7 @@ static void lBPrintExpression(expr *fexpr, int level)
                 case FCONST_OP:
                 case HCONST_OP:
                 case XCONST_OP:
-                    printf("%1.6g", fexpr->co.val[0].f);
+                    printf("%1.6g", fexpr->co.val[0].value.f);
                     break;
                 case FCONST_V_OP:
                 case HCONST_V_OP:
@@ -265,7 +267,7 @@ static void lBPrintExpression(expr *fexpr, int level)
                     for (ii = 0; ii < nn; ii++) {
                         if (ii > 0)
                             printf(", ");
-                        printf("%1.6g", fexpr->co.val[ii].f);
+                        printf("%1.6g", fexpr->co.val[ii].value.f);
                     }
                     printf(" }");
                     break;
@@ -795,22 +797,22 @@ void lPrintExpr(expr *fexpr)
     case CONST_N:
         switch (fexpr->co.op) {
         case ICONST_OP:
-            printf("%d", fexpr->co.val[0].i);
+            printf("%d", (int) fexpr->co.val[0].value.i);
             break;
         case ICONST_V_OP:
-            printf("{ %d", fexpr->co.val[0].i);
+            printf("{ %d", (int) fexpr->co.val[0].value.i);
             len = SUBOP_GET_S(fexpr->co.subop);
             for (ii = 1; ii < len; ii++)
-                printf(", %d", fexpr->co.val[ii].i);
+                printf(", %d", (int) fexpr->co.val[ii].value.i);
             printf(" }");
             break;
         case BCONST_OP:
-            if (fexpr->co.val[0].i == 0) {
+            if (fexpr->co.val[0].value.i == 0) {
                 printf("false");
-            } else if (fexpr->co.val[0].i == 1) {
+            } else if (fexpr->co.val[0].value.i == 1) {
                 printf("true");
             } else {
-                printf("<<BBCONST=%d>>", fexpr->co.val[0].i);
+                printf("<<BBCONST=%d>>", (int) fexpr->co.val[0].value.i);
             }
             break;
         case BCONST_V_OP:
@@ -818,23 +820,23 @@ void lPrintExpr(expr *fexpr)
             len = SUBOP_GET_S(fexpr->co.subop);
             for (ii = 0; ii < len; ii++)
                 if (ii) printf(", ");
-                if (fexpr->co.val[ii].i == 0) {
+                if (fexpr->co.val[ii].value.i == 0) {
                     printf("false");
-                } else if (fexpr->co.val[ii].i == 1) {
+                } else if (fexpr->co.val[ii].value.i == 1) {
                     printf("true");
                 } else {
-                    printf("<<BBCONST=%d>>", fexpr->co.val[ii].i);
+                    printf("<<BBCONST=%d>>", (int) fexpr->co.val[ii].value.i);
                 }
             printf(" }");
             break;
         case FCONST_OP:
-            printf("%.6gf", fexpr->co.val[0].f);
+            printf("%.6gf", fexpr->co.val[0].value.f);
             break;
         case HCONST_OP:
-            printf("%.6gh", fexpr->co.val[0].f);
+            printf("%.6gh", fexpr->co.val[0].value.f);
             break;
         case XCONST_OP:
-            printf("%.6gx", fexpr->co.val[0].f);
+            printf("%.6gx", fexpr->co.val[0].value.f);
             break;
         case FCONST_V_OP:
             tag = 'f';
@@ -845,10 +847,10 @@ void lPrintExpr(expr *fexpr)
         case XCONST_V_OP:
             tag = 'x';
         floatvec:
-            printf("{ %.6g%c", fexpr->co.val[0].f, tag);
+            printf("{ %.6g%c", fexpr->co.val[0].value.f, tag);
             len = SUBOP_GET_S(fexpr->co.subop);
             for (ii = 1; ii < len; ii++)
-                printf(", %.6g%c", fexpr->co.val[ii].f, tag);
+                printf(", %.6g%c", fexpr->co.val[ii].value.f, tag);
             printf(" }");
             break;
         }

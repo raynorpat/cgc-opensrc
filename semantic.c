@@ -96,21 +96,21 @@ static void GetVectorConst(float *fVal, expr *fExpr)
                     case HCONST_V_OP:
                     case XCONST_V_OP:
                         for (ii = 0; ii < SUBOP_GET_S1(pconst->subop); ii++)
-                            fVal[ii] = pconst->val[ii].f;
+                            fVal[ii] = (float) pconst->val[ii].value.f;
                         break;
                     case ICONST_V_OP:
                     case BCONST_V_OP:
                         for (ii = 0; ii < SUBOP_GET_S1(pconst->subop); ii++)
-                            fVal[ii] = (float) pconst->val[ii].i;
+                            fVal[ii] = (float) pconst->val[ii].value.i;
                         break;
                     case FCONST_OP:
                     case HCONST_OP:
                     case XCONST_OP:
-                        fVal[0] = pconst->val[0].f;
+                        fVal[0] = (float) pconst->val[0].value.f;
                         break;
                     case ICONST_OP:
                     case BCONST_OP:
-                        fVal[0] = (float) pconst->val[0].i;
+                        fVal[0] = (float) pconst->val[0].value.i;
                         break;
                     default:
                         Oops = 4;

@@ -48,6 +48,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define NO_PARSER 1
 #include "slglobals.h"
+#include "cg_numeric.h"
 
 %}
 
@@ -57,6 +58,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     int    sc_token;
     int    sc_int;
     float  sc_fval;
+    CgNumericValue sc_literal;
     int    sc_ident;
     spec   sc_specifiers;
     dtype  sc_type;
@@ -80,7 +82,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> BOOLEAN_SY 264
 %token <sc_token> BREAK_SY 265
 %token <sc_token> CASE_SY 266
-%token <sc_fval>  CFLOATCONST_SY 267
+%token <sc_literal> CFLOATCONST_SY 267
 %token <sc_token> COLONCOLON_SY 268
 %token <sc_token> CONST_SY 269
 %token <sc_token> CONTINUE_SY 270
@@ -92,9 +94,9 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> ERROR_SY 276
 %token <sc_token> EXTERN_SY 277
 %token <sc_token> FLOAT_SY 278
-%token <sc_fval>  FLOATCONST_SY 279
-%token <sc_fval>  FLOATHCONST_SY 280
-%token <sc_fval>  FLOATXCONST_SY 281
+%token <sc_literal> FLOATCONST_SY 279
+%token <sc_literal> FLOATHCONST_SY 280
+%token <sc_literal> FLOATXCONST_SY 281
 %token <sc_token> FOR_SY 282
 %token <sc_token> GE_SY 283
 %token <sc_token> GG_SY 284
@@ -105,7 +107,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> INLINE_SY 289
 %token <sc_token> INOUT_SY 290
 %token <sc_token> INT_SY 291
-%token <sc_int>   INTCONST_SY 292
+%token <sc_literal> INTCONST_SY 292
 %token <sc_token> INTERNAL_SY 293
 %token <sc_token> LE_SY 294
 %token <sc_token> LL_SY 295
@@ -512,7 +514,7 @@ semantic_declarator:      basic_declarator
 basic_declarator:         identifier
                               { $$ = NewDeclNode(Cg->tokenLoc, $1, &CurrentDeclTypeSpecs); }
                         | basic_declarator '[' INTCONST_SY /* constant_expression */ ']'
-                              { $$ = Array_Declarator(Cg->tokenLoc, $1, $3, 0); }
+                              { $$ = Array_Declarator(Cg->tokenLoc, $1, (int) $3.value.i, 0); }
                         | basic_declarator '[' ']'
                               { $$ = Array_Declarator(Cg->tokenLoc, $1, 0 , 1); }
                         | function_decl_header parameter_list ')'
@@ -528,7 +530,7 @@ function_decl_header:     basic_declarator '('
 abstract_declarator:      /* empty */
                               { $$ = NewDeclNode(Cg->tokenLoc, 0, &CurrentDeclTypeSpecs); }
                         | abstract_declarator '[' INTCONST_SY /* constant_expression */  ']'
-                              { $$ = Array_Declarator(Cg->tokenLoc, $1, $3, 0); }
+                              { $$ = Array_Declarator(Cg->tokenLoc, $1, (int) $3.value.i, 0); }
                         | abstract_declarator '[' ']'
                               { $$ = Array_Declarator(Cg->tokenLoc, $1, 0 , 1); }
 /***
@@ -1032,6 +1034,8 @@ identifier:               IDENT_SY
                               { $$ = $1; }
                         | RESERVED_SY
                               {
+                                /* SemanticError, not SemanticParseError: the
+                                 * latter is gated by AllowSemanticParseErrors */
                                 SemanticError(Cg->tokenLoc, ERROR_S_RESERVED_WORD,
                                               GetAtomString(atable, $1));
                                 $$ = $1;
@@ -1039,23 +1043,15 @@ identifier:               IDENT_SY
 ;
 
 constant:                 INTCONST_SY /* Temporary! */
-                              { $$ = (expr *) NewIConstNode(ICONST_OP, $1, TYPE_BASE_CINT); }
+                              { $$ = (expr *) NewNumericConstNode(ICONST_OP, &$1); }
                         | CFLOATCONST_SY /* Temporary! */
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, ' ');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
                         | FLOATCONST_SY /* Temporary! */
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'f');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
                         | FLOATHCONST_SY /* Temporary! */
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'h');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
                         | FLOATXCONST_SY /* Temporary! */
-                              {int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'x');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
 ;
 
 /***
