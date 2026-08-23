@@ -12,8 +12,8 @@
 TEMP R0;
 TEMP R1;
 TEMP R2;
-TEX R0, fragment.texcoord[0];
-TEX R1, fragment.texcoord[0];
+TEX R0, fragment.texcoord[0], texture[0], 2D;
+TEX R1, fragment.texcoord[0], texture[1], 2D;
 MUL R2, R0, R1;
 MOV result.color, R2;
 END

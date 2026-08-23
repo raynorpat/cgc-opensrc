@@ -314,7 +314,26 @@ static int WriteInstruction(FILE *out, const ArbProgram *program,
     for (ii = 0; ii < instruction->srcCount; ii++) {
         fprintf(out, "%s", ii == 0 && instruction->opcode != ARB_OP_KIL ?
                             ", " : (ii == 0 ? " " : ", "));
-        WriteOperand(out, program, &instruction->src[ii], 0, instruction->mask);
+        WriteOperand(out, program, &instruction->src[ii], 0,
+                     instruction->mask);
+    }
+    if (instruction->opcode == ARB_OP_TEX ||
+        instruction->opcode == ARB_OP_TXB ||
+        instruction->opcode == ARB_OP_TXP)
+    {
+        // Long form with explicit image unit and target token; the
+        // NVIDIA parser rejects the short form.
+        const char *targetName = "?";
+        switch (instruction->textureTarget) {
+        case ARB_TEX_1D:   targetName = "1D"; break;
+        case ARB_TEX_2D:   targetName = "2D"; break;
+        case ARB_TEX_3D:   targetName = "3D"; break;
+        case ARB_TEX_CUBE: targetName = "CUBE"; break;
+        case ARB_TEX_RECT: targetName = "RECT"; break;
+        default: break;
+        }
+        fprintf(out, ", texture[%d], %s", instruction->textureUnit,
+                targetName);
     }
     fprintf(out, ";\n");
     return 1;
