@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -325,33 +325,29 @@ static int WriteInstruction(FILE *out, const ArbProgram *program,
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * ArbLegalizeAndAllocate() - Validate the IR and assign physical temporaries.
- *         With no virtual temporaries in the program there is nothing to
- *         allocate; the linear-scan allocator replaces the tail of this
- *         function as lowering grows.
+ * ArbLegalizeAndAllocate() - Validate the IR, run the safe local
+ *         optimizations, and assign physical temporaries with the
+ *         deterministic linear-scan allocator.
  */
 
 int ArbLegalizeAndAllocate(ArbProgram *ir, const ArbProfileDesc *profile,
                            SourceLoc *loc)
 {
-    ArbIRStatus status = ArbValidateIR(ir);
-    ArbInstruction *inst;
+    ArbAllocStatus status;
 
-    if (status != ARB_IR_VALID) {
+    if (ArbValidateIR(ir) != ARB_IR_VALID) {
         InternalError(loc, ERROR___ARB_INVALID_IR);
         return 0;
     }
-    for (inst = ir->first; inst; inst = inst->next) {
-        if (inst->dst.file == ARB_REG_TEMP &&
-            inst->physicalTemp < 0)
-        {
-            ir->numPhysicalTemps = ir->numVirtualTemps;
-            break;
-        }
-    }
-    if (ir->numPhysicalTemps > profile->limits->temporaries) {
+    ArbOptimizeProgram(ir);
+    status = ArbAllocateTemporaries(ir, profile->limits->temporaries);
+    if (status == ARB_ALLOC_TEMP_LIMIT) {
         SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "temporaries",
-                      ir->numPhysicalTemps, profile->limits->temporaries);
+                      ir->numVirtualTemps, profile->limits->temporaries);
+        return 0;
+    }
+    if (status != ARB_ALLOC_OK) {
+        InternalError(loc, ERROR___ARB_INVALID_IR);
         return 0;
     }
     return 1;
@@ -695,9 +691,46 @@ void ArbWriteBindingMetadata(FILE *out, slHAL *fHAL, Symbol *program)
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
+ * WriteDeclarations() - Emit the declarations the instruction stream
+ *     references: TEMP registers, interned literal PARAMs, and (once
+ *     relative addressing exists) ADDRESS registers.  Built-in vertex
+ *     attrib and result names are predeclared by ARB_vertex_program.
+ */
+
+static void WriteDeclarations(FILE *out, const ArbProgram *program)
+{
+    ArbInstruction const *inst;
+    int maxTemp = -1;
+    int ii;
+
+    for (inst = program->first; inst; inst = inst->next) {
+        if (inst->dst.file == ARB_REG_TEMP && inst->dst.index > maxTemp)
+            maxTemp = inst->dst.index;
+        for (ii = 0; ii < inst->srcCount; ii++) {
+            if (inst->src[ii].file == ARB_REG_TEMP &&
+                inst->src[ii].index > maxTemp)
+            {
+                maxTemp = inst->src[ii].index;
+            }
+        }
+    }
+    for (ii = 0; ii <= maxTemp; ii++)
+        fprintf(out, "TEMP R%d;\n", ii);
+    for (ii = 0; ii < program->numConstants; ii++) {
+        const ArbConstant *cnst = program->constants;
+        while (cnst && cnst->index != ii)
+            cnst = cnst->next;
+        if (!cnst)
+            continue;
+        fprintf(out, "PARAM literal%d = { %.7g, %.7g, %.7g, %.7g };\n",
+                cnst->index, cnst->value[0], cnst->value[1],
+                cnst->value[2], cnst->value[3]);
+    }
+} // WriteDeclarations
+
+/*
  * ArbWriteProgram() - Emit declarations, instructions, END, and the
- *         statistics comment.  Declarations grow as backend features
- *         reference them.
+ *         statistics comment.
  */
 
 int ArbWriteProgram(FILE *out, const ArbProgram *program,
@@ -705,6 +738,7 @@ int ArbWriteProgram(FILE *out, const ArbProgram *program,
 {
     const ArbInstruction *inst;
 
+    WriteDeclarations(out, program);
     for (inst = program->first; inst; inst = inst->next)
         WriteInstruction(out, program, inst);
     fprintf(out, "END\n");

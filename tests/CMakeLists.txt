@@ -1036,3 +1036,10 @@ add_test(NAME arb_ir_unit COMMAND arb_ir_tests)
 add_arb_fixture(arbvp1_passthrough arbvp1
     tests/arb/profile/vp_passthrough.cg
     tests/arb/profile/vp_passthrough.expected)
+
+add_arb_fixture(arbvp1_arithmetic arbvp1
+    tests/arb/arithmetic/vp_arithmetic.cg
+    tests/arb/arithmetic/vp_arithmetic.expected)
+add_arb_fixture(arbvp1_swizzle arbvp1
+    tests/arb/arithmetic/vp_swizzle.cg
+    tests/arb/arithmetic/vp_swizzle.expected)

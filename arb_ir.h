@@ -141,6 +141,18 @@ int ArbInternConstant(ArbProgram *program, const float *value, int size);
 ArbIRStatus ArbValidateIR(const ArbProgram *program);
 int ArbIsTextureOpcode(ArbOpcode opcode);
 
+typedef enum ArbAllocStatus_Enum {
+    ARB_ALLOC_OK,
+    ARB_ALLOC_TEMP_LIMIT,
+    ARB_ALLOC_INVALID_IR
+} ArbAllocStatus;
+
+ArbAllocStatus ArbAllocateTemporaries(ArbProgram *program, int maxTemporaries);
+
+// Optimization passes shared by the backend transaction:
+
+void ArbOptimizeProgram(ArbProgram *program);
+
 // Lowering and backend transaction (arb_lower.c / arb_codegen.c):
 
 int ArbLowerProgram(ArbProgram *ir, const ArbProfileDesc *profile,

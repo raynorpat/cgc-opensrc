@@ -1,0 +1,13 @@
+struct appin { float4 position : POSITION; };
+struct vout { float4 position : POSITION; float4 color : COLOR0; };
+
+vout main(appin input)
+{
+    vout output;
+    float4 value;
+    value.xy = input.position.yx;
+    value.zw = float2(0.0, 1.0);
+    output.position = input.position;
+    output.color = -value;
+    return output;
+}

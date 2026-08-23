@@ -277,10 +277,19 @@ int ArbInternConstant(ArbProgram *program, const float *value, int size)
     int index = 0;
     int ii;
 
-    if (size < 4) {
+    if (size == 1) {
+        // Scalars expand to all four components.
         expanded[0] = value[0];
-        for (ii = 1; ii < 4; ii++)
-            expanded[ii] = value[0];
+        expanded[1] = value[0];
+        expanded[2] = value[0];
+        expanded[3] = value[0];
+        value = expanded;
+        size = 4;
+    } else if (size < 4) {
+        for (ii = 0; ii < size && ii < 4; ii++)
+            expanded[ii] = value[ii];
+        for (; ii < 4; ii++)
+            expanded[ii] = 0.0f;
         value = expanded;
         size = 4;
     } else if (size > 4) {
@@ -422,3 +431,547 @@ ArbIRStatus ArbValidateIR(const ArbProgram *program)
     }
     return ARB_IR_VALID;
 } // ArbValidateIR
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// Safe Local Optimizations /////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+static int IsIdentitySwizzleOp(const signed char *swizzle)
+{
+    return swizzle[0] == 0 && swizzle[1] == 1 &&
+           swizzle[2] == 2 && swizzle[3] == 3;
+} // IsIdentitySwizzleOp
+
+static int OperandReferencesTemp(const ArbOperand *operand, int temp)
+{
+    return operand->file == ARB_REG_TEMP && operand->index == temp;
+} // OperandReferencesTemp
+
+static int InstructionDefinesTemp(const ArbInstruction *inst, int temp)
+{
+    return inst->dst.file == ARB_REG_TEMP && inst->dst.index == temp &&
+           inst->opcode != ARB_OP_KIL;
+} // InstructionDefinesTemp
+
+/*
+ * TempUseCounts() - Count how many source operands reference each virtual
+ *         temporary.
+ */
+
+static void TempUseCounts(const ArbProgram *program, int *counts, int maxTemps)
+{
+    const ArbInstruction *inst;
+    int ii;
+
+    for (ii = 0; ii < maxTemps; ii++)
+        counts[ii] = 0;
+    for (inst = program->first; inst; inst = inst->next) {
+        for (ii = 0; ii < inst->srcCount; ii++) {
+            if (inst->src[ii].file == ARB_REG_TEMP &&
+                inst->src[ii].index >= 0 && inst->src[ii].index < maxTemps)
+            {
+                counts[inst->src[ii].index]++;
+            }
+        }
+    }
+} // TempUseCounts
+
+/*
+ * RemoveIdentityMoves() - Drop MOV t, t with the same effective mask and
+ *         swizzle and no modifiers.
+ */
+
+static int RemoveIdentityMoves(ArbProgram *program)
+{
+    ArbInstruction **link = &program->first;
+    ArbInstruction *inst;
+    int changed = 0;
+
+    while ((inst = *link) != NULL) {
+        int identity;
+        int lane;
+
+        identity = inst->opcode == ARB_OP_MOV &&
+                   inst->dst.file == ARB_REG_TEMP &&
+                   inst->srcCount == 1 &&
+                   inst->src[0].file == ARB_REG_TEMP &&
+                   inst->src[0].index == inst->dst.index &&
+                   !inst->src[0].negate && !inst->src[0].absolute &&
+                   inst->mask == ARB_MASK_XYZW &&
+                   IsIdentitySwizzleOp(inst->src[0].swizzle);
+
+        // Scalar temporaries carry an xxxx read swizzle; a masked self
+        // move is still an identity when every written lane reads itself.
+
+        if (!identity &&
+            inst->opcode == ARB_OP_MOV &&
+            inst->dst.file == ARB_REG_TEMP &&
+            inst->srcCount == 1 &&
+            inst->src[0].file == ARB_REG_TEMP &&
+            inst->src[0].index == inst->dst.index &&
+            !inst->src[0].negate && !inst->src[0].absolute)
+        {
+            identity = 1;
+            for (lane = 0; lane < 4; lane++) {
+                if (!(inst->mask & (1 << lane)))
+                    continue;
+                if (inst->src[0].swizzle[lane] != lane) {
+                    identity = 0;
+                    break;
+                }
+            }
+        }
+        if (identity) {
+            *link = inst->next;
+            if (program->last == inst)
+                program->last = NULL;
+            free(inst);
+            program->numInstructions--;
+            changed = 1;
+        } else {
+            link = &inst->next;
+        }
+    }
+    // Fix the tail pointer after any removals.
+    inst = program->first;
+    while (inst && inst->next)
+        inst = inst->next;
+    program->last = inst;
+    return changed;
+} // RemoveIdentityMoves
+
+/*
+ * PropagateSingleFullMoves() - Replace uses of a temporary whose only
+ *         definition is a full-mask MOV of an unmodified identity source
+ *         with that source.  Relative addressing never propagates.
+ */
+
+static int PropagateSingleFullMoves(ArbProgram *program)
+{
+    int *defCounts;
+    ArbInstruction *inst;
+    int changed = 0;
+    int ii, jj;
+
+    if (program->numVirtualTemps <= 0)
+        return 0;
+    defCounts = (int *) calloc((size_t) program->numVirtualTemps,
+                               sizeof(int));
+    if (!defCounts)
+        return 0;
+    for (inst = program->first; inst; inst = inst->next) {
+        if (InstructionDefinesTemp(inst, inst->dst.index) &&
+            inst->dst.index < program->numVirtualTemps)
+        {
+            defCounts[inst->dst.index]++;
+        }
+    }
+    for (inst = program->first; inst; inst = inst->next) {
+        ArbOperand replacement;
+        int canReplace;
+
+        if (inst->opcode != ARB_OP_MOV ||
+            inst->dst.file != ARB_REG_TEMP ||
+            inst->mask != ARB_MASK_XYZW ||
+            inst->srcCount != 1)
+        {
+            continue;
+        }
+        if (defCounts[inst->dst.index] != 1)
+            continue;
+        replacement = inst->src[0];
+        canReplace = replacement.file != ARB_REG_ADDRESS &&
+                     !replacement.negate && !replacement.absolute &&
+                     replacement.relative == 0 &&
+                     IsIdentitySwizzleOp(replacement.swizzle);
+        if (!canReplace)
+            continue;
+        for (jj = 0; jj < 4; jj++)
+            replacement.swizzle[jj] = (signed char) jj;
+        for (inst = inst->next; inst; inst = inst->next) {
+            for (ii = 0; ii < inst->srcCount; ii++) {
+                if (OperandReferencesTemp(&inst->src[ii], inst->dst.index)) {
+                    inst->src[ii] = replacement;
+                    changed = 1;
+                }
+            }
+        }
+    }
+    free(defCounts);
+    return changed;
+} // PropagateSingleFullMoves
+
+/*
+ * RemoveDeadDefinitions() - Delete instructions defining a temporary that
+ *     no source anywhere references.  Output writes are always preserved.
+ */
+
+static int RemoveDeadDefinitions(ArbProgram *program)
+{
+    int *counts;
+    ArbInstruction **link;
+    ArbInstruction *inst;
+    int changed = 0;
+    int removed;
+
+    if (program->numVirtualTemps <= 0)
+        return 0;
+    counts = (int *) malloc(sizeof(int) * program->numVirtualTemps);
+    if (!counts)
+        return 0;
+    do {
+        removed = 0;
+        TempUseCounts(program, counts, program->numVirtualTemps);
+        link = &program->first;
+        while ((inst = *link) != NULL) {
+            int dead = InstructionDefinesTemp(inst, inst->dst.index) &&
+                       counts[inst->dst.index] == 0;
+            if (dead) {
+                *link = inst->next;
+                free(inst);
+                program->numInstructions--;
+                removed = 1;
+                changed = 1;
+            } else {
+                link = &inst->next;
+            }
+        }
+        inst = program->first;
+        while (inst && inst->next)
+            inst = inst->next;
+        program->last = inst;
+    } while (removed);
+    free(counts);
+    return changed;
+} // RemoveDeadDefinitions
+
+/*
+ * ConstLaneValues() - Fetch an interned constant's four values.
+ */
+
+static int FindConstant(const ArbProgram *program, int index, float *out)
+{
+    const ArbConstant *cnst = program->constants;
+    while (cnst) {
+        if (cnst->index == index) {
+            out[0] = cnst->value[0];
+            out[1] = cnst->value[1];
+            out[2] = cnst->value[2];
+            out[3] = cnst->value[3];
+            return 1;
+        }
+        cnst = cnst->next;
+    }
+    return 0;
+} // FindConstant
+
+static int IsConstAllValue(const ArbProgram *program, const ArbOperand *op,
+                           float want)
+{
+    float vals[4];
+    int ii;
+
+    if (op->file != ARB_REG_CONST || op->negate || op->absolute ||
+        !IsIdentitySwizzleOp(op->swizzle))
+    {
+        return 0;
+    }
+    if (!FindConstant(program, op->index, vals))
+        return 0;
+    for (ii = 0; ii < 4; ii++) {
+        if (vals[ii] != want)
+            return 0;
+    }
+    return 1;
+} // IsConstAllValue
+
+/*
+ * FoldNeutralConstants() - Fold MUL(x, 1) and SUB(x, +0) into moves.
+ *         ADD-with-zero and MUL-with-zero change signed-zero/NaN/Inf
+ *         behavior and are deliberately not folded.
+ */
+
+static int FoldNeutralConstants(ArbProgram *program)
+{
+    ArbInstruction **link = &program->first;
+    ArbInstruction *inst;
+    int changed = 0;
+
+    while ((inst = *link) != NULL) {
+        int fold = 0;
+        int keepIdx = -1;
+
+        if ((inst->opcode == ARB_OP_MUL || inst->opcode == ARB_OP_SUB) &&
+            inst->dst.file == ARB_REG_TEMP && inst->srcCount == 2)
+        {
+            if (inst->opcode == ARB_OP_MUL &&
+                IsConstAllValue(program, &inst->src[1], 1.0f))
+            {
+                fold = 1;
+                keepIdx = 0;
+            } else if (inst->opcode == ARB_OP_SUB &&
+                       IsConstAllValue(program, &inst->src[1], 0.0f))
+            {
+                fold = 1;
+                keepIdx = 0;
+            } else if (inst->opcode == ARB_OP_MUL &&
+                       IsConstAllValue(program, &inst->src[0], 1.0f))
+            {
+                fold = 1;
+                keepIdx = 1;
+            }
+        }
+        if (fold && inst->src[keepIdx].file != ARB_REG_ADDRESS) {
+            ArbInstruction *mov;
+            mov = (ArbInstruction *) malloc(sizeof(ArbInstruction));
+            if (mov) {
+                *mov = *inst;
+                mov->opcode = ARB_OP_MOV;
+                mov->srcCount = 1;
+                mov->src[0] = inst->src[keepIdx];
+                mov->next = inst->next;
+                *link = mov;
+                if (program->last == inst)
+                    program->last = mov;
+                free(inst);
+                changed = 1;
+                inst = mov;
+            }
+        }
+        link = &inst->next;
+    }
+    return changed;
+} // FoldNeutralConstants
+
+/*
+ * ArbOptimizeProgram() - Run the safe passes until one makes no change.
+ */
+
+void ArbOptimizeProgram(ArbProgram *program)
+{
+    int changed;
+
+    do {
+        changed = 0;
+        changed |= RemoveIdentityMoves(program);
+        changed |= PropagateSingleFullMoves(program);
+        changed |= RemoveDeadDefinitions(program);
+        changed |= FoldNeutralConstants(program);
+    } while (changed);
+} // ArbOptimizeProgram
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// Linear Scan Allocation ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct ArbInterval_Rec {
+    int virtualTemp;
+    int first;
+    int last;
+    int physical;
+} ArbInterval;
+
+typedef struct ArbActive_Rec {
+    int interval;
+    struct ArbActive_Rec *next;
+} ArbActive;
+
+static void ReleaseActive(ArbActive *list)
+{
+    while (list) {
+        ArbActive *next = list->next;
+        free(list);
+        list = next;
+    }
+} // ReleaseActive
+
+/*
+ * ArbAllocateTemporaries() - Deterministic linear-scan allocation.  Every
+ *     virtual temporary collapses its per-component uses into one
+ *     full-register interval [first definition, last source use].  The
+ *     TEMP operand indices are rewritten to physical registers on success.
+ */
+
+ArbAllocStatus ArbAllocateTemporaries(ArbProgram *program, int maxTemporaries)
+{
+    ArbInterval *intervals;
+    ArbActive *active = NULL;
+    ArbInstruction *inst;
+    int position;
+    int numIntervals = 0;
+    int highestPhysical = -1;
+    int ii, jj;
+
+    if (ArbValidateIR(program) != ARB_IR_VALID)
+        return ARB_ALLOC_INVALID_IR;
+    if (program->numVirtualTemps <= 0) {
+        program->numPhysicalTemps = 0;
+        return ARB_ALLOC_OK;
+    }
+
+    intervals = (ArbInterval *) malloc(sizeof(ArbInterval) *
+                                       program->numVirtualTemps);
+    if (!intervals)
+        return ARB_ALLOC_INVALID_IR;
+    for (ii = 0; ii < program->numVirtualTemps; ii++) {
+        intervals[ii].virtualTemp = ii;
+        intervals[ii].first = -1;
+        intervals[ii].last = -1;
+        intervals[ii].physical = -1;
+    }
+
+    // Number instructions from zero, recording first definition and last
+    // source use for every temporary.
+
+    position = 0;
+    for (inst = program->first; inst; inst = inst->next, position++) {
+        if (InstructionDefinesTemp(inst, inst->dst.index) &&
+            inst->dst.index < program->numVirtualTemps)
+        {
+            if (intervals[inst->dst.index].first < 0 ||
+                position < intervals[inst->dst.index].first)
+            {
+                intervals[inst->dst.index].first = position;
+            }
+            if (position > intervals[inst->dst.index].last)
+                intervals[inst->dst.index].last = position;
+        }
+        for (ii = 0; ii < inst->srcCount; ii++) {
+            int temp;
+            if (inst->src[ii].file != ARB_REG_TEMP)
+                continue;
+            temp = inst->src[ii].index;
+            if (temp < 0 || temp >= program->numVirtualTemps)
+                continue;
+            if (intervals[temp].first < 0) {
+                // Read before any recorded definition: start here.
+                intervals[temp].first = position;
+            }
+            if (position > intervals[temp].last)
+                intervals[temp].last = position;
+        }
+    }
+
+    // Collect live intervals in order of first definition.
+
+    for (ii = 0; ii < program->numVirtualTemps; ii++) {
+        if (intervals[ii].first >= 0)
+            intervals[numIntervals++] = intervals[ii];
+    }
+    for (ii = 1; ii < numIntervals; ii++) {
+        ArbInterval key = intervals[ii];
+        jj = ii - 1;
+        while (jj >= 0 && intervals[jj].first > key.first) {
+            intervals[jj + 1] = intervals[jj];
+            jj--;
+        }
+        intervals[jj + 1] = key;
+    }
+
+    // Linear scan with an active list kept sorted by last use.
+
+    for (ii = 0; ii < numIntervals; ii++) {
+        ArbActive **link = &active;
+        ArbActive *node;
+        int regFound = 0;
+        int candidate;
+
+        // Expire intervals whose last use is before this first use.
+        while (*link != NULL) {
+            if (intervals[(*link)->interval].last <
+                intervals[ii].first)
+            {
+                node = *link;
+                *link = node->next;
+                free(node);
+            } else {
+                link = &(*link)->next;
+            }
+        }
+
+        // Assign the lowest free physical register.
+        for (candidate = 0; candidate < maxTemporaries; candidate++) {
+            ArbActive *scan = active;
+            int taken = 0;
+            while (scan) {
+                if (intervals[scan->interval].physical == candidate) {
+                    taken = 1;
+                    break;
+                }
+                scan = scan->next;
+            }
+            if (!taken) {
+                intervals[ii].physical = candidate;
+                regFound = 1;
+                break;
+            }
+        }
+        if (!regFound) {
+            free(intervals);
+            ReleaseActive(active);
+            return ARB_ALLOC_TEMP_LIMIT;
+        }
+        if (intervals[ii].physical > highestPhysical)
+            highestPhysical = intervals[ii].physical;
+
+        // Insert into the active list sorted by interval last use.
+        node = (ArbActive *) malloc(sizeof(ArbActive));
+        if (!node) {
+            free(intervals);
+            ReleaseActive(active);
+            return ARB_ALLOC_INVALID_IR;
+        }
+        node->interval = ii;
+        link = &active;
+        while (*link != NULL &&
+               intervals[(*link)->interval].last <= intervals[ii].last)
+        {
+            link = &(*link)->next;
+        }
+        node->next = *link;
+        *link = node;
+    }
+    ReleaseActive(active);
+
+    // Rewrite every TEMP operand index to its physical register via a
+    // virtual-to-physical map built before any mutation.
+
+    {
+        int *map = (int *) malloc(sizeof(int) * program->numVirtualTemps);
+        if (!map) {
+            free(intervals);
+            ReleaseActive(active);
+            return ARB_ALLOC_INVALID_IR;
+        }
+        for (jj = 0; jj < program->numVirtualTemps; jj++)
+            map[jj] = -1;
+        for (ii = 0; ii < numIntervals; ii++)
+            map[intervals[ii].virtualTemp] = intervals[ii].physical;
+        for (inst = program->first; inst; inst = inst->next) {
+            if (InstructionDefinesTemp(inst, -1) || inst->dst.file == ARB_REG_TEMP)
+            {
+                int vt = inst->dst.index;
+                if (vt >= 0 && vt < program->numVirtualTemps &&
+                    map[vt] >= 0)
+                {
+                    inst->physicalTemp = map[vt];
+                    inst->dst.index = map[vt];
+                }
+            }
+            for (ii = 0; ii < inst->srcCount; ii++) {
+                int vt = inst->src[ii].index;
+                if (inst->src[ii].file == ARB_REG_TEMP &&
+                    vt >= 0 && vt < program->numVirtualTemps &&
+                    map[vt] >= 0)
+                {
+                    inst->src[ii].index = map[vt];
+                }
+            }
+        }
+        free(map);
+    }
+
+    program->numPhysicalTemps = highestPhysical + 1;
+    free(intervals);
+    return ARB_ALLOC_OK;
+} // ArbAllocateTemporaries

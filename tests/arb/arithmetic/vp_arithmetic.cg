@@ -1,0 +1,18 @@
+struct appin {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+struct vout {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+vout main(appin input)
+{
+    vout output;
+    float scale = rsqrt(input.position.x * input.position.x);
+    output.position = input.position;
+    output.color = input.color * scale + float4(0.25, 0.25, 0.25, 0.0);
+    return output;
+}

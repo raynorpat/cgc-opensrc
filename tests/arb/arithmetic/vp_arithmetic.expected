@@ -1,0 +1,21 @@
+!!ARBvp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbvp1
+#program main
+#var float4 input.position : $vin.POSITION : POSITION : 0 : 1
+#var float4 input.color : $vin.COLOR0 : COLOR0 : 0 : 1
+#var float4 main.position : $vout.POSITION : HPOS : -1 : 1
+#var float4 main.color : $vout.COLOR0 : COL0 : -1 : 1
+TEMP R0;
+TEMP R1;
+PARAM literal0 = { 0.25, 0.25, 0.25, 0 };
+MUL R0.x, vertex.position.xxxx, vertex.position.xxxx;
+RSQ R1.x, R0.xxxx;
+MOV R0.x, R1.xwww;
+MOV result.position, vertex.position;
+MUL R1, vertex.color.primary, R0.xxxx;
+ADD R0, R1, literal0;
+MOV result.color.front.primary, R0;
+END
+# 7 instructions, 2 R-regs
