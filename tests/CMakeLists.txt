@@ -1023,3 +1023,12 @@ add_test(NAME arbvp1_registration
 add_test(NAME arbfp1_registration
     COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbfp1
             ${PROJECT_SOURCE_DIR}/tests/arb/profile/fp_passthrough.cg)
+
+add_executable(arb_ir_tests arb_ir_tests.c ${PROJECT_SOURCE_DIR}/arb_ir.c)
+target_include_directories(arb_ir_tests PRIVATE ${PROJECT_SOURCE_DIR})
+set_target_properties(arb_ir_tests PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(NAME arb_ir_unit COMMAND arb_ir_tests)
