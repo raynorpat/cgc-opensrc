@@ -273,6 +273,38 @@ add_glsl_profile_failure(glslf_sampler_default glslf
     tests/glsl/textures/fp_sampler_default.cg 1056 3
     "invalid.initialization")
 
+add_glsl_profile_failure(glslf_sampler_helper_return glslf
+    tests/glsl/textures/fp_sampler_helper_return.cg 5508 3
+    "sampler.helper.result")
+
+add_glsl_profile_failure(glslf_sampler_conditional glslf
+    tests/glsl/textures/fp_sampler_conditional.cg 5508 7
+    "texture.sampler.argument.must.be.a.direct.bound.uniform")
+
+add_glsl_profile_failure(glslf_sampler_assignment glslf
+    tests/glsl/textures/fp_sampler_assignment.cg 5508 7
+    "opaque.sampler.expression")
+
+add_glsl_profile_failure(glslf_sampler_cast glslf
+    tests/glsl/textures/fp_sampler_cast.cg 1033 5
+    "cast.not.allowed")
+
+add_glsl_profile_failure(glslf_sampler_constructor glslf
+    tests/glsl/textures/fp_sampler_constructor.cg 5502 5
+    "requires.numeric.or.bool.elements")
+
+add_glsl_profile_failure(glslf_sampler_comparison glslf
+    tests/glsl/textures/fp_sampler_comparison.cg 1022 8
+    "must.be.numeric")
+
+add_glsl_profile_failure(glslf_sampler_helper_parameter glslf
+    tests/glsl/textures/fp_sampler_helper_parameter.cg 5508 1
+    "samplers.must.be.uniforms")
+
+add_glsl_profile_failure(glslf_sampler_struct glslf
+    tests/glsl/textures/fp_sampler_struct.cg 5508 1
+    "samplers.must.be.uniforms")
+
 add_glsl_profile_failure(glslf_invalid_texture_coord glslf
     tests/glsl/textures/fp_invalid_coord.cg 1102 6
     "incompatible.type.for.parameter.#2")
@@ -736,3 +768,41 @@ add_test(
         -DCODE=5108
         -P ${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/check_diagnostic.cmake
 )
+
+foreach(marker_case missing duplicated reversed nested)
+    add_test(
+        NAME stdlib_marker_${marker_case}
+        COMMAND ${CMAKE_COMMAND}
+            -DTOKENIZE=$<TARGET_FILE:tokenize>
+            -DINPUT=${PROJECT_SOURCE_DIR}/stdlib.cg
+            -DSCRIPT=${PROJECT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
+            -DCASE=${marker_case}
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/stdlib-marker-tests"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_stdlib_markers.cmake
+    )
+endforeach()
+
+add_test(
+    NAME stdlib_regeneration_reproducible
+    COMMAND ${CMAKE_COMMAND}
+        -DTOKENIZE=$<TARGET_FILE:tokenize>
+        -DINPUT=stdlib.cg
+        -DEXPECTED=${PROJECT_SOURCE_DIR}/stdlib.c
+        -DSCRIPT=${PROJECT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
+        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/stdlib-reproducibility"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_stdlib_regeneration.cmake
+)
+
+foreach(stream_case default valid valid_underscore valid_leading_underscore
+                    leading_digit quote hyphen whitespace empty overlong)
+    add_test(
+        NAME tokenize_stream_name_${stream_case}
+        COMMAND ${CMAKE_COMMAND}
+            -DTOKENIZE=$<TARGET_FILE:tokenize>
+            -DINPUT=tests/glsl/profile/empty.cg
+            -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DCASE=${stream_case}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_tokenize_stream_name.cmake
+    )
+endforeach()

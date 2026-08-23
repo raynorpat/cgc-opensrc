@@ -90,10 +90,16 @@ int main(void)
     GlslModule scopedModule;
     GlslModule visibleModule;
     GlslModule nonfiniteModule;
+    GlslModule samplerModule;
     GlslType type;
     GlslDecl *decl;
     GlslDecl *secondDecl;
+    GlslDecl *samplerDecl;
+    GlslDecl *secondSamplerDecl;
     GlslExpr *expr;
+    GlslExpr *secondExpr;
+    GlslExpr *conditionExpr;
+    GlslExpr *coordExpr;
     GlslStmt *stmt;
     GlslStmt *secondStmt;
     GlslFunction *function;
@@ -462,6 +468,7 @@ int main(void)
     assert(expr->u.call.target == NULL);
     assert(expr->u.call.name == NULL);
     assert(expr->u.call.arguments == NULL);
+    assert(expr->u.call.builtin == GLSL_BUILTIN_NONE);
     expr = GlslNewExpr(&dirtyModule, GLSL_EXPR_CONSTRUCT, type);
     assert(expr->u.construct.arguments == NULL);
     expr = GlslNewExpr(&dirtyModule, GLSL_EXPR_INDEX, type);
@@ -585,6 +592,142 @@ int main(void)
     assert(writer != NULL);
     assert(!GlslWriteModule(writer, &nonfiniteModule));
     assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+
+    GlslInitModule(&samplerModule, GLSL_STAGE_FRAGMENT, TestAlloc, NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(&samplerModule, type, "main");
+    assert(function != NULL);
+    function->isEntry = 1;
+    samplerModule.entry = function;
+    GlslAppendFunction(&samplerModule.functions, function);
+    type = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+    samplerDecl = GlslNewDecl(&samplerModule, GLSL_STORAGE_SAMPLER,
+                              type, "first");
+    secondSamplerDecl = GlslNewDecl(&samplerModule, GLSL_STORAGE_SAMPLER,
+                                    type, "second");
+    assert(samplerDecl != NULL && secondSamplerDecl != NULL);
+    GlslAppendDecl(&samplerModule.globals, samplerDecl);
+    GlslAppendDecl(&samplerModule.globals, secondSamplerDecl);
+    binding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
+                             "first", "0");
+    assert(binding != NULL);
+    binding->declaration = samplerDecl;
+    samplerModule.bindings = binding;
+    binding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
+                             "second", "1");
+    assert(binding != NULL);
+    binding->declaration = secondSamplerDecl;
+    samplerModule.bindings->next = binding;
+    expr = GlslNewExpr(&samplerModule, GLSL_EXPR_BINARY, type);
+    assert(expr != NULL);
+    expr->u.binary.op = GLSL_OP_ASSIGN;
+    expr->u.binary.left = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
+                                      type);
+    expr->u.binary.right = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
+                                       type);
+    assert(expr->u.binary.left != NULL && expr->u.binary.right != NULL);
+    expr->u.binary.left->u.symbol = samplerDecl;
+    expr->u.binary.right->u.symbol = secondSamplerDecl;
+    stmt = GlslNewStmt(&samplerModule, GLSL_STMT_EXPRESSION);
+    assert(stmt != NULL);
+    stmt->u.expression = expr;
+    function->body = stmt;
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &samplerModule));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+
+    GlslInitModule(&samplerModule, GLSL_STAGE_FRAGMENT, TestAlloc, NULL);
+    type = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(&samplerModule, type, "main");
+    assert(function != NULL);
+    function->isEntry = 1;
+    samplerModule.entry = function;
+    GlslAppendFunction(&samplerModule.functions, function);
+    type = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+    samplerDecl = GlslNewDecl(&samplerModule, GLSL_STORAGE_SAMPLER,
+                              type, "first");
+    secondSamplerDecl = GlslNewDecl(&samplerModule, GLSL_STORAGE_SAMPLER,
+                                    type, "second");
+    assert(samplerDecl != NULL && secondSamplerDecl != NULL);
+    GlslAppendDecl(&samplerModule.globals, samplerDecl);
+    GlslAppendDecl(&samplerModule.globals, secondSamplerDecl);
+    binding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
+                             "first", "0");
+    assert(binding != NULL);
+    binding->declaration = samplerDecl;
+    samplerModule.bindings = binding;
+    binding = GlslNewBinding(&samplerModule, GLSL_STORAGE_SAMPLER,
+                             "second", "1");
+    assert(binding != NULL);
+    binding->declaration = secondSamplerDecl;
+    samplerModule.bindings->next = binding;
+    conditionExpr = GlslNewExpr(&samplerModule, GLSL_EXPR_BOOL,
+                                GlslNumericType(GLSL_BASE_BOOL, 1));
+    expr = GlslNewExpr(&samplerModule, GLSL_EXPR_CONDITIONAL, type);
+    assert(conditionExpr != NULL && expr != NULL);
+    conditionExpr->u.literalBool = 1;
+    expr->u.conditional.condition = conditionExpr;
+    expr->u.conditional.trueExpr = GlslNewExpr(
+        &samplerModule, GLSL_EXPR_SYMBOL, type);
+    expr->u.conditional.falseExpr = GlslNewExpr(
+        &samplerModule, GLSL_EXPR_SYMBOL, type);
+    assert(expr->u.conditional.trueExpr != NULL &&
+           expr->u.conditional.falseExpr != NULL);
+    expr->u.conditional.trueExpr->u.symbol = samplerDecl;
+    expr->u.conditional.falseExpr->u.symbol = secondSamplerDecl;
+    coordExpr = GlslNewExpr(&samplerModule, GLSL_EXPR_CONSTRUCT,
+                            GlslNumericType(GLSL_BASE_FLOAT, 2));
+    assert(coordExpr != NULL);
+    coordExpr->u.construct.arguments = GlslNewExpr(
+        &samplerModule, GLSL_EXPR_FLOAT,
+        GlslNumericType(GLSL_BASE_FLOAT, 1));
+    secondExpr = GlslNewExpr(&samplerModule, GLSL_EXPR_FLOAT,
+                             GlslNumericType(GLSL_BASE_FLOAT, 1));
+    assert(coordExpr->u.construct.arguments != NULL && secondExpr != NULL);
+    coordExpr->u.construct.arguments->next = secondExpr;
+    expr->next = coordExpr;
+    secondExpr = GlslNewExpr(&samplerModule, GLSL_EXPR_CALL,
+                             GlslNumericType(GLSL_BASE_FLOAT, 4));
+    assert(secondExpr != NULL);
+    secondExpr->u.call.name = "texture2D";
+    secondExpr->u.call.arguments = expr;
+    secondExpr->u.call.builtin = GLSL_BUILTIN_TEX2D;
+    stmt = GlslNewStmt(&samplerModule, GLSL_STMT_EXPRESSION);
+    assert(stmt != NULL);
+    stmt->u.expression = secondExpr;
+    function->body = stmt;
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &samplerModule));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+
+    expr = expr->u.conditional.trueExpr;
+    expr->next = coordExpr;
+    secondExpr->u.call.arguments = expr;
+    samplerModule.bindings->storage = GLSL_STORAGE_UNIFORM;
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &samplerModule));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+    samplerModule.bindings->storage = GLSL_STORAGE_SAMPLER;
+
+    secondExpr->u.call.builtin = (GlslBuiltin) 999;
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(!GlslWriteModule(writer, &samplerModule));
+    assert(ftell(writer) == 0);
+    assert(!fclose(writer));
+    secondExpr->u.call.builtin = GLSL_BUILTIN_TEX2D;
+
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(GlslWriteModule(writer, &samplerModule));
+    assert(ftell(writer) > 0);
     assert(!fclose(writer));
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);

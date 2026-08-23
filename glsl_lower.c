@@ -172,6 +172,21 @@ static int GlslTypesEqual(const GlslType *left, const GlslType *right)
     return GlslTypeName(left) != NULL && GlslTypeName(right) != NULL;
 }
 
+static int GlslIsSamplerType(const GlslType *type)
+{
+    if (type == NULL || type->len != 1 || type->rows != 0 ||
+        type->cols != 0 || type->arraySize != 0 ||
+        type->structName != NULL || type->elementType != NULL ||
+        type->members != NULL)
+    {
+        return 0;
+    }
+    return type->base == GLSL_BASE_SAMPLER1D ||
+           type->base == GLSL_BASE_SAMPLER2D ||
+           type->base == GLSL_BASE_SAMPLER3D ||
+           type->base == GLSL_BASE_SAMPLERCUBE;
+}
+
 static GlslDecl *GlslFindDeclList(GlslDecl *list, const void *identity)
 {
     GlslDecl *decl;
@@ -1621,6 +1636,11 @@ static int GlslCollectHelper(GlslLowerContext *context, Symbol *symbol)
         GlslRecordFailure(context, "GLSL standard-library helper");
         return 0;
     }
+    if (Cg->theHAL->IsTexobjBase(GetBase(symbol->type->fun.rettype))) {
+        context->statementLoc = symbol->loc;
+        GlslRecordFailure(context, "sampler helper result");
+        return 0;
+    }
     function = GlslFindFunction(context->module, symbol);
     if (function != NULL) {
         if (function->visitState == 1) {
@@ -1945,6 +1965,51 @@ static GlslExpr *GlslLowerExprChain(GlslLowerContext *context, expr *source,
         GlslAppendExpr(&list, item);
     }
     return list;
+}
+
+static GlslExpr *GlslLowerTextureArguments(GlslLowerContext *context,
+                                           expr *source)
+{
+    GlslExpr *sampler;
+    GlslExpr *coord;
+    GlslDecl *decl;
+    expr *samplerSource;
+
+    if (source == NULL || source->common.kind != BINARY_N ||
+        source->bin.op != FUN_ARG_OP || source->bin.right == NULL ||
+        source->bin.right->common.kind != BINARY_N ||
+        source->bin.right->bin.op != FUN_ARG_OP ||
+        source->bin.right->bin.right != NULL)
+    {
+        GlslRecordFailure(context, "GLSL texture intrinsic signature");
+        return NULL;
+    }
+    samplerSource = source->bin.left;
+    if (samplerSource == NULL || samplerSource->common.kind != SYMB_N ||
+        samplerSource->sym.op != VARIABLE_OP ||
+        samplerSource->sym.symbol == NULL)
+    {
+        GlslRecordFailure(context,
+            "texture sampler argument must be a direct bound uniform");
+        return NULL;
+    }
+    decl = GlslFindDecl(context, samplerSource->sym.symbol);
+    if (decl == NULL || decl->storage != GLSL_STORAGE_SAMPLER ||
+        !GlslIsSamplerType(&decl->type))
+    {
+        GlslRecordFailure(context,
+            "texture sampler argument must be a direct bound uniform");
+        return NULL;
+    }
+    sampler = GlslNewExpr(context->module, GLSL_EXPR_SYMBOL, decl->type);
+    if (sampler == NULL)
+        return NULL;
+    sampler->u.symbol = decl;
+    coord = GlslLowerExpr(context, source->bin.right->bin.left);
+    if (coord == NULL)
+        return NULL;
+    sampler->next = coord;
+    return sampler;
 }
 
 static GlslExpr *GlslNewLiteral(GlslLowerContext *context, GlslBase base,
@@ -2743,6 +2808,10 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     GlslType coordType;
     GlslType resultType;
     GlslBase samplerBase;
+    GlslBinding *binding;
+    GlslDecl *decl;
+    Binding *sourceBinding;
+    Symbol *symbol;
     int coordLen;
 
     if (builtin < GLSL_BUILTIN_TEX1D ||
@@ -2781,6 +2850,38 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
         !GlslTypesEqual(result, &resultType))
     {
         GlslRecordFailure(context, "GLSL texture intrinsic signature");
+        return 0;
+    }
+    if (arguments->kind != GLSL_EXPR_SYMBOL ||
+        arguments->u.symbol == NULL)
+    {
+        GlslRecordFailure(context,
+            "texture sampler argument must be a direct bound uniform");
+        return 0;
+    }
+    decl = arguments->u.symbol;
+    symbol = (Symbol *) decl->identity;
+    binding = symbol != NULL ?
+              GlslFindUniformBinding(context->module, symbol) : NULL;
+    sourceBinding = symbol != NULL ? symbol->details.var.bind : NULL;
+    if (decl->storage != GLSL_STORAGE_SAMPLER ||
+        !GlslTypesEqual(&decl->type, &samplerType) ||
+        symbol == NULL || symbol->kind != VARIABLE_S ||
+        GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM ||
+        !Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) ||
+        binding == NULL || binding->storage != GLSL_STORAGE_SAMPLER ||
+        binding->declaration != decl || binding->semantic == NULL ||
+        binding->semantic[0] == '\0' || sourceBinding == NULL ||
+        sourceBinding->none.kind != BK_TEXUNIT ||
+        sourceBinding->none.properties !=
+            (BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM) ||
+        sourceBinding->none.base != GetBase(symbol->type) ||
+        sourceBinding->none.size != symbol->type->co.size ||
+        sourceBinding->texunit.unitno < 0 ||
+        sourceBinding->texunit.unitno >= context->profile->limits.textureUnits)
+    {
+        GlslRecordFailure(context,
+            "texture sampler argument must be a direct bound uniform");
         return 0;
     }
     return 1;
@@ -2823,8 +2924,15 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
     }
     arguments = NULL;
     if (source->bin.right != NULL) {
-        arguments = GlslLowerExprChain(context, source->bin.right,
-                                        FUN_ARG_OP);
+        if (function == NULL && builtin >= GLSL_BUILTIN_TEX1D &&
+            builtin <= GLSL_BUILTIN_TEXCUBE)
+        {
+            arguments = GlslLowerTextureArguments(context,
+                                                   source->bin.right);
+        } else {
+            arguments = GlslLowerExprChain(context, source->bin.right,
+                                            FUN_ARG_OP);
+        }
         if (arguments == NULL)
             return NULL;
     }
@@ -2883,6 +2991,7 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
         return NULL;
     target->u.call.name = name;
     target->u.call.arguments = arguments;
+    target->u.call.builtin = function == NULL ? builtin : GLSL_BUILTIN_NONE;
     return target;
 }
 
@@ -3051,6 +3160,10 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
 
     if (source == NULL || !GlslLowerType(context, source->common.type, &type)) {
         GlslRecordFailure(context, "GLSL 1.10 expression type");
+        return NULL;
+    }
+    if (GlslIsSamplerType(&type)) {
+        GlslRecordFailure(context, "opaque sampler expression");
         return NULL;
     }
     if (source->common.kind == SYMB_N && source->sym.op == VARIABLE_OP) {

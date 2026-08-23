@@ -1981,6 +1981,13 @@ int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int Ig
 
     ToPacked = (toType->properties & TYPE_MISC_PACKED) != 0;
     FromPacked = (fromType->properties & TYPE_MISC_PACKED) != 0;
+    if (Explicit && IsSameUnqualifiedType(toType, fromType) &&
+        Cg->theHAL->IsTexobjBase(GetBase(toType)) &&
+        !Cg->theHAL->IsValidScalarCast(GetBase(toType),
+                                       GetBase(fromType), Explicit))
+    {
+        return 0;
+    }
     if (IsSameUnqualifiedType(toType, fromType) &&
         ((ToPacked == FromPacked) || IgnorePacked))
     {

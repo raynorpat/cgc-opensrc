@@ -216,6 +216,7 @@ struct GlslExpr_Rec {
             GlslExpr *target;
             const char *name;
             GlslExpr *arguments;
+            GlslBuiltin builtin;
         } call;
         struct {
             GlslExpr *arguments;

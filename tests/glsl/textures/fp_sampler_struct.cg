@@ -1,0 +1,10 @@
+struct Resources { sampler2D image; };
+uniform Resources resources;
+
+struct FragmentOut { float4 color : COLOR0; };
+FragmentOut main(float2 coord : TEXCOORD0)
+{
+    FragmentOut result;
+    result.color = tex2D(resources.image, coord);
+    return result;
+}

@@ -73,21 +73,158 @@ static int GlslFiniteFloat(float value)
     return value == value && value <= FLT_MAX && value >= -FLT_MAX;
 }
 
-static int GlslValidateExpr(const GlslExpr *expr);
-
-static int GlslValidateExprList(const GlslExpr *expr)
+static int GlslSimpleType(const GlslType *type, GlslBase base, int len)
 {
-    for (; expr != NULL; expr = expr->next) {
-        if (!GlslValidateExpr(expr))
+    return type != NULL && type->base == base && type->len == len &&
+           type->rows == 0 && type->cols == 0 && type->arraySize == 0 &&
+           type->structName == NULL && type->elementType == NULL &&
+           type->members == NULL;
+}
+
+static int GlslSamplerType(const GlslType *type)
+{
+    return GlslSimpleType(type, GLSL_BASE_SAMPLER1D, 1) ||
+           GlslSimpleType(type, GLSL_BASE_SAMPLER2D, 1) ||
+           GlslSimpleType(type, GLSL_BASE_SAMPLER3D, 1) ||
+           GlslSimpleType(type, GLSL_BASE_SAMPLERCUBE, 1);
+}
+
+static int GlslTypeContainsSampler(const GlslType *type, int depth)
+{
+    const GlslDecl *member;
+
+    if (type == NULL || depth > 64)
+        return 1;
+    if (GlslSamplerType(type))
+        return 1;
+    if (type->elementType != NULL)
+        return GlslTypeContainsSampler(type->elementType, depth + 1);
+    if (type->base == GLSL_BASE_STRUCT) {
+        for (member = type->members; member != NULL; member = member->next) {
+            if (GlslTypeContainsSampler(&member->type, depth + 1))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+static int GlslDeclInList(const GlslDecl *list, const GlslDecl *target)
+{
+    for (; list != NULL; list = list->next) {
+        if (list == target)
+            return 1;
+    }
+    return 0;
+}
+
+static int GlslSamplerUnitText(const char *text)
+{
+    if (text == NULL || *text == '\0')
+        return 0;
+    for (; *text != '\0'; text++) {
+        if (*text < '0' || *text > '9')
             return 0;
     }
     return 1;
 }
 
-static int GlslValidateExpr(const GlslExpr *expr)
+static const GlslBinding *GlslFindSamplerBinding(const GlslModule *module,
+                                                 const GlslDecl *decl)
 {
-    if (expr == NULL || GlslTypeName(&expr->type) == NULL)
+    const GlslBinding *binding;
+
+    for (binding = module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->storage == GLSL_STORAGE_SAMPLER &&
+            binding->declaration == decl) return binding;
+    }
+    return NULL;
+}
+
+static int GlslValidateSamplerSymbol(const GlslModule *module,
+    const GlslExpr *expr, GlslBase expectedBase)
+{
+    const GlslBinding *binding;
+    const GlslDecl *decl;
+
+    if (expr == NULL || expr->kind != GLSL_EXPR_SYMBOL ||
+        !GlslSimpleType(&expr->type, expectedBase, 1) ||
+        expr->u.symbol == NULL)
+    {
         return 0;
+    }
+    decl = expr->u.symbol;
+    if (decl->storage != GLSL_STORAGE_SAMPLER ||
+        !GlslSimpleType(&decl->type, expectedBase, 1) ||
+        decl->name == NULL ||
+        !GlslDeclInList(module->globals, decl)) return 0;
+    binding = GlslFindSamplerBinding(module, decl);
+    return binding != NULL && binding->name != NULL &&
+           !strcmp(binding->name, decl->name) &&
+           GlslSamplerUnitText(binding->semantic);
+}
+
+static int GlslValidateExpr(const GlslModule *module,
+                            const GlslExpr *expr);
+
+static int GlslValidateExprList(const GlslModule *module,
+                                const GlslExpr *expr)
+{
+    for (; expr != NULL; expr = expr->next) {
+        if (!GlslValidateExpr(module, expr))
+            return 0;
+    }
+    return 1;
+}
+
+static int GlslValidateTextureCall(const GlslModule *module,
+                                   const GlslExpr *expr)
+{
+    const GlslExpr *sampler;
+    const GlslExpr *coord;
+    GlslBase samplerBase;
+    int coordLen;
+
+    if (module->stage != GLSL_STAGE_FRAGMENT || expr->u.call.name == NULL ||
+        strcmp(expr->u.call.name,
+               GlslBuiltinSpelling(expr->u.call.builtin)) ||
+        !GlslSimpleType(&expr->type, GLSL_BASE_FLOAT, 4)) return 0;
+    switch (expr->u.call.builtin) {
+    case GLSL_BUILTIN_TEX1D:
+        samplerBase = GLSL_BASE_SAMPLER1D;
+        coordLen = 1;
+        break;
+    case GLSL_BUILTIN_TEX2D:
+        samplerBase = GLSL_BASE_SAMPLER2D;
+        coordLen = 2;
+        break;
+    case GLSL_BUILTIN_TEX3D:
+        samplerBase = GLSL_BASE_SAMPLER3D;
+        coordLen = 3;
+        break;
+    case GLSL_BUILTIN_TEXCUBE:
+        samplerBase = GLSL_BASE_SAMPLERCUBE;
+        coordLen = 3;
+        break;
+    default:
+        return 0;
+    }
+    sampler = expr->u.call.arguments;
+    coord = sampler != NULL ? sampler->next : NULL;
+    return coord != NULL && coord->next == NULL &&
+           GlslValidateSamplerSymbol(module, sampler, samplerBase) &&
+           GlslSimpleType(&coord->type, GLSL_BASE_FLOAT, coordLen) &&
+           GlslValidateExpr(module, coord);
+}
+
+static int GlslValidateExpr(const GlslModule *module,
+                            const GlslExpr *expr)
+{
+    const char *builtinName;
+
+    if (expr == NULL || GlslTypeName(&expr->type) == NULL ||
+        GlslTypeContainsSampler(&expr->type, 0)) return 0;
     switch (expr->kind) {
     case GLSL_EXPR_SYMBOL:
         return expr->u.symbol != NULL && expr->u.symbol->name != NULL;
@@ -99,42 +236,59 @@ static int GlslValidateExpr(const GlslExpr *expr)
     case GLSL_EXPR_UNARY:
         return GlslValidOperator(expr->u.unary.op) &&
                expr->u.unary.op >= GLSL_OP_NEGATE &&
-               GlslValidateExpr(expr->u.unary.operand);
+               GlslValidateExpr(module, expr->u.unary.operand);
     case GLSL_EXPR_BINARY:
         return GlslValidOperator(expr->u.binary.op) &&
                expr->u.binary.op <= GLSL_OP_DIVIDE &&
-               GlslValidateExpr(expr->u.binary.left) &&
-               GlslValidateExpr(expr->u.binary.right);
+               GlslValidateExpr(module, expr->u.binary.left) &&
+               GlslValidateExpr(module, expr->u.binary.right);
     case GLSL_EXPR_CONDITIONAL:
-        return GlslValidateExpr(expr->u.conditional.condition) &&
-               GlslValidateExpr(expr->u.conditional.trueExpr) &&
-               GlslValidateExpr(expr->u.conditional.falseExpr);
+        return GlslValidateExpr(module, expr->u.conditional.condition) &&
+               GlslValidateExpr(module, expr->u.conditional.trueExpr) &&
+               GlslValidateExpr(module, expr->u.conditional.falseExpr);
     case GLSL_EXPR_CALL:
+        if (expr->u.call.builtin >= GLSL_BUILTIN_TEX1D &&
+            expr->u.call.builtin <= GLSL_BUILTIN_TEXCUBE)
+        {
+            return GlslValidateTextureCall(module, expr);
+        }
+        if (expr->u.call.builtin != GLSL_BUILTIN_NONE) {
+            builtinName = GlslBuiltinSpelling(expr->u.call.builtin);
+            if (builtinName == NULL || expr->u.call.name == NULL ||
+                strcmp(expr->u.call.name, builtinName)) return 0;
+        }
         return expr->u.call.name != NULL &&
-               GlslValidateExprList(expr->u.call.arguments);
+               GlslValidateExprList(module, expr->u.call.arguments);
     case GLSL_EXPR_CONSTRUCT:
         return expr->u.construct.arguments != NULL &&
-               GlslValidateExprList(expr->u.construct.arguments);
+               GlslValidateExprList(module, expr->u.construct.arguments);
     case GLSL_EXPR_MEMBER:
         return expr->u.member.name != NULL &&
-               GlslValidateExpr(expr->u.member.object);
+               GlslValidateExpr(module, expr->u.member.object);
     case GLSL_EXPR_INDEX:
-        return GlslValidateExpr(expr->u.index.object) &&
-               GlslValidateExpr(expr->u.index.index);
+        return GlslValidateExpr(module, expr->u.index.object) &&
+               GlslValidateExpr(module, expr->u.index.index);
     case GLSL_EXPR_SWIZZLE:
         return expr->u.swizzle.mask != NULL &&
                expr->u.swizzle.mask[0] != '\0' &&
-               GlslValidateExpr(expr->u.swizzle.object);
+               GlslValidateExpr(module, expr->u.swizzle.object);
     default:
         return 0;
     }
 }
 
-static int GlslValidateDecls(const GlslDecl *decl)
+static int GlslValidateDecls(const GlslDecl *decl, int samplerGlobals)
 {
+    int containsSampler;
+
     for (; decl != NULL; decl = decl->next) {
+        containsSampler = GlslTypeContainsSampler(&decl->type, 0);
         if (decl->name == NULL || GlslTypeName(&decl->type) == NULL ||
-            decl->initializer != NULL)
+            decl->initializer != NULL ||
+            (containsSampler &&
+             (!samplerGlobals || !GlslSamplerType(&decl->type) ||
+              decl->storage != GLSL_STORAGE_SAMPLER)) ||
+            (!containsSampler && decl->storage == GLSL_STORAGE_SAMPLER))
         {
             return 0;
         }
@@ -142,13 +296,15 @@ static int GlslValidateDecls(const GlslDecl *decl)
     return 1;
 }
 
-static int GlslValidateStmtList(const GlslStmt *stmt, GlslStage stage);
+static int GlslValidateStmtList(const GlslModule *module,
+                                const GlslStmt *stmt);
 
-static int GlslValidateForPart(const GlslStmt *stmt)
+static int GlslValidateForPart(const GlslModule *module,
+                               const GlslStmt *stmt)
 {
     for (; stmt != NULL; stmt = stmt->next) {
         if (stmt->kind != GLSL_STMT_EXPRESSION ||
-            !GlslValidateExpr(stmt->u.expression))
+            !GlslValidateExpr(module, stmt->u.expression))
         {
             return 0;
         }
@@ -156,42 +312,45 @@ static int GlslValidateForPart(const GlslStmt *stmt)
     return 1;
 }
 
-static int GlslValidateStmtList(const GlslStmt *stmt, GlslStage stage)
+static int GlslValidateStmtList(const GlslModule *module,
+                                const GlslStmt *stmt)
 {
     for (; stmt != NULL; stmt = stmt->next) {
         switch (stmt->kind) {
         case GLSL_STMT_EXPRESSION:
-            if (!GlslValidateExpr(stmt->u.expression)) return 0;
+            if (!GlslValidateExpr(module, stmt->u.expression)) return 0;
             break;
         case GLSL_STMT_IF:
-            if (!GlslValidateExpr(stmt->u.ifStmt.condition) ||
-                !GlslValidateStmtList(stmt->u.ifStmt.trueBranch, stage) ||
-                !GlslValidateStmtList(stmt->u.ifStmt.falseBranch, stage))
+            if (!GlslValidateExpr(module, stmt->u.ifStmt.condition) ||
+                !GlslValidateStmtList(module,
+                                      stmt->u.ifStmt.trueBranch) ||
+                !GlslValidateStmtList(module,
+                                      stmt->u.ifStmt.falseBranch))
             {
                 return 0;
             }
             break;
         case GLSL_STMT_WHILE:
         case GLSL_STMT_DO:
-            if (!GlslValidateExpr(stmt->u.loop.condition) ||
-                !GlslValidateStmtList(stmt->u.loop.body, stage)) return 0;
+            if (!GlslValidateExpr(module, stmt->u.loop.condition) ||
+                !GlslValidateStmtList(module, stmt->u.loop.body)) return 0;
             break;
         case GLSL_STMT_FOR:
-            if (!GlslValidateForPart(stmt->u.forStmt.init) ||
+            if (!GlslValidateForPart(module, stmt->u.forStmt.init) ||
                 (stmt->u.forStmt.condition != NULL &&
-                 !GlslValidateExpr(stmt->u.forStmt.condition)) ||
-                !GlslValidateForPart(stmt->u.forStmt.step) ||
-                !GlslValidateStmtList(stmt->u.forStmt.body, stage)) return 0;
+                 !GlslValidateExpr(module, stmt->u.forStmt.condition)) ||
+                !GlslValidateForPart(module, stmt->u.forStmt.step) ||
+                !GlslValidateStmtList(module, stmt->u.forStmt.body)) return 0;
             break;
         case GLSL_STMT_BLOCK:
-            if (!GlslValidateStmtList(stmt->u.block, stage)) return 0;
+            if (!GlslValidateStmtList(module, stmt->u.block)) return 0;
             break;
         case GLSL_STMT_RETURN:
             if (stmt->u.returnExpr != NULL &&
-                !GlslValidateExpr(stmt->u.returnExpr)) return 0;
+                !GlslValidateExpr(module, stmt->u.returnExpr)) return 0;
             break;
         case GLSL_STMT_DISCARD:
-            if (stage != GLSL_STAGE_FRAGMENT) return 0;
+            if (module->stage != GLSL_STAGE_FRAGMENT) return 0;
             break;
         case GLSL_STMT_BREAK:
         case GLSL_STMT_CONTINUE:
@@ -218,6 +377,16 @@ static int GlslValidateModule(const GlslModule *module)
 
         if (GlslStorageName(binding->storage) == NULL ||
             binding->name == NULL || binding->semantic == NULL) return 0;
+        if (binding->storage == GLSL_STORAGE_SAMPLER &&
+            (binding->declaration == NULL ||
+             binding->declaration->storage != GLSL_STORAGE_SAMPLER ||
+             !GlslSamplerType(&binding->declaration->type) ||
+             !GlslDeclInList(module->globals, binding->declaration) ||
+             strcmp(binding->name, binding->declaration->name) ||
+             !GlslSamplerUnitText(binding->semantic))) return 0;
+        if (binding->storage != GLSL_STORAGE_SAMPLER &&
+            binding->declaration != NULL &&
+            GlslTypeContainsSampler(&binding->declaration->type, 0)) return 0;
         if (binding->defaultCount < 0 ||
             (binding->defaultCount > 0 && binding->defaultValues == NULL))
             return 0;
@@ -226,17 +395,19 @@ static int GlslValidateModule(const GlslModule *module)
         }
     }
     for (decl = module->structs; decl != NULL; decl = decl->next) {
-        if (decl->name == NULL || !GlslValidateDecls(decl->members)) return 0;
+        if (decl->name == NULL ||
+            !GlslValidateDecls(decl->members, 0)) return 0;
     }
-    if (!GlslValidateDecls(module->globals)) return 0;
+    if (!GlslValidateDecls(module->globals, 1)) return 0;
     for (function = module->functions; function != NULL;
          function = function->next)
     {
         if (function->name == NULL ||
             GlslTypeName(&function->result) == NULL ||
-            !GlslValidateDecls(function->parameters) ||
-            !GlslValidateDecls(function->locals) ||
-            !GlslValidateStmtList(function->body, module->stage)) return 0;
+            GlslTypeContainsSampler(&function->result, 0) ||
+            !GlslValidateDecls(function->parameters, 0) ||
+            !GlslValidateDecls(function->locals, 0) ||
+            !GlslValidateStmtList(module, function->body)) return 0;
         if (function->isEntry &&
             (function != module->entry || function->parameters != NULL ||
              strcmp(function->name, "main") ||
