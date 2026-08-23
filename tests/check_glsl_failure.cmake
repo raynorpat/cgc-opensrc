@@ -7,7 +7,7 @@ endforeach()
 include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${ACTUAL}")
 
-file(REMOVE "${ACTUAL}")
+file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
 execute_process(
     COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
     RESULT_VARIABLE result
@@ -65,3 +65,4 @@ if(NOT actual_text STREQUAL "#version 110\n")
     message(FATAL_ERROR
         "${PROFILE} wrote a partial shader; actual: ${ACTUAL}.normalized")
 endif()
+file(REMOVE "${ACTUAL}.normalized")

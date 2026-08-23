@@ -80,6 +80,11 @@ static void *DirtyAlloc(void *arg, size_t size)
     return memory;
 }
 
+static void *FailingAlloc(void *arg, size_t size)
+{
+    return NULL;
+}
+
 static void ExpectModuleRejected(const char *label,
                                  const GlslModule *module)
 {
@@ -106,7 +111,7 @@ static int DiagnosticMatches(int code, const char *message,
     return code == expectedCode && !strcmp(message, expectedMessage);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     GlslModule module;
     GlslModule dirtyModule;
@@ -115,6 +120,7 @@ int main(void)
     GlslModule gapModule;
     GlslModule overflowModule;
     GlslModule identityModule;
+    GlslModule nameLocationModule;
     GlslModule scopedModule;
     GlslModule visibleModule;
     GlslModule nonfiniteModule;
@@ -159,6 +165,7 @@ int main(void)
     GlslType arrayElement;
     GlslType arrayType;
     GlslType structType;
+    GlslLoc nameLocation;
     GlslDecl structMembers[2];
     GlslStmt *savedBody;
     static const char *builtinSpellings[] = {
@@ -170,6 +177,17 @@ int main(void)
         "mix", "fract", "clamp", "texture1D", "texture2D",
         "texture3D", "textureCube"
     };
+
+    if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
+        int assertionsActive;
+
+        assertionsActive = 0;
+        assert((assertionsActive = 1) != 0);
+        if (!assertionsActive)
+            return 2;
+        puts("glsl-ir-assertions-active");
+        return 0;
+    }
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(DiagnosticMatches(ERROR_S_GLSL_UNSUPPORTED_TYPE, 6200,
@@ -412,6 +430,16 @@ int main(void)
                    "otherMember"));
     assert(!strcmp(GlslAllocateSymbolName(&module, &secondIdentity, "value"),
         "value_1"));
+    GlslInitModule(&nameLocationModule, GLSL_STAGE_VERTEX, FailingAlloc,
+                   NULL);
+    nameLocationModule.errorKind = GLSL_ERROR_NAME_COLLISION;
+    nameLocationModule.errorReason = "forced name collision";
+    nameLocation.file = 17;
+    nameLocation.line = 23;
+    assert(GlslAllocateSymbolNameAt(&nameLocationModule, &firstIdentity,
+                                    "value", &nameLocation) == NULL);
+    assert(nameLocationModule.errorLoc.file == 17);
+    assert(nameLocationModule.errorLoc.line == 23);
     assert(GlslIsReservedName("attribute"));
     assert(GlslIsReservedName("gl_Position"));
     assert(GlslIsReservedName("user__name"));

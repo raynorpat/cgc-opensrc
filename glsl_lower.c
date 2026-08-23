@@ -107,6 +107,31 @@ static void GlslSetLoc(GlslLoc *target, const SourceLoc *source)
     }
 }
 
+static const char *GlslAllocateSymbolNameForSource(
+    GlslLowerContext *context, const void *identity, const char *source,
+    const SourceLoc *loc)
+{
+    GlslLoc glslLoc;
+
+    memset(&glslLoc, 0, sizeof(glslLoc));
+    GlslSetLoc(&glslLoc, loc);
+    return GlslAllocateSymbolNameAt(context->module, identity, source,
+                                    loc != NULL ? &glslLoc : NULL);
+}
+
+static const char *GlslAllocateScopedSymbolNameForSource(
+    GlslLowerContext *context, const void *nameSpace, const void *identity,
+    const char *source, const SourceLoc *loc)
+{
+    GlslLoc glslLoc;
+
+    memset(&glslLoc, 0, sizeof(glslLoc));
+    GlslSetLoc(&glslLoc, loc);
+    return GlslAllocateScopedSymbolNameAt(context->module, nameSpace,
+                                          identity, source,
+                                          loc != NULL ? &glslLoc : NULL);
+}
+
 static int GlslLowerError(GlslLowerContext *context)
 {
     context->module->errors++;
@@ -462,10 +487,11 @@ static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
         return NULL;
     sourceName = GetAtomString(atable, symbol->name);
     if (nameSpace != NULL) {
-        name = GlslAllocateScopedSymbolName(context->module, nameSpace,
-                                            symbol, sourceName);
+        name = GlslAllocateScopedSymbolNameForSource(context, nameSpace,
+            symbol, sourceName, &symbol->loc);
     } else {
-        name = GlslAllocateSymbolName(context->module, symbol, sourceName);
+        name = GlslAllocateSymbolNameForSource(context, symbol, sourceName,
+                                               &symbol->loc);
     }
     if (name == NULL)
         return NULL;
@@ -584,7 +610,8 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
     if (tag == NULL)
         return 0;
     sourceName = GetAtomString(atable, canonical->str.tag);
-    name = GlslAllocateSymbolName(context->module, tag, sourceName);
+    name = GlslAllocateSymbolNameForSource(context, tag, sourceName,
+                                           &tag->loc);
     if (name == NULL)
         return 0;
     structType = GlslNumericType(GLSL_BASE_STRUCT, 0);
@@ -773,7 +800,8 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
     storage = Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) ?
               GLSL_STORAGE_SAMPLER : GLSL_STORAGE_UNIFORM;
     sourceName = GetAtomString(atable, symbol->name);
-    name = GlslAllocateSymbolName(context->module, symbol, sourceName);
+    name = GlslAllocateSymbolNameForSource(context, symbol, sourceName,
+                                           &symbol->loc);
     if (name == NULL)
         return 0;
     decl = GlslNewDecl(context->module, storage, type, name);
@@ -1659,8 +1687,8 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
         name = GlslReservedInterfaceName(context, interfaceName,
                                          isOutput);
         if (name == NULL) {
-            name = GlslAllocateSymbolName(context->module, member,
-                                          generatedName);
+            name = GlslAllocateSymbolNameForSource(context, member,
+                generatedName, &member->loc);
         }
         if (name == NULL)
             return NULL;
@@ -1947,8 +1975,8 @@ static int GlslAssignHelperNames(GlslLowerContext *context)
             }
         }
         if (sameName == NULL) {
-            function->name = GlslAllocateSymbolName(context->module,
-                                                    symbol, sourceName);
+            function->name = GlslAllocateSymbolNameForSource(context,
+                symbol, sourceName, &symbol->loc);
         } else if (sameSignature == NULL) {
             function->name = sameName->name;
         } else {
@@ -1958,8 +1986,8 @@ static int GlslAssignHelperNames(GlslLowerContext *context)
                     sizeof(candidate)) return 0;
             sprintf(candidate, "%s_%s_%d", sourceName, signature,
                     collapsedIndex);
-            function->name = GlslAllocateSymbolName(context->module,
-                                                    symbol, candidate);
+            function->name = GlslAllocateSymbolNameForSource(context,
+                symbol, candidate, &symbol->loc);
         }
         if (function->name == NULL)
             return 0;
@@ -2586,8 +2614,8 @@ static GlslMatrixSelectorHelper *GlslCreateMatrixSelectorHelper(
     function = GlslNewFunction(context->module, resultType, functionName);
     if (function == NULL)
         return NULL;
-    matrixName = GlslAllocateScopedSymbolName(context->module, function,
-                                               NULL, "matrix");
+    matrixName = GlslAllocateScopedSymbolNameForSource(context, function,
+        NULL, "matrix", &context->statementLoc);
     matrixParameter = GlslNewDecl(context->module, GLSL_STORAGE_NONE,
                                   *matrixType, matrixName);
     if (matrixName == NULL || matrixParameter == NULL)
@@ -2617,8 +2645,8 @@ static GlslMatrixSelectorHelper *GlslCreateMatrixSelectorHelper(
         statement->u.returnExpr = constructor;
         function->body = statement;
     } else {
-        valueName = GlslAllocateScopedSymbolName(context->module, function,
-                                                 NULL, "value");
+        valueName = GlslAllocateScopedSymbolNameForSource(context, function,
+            NULL, "value", &context->statementLoc);
         valueParameter = GlslNewDecl(context->module, GLSL_STORAGE_NONE,
                                      *valueType, valueName);
         if (valueName == NULL || valueParameter == NULL)
@@ -2720,8 +2748,8 @@ static GlslMatrixHelper *GlslCreateMatrixHelper(GlslLowerContext *context,
     {
         helper->parameters[parameterIndex] = parameters[parameterIndex];
         sprintf(candidate, "arg%d", parameterIndex);
-        parameterName = GlslAllocateScopedSymbolName(context->module,
-            helper->function, NULL, candidate);
+        parameterName = GlslAllocateScopedSymbolNameForSource(context,
+            helper->function, NULL, candidate, &context->statementLoc);
         if (parameterName == NULL)
             return NULL;
         parameter = GlslNewDecl(context->module, GLSL_STORAGE_NONE,
@@ -3991,7 +4019,8 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
         if (!GlslLowerHelper(&context, helper))
             return GlslLowerError(&context);
     }
-    functionName = GlslAllocateSymbolName(module, program, "main");
+    functionName = GlslAllocateSymbolNameForSource(&context, program,
+        "main", &program->loc);
     if (functionName == NULL)
         return GlslLowerError(&context);
     voidType = GlslNumericType(GLSL_BASE_VOID, 0);

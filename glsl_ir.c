@@ -353,14 +353,29 @@ const char *GlslAllocateName(GlslModule *module, const char *source)
 const char *GlslAllocateSymbolName(GlslModule *module, const void *identity,
     const char *source)
 {
-    return GlslAllocateScopedSymbolName(module, &defaultNameNamespace,
-                                        identity, source);
+    return GlslAllocateSymbolNameAt(module, identity, source, NULL);
+}
+
+const char *GlslAllocateSymbolNameAt(GlslModule *module,
+    const void *identity, const char *source, const GlslLoc *loc)
+{
+    return GlslAllocateScopedSymbolNameAt(module, &defaultNameNamespace,
+                                          identity, source, loc);
 }
 
 const char *GlslAllocateScopedSymbolName(GlslModule *module,
     const void *nameSpace, const void *identity, const char *source)
 {
+    return GlslAllocateScopedSymbolNameAt(module, nameSpace, identity,
+                                          source, NULL);
+}
+
+const char *GlslAllocateScopedSymbolNameAt(GlslModule *module,
+    const void *nameSpace, const void *identity, const char *source,
+    const GlslLoc *loc)
+{
     GlslName *name;
+    const char *emitted;
 
     if (module == NULL || nameSpace == NULL || source == NULL)
         return NULL;
@@ -369,14 +384,22 @@ const char *GlslAllocateScopedSymbolName(GlslModule *module,
                             source);
         if (name != NULL)
             return name->emitted;
-        return GlslAllocate(module, nameSpace, &defaultNameIdentity,
-                            source);
+        emitted = GlslAllocate(module, nameSpace, &defaultNameIdentity,
+                               source);
+    } else {
+        for (name = module->names; name != NULL; name = name->next) {
+            if (name->nameSpace == nameSpace && name->identity == identity)
+                return name->emitted;
+        }
+        emitted = GlslAllocate(module, nameSpace, identity, source);
     }
-    for (name = module->names; name != NULL; name = name->next) {
-        if (name->nameSpace == nameSpace && name->identity == identity)
-            return name->emitted;
+    if (emitted == NULL && module->errorKind == GLSL_ERROR_NAME_COLLISION &&
+        loc != NULL && module->errorLoc.file == 0 &&
+        module->errorLoc.line == 0)
+    {
+        module->errorLoc = *loc;
     }
-    return GlslAllocate(module, nameSpace, identity, source);
+    return emitted;
 }
 
 const char *GlslAllocateDistinctName(GlslModule *module, const char *source)

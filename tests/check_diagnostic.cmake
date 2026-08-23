@@ -7,7 +7,7 @@ endforeach()
 include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${ACTUAL}")
 
-file(REMOVE "${ACTUAL}")
+file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
 execute_process(
     COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
     RESULT_VARIABLE result
@@ -59,3 +59,4 @@ if(NOT shader STREQUAL "#version 110\n")
     file(WRITE "${ACTUAL}.normalized" "${shader}")
     message(FATAL_ERROR "failed translation emitted a partial shader body")
 endif()
+file(REMOVE "${ACTUAL}.normalized")

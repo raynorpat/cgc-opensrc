@@ -1,3 +1,26 @@
+find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
+if(NOT GLSLANG_VALIDATOR)
+    message(STATUS
+        "glslangValidator not found; GLSL source validation tests are disabled")
+endif()
+
+function(add_glsl_validation name profile stage source)
+    if(GLSLANG_VALIDATOR)
+        add_test(
+            NAME validate_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                "-DVALIDATOR=${GLSLANG_VALIDATOR}"
+                -DPROFILE=${profile}
+                -DSTAGE=${stage}
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                "-DCONFIG=$<CONFIG>"
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.glsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/validate_glsl.cmake
+        )
+    endif()
+endfunction()
+
 function(add_generic_regression name source expected_sha256)
     add_test(
         NAME generic_${name}
@@ -21,6 +44,12 @@ function(add_glsl_fixture name profile source expected)
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl.cmake
     )
+    if(profile STREQUAL "glslv")
+        set(stage vert)
+    else()
+        set(stage frag)
+    endif()
+    add_glsl_validation(${name} ${profile} ${stage} ${source})
 endfunction()
 
 function(add_glsl_failure name source expected_line reason)
@@ -124,12 +153,11 @@ function(add_glsl_boundary name profile source stage)
             -DCGC=$<TARGET_FILE:cgc>
             -DPROFILE=${profile}
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
-            -DSTAGE=${stage}
-            -DGLSLANG_VALIDATOR=${GLSLANG_VALIDATOR}
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_boundary.cmake
     )
+    add_glsl_validation(${name} ${profile} ${stage} ${source})
 endfunction()
 
 add_executable(glsl_ir_unit
@@ -151,6 +179,13 @@ set_target_properties(glsl_ir_unit PROPERTIES
 add_test(
     NAME glsl_ir_unit
     COMMAND glsl_ir_unit
+)
+
+add_test(
+    NAME glsl_ir_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:glsl_ir_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
 )
 
 add_executable(glsl_semantics_unit
@@ -413,6 +448,7 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
         -DCGC=$<TARGET_FILE:cgc>
         "-DCONFIG=$<CONFIG>"
+        "-DGLSLANG_VALIDATOR=${GLSLANG_VALIDATOR}"
         -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/vp_linked_varyings.cg
         -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/semantics/fp_linked_varyings.cg
         "-DVERTEX_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_linked_varyings.vert"
@@ -431,6 +467,35 @@ add_test(
         "-DVERTEX_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_linked_varyings_without_validator.vert"
         "-DFRAGMENT_ACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_linked_varyings_without_validator.frag"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_link.cmake
+)
+
+add_test(
+    NAME glsl_link_interface
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        "-DGLSLANG_VALIDATOR=${GLSLANG_VALIDATOR}"
+        "-DCONFIG=$<CONFIG>"
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/link/vp_link.cg
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/link/fp_link.cg
+        "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_link_interface.vert"
+        "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glsl_link_interface.frag"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_interface.cmake
+)
+add_glsl_validation(glsl_link_vertex glslv vert
+    tests/glsl/link/vp_link.cg)
+add_glsl_validation(glsl_link_fragment glslf frag
+    tests/glsl/link/fp_link.cg)
+
+add_test(
+    NAME glsl_validator_failure_propagates
+    COMMAND ${CMAKE_COMMAND}
+        -DCMAKE_COMMAND=${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/profile/vp_passthrough.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validator-failure/$<CONFIG>/probe.glsl"
+        -DVALIDATE_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/validate_glsl.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_validate_glsl_failure.cmake
 )
 
 add_glsl_fixture(glslf_uniform_components_64 glslf
@@ -578,6 +643,16 @@ add_glsl_diagnostic(glslv_texture_diagnostic glslv
 add_glsl_diagnostic(glslv_bitwise_diagnostic glslv
     tests/glsl/diagnostics/vp_bitwise.cg 6201 6
     "does.not.support.operation.*bitwise.and")
+add_test(
+    NAME glsl_diagnostic_cleans_normalized_output
+    COMMAND ${CMAKE_COMMAND}
+        -DCMAKE_COMMAND=${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_bitwise.cg
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/diagnostic-cleanup.glsl"
+        -DDIAGNOSTIC_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic_cleanup.cmake
+)
 add_glsl_diagnostic(glslf_color1_diagnostic glslf
     tests/glsl/diagnostics/fp_color1.cg 6203 1
     "cannot.bind.semantic.*COLOR1")

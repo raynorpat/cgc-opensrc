@@ -7,7 +7,7 @@ endforeach()
 include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${ACTUAL}")
 
-file(REMOVE "${ACTUAL}")
+file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
 execute_process(
     COMMAND "${CGC}" -quiet -profile generic -o "${ACTUAL}" "${SOURCE}"
     RESULT_VARIABLE result
@@ -60,3 +60,4 @@ if(NOT actual_text STREQUAL "# Generic output by Cg compiler\n")
     message(FATAL_ERROR
         "generic wrote successful output; actual: ${ACTUAL}.normalized")
 endif()
+file(REMOVE "${ACTUAL}.normalized")

@@ -51,9 +51,6 @@ if(NOT unsuffixed_attribute EQUAL -1)
     message(FATAL_ERROR "COLOR0 attribute stole the canonical varying name")
 endif()
 
-if(NOT DEFINED GLSLANG_VALIDATOR)
-    find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
-endif()
 if(GLSLANG_VALIDATOR)
     execute_process(
         COMMAND "${GLSLANG_VALIDATOR}" -l "${VERTEX_ACTUAL}"

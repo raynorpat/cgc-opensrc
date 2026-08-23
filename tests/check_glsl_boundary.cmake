@@ -1,4 +1,4 @@
-foreach(required CGC PROFILE SOURCE STAGE ACTUAL)
+foreach(required CGC PROFILE SOURCE ACTUAL)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} must be defined")
     endif()
@@ -24,19 +24,4 @@ file(READ "${ACTUAL}" shader)
 if(NOT shader MATCHES "#version 110" OR
    NOT shader MATCHES "void main\\(\\)")
     message(FATAL_ERROR "boundary shader output is incomplete")
-endif()
-if(NOT DEFINED GLSLANG_VALIDATOR OR GLSLANG_VALIDATOR STREQUAL "")
-    find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
-endif()
-if(GLSLANG_VALIDATOR AND NOT GLSLANG_VALIDATOR MATCHES "-NOTFOUND$")
-    execute_process(
-        COMMAND "${GLSLANG_VALIDATOR}" -S "${STAGE}" "${ACTUAL}"
-        RESULT_VARIABLE validator_result
-        OUTPUT_VARIABLE validator_stdout
-        ERROR_VARIABLE validator_stderr
-    )
-    if(NOT validator_result EQUAL 0)
-        message(FATAL_ERROR
-            "glslang rejected boundary shader:\n${validator_stdout}${validator_stderr}")
-    endif()
 endif()

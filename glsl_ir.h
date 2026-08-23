@@ -342,8 +342,13 @@ void GlslInitModule(GlslModule *module, GlslStage stage,
 const char *GlslAllocateName(GlslModule *module, const char *source);
 const char *GlslAllocateSymbolName(GlslModule *module, const void *identity,
     const char *source);
+const char *GlslAllocateSymbolNameAt(GlslModule *module,
+    const void *identity, const char *source, const GlslLoc *loc);
 const char *GlslAllocateScopedSymbolName(GlslModule *module,
     const void *nameSpace, const void *identity, const char *source);
+const char *GlslAllocateScopedSymbolNameAt(GlslModule *module,
+    const void *nameSpace, const void *identity, const char *source,
+    const GlslLoc *loc);
 const char *GlslAllocateDistinctName(GlslModule *module, const char *source);
 GlslType GlslNumericType(GlslBase base, int len);
 GlslType GlslMatrixType(int size);
