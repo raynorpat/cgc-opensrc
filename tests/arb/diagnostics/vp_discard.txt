@@ -1,0 +1,2 @@
+error C6006
+discard is not supported by the ARB vertex profile

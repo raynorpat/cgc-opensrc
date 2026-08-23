@@ -493,7 +493,10 @@ static int ReserveUniformRange_arb(ArbHALData *data, int count)
     int first;
     int ii;
 
-    for (first = 0; first + count <= ARBVP_MAX_PARAMETERS; first++) {
+    for (first = 0;
+         first + count <= data->profile->limits->parameters &&
+         first + count <= ARBVP_MAX_PARAMETERS;
+         first++) {
         int free_ = 1;
         for (ii = 0; ii < count; ii++) {
             if (data->uniformUsed[first + ii]) {
@@ -848,6 +851,13 @@ int GenerateCode_arb(SourceLoc *loc, Scope *fScope, Symbol *program)
     }
     if (ok)
         ok = ArbLegalizeAndAllocate(&ir, data->profile, loc);
+    if (ok && data->nextUniform > data->profile->limits->parameters) {
+        SemanticError(loc ? loc : &program->loc,
+                      ERROR_SDD_ARB_RESOURCE_LIMIT, "parameters",
+                      data->nextUniform,
+                      data->profile->limits->parameters);
+        ok = 0;
+    }
     if (ok)
         ok = ArbValidateResources(&ir, data->profile, loc);
     if (ok) {

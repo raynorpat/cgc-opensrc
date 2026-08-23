@@ -340,6 +340,62 @@ int ArbLegalizeAndAllocate(ArbProgram *ir, const ArbProfileDesc *profile,
         return 0;
     }
     ArbOptimizeProgram(ir);
+    {
+        // ARB_fragment_program indirection node algorithm over virtual
+        // registers (fresh temp per write; recycling would create false
+        // dependencies).  Bitsets index virtual temps up to 32.
+        unsigned int aluTemps = 0;
+        unsigned int textureOutputs = 0;
+        ArbInstruction const *walk;
+
+        ir->texIndirectionsUsed = 1;
+        ir->maxTextureUnitUsed = -1;
+        for (walk = ir->first; walk; walk = walk->next) {
+            if (ArbIsTextureOpcode(walk->opcode)) {
+                int coordTemp = walk->src[0].file == ARB_REG_TEMP ?
+                                    walk->src[0].index : -1;
+                int dstTemp = walk->opcode != ARB_OP_KIL ? walk->dst.index
+                                                         : -1;
+                int newNode =
+                    (coordTemp >= 0 && coordTemp < 32 &&
+                     (textureOutputs & (1u << coordTemp))) ||
+                    (dstTemp >= 0 && dstTemp < 32 &&
+                     (aluTemps & (1u << dstTemp)));
+
+                if (newNode)
+                    ir->texIndirectionsUsed++;
+                if (!newNode) {
+                    aluTemps = 0;
+                    textureOutputs = 0;
+                }
+                if (walk->opcode != ARB_OP_KIL &&
+                    walk->textureUnit > ir->maxTextureUnitUsed)
+                {
+                    ir->maxTextureUnitUsed = walk->textureUnit;
+                }
+            } else {
+                int jj;
+                for (jj = 0; jj < walk->srcCount; jj++) {
+                    if (walk->src[jj].file == ARB_REG_TEMP &&
+                        walk->src[jj].index >= 0 && walk->src[jj].index < 32)
+                    {
+                        aluTemps |= 1u << walk->src[jj].index;
+                    }
+                }
+                if (walk->dst.file == ARB_REG_TEMP &&
+                    walk->dst.index >= 0 && walk->dst.index < 32)
+                {
+                    aluTemps |= 1u << walk->dst.index;
+                }
+            }
+            if (walk->opcode != ARB_OP_KIL &&
+                walk->dst.file == ARB_REG_TEMP &&
+                walk->dst.index >= 0 && walk->dst.index < 32)
+            {
+                textureOutputs |= 1u << walk->dst.index;
+            }
+        }
+    }
     status = ArbAllocateTemporaries(ir, profile->limits->temporaries);
     if (status == ARB_ALLOC_TEMP_LIMIT) {
         SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "temporaries",
@@ -397,11 +453,7 @@ int ArbValidateResources(ArbProgram *ir, const ArbProfileDesc *profile,
         }
     }
 
-    if (ir->numInstructions > profile->limits->instructions) {
-        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "instructions",
-                      ir->numInstructions, profile->limits->instructions);
-        return 0;
-    }
+
     if (profile->stage == ARB_STAGE_FRAGMENT) {
     
         int aluCount = 0;
@@ -426,75 +478,37 @@ int ArbValidateResources(ArbProgram *ir, const ArbProfileDesc *profile,
             return 0;
         }
 
-        // ARB_fragment_program texture-indirection node algorithm, run
-        // after allocation so physical registers are known.  KIL counts
-        // as a texture instruction but contributes no destination.
+        // Indirection and texture-unit limits use the counts computed
+        // over virtual registers before allocation (the node algorithm
+        // from ARB_fragment_program).
 
+        if (ir->texIndirectionsUsed > profile->limits->texIndirections) {
+            SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
+                          "texture indirections", ir->texIndirectionsUsed,
+                          profile->limits->texIndirections);
+            return 0;
+        }
+        if (ir->maxTextureUnitUsed + 1 >
+            profile->limits->textureUnits)
         {
-            unsigned int aluTemps = 0;
-            unsigned int textureOutputs = 0;
-            int indirections = 1;
-            int maxTextureUnit = -1;
-
-            for (walk = ir->first; walk; walk = walk->next) {
-                if (ArbIsTextureOpcode(walk->opcode)) {
-                    int coordTemp = walk->src[0].file == ARB_REG_TEMP ?
-                                        walk->src[0].index : -1;
-                    int dstTemp = walk->opcode != ARB_OP_KIL &&
-                                  walk->dst.file == ARB_REG_TEMP ?
-                                      walk->dst.index : -1;
-                    int newNode =
-                        (coordTemp >= 0 &&
-                         (textureOutputs & (1u << coordTemp))) ||
-                        (dstTemp >= 0 && (aluTemps & (1u << dstTemp)));
-
-                    if (newNode) {
-                        indirections++;
-                        aluTemps = 0;
-                        textureOutputs = 0;
-                    }
-                    if (walk->opcode != ARB_OP_KIL) {
-                        if (maxTextureUnit < walk->textureUnit)
-                            maxTextureUnit = walk->textureUnit;
-                    }
-                } else {
-                    int jj;
-                    for (jj = 0; jj < walk->srcCount; jj++) {
-                        if (walk->src[jj].file == ARB_REG_TEMP &&
-                            walk->src[jj].index >= 0 &&
-                            walk->src[jj].index < 16)
-                        {
-                            aluTemps |= 1u << walk->src[jj].index;
-                        }
-                    }
-                    if (walk->dst.file == ARB_REG_TEMP &&
-                        walk->dst.index >= 0 && walk->dst.index < 16)
-                    {
-                        aluTemps |= 1u << walk->dst.index;
-                    }
-                }
-                if (walk->opcode != ARB_OP_KIL &&
-                    walk->dst.file == ARB_REG_TEMP &&
-                    walk->dst.index >= 0 && walk->dst.index < 16)
-                {
-                    textureOutputs |= 1u << walk->dst.index;
-                }
-            }
-            if (indirections > profile->limits->texIndirections) {
-                SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
-                              "texture indirections", indirections,
-                              profile->limits->texIndirections);
-                return 0;
-            }
-            if (maxTextureUnit + 1 > profile->limits->textureUnits) {
-                SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
-                              "texture units", maxTextureUnit + 1,
-                              profile->limits->textureUnits);
-                return 0;
-            }
+            SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
+                          "texture units", ir->maxTextureUnitUsed + 1,
+                          profile->limits->textureUnits);
+            return 0;
         }
     }
+    if (ir->numInstructions > profile->limits->instructions) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "instructions",
+                      ir->numInstructions, profile->limits->instructions);
+        return 0;
+    }
     if (ir->numPhysicalTemps > profile->limits->temporaries) {
+    if (ir->numInstructions > profile->limits->instructions) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "instructions",
+                      ir->numInstructions, profile->limits->instructions);
+        return 0;
+    }
+
         SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "temporaries",
                       ir->numPhysicalTemps, profile->limits->temporaries);
         return 0;
@@ -505,10 +519,25 @@ int ArbValidateResources(ArbProgram *ir, const ArbProfileDesc *profile,
                       profile->limits->parameters);
         return 0;
     }
-    if (numAttributes > profile->limits->attributes) {
-        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "attributes",
-                      numAttributes, profile->limits->attributes);
-        return 0;
+    {
+        // Attribute budget counts bound input vectors (the $vin members),
+        // which is what the portable limit enumerates.
+        int boundInputs = 0;
+        Symbol *member = Cg->theHAL->varyingIn ?
+            Cg->theHAL->varyingIn->type->str.members->symbols : NULL;
+        while (member) {
+            if (member->details.var.bind &&
+                !(member->details.var.bind->none.properties & BIND_HIDDEN))
+            {
+                boundInputs++;
+            }
+            member = member->next;
+        }
+        if (boundInputs > profile->limits->attributes) {
+            SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "attributes",
+                          boundInputs, profile->limits->attributes);
+            return 0;
+        }
     }
     if (usesAddress && profile->limits->addressRegisters < 1) {
         SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,

@@ -1,0 +1,30 @@
+!!ARBfp1.0
+#vendor NVIDIA Corporation
+#version 1.0
+#profile arbfp1
+#program main
+#var float4 p : $vin.POSITION : WPOS : 0 : 1
+#var float4 c0 : $vin.COLOR0 : COL0 : 1 : 1
+#var float4 t0 : $vin.TEXCOORD0 : TEX0 : 2 : 1
+#var float4 t1 : $vin.TEXCOORD1 : TEX1 : 3 : 1
+#var float4 t2 : $vin.TEXCOORD2 : TEX2 : 4 : 1
+#var float4 t3 : $vin.TEXCOORD3 : TEX3 : 5 : 1
+#var float4 t4 : $vin.TEXCOORD4 : TEX4 : 6 : 1
+#var float4 t5 : $vin.TEXCOORD5 : TEX5 : 7 : 1
+#var float4 t6 : $vin.TEXCOORD6 : TEX6 : 8 : 1
+#var float4 t7 : $vin.TEXCOORD7 : TEX7 : 9 : 1
+#var float4 main : $vout.COLOR : COL : -1 : 1
+TEMP R0;
+TEMP R1;
+ADD R0, fragment.position, fragment.color.primary;
+ADD R1, R0, fragment.texcoord[0];
+ADD R0, R1, fragment.texcoord[1];
+ADD R1, R0, fragment.texcoord[2];
+ADD R0, R1, fragment.texcoord[3];
+ADD R1, R0, fragment.texcoord[4];
+ADD R0, R1, fragment.texcoord[5];
+ADD R1, R0, fragment.texcoord[6];
+ADD R0, R1, fragment.texcoord[7];
+MOV result.color, R0;
+END
+# 10 instructions, 2 R-regs

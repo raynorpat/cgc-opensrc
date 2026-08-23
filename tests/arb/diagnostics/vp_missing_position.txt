@@ -1,0 +1,2 @@
+error C6008
+must write POSITION

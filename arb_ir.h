@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -124,6 +124,8 @@ typedef struct ArbProgram_Rec {
     int numVirtualTemps;
     int numConstants;
     int numPhysicalTemps;
+    int texIndirectionsUsed;   // computed before allocation
+    int maxTextureUnitUsed;    // -1 when no sampling
 } ArbProgram;
 
 void ArbInitProgram(ArbProgram *program, ArbStage stage);
@@ -148,6 +150,28 @@ typedef enum ArbAllocStatus_Enum {
     ARB_ALLOC_TEMP_LIMIT,
     ARB_ALLOC_INVALID_IR
 } ArbAllocStatus;
+
+typedef struct ArbResources_Rec {
+    int instructions, aluInstructions, texInstructions, texIndirections;
+    int temporaries, parameters, attributes, addressRegisters, textureUnits;
+} ArbResources;
+
+typedef enum ArbResourceStatus_Enum {
+    ARB_RESOURCE_OK,
+    ARB_RESOURCE_INSTRUCTIONS,
+    ARB_RESOURCE_ALU_INSTRUCTIONS,
+    ARB_RESOURCE_TEX_INSTRUCTIONS,
+    ARB_RESOURCE_TEX_INDIRECTIONS,
+    ARB_RESOURCE_TEMPORARIES,
+    ARB_RESOURCE_PARAMETERS,
+    ARB_RESOURCE_ATTRIBUTES,
+    ARB_RESOURCE_ADDRESS_REGISTERS,
+    ARB_RESOURCE_TEXTURE_UNITS
+} ArbResourceStatus;
+
+ArbResourceStatus ArbCheckResourceLimits(const ArbResources *resources,
+                                         const ArbLimits *limits,
+                                         int *actual, int *allowed);
 
 ArbAllocStatus ArbAllocateTemporaries(ArbProgram *program, int maxTemporaries);
 

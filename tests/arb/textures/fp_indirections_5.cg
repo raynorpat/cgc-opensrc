@@ -1,0 +1,10 @@
+float4 main(float2 t : TEXCOORD0,
+            uniform sampler2D image : TEXUNIT0) : COLOR
+{
+    float4 c0 = tex2D(image, t);
+    float4 c1 = tex2D(image, c0.xy + t);
+    float4 c2 = tex2D(image, c1.xy + t);
+    float4 c3 = tex2D(image, c2.xy + t);
+    float4 c4 = tex2D(image, c3.xy + t);
+    return c4;
+}

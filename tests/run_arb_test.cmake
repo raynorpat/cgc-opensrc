@@ -64,6 +64,18 @@ else()
     if(result EQUAL 0)
         message(FATAL_ERROR "${TEST_NAME} unexpectedly succeeded")
     endif()
+    if(EXISTS "${output_file}")
+        file(READ "${output_file}" failed_output)
+        foreach(forbidden "#var " "#const " "#default " "TEMP " "PARAM "
+                          "ATTRIB " "OUTPUT " "ADDRESS " "END")
+            string(FIND "${failed_output}" "${forbidden}" found)
+            if(NOT found EQUAL -1)
+                message(FATAL_ERROR
+                    "${TEST_NAME} left partial backend output containing ${forbidden}"
+                )
+            endif()
+        endforeach()
+    endif()
     set(diagnostics "${stdout}${stderr}")
     if(DEFINED EXPECTED_DIAGNOSTICS)
         file(STRINGS "${EXPECTED_DIAGNOSTICS}" fragments)

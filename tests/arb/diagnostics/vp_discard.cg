@@ -1,0 +1,2 @@
+float4 main(float4 position : POSITION) : POSITION
+{ discard position.x < 0.0; return position; }

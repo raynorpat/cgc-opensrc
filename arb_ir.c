@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -146,6 +146,7 @@ void ArbInitProgram(ArbProgram *program, ArbStage stage)
 {
     memset(program, 0, sizeof(ArbProgram));
     program->stage = stage;
+    program->maxTextureUnitUsed = -1;
 } // ArbInitProgram
 
 /*
@@ -404,6 +405,53 @@ void ArbTruncateConstants(ArbProgram *program, int count)
     else
         program->constants = NULL;
 } // ArbTruncateConstants
+
+/*
+ * ArbCheckResourceLimits() - Pure limit comparison in enum order; returns
+ *     the first overflowing field with its actual and allowed values.
+ */
+
+ArbResourceStatus ArbCheckResourceLimits(const ArbResources *resources,
+                                         const ArbLimits *limits,
+                                         int *actual, int *allowed)
+{
+    struct {
+        int actual;
+        int limit;
+        ArbResourceStatus status;
+    } fields[] = {
+        { resources->instructions,      limits->instructions,
+          ARB_RESOURCE_INSTRUCTIONS },
+        { resources->aluInstructions,   limits->aluInstructions,
+          ARB_RESOURCE_ALU_INSTRUCTIONS },
+        { resources->texInstructions,   limits->texInstructions,
+          ARB_RESOURCE_TEX_INSTRUCTIONS },
+        { resources->texIndirections,   limits->texIndirections,
+          ARB_RESOURCE_TEX_INDIRECTIONS },
+        { resources->temporaries,       limits->temporaries,
+          ARB_RESOURCE_TEMPORARIES },
+        { resources->parameters,        limits->parameters,
+          ARB_RESOURCE_PARAMETERS },
+        { resources->attributes,        limits->attributes,
+          ARB_RESOURCE_ATTRIBUTES },
+        { resources->addressRegisters,  limits->addressRegisters,
+          ARB_RESOURCE_ADDRESS_REGISTERS },
+        { resources->textureUnits,      limits->textureUnits,
+          ARB_RESOURCE_TEXTURE_UNITS },
+    };
+    int ii;
+
+    for (ii = 0; ii < (int) (sizeof(fields) / sizeof(fields[0])); ii++) {
+        if (fields[ii].limit > 0 && fields[ii].actual > fields[ii].limit) {
+            if (actual)
+                *actual = fields[ii].actual;
+            if (allowed)
+                *allowed = fields[ii].limit;
+            return fields[ii].status;
+        }
+    }
+    return ARB_RESOURCE_OK;
+} // ArbCheckResourceLimits
 
 /*
  * ArbValidateIR() - Structural and stage validation over the whole

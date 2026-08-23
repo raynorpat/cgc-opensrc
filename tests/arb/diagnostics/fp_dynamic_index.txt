@@ -1,0 +1,2 @@
+error C6003
+requires a constant uniform index

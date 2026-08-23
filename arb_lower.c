@@ -73,6 +73,9 @@ typedef struct ArbLowerContext_Rec {
     int dstSelWidth;
     int dstSel[4];
     ConsumedStmt *consumedHead; // Statements claimed by loop analysis
+    int attrRegno[16];          // Seen vertex attribute registers
+    int attrName[16];           // Binding spelling atom per register
+    int attrCount;
     LoopInit *loopInitHead;     // Paired while/do initializers
 } ArbLowerContext;
 
@@ -2786,5 +2789,50 @@ int ArbLowerProgram(ArbProgram *ir, const ArbProfileDesc *profile,
         return 0;
     }
     ClearSymbolTemps(&ctx);
+
+    if (profile->stage == ARB_STAGE_VERTEX) {
+        // Generic ATTRn and conventional spellings must not mix on one
+        // attribute register: compare resolved registers and spellings.
+        int regnoName[16];
+        int ii;
+        ArbInstruction *walk;
+
+        for (ii = 0; ii < 16; ii++)
+            regnoName[ii] = 0;
+        for (walk = ir->first; walk; walk = walk->next) {
+            for (ii = 0; ii < walk->srcCount; ii++) {
+                if (walk->src[ii].file == ARB_REG_INPUT &&
+                    walk->src[ii].index >= 0 && walk->src[ii].index < 16)
+                {
+                    int name = walk->src[ii].bindingName;
+                    if (regnoName[walk->src[ii].index] == 0)
+                        regnoName[walk->src[ii].index] = name;
+                    else if (regnoName[walk->src[ii].index] != name)
+                    {
+                        SemanticError(&program->loc,
+                                      ERROR___ARB_ATTRIBUTE_ALIAS);
+                        return 0;
+                    }
+                }
+            }
+        }
+
+        // Required output: POSITION (register 0) must be written.
+        for (walk = ir->first; walk; walk = walk->next) {
+            if ((walk->dst.file == ARB_REG_OUTPUT ||
+                 (walk->dst.file == ARB_REG_TEMP &&
+                  walk->dst.index >= 0)) &&
+                walk->dst.file == ARB_REG_OUTPUT &&
+                walk->dst.index == 0)
+            {
+                break;
+            }
+        }
+        if (!walk) {
+            SemanticError(&program->loc,
+                          ERROR___ARB_REQUIRED_POSITION);
+            return 0;
+        }
+    }
     return 1;
 } // ArbLowerProgram

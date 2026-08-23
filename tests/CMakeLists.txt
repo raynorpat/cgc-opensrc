@@ -1124,3 +1124,64 @@ add_arb_fixture(arbfp1_discard arbfp1
 add_arb_failure(arb_texture_conflict arbfp1
     tests/arb/diagnostics/fp_texture_conflict.cg
     tests/arb/diagnostics/fp_texture_conflict.txt)
+
+add_arb_fixture(arbvp1_all_semantics arbvp1
+    tests/arb/vp-semantics/vp_all_semantics.cg
+    tests/arb/vp-semantics/vp_all_semantics_conventional.expected)
+add_arb_fixture(arbvp1_all_semantics_generic arbvp1
+    tests/arb/vp-semantics/vp_all_semantics.cg
+    tests/arb/vp-semantics/vp_all_semantics_generic.expected -DTEST_GENERIC)
+add_arb_fixture(arbfp1_all_semantics arbfp1
+    tests/arb/fp-semantics/fp_all_semantics.cg
+    tests/arb/fp-semantics/fp_all_semantics_primary.expected)
+add_arb_fixture(arbfp1_all_semantics_secondary arbfp1
+    tests/arb/fp-semantics/fp_all_semantics.cg
+    tests/arb/fp-semantics/fp_all_semantics_secondary.expected -DTEST_SECONDARY)
+add_arb_failure(arbvp1_missing_position arbvp1
+    tests/arb/diagnostics/vp_missing_position.cg
+    tests/arb/diagnostics/vp_missing_position.txt)
+add_arb_failure(arbvp1_attribute_alias arbvp1
+    tests/arb/diagnostics/vp_attribute_alias.cg
+    tests/arb/diagnostics/vp_attribute_alias.txt)
+add_arb_failure(arbvp1_discard arbvp1
+    tests/arb/diagnostics/vp_discard.cg
+    tests/arb/diagnostics/vp_discard.txt)
+add_arb_failure(arbvp1_clip_output arbvp1
+    tests/arb/diagnostics/vp_clip_output.cg
+    tests/arb/diagnostics/vp_clip_output.txt)
+add_arb_failure(arbfp1_dynamic_index arbfp1
+    tests/arb/diagnostics/fp_dynamic_index.cg
+    tests/arb/diagnostics/fp_dynamic_index.txt)
+add_arb_fixture(arbfp1_params_24 arbfp1
+    tests/arb/limits/fp_params_24.cg
+    tests/arb/limits/fp_params_24.expected)
+add_arb_failure(arbfp1_params_25 arbfp1
+    tests/arb/limits/fp_params_25.cg
+    tests/arb/limits/fp_params_25.txt)
+add_arb_fixture(arbfp1_attributes_10 arbfp1
+    tests/arb/limits/fp_attributes_10.cg
+    tests/arb/limits/fp_attributes_10.expected)
+add_arb_failure(arbfp1_attributes_11 arbfp1
+    tests/arb/limits/fp_attributes_11.cg
+    tests/arb/limits/fp_attributes_11.txt)
+add_arb_fixture(arbfp1_alu_48 arbfp1
+    tests/arb/limits/fp_alu_48.cg
+    tests/arb/limits/fp_alu_48.expected)
+add_arb_failure(arbfp1_alu_49 arbfp1
+    tests/arb/limits/fp_alu_49.cg
+    tests/arb/limits/fp_alu_49.txt)
+add_arb_fixture(arbfp1_tex_24 arbfp1
+    tests/arb/limits/fp_tex_24.cg
+    tests/arb/limits/fp_tex_24.expected)
+add_arb_failure(arbfp1_tex_25 arbfp1
+    tests/arb/limits/fp_tex_25.cg
+    tests/arb/limits/fp_tex_25.txt)
+add_arb_failure(arbfp1_indirections_5 arbfp1
+    tests/arb/textures/fp_indirections_5.cg
+    tests/arb/limits/fp_indirections_5.txt)
+add_arb_fixture(arbfp1_texture_units_2 arbfp1
+    tests/arb/limits/fp_texture_units_2.cg
+    tests/arb/limits/fp_texture_units_2.expected)
+add_arb_failure(arbfp1_texture_units_3 arbfp1
+    tests/arb/limits/fp_texture_units_3.cg
+    tests/arb/limits/fp_texture_units_3.txt)

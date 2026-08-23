@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -145,6 +145,93 @@ int main(void)
         assert(ArbAllocateTemporaries(&p2, 12) == ARB_ALLOC_TEMP_LIMIT);
         assert(ArbAllocateTemporaries(&p2, 13) == ARB_ALLOC_OK);
         ArbFreeProgram(&p2);
+    }
+    // Pure resource-limit table: every nonzero counter in both profiles,
+    // exact boundary passes and one-over fails, in enum order.
+
+    {
+        ArbLimits vp = { ARBVP_MAX_INSTRUCTIONS, 0, 0, 0,
+                         ARBVP_MAX_TEMPORARIES, ARBVP_MAX_PARAMETERS,
+                         ARBVP_MAX_ATTRIBUTES, ARBVP_MAX_ADDRESS_REGISTERS,
+                         0 };
+        ArbLimits fp = { ARBFP_MAX_INSTRUCTIONS,
+                         ARBFP_MAX_ALU_INSTRUCTIONS,
+                         ARBFP_MAX_TEX_INSTRUCTIONS,
+                         ARBFP_MAX_TEX_INDIRECTIONS,
+                         ARBFP_MAX_TEMPORARIES, ARBFP_MAX_PARAMETERS,
+                         ARBFP_MAX_ATTRIBUTES, 0,
+                         ARBFP_MAX_TEXTURE_UNITS };
+        int actual = 0, allowed = 0;
+
+        /* Vertex counters. */
+        {
+            ArbResources r;
+            memset(&r, 0, sizeof(r));
+            r.instructions = ARBVP_MAX_INSTRUCTIONS;
+            assert(ArbCheckResourceLimits(&r, &vp, NULL, NULL) ==
+                   ARB_RESOURCE_OK);
+            r.instructions++;
+            assert(ArbCheckResourceLimits(&r, &vp, &actual, &allowed) ==
+                   ARB_RESOURCE_INSTRUCTIONS);
+            assert(actual == ARBVP_MAX_INSTRUCTIONS + 1);
+            assert(allowed == ARBVP_MAX_INSTRUCTIONS);
+
+            memset(&r, 0, sizeof(r));
+            r.temporaries = ARBVP_MAX_TEMPORARIES + 1;
+            assert(ArbCheckResourceLimits(&r, &vp, &actual, &allowed) ==
+                   ARB_RESOURCE_TEMPORARIES);
+            r.temporaries = ARBVP_MAX_TEMPORARIES;
+            r.parameters = ARBVP_MAX_PARAMETERS + 1;
+            assert(ArbCheckResourceLimits(&r, &vp, &actual, &allowed) ==
+                   ARB_RESOURCE_PARAMETERS);
+            r.parameters = ARBVP_MAX_PARAMETERS;
+            r.attributes = ARBVP_MAX_ATTRIBUTES + 1;
+            assert(ArbCheckResourceLimits(&r, &vp, &actual, &allowed) ==
+                   ARB_RESOURCE_ATTRIBUTES);
+            r.attributes = ARBVP_MAX_ATTRIBUTES;
+            r.addressRegisters = ARBVP_MAX_ADDRESS_REGISTERS + 1;
+            assert(ArbCheckResourceLimits(&r, &vp, &actual, &allowed) ==
+                   ARB_RESOURCE_ADDRESS_REGISTERS);
+        }
+
+        /* Fragment counters. */
+        {
+            ArbResources r;
+            memset(&r, 0, sizeof(r));
+            r.instructions = ARBFP_MAX_INSTRUCTIONS;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_OK);
+            r.instructions++;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_INSTRUCTIONS);
+            memset(&r, 0, sizeof(r));
+            r.aluInstructions = ARBFP_MAX_ALU_INSTRUCTIONS;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_OK);
+            r.aluInstructions++;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_ALU_INSTRUCTIONS);
+            memset(&r, 0, sizeof(r));
+            r.texInstructions = ARBFP_MAX_TEX_INSTRUCTIONS + 1;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_TEX_INSTRUCTIONS);
+            memset(&r, 0, sizeof(r));
+            r.texIndirections = ARBFP_MAX_TEX_INDIRECTIONS + 1;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_TEX_INDIRECTIONS);
+            memset(&r, 0, sizeof(r));
+            r.textureUnits = ARBFP_MAX_TEXTURE_UNITS + 1;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_TEXTURE_UNITS);
+            memset(&r, 0, sizeof(r));
+            r.parameters = ARBFP_MAX_PARAMETERS + 1;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_PARAMETERS);
+            memset(&r, 0, sizeof(r));
+            r.attributes = ARBFP_MAX_ATTRIBUTES + 1;
+            assert(ArbCheckResourceLimits(&r, &fp, &actual, &allowed) ==
+                   ARB_RESOURCE_ATTRIBUTES);
+        }
     }
     return 0;
 }
