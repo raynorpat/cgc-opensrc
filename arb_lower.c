@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -95,6 +95,7 @@ static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
                                 ArbOperand *operand);
 static void TrackSymbolTemp(ArbLowerContext *ctx, Symbol *symbol);
 static int EvalConstInt(ArbLowerContext *ctx, expr *e, int *out);
+static ArbOperand SmearOperand(ArbOperand operand);
 static int ExtractStepDelta(ArbLowerContext *ctx, expr *e, Symbol *target,
                             int *delta, int *found);
 
@@ -1534,15 +1535,19 @@ static int LowerStatement(ArbLowerContext *ctx, stmt *statement)
             // surviving return carries no expression for this profile.
             break;
         case DISCARD_STMT:
-            if (ctx->profile->stage == ARB_STAGE_VERTEX) {
-                SemanticError(&statement->commonst.loc,
-                              ERROR___ARB_VERTEX_DISCARD);
-                return 0;
+            // The frontend wraps the condition in a KILL unary, which
+            // LowerExpression lowers to KIL for fragment programs.
+            {
+                ArbOperand sink;
+                if (ctx->profile->stage == ARB_STAGE_VERTEX) {
+                    SemanticError(&statement->commonst.loc,
+                                  ERROR___ARB_VERTEX_DISCARD);
+                    return 0;
+                }
+                if (!LowerExpression(ctx, statement->discardst.cond, &sink))
+                    return 0;
             }
-            SemanticError(&statement->commonst.loc,
-                          ERROR_S_ARB_UNSUPPORTED_OPERATION, "discard");
-            return 0;
-        case COMMENT_STMT:
+            break;        case COMMENT_STMT:
             break;
         case BLOCK_STMT:
             if (!LowerStatement(ctx, statement->blockst.body))
@@ -1921,6 +1926,127 @@ static int LowerBuiltinCall(ArbLowerContext *ctx, expr *expression,
         if (!EmitUnary(ctx, ARB_OP_RSQ, ARB_MASK_X, loc, arg, &result))
             return 0;
         *operand = result;
+        return 1;
+    }
+    case ARB_BUILTIN_TEX1D: case ARB_BUILTIN_TEX1DPROJ: case ARB_BUILTIN_TEX1DBIAS:
+    case ARB_BUILTIN_TEX2D: case ARB_BUILTIN_TEX2DPROJ: case ARB_BUILTIN_TEX2DBIAS:
+    case ARB_BUILTIN_TEX3D: case ARB_BUILTIN_TEX3DPROJ: case ARB_BUILTIN_TEX3DBIAS:
+    case ARB_BUILTIN_TEXCUBE: case ARB_BUILTIN_TEXCUBEPROJ: case ARB_BUILTIN_TEXCUBEBIAS:
+    case ARB_BUILTIN_TEXRECT: case ARB_BUILTIN_TEXRECTPROJ: {
+        // tex*(sampler, coord): the first argument must be a sampler
+        // parameter with a texture-unit binding.
+        ArbOpcode opcode;
+        ArbTextureTarget target;
+        int minCoord;
+        Symbol *sampler;
+        Binding *fBind;
+        ArbOperand coord;
+        ArbInstruction *inst;
+        int temp;
+        expr *samplerExpr, *coordExpr;
+
+        if (index == ARB_BUILTIN_TEX1D || index == ARB_BUILTIN_TEX1DPROJ ||
+            index == ARB_BUILTIN_TEX1DBIAS)
+        {
+            target = ARB_TEX_1D;
+            minCoord = 1;
+        } else if (index == ARB_BUILTIN_TEX2D ||
+                   index == ARB_BUILTIN_TEX2DPROJ ||
+                   index == ARB_BUILTIN_TEX2DBIAS)
+        {
+            target = ARB_TEX_2D;
+            minCoord = 2;
+        } else if (index == ARB_BUILTIN_TEX3D ||
+                   index == ARB_BUILTIN_TEX3DPROJ ||
+                   index == ARB_BUILTIN_TEX3DBIAS)
+        {
+            target = ARB_TEX_3D;
+            minCoord = 3;
+        } else if (index == ARB_BUILTIN_TEXCUBE ||
+                   index == ARB_BUILTIN_TEXCUBEPROJ ||
+                   index == ARB_BUILTIN_TEXCUBEBIAS)
+        {
+            target = ARB_TEX_CUBE;
+            minCoord = 3;
+        } else {
+            target = ARB_TEX_RECT;
+            minCoord = 2;
+        }
+        if (index == ARB_BUILTIN_TEX1DPROJ || index == ARB_BUILTIN_TEX2DPROJ ||
+            index == ARB_BUILTIN_TEX3DPROJ || index == ARB_BUILTIN_TEXCUBEPROJ ||
+            index == ARB_BUILTIN_TEXRECTPROJ)
+        {
+            opcode = ARB_OP_TXP;
+        } else if (index == ARB_BUILTIN_TEX1DBIAS ||
+                   index == ARB_BUILTIN_TEX2DBIAS ||
+                   index == ARB_BUILTIN_TEX3DBIAS ||
+                   index == ARB_BUILTIN_TEXCUBEBIAS)
+        {
+            opcode = ARB_OP_TXB;
+        } else {
+            opcode = ARB_OP_TEX;
+        }
+
+        if (!args || args->bin.op != FUN_ARG_OP) {
+            SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                          GetAtomString(atable, fun->name));
+            return 0;
+        }
+        samplerExpr = args->bin.left;
+        coordExpr = NULL;
+        if (args->bin.right && args->bin.right->bin.op == FUN_ARG_OP)
+            coordExpr = args->bin.right->bin.left;
+        if (samplerExpr->common.kind != SYMB_N ||
+            samplerExpr->sym.op != VARIABLE_OP || !coordExpr)
+        {
+            SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                          GetAtomString(atable, fun->name));
+            return 0;
+        }
+        sampler = samplerExpr->sym.symbol;
+        fBind = sampler->details.var.bind;
+        if (!fBind || fBind->none.kind != BK_TEXUNIT ||
+            !(fBind->none.properties & BIND_IS_BOUND))
+        {
+            SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                          GetAtomString(atable, fun->name));
+            return 0;
+        }
+        {
+            // Coordinate width must satisfy the target minimum.
+            Type *coordType = coordExpr->common.type;
+            int w = 0;
+            if (!coordType)
+                w = 0;
+            else if (IsVector(coordType, &w))
+                ;
+            else if (IsScalar(coordType))
+                w = 1;
+            else
+                w = 0;
+            if (!coordType || w < minCoord)
+            {
+                SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                              GetAtomString(atable, fun->name));
+                return 0;
+            }
+        }
+        if (!LowerExpression(ctx, coordExpr, &coord))
+            return 0;
+
+        temp = ArbNewTemp(ctx->ir);
+        if (temp < 0)
+            return 0;
+        inst = ArbAppendInstruction(ctx->ir, opcode, loc,
+                                    ArbTempOperand(temp));
+        if (!inst)
+            return 0;
+        inst->mask = ARB_MASK_XYZW;
+        inst->textureUnit = (signed char) fBind->texunit.unitno;
+        inst->textureTarget = target;
+        if (!ArbAddSource(inst, coord))
+            return 0;
+        *operand = ArbTempOperand(temp);
         return 1;
     }
     default:
@@ -2349,8 +2475,39 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
         case VECTOR_V_OP:
             return LowerVectorConstructor(ctx, expression, loc, operand);
         case KILL_OP:
-            SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION, "discard");
-            return 0;
+            // Normalized fragment discard: the argument is a 0/1 boolean;
+            // convert to signed-negative and emit destination-free KIL.
+            if (ctx->profile->stage == ARB_STAGE_VERTEX) {
+                SemanticError(loc, ERROR___ARB_VERTEX_DISCARD);
+                return 0;
+            }
+            {
+                ArbOperand cond, signedCond;
+                float one[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+                int cindex;
+                ArbOperand oneOp;
+                ArbInstruction *kil;
+
+                if (!LowerExpression(ctx, expression->un.arg, &cond))
+                    return 0;
+                cond = SmearOperand(cond);
+                cindex = ArbInternConstant(ctx->ir, one, 4);
+                if (cindex < 0)
+                    return 0;
+                oneOp = ArbConstOperand(cindex);
+                if (!EmitBinary(ctx, ARB_OP_SUB, ARB_MASK_XYZW, loc,
+                                cond, oneOp, &signedCond))
+                {
+                    return 0;
+                }
+                kil = ArbAppendInstruction(ctx->ir, ARB_OP_KIL, loc, cond);
+                if (!kil)
+                    return 0;
+                kil->mask = ARB_MASK_XYZW;
+                if (!ArbAddSource(kil, signedCond))
+                    return 0;
+                return 1;
+            }
         default:
             SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
                           opcode_name[expression->un.op]);

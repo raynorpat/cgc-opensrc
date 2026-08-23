@@ -1,0 +1,9 @@
+float4 main(float2 texcoord : TEXCOORD0,
+            uniform sampler2D image : TEXUNIT0) : COLOR
+{
+    float4 c0 = tex2D(image, texcoord);
+    float4 c1 = tex2D(image, c0.xy + texcoord);
+    float4 c2 = tex2D(image, c1.xy + texcoord);
+    float4 c3 = tex2D(image, c2.xy + texcoord);
+    return c3;
+}

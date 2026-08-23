@@ -1093,3 +1093,34 @@ add_arb_fixture(arbfp1_passthrough arbfp1
 add_arb_fixture(arbfp1_conditional arbfp1
     tests/arb/arithmetic/fp_conditional.cg
     tests/arb/arithmetic/fp_conditional.expected)
+
+add_arb_fixture(arbfp1_tex2d arbfp1
+    tests/arb/textures/fp_tex2d.cg
+    tests/arb/textures/fp_tex2d.expected)
+add_arb_fixture(arbfp1_target_1d arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_1d.expected -DTEST_1D)
+add_arb_fixture(arbfp1_target_3d arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_3d.expected -DTEST_3D)
+add_arb_fixture(arbfp1_target_cube arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_cube.expected -DTEST_CUBE)
+add_arb_fixture(arbfp1_target_rect arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_rect.expected -DTEST_RECT)
+add_arb_fixture(arbfp1_target_projected_biased arbfp1
+    tests/arb/textures/fp_targets.cg
+    tests/arb/textures/fp_target_projected_biased.expected -DTEST_PROJECTED_BIASED)
+add_arb_fixture(arbfp1_dependent arbfp1
+    tests/arb/textures/fp_dependent.cg
+    tests/arb/textures/fp_dependent.expected)
+add_arb_fixture(arbfp1_alu_dependent arbfp1
+    tests/arb/textures/fp_alu_dependent.cg
+    tests/arb/textures/fp_alu_dependent.expected)
+add_arb_fixture(arbfp1_discard arbfp1
+    tests/arb/control-flow/fp_discard.cg
+    tests/arb/control-flow/fp_discard.expected)
+add_arb_failure(arb_texture_conflict arbfp1
+    tests/arb/diagnostics/fp_texture_conflict.cg
+    tests/arb/diagnostics/fp_texture_conflict.txt)

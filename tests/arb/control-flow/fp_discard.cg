@@ -1,0 +1,5 @@
+float4 main(float4 color : COLOR0) : COLOR
+{
+    discard color.a < 0.5;
+    return color;
+}

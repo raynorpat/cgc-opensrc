@@ -425,6 +425,74 @@ int ArbValidateResources(ArbProgram *ir, const ArbProfileDesc *profile,
                           profile->limits->texInstructions);
             return 0;
         }
+
+        // ARB_fragment_program texture-indirection node algorithm, run
+        // after allocation so physical registers are known.  KIL counts
+        // as a texture instruction but contributes no destination.
+
+        {
+            unsigned int aluTemps = 0;
+            unsigned int textureOutputs = 0;
+            int indirections = 1;
+            int maxTextureUnit = -1;
+
+            for (walk = ir->first; walk; walk = walk->next) {
+                if (ArbIsTextureOpcode(walk->opcode)) {
+                    int coordTemp = walk->src[0].file == ARB_REG_TEMP ?
+                                        walk->src[0].index : -1;
+                    int dstTemp = walk->opcode != ARB_OP_KIL &&
+                                  walk->dst.file == ARB_REG_TEMP ?
+                                      walk->dst.index : -1;
+                    int newNode =
+                        (coordTemp >= 0 &&
+                         (textureOutputs & (1u << coordTemp))) ||
+                        (dstTemp >= 0 && (aluTemps & (1u << dstTemp)));
+
+                    if (newNode) {
+                        indirections++;
+                        aluTemps = 0;
+                        textureOutputs = 0;
+                    }
+                    if (walk->opcode != ARB_OP_KIL) {
+                        if (maxTextureUnit < walk->textureUnit)
+                            maxTextureUnit = walk->textureUnit;
+                    }
+                } else {
+                    int jj;
+                    for (jj = 0; jj < walk->srcCount; jj++) {
+                        if (walk->src[jj].file == ARB_REG_TEMP &&
+                            walk->src[jj].index >= 0 &&
+                            walk->src[jj].index < 16)
+                        {
+                            aluTemps |= 1u << walk->src[jj].index;
+                        }
+                    }
+                    if (walk->dst.file == ARB_REG_TEMP &&
+                        walk->dst.index >= 0 && walk->dst.index < 16)
+                    {
+                        aluTemps |= 1u << walk->dst.index;
+                    }
+                }
+                if (walk->opcode != ARB_OP_KIL &&
+                    walk->dst.file == ARB_REG_TEMP &&
+                    walk->dst.index >= 0 && walk->dst.index < 16)
+                {
+                    textureOutputs |= 1u << walk->dst.index;
+                }
+            }
+            if (indirections > profile->limits->texIndirections) {
+                SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
+                              "texture indirections", indirections,
+                              profile->limits->texIndirections);
+                return 0;
+            }
+            if (maxTextureUnit + 1 > profile->limits->textureUnits) {
+                SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
+                              "texture units", maxTextureUnit + 1,
+                              profile->limits->textureUnits);
+                return 0;
+            }
+        }
     }
     if (ir->numPhysicalTemps > profile->limits->temporaries) {
         SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "temporaries",

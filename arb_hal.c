@@ -399,6 +399,70 @@ static int IsTexobjBase_arb(int fBase)
 } // IsTexobjBase_arb
 
 /*
+ * SamplerTargetForBase_arb() - Map a sampler type base to its required
+ *         ARB texture target token.
+ */
+
+static int SamplerTargetForBase_arb(int fBase)
+{
+    switch (fBase) {
+    case TYPE_BASE_SAMPLER1D:   return ARB_TEX_1D;
+    case TYPE_BASE_SAMPLER2D:   return ARB_TEX_2D;
+    case TYPE_BASE_SAMPLER3D:   return ARB_TEX_3D;
+    case TYPE_BASE_SAMPLERCUBE: return ARB_TEX_CUBE;
+    case TYPE_BASE_SAMPLERRECT: return ARB_TEX_RECT;
+    default:                    return ARB_TEX_NONE;
+    }
+} // SamplerTargetForBase_arb
+
+/*
+ * RecordSamplerUnit_arb() - Claim "unit" for "target", rejecting conflicts
+ *     and out-of-range units.  Returns 1 on success.
+ */
+
+static int RecordSamplerUnit_arb(SourceLoc *loc, ArbHALData *data, int unit,
+                                 int target)
+{
+    const char *targetName = "?";
+
+    if (unit < 0 || unit >= data->profile->limits->textureUnits) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "texture units",
+                      unit + 1, data->profile->limits->textureUnits);
+        return 0;
+    }
+    switch (target) {
+    case ARB_TEX_1D:   targetName = "1D"; break;
+    case ARB_TEX_2D:   targetName = "2D"; break;
+    case ARB_TEX_3D:   targetName = "3D"; break;
+    case ARB_TEX_CUBE: targetName = "CUBE"; break;
+    case ARB_TEX_RECT: targetName = "RECT"; break;
+    }
+    if (data->textureTarget[unit] != 0 &&
+        data->textureTarget[unit] != target)
+    {
+        SemanticError(loc, ERROR_DS_ARB_TEXTURE_CONFLICT, unit, targetName);
+        return 0;
+    }
+    data->textureTarget[unit] = (signed char) target;
+    return 1;
+} // RecordSamplerUnit_arb
+
+/*
+ * AllocateSamplerUnit_arb() - First unclaimed texture unit.
+ */
+
+static int AllocateSamplerUnit_arb(ArbHALData *data)
+{
+    int unit;
+
+    for (unit = 0; unit < data->profile->limits->textureUnits; unit++) {
+        if (data->textureTarget[unit] == 0)
+            return unit;
+    }
+    return -1;
+} // AllocateSamplerUnit_arb
+
+/*
  * IsValidRuntimeBase_arb() - Float, bool, and int runtime variables are
  *         representable.  Int is needed so the backend can distinguish
  *         statically eliminated loop/index values from illegal surviving
@@ -501,8 +565,35 @@ static int BindUniformUnbound_arb(SourceLoc *loc, Symbol *fSymb,
     int first;
 
     if (Cg->theHAL->IsTexobjBase(GetBase(fSymb->type))) {
-        // Sampler allocation arrives with fragment texture support.
-        return 0;
+        // Explicit TEXUNITn semantics claim that exact unit; otherwise
+        // allocate deterministically from the first unclaimed unit.
+        int unit = -1;
+        const char *semantic = fSymb->details.var.semantics ?
+                                   GetAtomString(atable,
+                                                 fSymb->details.var.semantics) :
+                                   NULL;
+        if (semantic && !strncmp(semantic, "TEXUNIT", 7))
+            unit = atoi(semantic + 7);
+        else
+            unit = AllocateSamplerUnit_arb(data);
+        if (unit < 0) {
+            SemanticError(loc, ERROR_S_NO_TEXUNITS_AVAILABLE,
+                          GetAtomString(atable, fSymb->name));
+            return 0;
+        }
+        if (!RecordSamplerUnit_arb(loc, data, unit,
+                                   SamplerTargetForBase_arb(
+                                       GetBase(fSymb->type))))
+        {
+            return 0;
+        }
+        fBind->texunit.kind = BK_TEXUNIT;
+        fBind->texunit.properties |= BIND_IS_BOUND | BIND_INPUT |
+                                     BIND_UNIFORM;
+        fBind->texunit.base = GetBase(fSymb->type);
+        fBind->texunit.size = 1;
+        fBind->texunit.unitno = unit;
+        return 1;
     }
     first = ReserveUniformRange_arb(data, size);
     if (first < 0) {
@@ -576,6 +667,26 @@ static int BindUniformPragma_arb(SourceLoc *loc, Symbol *fSymb, Binding *lBind,
         else
             AddDefaultBinding(record, fSymb, fSymb->details.var.init,
                               fSymb->type);
+        return 1;
+    }
+    case BK_TEXUNIT: {
+        // Explicit TEXUNITn for a sampler parameter.
+        int base = GetBase(fSymb->type);
+        int target;
+        if (!Cg->theHAL->IsTexobjBase(base))
+            return 0;
+        target = SamplerTargetForBase_arb(base);
+        if (!RecordSamplerUnit_arb(loc, data, fBind->texunit.unitno,
+                                   target))
+        {
+            return 0;
+        }
+        lBind->texunit.kind = BK_TEXUNIT;
+        lBind->texunit.properties |= BIND_IS_BOUND | BIND_INPUT |
+                                     BIND_UNIFORM;
+        lBind->texunit.base = base;
+        lBind->texunit.size = 1;
+        lBind->texunit.unitno = fBind->texunit.unitno;
         return 1;
     }
     default:
@@ -728,6 +839,13 @@ int GenerateCode_arb(SourceLoc *loc, Scope *fScope, Symbol *program)
 
     ArbInitProgram(&ir, data->profile->stage);
     ok = ArbLowerProgram(&ir, data->profile, program);
+    if (ok && getenv("ARB_DUMP_IR")) {
+        ArbInstruction const *di; int dj;
+        for (di = ir.first; di; di = di->next) {
+            fprintf(stderr, "IR op=%d dst.file=%d m=%x sc=%d unit=%d tgt=%d\n", di->opcode, di->dst.file, di->mask, di->srcCount, di->textureUnit, (int) di->textureTarget);
+            for (dj = 0; dj < di->srcCount; dj++) fprintf(stderr, "  s f=%d i=%d\n", di->src[dj].file, di->src[dj].index);
+        }
+    }
     if (ok)
         ok = ArbLegalizeAndAllocate(&ir, data->profile, loc);
     if (ok)
