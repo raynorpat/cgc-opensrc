@@ -173,6 +173,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR___QSTN_INVALID_1ST_OPERAND    1206, "invalid first operand to \"? :\""
 #define ERROR___QSTN_1ST_OPERAND_NOT_SCALAR 1207, "expected scalar first operand to \"? :\""
 
+#define ERROR_S_RESERVED_WORD               1300, "reserved word \"%s\""
 #define ERROR___REF_TO_VAR_WITH_NO_VALUE    1301, "use of variable with no defined value"
 
 // Errors detected when compiling

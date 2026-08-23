@@ -538,6 +538,7 @@ int SetTypeDomain(SourceLoc *loc, dtype *fType, int domain);
 int SetTypeMisc(SourceLoc *loc, dtype *fType, int misc);
 int SetTypePacked(SourceLoc *loc, dtype *fType);
 int SetStorageClass(SourceLoc *loc, dtype *fType, int storage);
+Type *ResolveScalarTypeSpecifier(SourceLoc *loc, int token, int isUnsigned);
 
 /********************************** Parser Semantic Rules: ***********************************/
 

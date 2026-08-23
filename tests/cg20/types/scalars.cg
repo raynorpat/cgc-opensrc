@@ -12,6 +12,7 @@ float4 main(float4 position : POSITION) : POSITION
     fixed x = 0.5;
     float f = 0.5;
     double d = 0.5;
-    return position + float4(c + uc + s + us + i + ui + l + ul) *
-        float(h + x + f + d) * 0.0;
+    float4 iv = float4(c, uc, s, us);
+    float4 uv = float4(i, ui, l, ul);
+    return position + (iv + uv) * (h + x + f + d) * 0.0;
 }

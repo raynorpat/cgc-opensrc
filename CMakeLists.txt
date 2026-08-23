@@ -46,6 +46,7 @@ add_executable(cgc
 add_executable(tokenize
     atom.c
     cgstruct.c
+    language.c
     scanner.c
     tokenize.c
     tokens.c

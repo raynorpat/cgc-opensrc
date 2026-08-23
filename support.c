@@ -897,6 +897,60 @@ int SetStorageClass(SourceLoc *loc, dtype *fType, int storage)
     return 1;
 } // SetStorageClass
 
+/*
+ * ResolveScalarTypeSpecifier() - Map a scalar type-specifier token to its
+ *         canonical standard type.  "isUnsigned" upgrades integral kinds to
+ *         their unsigned counterparts; token combinations that have no
+ *         unsigned form report a language diagnostic and yield
+ *         UndefinedType.
+ */
+
+Type *ResolveScalarTypeSpecifier(SourceLoc *loc, int token, int isUnsigned)
+{
+    CgScalarKind kind;
+    Type *fType;
+
+    // A lone "unsigned" means unsigned int:
+
+    if (token == UNSIGNED_SY && !isUnsigned)
+        return GetStandardTypeKind(CG_SCALAR_UINT, 0, 0);
+
+    switch (token) {
+    case CHAR_SY:    kind = CG_SCALAR_CHAR;    break;
+    case SHORT_SY:   kind = CG_SCALAR_SHORT;   break;
+    case INT_SY:     kind = CG_SCALAR_INT;     break;
+    case LONG_SY:    kind = CG_SCALAR_LONG;    break;
+    case HALF_SY:    kind = CG_SCALAR_HALF;    break;
+    case FIXED_SY:   kind = CG_SCALAR_FIXED;   break;
+    case FLOAT_SY:   kind = CG_SCALAR_FLOAT;   break;
+    case DOUBLE_SY:  kind = CG_SCALAR_DOUBLE;  break;
+    default:
+        kind = CG_SCALAR_UNDEFINED;
+        break;
+    }
+
+    if (isUnsigned) {
+        switch (kind) {
+        case CG_SCALAR_CHAR:  kind = CG_SCALAR_UCHAR;  break;
+        case CG_SCALAR_SHORT: kind = CG_SCALAR_USHORT; break;
+        case CG_SCALAR_INT:   kind = CG_SCALAR_UINT;   break;
+        case CG_SCALAR_LONG:  kind = CG_SCALAR_ULONG;  break;
+        default:
+            SemanticError(loc, ERROR_S_TYPE_NAME_EXPECTED,
+                          GetAtomString(atable, token));
+            return UndefinedType;
+        }
+    }
+
+    fType = GetStandardTypeKind(kind, 0, 0);
+    if (!fType || kind == CG_SCALAR_UNDEFINED) {
+        SemanticError(loc, ERROR_S_TYPE_NAME_EXPECTED,
+                      GetAtomString(atable, token));
+        return UndefinedType;
+    }
+    return fType;
+} // ResolveScalarTypeSpecifier
+
 /********************************** Parser Semantic Rules: ***********************************/
 
 /*

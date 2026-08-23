@@ -923,8 +923,13 @@ int yylex(void)
             Cg->mostRecentToken = yylval.sc_ident;
             if (yylval.sc_ident >= FIRST_USER_TOKEN_SY) {
                 Symbol *pSymb = LookUpSymbol(NULL, yylval.sc_ident);
-                if (pSymb && IsTypedef(pSymb))
+                if (pSymb && IsTypedef(pSymb)) {
                     token = TYPEIDENT_SY;
+                } else if (CgIsReservedWord(GetAtomString(atable, yylval.sc_ident),
+                                            Cg->options.languageVersion)) {
+                    // The atom stays in yylval.sc_ident for error reporting.
+                    token = RESERVED_SY;
+                }
             } else {
                 token = yylval.sc_ident;
             }

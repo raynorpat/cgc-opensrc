@@ -173,9 +173,16 @@ endfunction()
 
 add_cg20_success(cg20_smoke tests/cg20/profile/smoke.cg)
 add_cg20_success(cg20_scalar_types tests/cg20/types/scalars.cg)
-# Enabled by Task 5: Cg 2.0 scalar type syntax is not recognized yet; see
-# docs/superpowers/plans/2026-08-23-cg-2-language-ir.md.
-set_tests_properties(cg20_scalar_types PROPERTIES DISABLED TRUE)
+add_test(
+    NAME cg20_reserved_word
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word.cg
+        -DCODE=1300
+        -DMESSAGE=reserved.word
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
 add_test(
     NAME cg20_manifest
     COMMAND ${CMAKE_COMMAND}
@@ -275,19 +282,19 @@ add_generic_regression(reflection reflection.cg
     aa2c396563920d50a7b45a6a06c359ec865faa338de4ad42294143a1243b6d8b)
 add_generic_regression(vertexlight vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
-# Hash updated by "Register Cg 2.0 standard types": interning the new
-# standard-type spelling atoms shifts dynamic atom IDs, which reorders
-# top-level declarations in generic output.  Content is unchanged
-# (verified equal modulo declaration order).
+# Hashes updated by "Parse Cg 2.0 type keywords": the new fixed keyword
+# atoms shift dynamic atom IDs, which reorders top-level declarations in
+# generic output.  Content is unchanged (verified equal modulo declaration
+# order against pre-change builds).
 add_generic_regression(vertexlight4 vertexlight4.cg
-    8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
+    5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
 add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg
     0a03690bd59c1ed3ed7f8799845b4468157ff57743c72bb2bf0cd6d54345bea1)
 add_generic_regression(helper_discard
     tests/glsl/diagnostics/generic_helper_discard.cg
-    4afadd12ac3af8acdb484c0e26a854dfa0fb7f9e3d8d31d64bf6ebf37e4cf058)
+    bd6b290f26f99e5aba011e12059163aa3648a872710b0f04f40b654fe8b73afc)
 add_generic_diagnostic(generic_matrix_scalar2_baseline
     tests/glsl/diagnostics/generic_matrix_scalar2.cg 1035 9
     "assignment.of.incompatible.types")

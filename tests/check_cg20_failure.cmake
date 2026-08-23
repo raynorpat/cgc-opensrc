@@ -1,3 +1,9 @@
+if(NOT DEFINED CODE)
+    message(FATAL_ERROR "check_cg20_failure.cmake requires CODE")
+endif()
+if(NOT DEFINED MESSAGE)
+    message(FATAL_ERROR "check_cg20_failure.cmake requires MESSAGE")
+endif()
 execute_process(
     COMMAND "${CGC}" -quiet -nocode -profile "${PROFILE}" ${EXTRA_ARGS} "${SOURCE}"
     RESULT_VARIABLE result

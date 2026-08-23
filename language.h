@@ -55,5 +55,6 @@ typedef enum CgLanguageVersion_Rec {
 int ParseCgLanguageVersion(const char *text, CgLanguageVersion *version);
 const char *CgLanguageVersionString(CgLanguageVersion version);
 int CgLanguageAtLeast(CgLanguageVersion actual, CgLanguageVersion required);
+int CgIsReservedWord(const char *text, CgLanguageVersion version);
 
 #endif

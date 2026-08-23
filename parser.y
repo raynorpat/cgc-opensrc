@@ -129,7 +129,16 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> VOID_SY 313
 %token <sc_token> WHILE_SY 314
 
-%token <sc_token> FIRST_USER_TOKEN_SY 315  /* Must be last token declaration */
+%token <sc_token> CHAR_SY 315
+%token <sc_token> DOUBLE_SY 316
+%token <sc_token> FIXED_SY 317
+%token <sc_token> HALF_SY 318
+%token <sc_token> INTERFACE_SY 319
+%token <sc_token> LONG_SY 320
+%token <sc_token> SHORT_SY 321
+%token <sc_token> UNSIGNED_SY 322
+%token <sc_token> RESERVED_SY 323
+%token <sc_token> FIRST_USER_TOKEN_SY 324  /* Must be last token declaration */
 
 /*************<<<<<<<<<<<<<<<<<<<********************
 %type <dummy> abstract_parameter_declaration
@@ -338,6 +347,28 @@ type_specifier:           INT_SY
                               { $$ = LookUpTypeSymbol(NULL, BOOLEAN_SY); }
                         | TEXOBJ_SY
                               { $$ = LookUpTypeSymbol(NULL, TEXOBJ_SY); }
+                        | CHAR_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | SHORT_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | LONG_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | HALF_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | FIXED_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | DOUBLE_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | UNSIGNED_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | UNSIGNED_SY CHAR_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
+                        | UNSIGNED_SY SHORT_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
+                        | UNSIGNED_SY INT_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
+                        | UNSIGNED_SY LONG_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
                         | struct_or_connector_specifier
                               { $$ = $1; }
                         | type_identifier
@@ -998,6 +1029,13 @@ variable_identifier:      identifier
 ;
 
 identifier:               IDENT_SY
+                              { $$ = $1; }
+                        | RESERVED_SY
+                              {
+                                SemanticError(Cg->tokenLoc, ERROR_S_RESERVED_WORD,
+                                              GetAtomString(atable, $1));
+                                $$ = $1;
+                              }
 ;
 
 constant:                 INTCONST_SY /* Temporary! */
