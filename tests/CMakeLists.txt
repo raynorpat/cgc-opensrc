@@ -984,3 +984,42 @@ foreach(stream_case default valid valid_underscore valid_leading_underscore
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_tokenize_stream_name.cmake
     )
 endforeach()
+
+function(add_arb_fixture name profile source expected)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DTEST_NAME=${name}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECT_SUCCESS=TRUE
+            -DEXPECTED_OUTPUT=${PROJECT_SOURCE_DIR}/${expected}
+            "-DEXTRA_ARGS=${ARGN}"
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_arb_test.cmake
+    )
+endfunction()
+
+function(add_arb_failure name profile source diagnostics)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DTEST_NAME=${name}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECT_SUCCESS=FALSE
+            -DEXPECTED_DIAGNOSTICS=${PROJECT_SOURCE_DIR}/${diagnostics}
+            "-DEXTRA_ARGS=${ARGN}"
+            -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/run_arb_test.cmake
+    )
+endfunction()
+
+add_test(NAME arbvp1_registration
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbvp1
+            ${PROJECT_SOURCE_DIR}/tests/arb/profile/vp_passthrough.cg)
+add_test(NAME arbfp1_registration
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbfp1
+            ${PROJECT_SOURCE_DIR}/tests/arb/profile/fp_passthrough.cg)

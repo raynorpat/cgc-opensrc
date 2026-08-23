@@ -311,7 +311,9 @@ static int GetConnectorRegister_arb(int cid, int ByIndex, int ratom,
  * GetCapsBit_arb() - Capabilities shared by both ARB stages.  Indexed
  *         arrays are advertised because the preserved frontend uses this
  *         bit to permit unpacked array declarations; the backend enforces
- *         the per-stage indexing rules itself.
+ *         the per-stage indexing rules itself.  Matrix deconstruction is
+ *         NOT advertised because the shared pass is a stub that rejects
+ *         every program; the ARB lowerer handles matrix values itself.
  */
 
 static int GetCapsBit_arb(int bitNumber)
@@ -319,7 +321,6 @@ static int GetCapsBit_arb(int bitNumber)
     switch (bitNumber) {
     case CAPS_INLINE_ALL_FUNCTIONS:
     case CAPS_RESTRICT_RETURNS:
-    case CAPS_DECONSTRUCT_MATRICES:
     case CAPS_LATE_BINDINGS:
     case CAPS_INDEXED_ARRAYS:
         return 1;

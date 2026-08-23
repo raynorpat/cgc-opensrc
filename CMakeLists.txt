@@ -12,6 +12,9 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(cgc
+    arb_hal.c
+    arbfp1_hal.c
+    arbvp1_hal.c
     atom.c
     binding.c
     cgcmain.c
