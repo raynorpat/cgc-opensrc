@@ -1086,3 +1086,10 @@ add_arb_failure(arbvp1_instructions_129 arbvp1
 add_test(NAME arbfp1_sampler_types
     COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbfp1
             ${PROJECT_SOURCE_DIR}/tests/arb/profile/fp_sampler_nocode.cg)
+
+add_arb_fixture(arbfp1_passthrough arbfp1
+    tests/arb/profile/fp_passthrough.cg
+    tests/arb/profile/fp_passthrough.expected)
+add_arb_fixture(arbfp1_conditional arbfp1
+    tests/arb/arithmetic/fp_conditional.cg
+    tests/arb/arithmetic/fp_conditional.expected)

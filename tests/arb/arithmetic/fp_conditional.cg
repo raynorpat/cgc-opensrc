@@ -1,0 +1,4 @@
+float4 main(float4 color : COLOR0, uniform float threshold) : COLOR
+{
+    return color.a >= threshold ? color : float4(0.0, 0.0, 0.0, 1.0);
+}

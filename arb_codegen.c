@@ -402,6 +402,30 @@ int ArbValidateResources(ArbProgram *ir, const ArbProfileDesc *profile,
                       ir->numInstructions, profile->limits->instructions);
         return 0;
     }
+    if (profile->stage == ARB_STAGE_FRAGMENT) {
+    
+        int aluCount = 0;
+        int texCount = 0;
+        ArbInstruction const *walk;
+        for (walk = ir->first; walk; walk = walk->next) {
+            if (ArbIsTextureOpcode(walk->opcode))
+                texCount++;
+            else
+                aluCount++;
+        }
+        if (aluCount > profile->limits->aluInstructions) {
+            SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
+                          "ALU instructions", aluCount,
+                          profile->limits->aluInstructions);
+            return 0;
+        }
+        if (texCount > profile->limits->texInstructions) {
+            SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
+                          "texture instructions", texCount,
+                          profile->limits->texInstructions);
+            return 0;
+        }
+    }
     if (ir->numPhysicalTemps > profile->limits->temporaries) {
         SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "temporaries",
                       ir->numPhysicalTemps, profile->limits->temporaries);

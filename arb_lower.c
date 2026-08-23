@@ -1,4 +1,4 @@
-﻿/****************************************************************************\
+/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -1635,10 +1635,10 @@ static int EmitUnary(ArbLowerContext *ctx, ArbOpcode opcode, int mask,
 } // EmitUnary
 
 /*
- * BuildSelect() - Emit the ARBVP1 conditional-select sequence over
- *     already-lowered operands:
- *         mask = SGE(cond, 0); inv = 1 - mask;
- *         result = true*mask + false*inv
+ * BuildSelect() - Conditional selection.  ARBVP1 expands the compare-
+ *     and-select sequence; ARBFP1 emits a native CMP with the condition
+ *     normalized so true values are nonnegative and false negative
+ *     (SUB(c, 1)).
  */
 
 static int BuildSelect(ArbLowerContext *ctx, const SourceLoc *loc,
@@ -1658,6 +1658,41 @@ static int BuildSelect(ArbLowerContext *ctx, const SourceLoc *loc,
         // Conditions are scalar by language rule; smear across lanes.
         cond = SmearOperand(cond);
     }
+
+    if (ctx->profile->stage == ARB_STAGE_FRAGMENT) {
+        // CMP dst, c', tv, fv where c' = c - 1:
+        // true -> 0 (nonnegative) selects tv; false -> -1 selects fv.
+        int ci;
+        ArbOperand signedCond;
+        ArbInstruction *inst;
+        int temp;
+
+        ci = ArbInternConstant(ctx->ir, one, 4);
+        if (ci < 0)
+            return 0;
+        oneOp = ArbConstOperand(ci);
+        if (!EmitBinary(ctx, ARB_OP_SUB, mask, loc, cond, oneOp,
+                        &signedCond))
+        {
+            return 0;
+        }
+        temp = ArbNewTemp(ctx->ir);
+        if (temp < 0)
+            return 0;
+        inst = ArbAppendInstruction(ctx->ir, ARB_OP_CMP, loc,
+                                    ArbTempOperand(temp));
+        if (!inst)
+            return 0;
+        inst->mask = (unsigned char) mask;
+        if (!ArbAddSource(inst, signedCond) || !ArbAddSource(inst, tv) ||
+            !ArbAddSource(inst, fv))
+        {
+            return 0;
+        }
+        *result = ArbTempOperand(temp);
+        return 1;
+    }
+
     cindex = ArbInternConstant(ctx->ir, one, 4);
     if (cindex < 0)
         return 0;
