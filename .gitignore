@@ -159,5 +159,8 @@ pip-log.txt
 #Mr Developer
 .mr.developer.cfg
 
+# Linked worktrees used for isolated feature development
+.worktrees/
+
 # Mac crap
 .DS_Store
