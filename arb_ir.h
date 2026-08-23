@@ -138,6 +138,8 @@ ArbInstruction *ArbAppendInstruction(ArbProgram *program, ArbOpcode opcode,
                                      const SourceLoc *loc, ArbOperand dst);
 int ArbAddSource(ArbInstruction *instruction, ArbOperand source);
 int ArbInternConstant(ArbProgram *program, const float *value, int size);
+int ArbGetConstant(const ArbProgram *program, int index, float out[4]);
+void ArbTruncateConstants(ArbProgram *program, int count);
 ArbIRStatus ArbValidateIR(const ArbProgram *program);
 int ArbIsTextureOpcode(ArbOpcode opcode);
 

@@ -1066,3 +1066,19 @@ add_arb_fixture(arbvp1_static_do arbvp1
 add_arb_failure(arb_dynamic_loop arbvp1
     tests/arb/diagnostics/dynamic_loop.cg
     tests/arb/diagnostics/dynamic_loop.txt)
+
+add_arb_fixture(arbvp1_relative_index arbvp1
+    tests/arb/uniforms/vp_relative_index.cg
+    tests/arb/uniforms/vp_relative_index.expected)
+add_arb_fixture(arbvp1_params_96 arbvp1
+    tests/arb/limits/vp_params_96.cg
+    tests/arb/limits/vp_params_96.expected)
+add_arb_failure(arbvp1_params_97 arbvp1
+    tests/arb/limits/vp_params_97.cg
+    tests/arb/limits/vp_params_97.txt)
+add_arb_fixture(arbvp1_instructions_128 arbvp1
+    tests/arb/limits/vp_instructions_128.cg
+    tests/arb/limits/vp_instructions_128.expected)
+add_arb_failure(arbvp1_instructions_129 arbvp1
+    tests/arb/limits/vp_instructions_129.cg
+    tests/arb/limits/vp_instructions_129.txt)

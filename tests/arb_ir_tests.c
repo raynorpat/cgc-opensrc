@@ -84,5 +84,67 @@ int main(void)
     inst->srcCount = 4;
     assert(ArbValidateIR(&program) == ARB_IR_BAD_SOURCE_COUNT);
     ArbFreeProgram(&program);
+
+    // Linear-scan boundaries: twelve overlapping intervals fit the ARBVP1
+    // temporary budget exactly; a thirteenth overlapping interval fails.
+
+    {
+        ArbProgram p2;
+        int k;
+
+        ArbInitProgram(&p2, ARB_STAGE_VERTEX);
+        for (k = 0; k < 12; k++)
+            assert(ArbNewTemp(&p2) == k);
+        for (k = 0; k < 12; k++) {
+            ArbOperand d = ArbTempOperand(k);
+            ArbInstruction *def = ArbAppendInstruction(&p2, ARB_OP_MOV,
+                                                       NULL, d);
+            assert(def != NULL);
+            def->mask = ARB_MASK_XYZW;
+            assert(ArbAddSource(def, ArbConstOperand(0)));
+        }
+        for (k = 0; k < 12; k++) {
+            ArbOperand d = ArbOutputOperand(0);
+            ArbInstruction *use = ArbAppendInstruction(&p2, ARB_OP_MOV,
+                                                       NULL, d);
+            assert(use != NULL);
+            use->mask = ARB_MASK_XYZW;
+            assert(ArbAddSource(use, ArbTempOperand(k)));
+        }
+        assert(ArbAllocateTemporaries(&p2, 12) == ARB_ALLOC_OK);
+        assert(p2.numPhysicalTemps == 12);
+        ArbFreeProgram(&p2);
+
+        // Thirteenth overlapping interval: define one more temp before
+        // the use block so its interval spans the entire peak window.
+        ArbInitProgram(&p2, ARB_STAGE_VERTEX);
+        for (k = 0; k < 13; k++)
+            assert(ArbNewTemp(&p2) == k);
+        {
+            ArbOperand d = ArbTempOperand(12);
+            ArbInstruction *def = ArbAppendInstruction(&p2, ARB_OP_MOV,
+                                                       NULL, d);
+            def->mask = ARB_MASK_XYZW;
+            assert(ArbAddSource(def, ArbConstOperand(0)));
+        }
+        for (k = 0; k < 12; k++) {
+            ArbOperand d = ArbTempOperand(k);
+            ArbInstruction *def = ArbAppendInstruction(&p2, ARB_OP_MOV,
+                                                       NULL, d);
+            def->mask = ARB_MASK_XYZW;
+            assert(ArbAddSource(def, ArbConstOperand(0)));
+        }
+        for (k = 0; k < 13; k++) {
+            ArbOperand d = ArbOutputOperand(0);
+            int srcIdx = k < 12 ? k : 12;
+            ArbInstruction *use = ArbAppendInstruction(&p2, ARB_OP_MOV,
+                                                       NULL, d);
+            use->mask = ARB_MASK_XYZW;
+            assert(ArbAddSource(use, ArbTempOperand(srcIdx)));
+        }
+        assert(ArbAllocateTemporaries(&p2, 12) == ARB_ALLOC_TEMP_LIMIT);
+        assert(ArbAllocateTemporaries(&p2, 13) == ARB_ALLOC_OK);
+        ArbFreeProgram(&p2);
+    }
     return 0;
 }

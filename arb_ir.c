@@ -69,6 +69,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * texture-class instruction with no destination and one source.
  */
 
+static int FindConstant(const ArbProgram *program, int index, float *out);
+
 static const signed char sourceCounts[ARB_OP_LAST] = {
     1, 2, 1, 3, 1, 2, 2, 2, 2, 1,
     1, 1, 1, 1, 1, 1, 1, 3, 3, 2,
@@ -362,6 +364,48 @@ static ArbIRStatus ValidateOperand(const ArbProgram *program,
 } // ValidateOperand
 
 /*
+ * ArbGetConstant() - Copy an interned constant's four values.
+ */
+
+int ArbGetConstant(const ArbProgram *program, int index, float out[4])
+{
+    return FindConstant(program, index, out);
+} // ArbGetConstant
+
+/*
+ * ArbTruncateConstants() - Roll the constant pool back to "count" entries,
+ *     releasing anything interned speculatively afterward.
+ */
+
+void ArbTruncateConstants(ArbProgram *program, int count)
+{
+    ArbConstant *cnst = program->constants;
+    ArbConstant *keepTail = NULL;
+    int kept = 0;
+
+    while (cnst) {
+        if (cnst->index >= count) {
+            ArbConstant *next = cnst->next;
+            free(cnst);
+            program->numConstants--;
+            cnst = next;
+        } else {
+            if (kept == 0)
+                program->constants = cnst;
+            else
+                keepTail->next = cnst;
+            keepTail = cnst;
+            kept++;
+            cnst = cnst->next;
+        }
+    }
+    if (keepTail)
+        keepTail->next = NULL;
+    else
+        program->constants = NULL;
+} // ArbTruncateConstants
+
+/*
  * ArbValidateIR() - Structural and stage validation over the whole
  *         program.  This runs after lowering and again after legal-
  *         ization; user-source problems are expected to be diagnosed by
@@ -420,6 +464,19 @@ ArbIRStatus ArbValidateIR(const ArbProgram *program)
         {
             if (inst->textureUnit < 0 || inst->textureTarget == ARB_TEX_NONE)
                 return ARB_IR_BAD_TEXTURE;
+        }
+
+        // Relative PARAM addressing: the base grammar's offset range is
+        // -64 through 63.  Rebasing in the lowerer keeps every emitted
+        // operand inside this window.
+
+        for (ii = 0; ii < inst->srcCount; ii++) {
+            if (inst->src[ii].file == ARB_REG_PARAM &&
+                inst->src[ii].relative)
+            {
+                if (inst->src[ii].index < -64 || inst->src[ii].index > 63)
+                    return ARB_IR_BAD_SOURCE;
+            }
         }
 
         for (ii = 0; ii < inst->srcCount; ii++) {

@@ -1,4 +1,4 @@
-﻿/****************************************************************************\
+/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -360,16 +360,68 @@ int ArbLegalizeAndAllocate(ArbProgram *ir, const ArbProfileDesc *profile,
 /*
  * ArbValidateResources() - Compare the program's resource use with the
  *         portable base-profile limits guaranteed by the Khronos ARB
- *         specifications.  Additional counters join as backend features
- *         come online.
+ *         specifications.  Fragment ALU/texture/indirection counters join
+ *         with the fragment backend features.
  */
 
 int ArbValidateResources(ArbProgram *ir, const ArbProfileDesc *profile,
                          SourceLoc *loc)
 {
+    ArbInstruction const *inst;
+    int maxParam = -1;
+    int attributes[16];
+    int numAttributes = 0;
+    int usesAddress = 0;
+    int ii;
+
+    for (inst = ir->first; inst; inst = inst->next) {
+        if (inst->opcode == ARB_OP_ARL)
+            usesAddress = 1;
+        for (ii = 0; ii < inst->srcCount; ii++) {
+            const ArbOperand *src = &inst->src[ii];
+            if (src->file == ARB_REG_PARAM) {
+                if (src->index > maxParam)
+                    maxParam = src->index;
+            } else if (src->file == ARB_REG_INPUT) {
+                int jj;
+                int seen = 0;
+                for (jj = 0; jj < numAttributes; jj++) {
+                    if (attributes[jj] == src->index) {
+                        seen = 1;
+                        break;
+                    }
+                }
+                if (!seen && numAttributes < 16)
+                    attributes[numAttributes++] = src->index;
+            }
+        }
+    }
+
     if (ir->numInstructions > profile->limits->instructions) {
         SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "instructions",
                       ir->numInstructions, profile->limits->instructions);
+        return 0;
+    }
+    if (ir->numPhysicalTemps > profile->limits->temporaries) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "temporaries",
+                      ir->numPhysicalTemps, profile->limits->temporaries);
+        return 0;
+    }
+    if (maxParam + 1 + ir->numConstants > profile->limits->parameters) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "parameters",
+                      maxParam + 1 + ir->numConstants,
+                      profile->limits->parameters);
+        return 0;
+    }
+    if (numAttributes > profile->limits->attributes) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT, "attributes",
+                      numAttributes, profile->limits->attributes);
+        return 0;
+    }
+    if (usesAddress && profile->limits->addressRegisters < 1) {
+        SemanticError(loc, ERROR_SDD_ARB_RESOURCE_LIMIT,
+                      "address registers", 1,
+                      profile->limits->addressRegisters);
         return 0;
     }
     return 1;
@@ -702,9 +754,12 @@ static void WriteDeclarations(FILE *out, const ArbProgram *program)
     ArbInstruction const *inst;
     int maxTemp = -1;
     int maxParam = -1;
+    int usesAddress = 0;
     int ii;
 
     for (inst = program->first; inst; inst = inst->next) {
+        if (inst->opcode == ARB_OP_ARL)
+            usesAddress = 1;
         if (inst->dst.file == ARB_REG_TEMP && inst->dst.index > maxTemp)
             maxTemp = inst->dst.index;
         for (ii = 0; ii < inst->srcCount; ii++) {
@@ -722,6 +777,8 @@ static void WriteDeclarations(FILE *out, const ArbProgram *program)
     }
     for (ii = 0; ii <= maxTemp; ii++)
         fprintf(out, "TEMP R%d;\n", ii);
+    if (usesAddress)
+        fprintf(out, "ADDRESS A0;\n");
     if (maxParam >= 0)
         fprintf(out, "PARAM c[%d] = { program.local[0..%d] };\n",
                 maxParam, maxParam);

@@ -2372,18 +2372,112 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                     break;
                 }
             }
-            if (baseSymb && IsConst(expression->bin.right)) {
+            if (!baseSymb)
+            {
+                SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                              "index");
+                return 0;
+            }
+            {
                 int base = UniformQuadBase(baseSymb);
                 Type *elType = baseSymb->type;
-                if (base >= 0 && GetCategory(elType) == TYPE_CATEGORY_ARRAY) {
-                    index = GetConstIndex(expression->bin.right);
+                ArbOperand idxOp;
+                int isConstIndex = 0;
+                int constIndex = 0;
+
+                if (base < 0 ||
+                    GetCategory(elType) != TYPE_CATEGORY_ARRAY)
+                {
+                    SemanticError(loc,
+                                  ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                                  "index");
+                    return 0;
+                }
+
+                int savedConsts = ctx->ir->numConstants;
+                // Lower the index once; a constant result selects the
+                // static PARAM register, anything else becomes relative.
+                if (LowerExpression(ctx, expression->bin.right, &idxOp))
+                {
+                    float cv[4];
+                    if (idxOp.file == ARB_REG_CONST &&
+                        !idxOp.negate && !idxOp.absolute &&
+                        idxOp.relative == 0 &&
+                        ArbGetConstant(ctx->ir, idxOp.index, cv))
+                    {
+                        constIndex = (int) cv[0];
+                        isConstIndex = 1;
+                        ArbTruncateConstants(ctx->ir, savedConsts);
+                    }
+                }
+                else
+                {
+                    return 0;
+                }
+
+                if (isConstIndex)
+                {
                     *operand = ArbParamOperand(
                         base + (baseSymb->details.var.addr >> 2) + extra +
-                        index * GetQuadRegSize(elType->arr.eltype));
+                        constIndex *
+                            GetQuadRegSize(elType->arr.eltype));
                     return 1;
                 }
-            }
-            SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION, "index");
+
+                if (ctx->profile->stage == ARB_STAGE_FRAGMENT)
+                {
+                    SemanticError(loc,
+                                  ERROR___ARB_FRAGMENT_DYNAMIC_INDEX);
+                    return 0;
+                }
+                {
+                    ArbOperand arlDst, sum;
+                    int relBase = base + extra;
+
+                    if (relBase < -64 || relBase > 63)
+                    {
+                        float bv[4];
+                        int ci;
+                        ArbOperand bOp;
+                        bv[0] = (float) relBase;
+                        ci = ArbInternConstant(ctx->ir, bv, 1);
+                        if (ci < 0)
+                            return 0;
+                        bOp = SmearOperand(ArbConstOperand(ci));
+                        if (!EmitBinary(ctx, ARB_OP_ADD, ARB_MASK_X, loc,
+                                        idxOp, bOp, &sum))
+                        {
+                            return 0;
+                        }
+                        idxOp = sum;
+                        relBase = 0;
+                    }
+                    arlDst.file = ARB_REG_ADDRESS;
+                    arlDst.index = 0;
+                    arlDst.bindingName = 0;
+                    arlDst.swizzle[0] = 0;
+                    arlDst.swizzle[1] = 1;
+                    arlDst.swizzle[2] = 2;
+                    arlDst.swizzle[3] = 3;
+                    arlDst.negate = 0;
+                    arlDst.absolute = 0;
+                    arlDst.relative = 0;
+                    arlDst.relativeOffset = 0;
+                    {
+                        ArbInstruction *arl =
+                            ArbAppendInstruction(ctx->ir, ARB_OP_ARL, loc,
+                                                 arlDst);
+                        if (!arl)
+                            return 0;
+                        arl->mask = ARB_MASK_X;
+                        if (!ArbAddSource(arl, SmearOperand(idxOp)))
+                            return 0;
+                    }
+                    *operand = ArbParamOperand(relBase);
+                    operand->relative = 1;
+                    return 1;
+                }
+            }            SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION, "index");
             return 0;
         }
         default:

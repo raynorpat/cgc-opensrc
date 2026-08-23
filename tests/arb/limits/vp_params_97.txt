@@ -1,0 +1,2 @@
+error C6005
+parameters resource use 97 exceeds portable limit 96
