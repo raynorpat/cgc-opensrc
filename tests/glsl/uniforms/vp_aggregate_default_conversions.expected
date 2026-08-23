@@ -1,0 +1,61 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform scalarIntPositive
+// cgc-default scalarIntPositive 1.0
+// cgc-bind uniform scalarIntNegative
+// cgc-default scalarIntNegative -1.0
+// cgc-bind uniform intValues
+// cgc-default intValues 1.0 -1.0 2.0 -2.0
+// cgc-bind uniform intEdges
+// cgc-default intEdges 2.14748352e+09 -2.14748365e+09
+// cgc-bind uniform scalarBoolPositive
+// cgc-default scalarBoolPositive 1.0
+// cgc-bind uniform scalarBoolNegative
+// cgc-default scalarBoolNegative 1.0
+// cgc-bind uniform boolValues
+// cgc-default boolValues 0.0 1.0 1.0 1.0 1.0
+// cgc-bind uniform scalarFloat
+// cgc-default scalarFloat -4.0
+// cgc-bind uniform floatValues
+// cgc-default floatValues 1.0 -2.0 3.0
+// cgc-bind uniform vectorInts
+// cgc-default vectorInts 4.0 -4.0 5.0 -5.0
+// cgc-bind uniform implicitVectorInts
+// cgc-default implicitVectorInts 10.0 -10.0 11.0 -11.0
+// cgc-bind uniform vectorBools
+// cgc-default vectorBools 0.0 1.0 1.0
+// cgc-bind uniform implicitVectorBools
+// cgc-default implicitVectorBools 0.0 1.0 1.0 1.0
+// cgc-bind uniform matrixFloats
+// cgc-default matrixFloats 6.0 7.0 8.0 9.0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform int scalarIntPositive;
+uniform int scalarIntNegative;
+uniform int intValues[4];
+uniform int intEdges[2];
+uniform bool scalarBoolPositive;
+uniform bool scalarBoolNegative;
+uniform bool boolValues[5];
+uniform float scalarFloat;
+uniform float floatValues[3];
+uniform ivec2 vectorInts[2];
+uniform ivec2 implicitVectorInts[2];
+uniform bvec3 vectorBools[1];
+uniform bvec2 implicitVectorBools[2];
+uniform mat2 matrixFloats;
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = position;
+    gl_Position = cg_output.position;
+}

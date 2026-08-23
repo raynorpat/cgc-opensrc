@@ -825,12 +825,149 @@ static int GlslAppendDefaultValue(GlslLowerContext *context, float *values,
     return 1;
 }
 
+typedef struct GlslDefaultValue_Rec {
+    int base;
+    scalar_constant value;
+} GlslDefaultValue;
+
+typedef enum GlslDefaultBaseClass_Enum {
+    GLSL_DEFAULT_BASE_INVALID,
+    GLSL_DEFAULT_BASE_FLOAT,
+    GLSL_DEFAULT_BASE_INT,
+    GLSL_DEFAULT_BASE_BOOL
+} GlslDefaultBaseClass;
+
+static GlslDefaultBaseClass GlslDefaultBaseClassOf(int base)
+{
+    switch (base) {
+    case TYPE_BASE_CFLOAT:
+    case TYPE_BASE_FLOAT:
+        return GLSL_DEFAULT_BASE_FLOAT;
+    case TYPE_BASE_CINT:
+    case TYPE_BASE_INT:
+        return GLSL_DEFAULT_BASE_INT;
+    case TYPE_BASE_BOOLEAN:
+        return GLSL_DEFAULT_BASE_BOOL;
+    default:
+        if (Cg->theHAL->IsNumericBase(base))
+            return GLSL_DEFAULT_BASE_FLOAT;
+        return GLSL_DEFAULT_BASE_INVALID;
+    }
+}
+
+static int GlslFiniteDefaultFloat(float value)
+{
+    return value == value && value <= FLT_MAX && value >= -FLT_MAX;
+}
+
+static int GlslAppendTypedDefaultValue(GlslLowerContext *context,
+    GlslDefaultValue *values, int capacity, int *count, int base,
+    const scalar_constant *value)
+{
+    GlslDefaultBaseClass baseClass;
+
+    if (values == NULL || count == NULL || value == NULL || *count < 0 ||
+        *count >= capacity)
+    {
+        GlslRecordFailure(context, "uniform default component count");
+        return 0;
+    }
+    baseClass = GlslDefaultBaseClassOf(base);
+    if (baseClass == GLSL_DEFAULT_BASE_INVALID) {
+        GlslRecordFailure(context, "uniform default conversion type");
+        return 0;
+    }
+    if (baseClass == GLSL_DEFAULT_BASE_FLOAT &&
+        !GlslFiniteDefaultFloat(value->f))
+    {
+        GlslRecordFailure(context, "uniform default finite value");
+        return 0;
+    }
+    values[*count].base = base;
+    values[*count].value = *value;
+    (*count)++;
+    return 1;
+}
+
+static int GlslConvertDefaultValue(GlslLowerContext *context,
+    GlslDefaultValue *value, int targetBase)
+{
+    GlslDefaultBaseClass sourceClass;
+    GlslDefaultBaseClass targetClass;
+    scalar_constant converted;
+    double floating;
+
+    if (value == NULL)
+        return 0;
+    sourceClass = GlslDefaultBaseClassOf(value->base);
+    targetClass = GlslDefaultBaseClassOf(targetBase);
+    if (sourceClass == GLSL_DEFAULT_BASE_INVALID ||
+        targetClass == GLSL_DEFAULT_BASE_INVALID)
+    {
+        GlslRecordFailure(context, "uniform default conversion type");
+        return 0;
+    }
+    if (sourceClass == GLSL_DEFAULT_BASE_FLOAT &&
+        !GlslFiniteDefaultFloat(value->value.f))
+    {
+        GlslRecordFailure(context, "uniform default finite value");
+        return 0;
+    }
+    switch (targetClass) {
+    case GLSL_DEFAULT_BASE_FLOAT:
+        if (sourceClass == GLSL_DEFAULT_BASE_FLOAT)
+            converted.f = value->value.f;
+        else if (sourceClass == GLSL_DEFAULT_BASE_INT)
+            converted.f = (float) value->value.i;
+        else
+            converted.f = value->value.i ? 1.0f : 0.0f;
+        if (!GlslFiniteDefaultFloat(converted.f)) {
+            GlslRecordFailure(context, "uniform default finite value");
+            return 0;
+        }
+        break;
+    case GLSL_DEFAULT_BASE_INT:
+        if (sourceClass == GLSL_DEFAULT_BASE_FLOAT) {
+            floating = (double) value->value.f;
+            if (floating < (double) INT_MIN ||
+                floating > (double) INT_MAX)
+            {
+                GlslRecordFailure(context,
+                                  "uniform default conversion range");
+                return 0;
+            }
+            converted.i = (int) floating;
+        } else if (sourceClass == GLSL_DEFAULT_BASE_INT) {
+            converted.i = value->value.i;
+        } else {
+            converted.i = value->value.i ? 1 : 0;
+        }
+        break;
+    case GLSL_DEFAULT_BASE_BOOL:
+        if (sourceClass == GLSL_DEFAULT_BASE_FLOAT)
+            converted.i = value->value.f != 0.0f;
+        else
+            converted.i = value->value.i != 0;
+        break;
+    default:
+        GlslRecordFailure(context, "uniform default conversion type");
+        return 0;
+    }
+    value->base = targetBase;
+    value->value = converted;
+    return 1;
+}
+
 static int GlslFlattenDefaultExpr(GlslLowerContext *context,
-    const expr *source, float *values, int capacity, int *count)
+    const expr *source, GlslDefaultValue *values, int capacity, int *count)
 {
     const expr *item;
+    int base;
+    int componentCount;
     int i;
     int len;
+    int start;
+    int targetBase;
 
     if (source == NULL) {
         GlslRecordFailure(context, "uniform default initializer");
@@ -858,11 +995,39 @@ static int GlslFlattenDefaultExpr(GlslLowerContext *context,
         if (source->un.op == CAST_CS_OP || source->un.op == CAST_CV_OP ||
             source->un.op == CAST_CM_OP)
         {
-            return GlslFlattenDefaultExpr(context, source->un.arg, values,
-                                           capacity, count);
+            start = *count;
+            if (!GlslFlattenDefaultExpr(context, source->un.arg, values,
+                                         capacity, count)) return 0;
+            componentCount = *count - start;
+            if (source->un.op == CAST_CS_OP) {
+                len = 1;
+            } else if (source->un.op == CAST_CV_OP) {
+                len = SUBOP_GET_S1(source->un.subop);
+            } else {
+                len = SUBOP_GET_S1(source->un.subop);
+                if (len <= 0 || SUBOP_GET_S2(source->un.subop) <= 0 ||
+                    len > INT_MAX / SUBOP_GET_S2(source->un.subop))
+                {
+                    GlslRecordFailure(context,
+                                      "uniform default cast shape");
+                    return 0;
+                }
+                len *= SUBOP_GET_S2(source->un.subop);
+            }
+            if (len <= 0 || componentCount != len) {
+                GlslRecordFailure(context, "uniform default cast shape");
+                return 0;
+            }
+            targetBase = SUBOP_GET_T2(source->un.subop);
+            for (i = start; i < *count; i++) {
+                if (!GlslConvertDefaultValue(context, &values[i],
+                                             targetBase)) return 0;
+            }
+            return 1;
         }
     }
     if (source->common.kind == CONST_N) {
+        base = GetBase(source->common.type);
         len = SUBOP_GET_S1(source->co.subop);
         if (len == 0)
             len = 1;
@@ -878,17 +1043,16 @@ static int GlslFlattenDefaultExpr(GlslLowerContext *context,
             case HCONST_V_OP:
             case XCONST_OP:
             case XCONST_V_OP:
-                if (!GlslAppendDefaultValue(context, values, capacity,
-                                            count, source->co.val[i].f))
+                if (!GlslAppendTypedDefaultValue(context, values, capacity,
+                        count, base, &source->co.val[i]))
                     return 0;
                 break;
             case ICONST_OP:
             case ICONST_V_OP:
             case BCONST_OP:
             case BCONST_V_OP:
-                if (!GlslAppendDefaultValue(context, values, capacity,
-                                            count,
-                                            (float) source->co.val[i].i))
+                if (!GlslAppendTypedDefaultValue(context, values, capacity,
+                        count, base, &source->co.val[i]))
                     return 0;
                 break;
             default:
@@ -902,12 +1066,105 @@ static int GlslFlattenDefaultExpr(GlslLowerContext *context,
     return 0;
 }
 
+static int GlslDefaultTargetBase(GlslLowerContext *context, GlslBase base)
+{
+    switch (base) {
+    case GLSL_BASE_FLOAT:
+        return TYPE_BASE_FLOAT;
+    case GLSL_BASE_INT:
+        return TYPE_BASE_INT;
+    case GLSL_BASE_BOOL:
+        return TYPE_BASE_BOOLEAN;
+    default:
+        GlslRecordFailure(context, "uniform default destination type");
+        return TYPE_BASE_NO_TYPE;
+    }
+}
+
+static int GlslStoreDefaultLeaf(GlslLowerContext *context, GlslBase base,
+    int len, GlslDefaultValue *typedValues, int capacity, int *index,
+    float *values, int *count)
+{
+    GlslDefaultBaseClass targetClass;
+    int i;
+    int targetBase;
+
+    targetBase = GlslDefaultTargetBase(context, base);
+    if (targetBase == TYPE_BASE_NO_TYPE || len <= 0 ||
+        *index < 0 || *index > capacity - len)
+    {
+        if (targetBase != TYPE_BASE_NO_TYPE)
+            GlslRecordFailure(context, "uniform default component count");
+        return 0;
+    }
+    targetClass = GlslDefaultBaseClassOf(targetBase);
+    for (i = 0; i < len; i++) {
+        if (!GlslConvertDefaultValue(context, &typedValues[*index],
+                                     targetBase)) return 0;
+        if (targetClass == GLSL_DEFAULT_BASE_FLOAT) {
+            if (!GlslAppendDefaultValue(context, values, capacity, count,
+                    typedValues[*index].value.f)) return 0;
+        } else {
+            if (!GlslAppendDefaultValue(context, values, capacity, count,
+                    (float) typedValues[*index].value.i)) return 0;
+        }
+        (*index)++;
+    }
+    return 1;
+}
+
+static int GlslStoreDefaultType(GlslLowerContext *context,
+    const GlslType *type, GlslDefaultValue *typedValues, int capacity,
+    int *index, float *values, int *count)
+{
+    const GlslDecl *member;
+    int i;
+    int len;
+
+    if (type == NULL)
+        return 0;
+    if (type->elementType != NULL) {
+        if (type->arraySize <= 0)
+            return 0;
+        for (i = 0; i < type->arraySize; i++) {
+            if (!GlslStoreDefaultType(context, type->elementType,
+                    typedValues, capacity, index, values, count)) return 0;
+        }
+        return 1;
+    }
+    if (type->base == GLSL_BASE_STRUCT) {
+        if (type->members == NULL)
+            return 0;
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!GlslStoreDefaultType(context, &member->type, typedValues,
+                    capacity, index, values, count)) return 0;
+        }
+        return 1;
+    }
+    if (type->rows != 0 || type->cols != 0) {
+        if (type->rows <= 0 || type->cols <= 0 ||
+            type->rows > INT_MAX / type->cols)
+        {
+            GlslRecordFailure(context, "uniform default destination type");
+            return 0;
+        }
+        len = type->rows * type->cols;
+    } else {
+        len = type->len;
+    }
+    return GlslStoreDefaultLeaf(context, type->base, len, typedValues,
+                                capacity, index, values, count);
+}
+
 static int GlslCollectDefaults(GlslLowerContext *context)
 {
     BindingList *item;
     GlslBinding *binding;
     Symbol *symbol;
+    GlslDefaultValue *typedValues;
     int componentCount;
+    int typedCount;
+    int typedIndex;
     int valueCount;
 
     for (item = Cg->theHAL->defaultBindings; item != NULL;
@@ -933,20 +1190,46 @@ static int GlslCollectDefaults(GlslLowerContext *context)
                 GlslRecordFailure(context, "uniform default initializer");
                 return 0;
             }
+            if ((size_t) componentCount >
+                (size_t) -1 / sizeof(GlslDefaultValue) ||
+                (size_t) componentCount > (size_t) -1 / sizeof(float))
+            {
+                GlslRecordFailure(context,
+                                  "uniform default component count");
+                return 0;
+            }
+            typedValues = (GlslDefaultValue *) context->module->alloc(
+                context->module->allocArg,
+                (size_t) componentCount * sizeof(GlslDefaultValue));
             binding->defaultValues = (float *) context->module->alloc(
                 context->module->allocArg,
                 (size_t) componentCount * sizeof(float));
-            if (binding->defaultValues == NULL)
+            if (typedValues == NULL || binding->defaultValues == NULL)
                 return 0;
-            valueCount = 0;
+            typedCount = 0;
             if (!GlslFlattenDefaultExpr(context,
                     (const expr *) item->initializer,
-                    binding->defaultValues, componentCount, &valueCount) ||
-                valueCount != componentCount)
+                    typedValues, componentCount, &typedCount) ||
+                typedCount != componentCount)
             {
-                if (valueCount != componentCount)
+                if (typedCount != componentCount)
                     GlslRecordFailure(context,
                                       "uniform default component count");
+                return 0;
+            }
+            typedIndex = 0;
+            valueCount = 0;
+            if (!GlslStoreDefaultType(context, &binding->declaration->type,
+                    typedValues, componentCount, &typedIndex,
+                    binding->defaultValues, &valueCount) ||
+                typedIndex != componentCount || valueCount != componentCount)
+            {
+                if (typedIndex != componentCount ||
+                    valueCount != componentCount)
+                {
+                    GlslRecordFailure(context,
+                                      "uniform default component count");
+                }
                 return 0;
             }
             binding->defaultCount = componentCount;

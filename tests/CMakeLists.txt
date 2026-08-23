@@ -251,6 +251,10 @@ add_glsl_fixture(glslv_aggregate_default_collision glslv
     tests/glsl/uniforms/vp_aggregate_default_collision.cg
     tests/glsl/uniforms/vp_aggregate_default_collision.expected)
 
+add_glsl_fixture(glslv_aggregate_default_conversions glslv
+    tests/glsl/uniforms/vp_aggregate_default_conversions.cg
+    tests/glsl/uniforms/vp_aggregate_default_conversions.expected)
+
 add_glsl_fixture(glslv_uniform_components_512 glslv
     tests/glsl/limits/vp_uniform_components_512.cg
     tests/glsl/limits/vp_uniform_components_512.expected)
@@ -324,6 +328,9 @@ add_glsl_failure(glslv_nonsquare_matrix
 add_glsl_failure(glslv_matrix_bool_constructor
     tests/glsl/diagnostics/vp_matrix_bool_constructor.cg 9
     "matrix constructor argument type")
+add_glsl_failure(glslv_aggregate_default_int_range
+    tests/glsl/diagnostics/vp_aggregate_default_int_range.cg 6
+    "uniform default conversion range")
 add_test(
     NAME glslv_uniform_struct_default
     COMMAND ${CMAKE_COMMAND}
