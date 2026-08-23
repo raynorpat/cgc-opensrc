@@ -1,4 +1,4 @@
-find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
+﻿find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
 if(NOT GLSLANG_VALIDATOR)
     message(STATUS
         "glslangValidator not found; GLSL source validation tests are disabled")
@@ -224,7 +224,7 @@ add_generic_regression(reflection reflection.cg
 add_generic_regression(vertexlight vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
 add_generic_regression(vertexlight4 vertexlight4.cg
-    5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
+    8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
 add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg
@@ -1082,3 +1082,7 @@ add_arb_fixture(arbvp1_instructions_128 arbvp1
 add_arb_failure(arbvp1_instructions_129 arbvp1
     tests/arb/limits/vp_instructions_129.cg
     tests/arb/limits/vp_instructions_129.txt)
+
+add_test(NAME arbfp1_sampler_types
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbfp1
+            ${PROJECT_SOURCE_DIR}/tests/arb/profile/fp_sampler_nocode.cg)

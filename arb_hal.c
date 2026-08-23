@@ -1,4 +1,4 @@
-﻿/****************************************************************************\
+/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -332,8 +332,8 @@ static int GetCapsBit_arb(int bitNumber)
 
 /*
  * CheckInternalFunction_arb() - Recognize internally implemented functions.
- *         Texture built-ins are added with the same stable IDs in the
- *         fragment stage; rsqrt is available to both stages.
+ *     Texture built-ins are fragment-only and share the stable ArbBuiltin
+ *     IDs declared in arb_hal.h; rsqrt is available to both stages.
  */
 
 static int CheckInternalFunction_arb(Symbol *fSymb, int *group)
@@ -344,13 +344,44 @@ static int CheckInternalFunction_arb(Symbol *fSymb, int *group)
         *group = ARB_BUILTIN_GROUP;
         return ARB_BUILTIN_RSQ;
     }
+    if (((ArbHALData *) Cg->theHAL->localData)->profile->stage ==
+        ARB_STAGE_FRAGMENT)
+    {
+        static const struct {
+            const char *name;
+            int id;
+        } texBuiltins[] = {
+            { "tex1D",       ARB_BUILTIN_TEX1D },
+            { "tex1Dproj",   ARB_BUILTIN_TEX1DPROJ },
+            { "tex1Dbias",   ARB_BUILTIN_TEX1DBIAS },
+            { "tex2D",       ARB_BUILTIN_TEX2D },
+            { "tex2Dproj",   ARB_BUILTIN_TEX2DPROJ },
+            { "tex2Dbias",   ARB_BUILTIN_TEX2DBIAS },
+            { "tex3D",       ARB_BUILTIN_TEX3D },
+            { "tex3Dproj",   ARB_BUILTIN_TEX3DPROJ },
+            { "tex3Dbias",   ARB_BUILTIN_TEX3DBIAS },
+            { "texCUBE",     ARB_BUILTIN_TEXCUBE },
+            { "texCUBEproj", ARB_BUILTIN_TEXCUBEPROJ },
+            { "texCUBEbias", ARB_BUILTIN_TEXCUBEBIAS },
+            { "texRECT",     ARB_BUILTIN_TEXRECT },
+            { "texRECTproj", ARB_BUILTIN_TEXRECTPROJ },
+        };
+        unsigned ii;
+
+        for (ii = 0; ii < sizeof(texBuiltins) / sizeof(texBuiltins[0]);
+             ii++)
+        {
+            if (!strcmp(name, texBuiltins[ii].name)) {
+                *group = ARB_BUILTIN_GROUP;
+                return texBuiltins[ii].id;
+            }
+        }
+    }
     return 0;
 } // CheckInternalFunction_arb
 
 /*
- * IsTexobjBase_arb() - Sampler base types are registered by the fragment
- *         stage's RegisterNames hook; until then no base is a texture
- *         object base.
+ * IsTexobjBase_arb() - The five base ARB fragment sampler types.
  */
 
 static int IsTexobjBase_arb(int fBase)
