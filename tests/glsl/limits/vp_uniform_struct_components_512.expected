@@ -1,0 +1,31 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform resources
+// cgc-bind builtin gl_Position POSITION0
+
+struct Leaf
+{
+    vec4 value;
+};
+
+struct ResourceBlock
+{
+    Leaf leaves[128];
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform ResourceBlock resources;
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = position + resources.leaves[0].value + resources.leaves[127].value;
+    gl_Position = cg_output.position;
+}

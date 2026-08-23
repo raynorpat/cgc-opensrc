@@ -673,8 +673,26 @@ const char *GlslBuiltinSpelling(GlslBuiltin builtin)
     return spellings[builtin];
 }
 
-int GlslTypeComponentCount(const GlslType *type)
+typedef struct GlslTypeCountFrame_Rec {
+    const struct GlslTypeCountFrame_Rec *parent;
+    const void *identity;
+    int kind;
+} GlslTypeCountFrame;
+
+static int GlslTypeCountIsRecursive(const GlslTypeCountFrame *frame,
+    const void *identity, int kind)
 {
+    for (; frame != NULL; frame = frame->parent) {
+        if (frame->kind == kind && frame->identity == identity)
+            return 1;
+    }
+    return 0;
+}
+
+static int GlslTypeComponentCountInternal(const GlslType *type,
+    const GlslTypeCountFrame *parent)
+{
+    GlslTypeCountFrame frame;
     const GlslDecl *member;
     int elementCount;
     int memberCount;
@@ -683,9 +701,16 @@ int GlslTypeComponentCount(const GlslType *type)
     if (type == NULL)
         return 0;
     if (type->elementType != NULL) {
-        if (type->arraySize <= 0)
+        if (type->arraySize <= 0 ||
+            GlslTypeCountIsRecursive(parent, type, 1))
+        {
             return 0;
-        elementCount = GlslTypeComponentCount(type->elementType);
+        }
+        frame.parent = parent;
+        frame.identity = type;
+        frame.kind = 1;
+        elementCount = GlslTypeComponentCountInternal(type->elementType,
+                                                       &frame);
         if (elementCount <= 0 || elementCount > INT_MAX / type->arraySize)
             return 0;
         return elementCount * type->arraySize;
@@ -699,11 +724,18 @@ int GlslTypeComponentCount(const GlslType *type)
         return 0;
     }
     if (type->base == GLSL_BASE_STRUCT) {
-        if (type->structName == NULL || type->members == NULL)
+        if (type->structName == NULL || type->members == NULL ||
+            GlslTypeCountIsRecursive(parent, type->members, 2))
+        {
             return 0;
+        }
+        frame.parent = parent;
+        frame.identity = type->members;
+        frame.kind = 2;
         total = 0;
         for (member = type->members; member != NULL; member = member->next) {
-            memberCount = GlslTypeComponentCount(&member->type);
+            memberCount = GlslTypeComponentCountInternal(&member->type,
+                                                          &frame);
             if (memberCount <= 0 || total > INT_MAX - memberCount)
                 return 0;
             total += memberCount;
@@ -723,6 +755,11 @@ int GlslTypeComponentCount(const GlslType *type)
         return type->len;
     }
     return 0;
+}
+
+int GlslTypeComponentCount(const GlslType *type)
+{
+    return GlslTypeComponentCountInternal(type, NULL);
 }
 
 int GlslIsReservedName(const char *name)

@@ -1,0 +1,17 @@
+struct gl_Data {
+    float4 gl_value;
+    float4 cg_gl_value;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+uniform gl_Data output;
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut result;
+    result.position = position + output.gl_value + output.cg_gl_value;
+    return result;
+}

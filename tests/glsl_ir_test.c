@@ -49,6 +49,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 #include <assert.h>
 #include <float.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,6 +209,13 @@ int main(void)
     assert(GlslTypeComponentCount(&arrayType) == 12);
     arrayType.arraySize = 0;
     assert(GlslTypeComponentCount(&arrayType) == 0);
+    arrayElement = GlslNumericType(GLSL_BASE_FLOAT, 2);
+    arrayType.arraySize = INT_MAX;
+    arrayType.elementType = &arrayElement;
+    assert(GlslTypeComponentCount(&arrayType) == 0);
+    arrayType.arraySize = 2;
+    arrayType.elementType = &arrayType;
+    assert(GlslTypeComponentCount(&arrayType) == 0);
     type = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
     assert(GlslTypeComponentCount(&type) == 0);
     memset(structMembers, 0, sizeof(structMembers));
@@ -222,6 +230,12 @@ int main(void)
     structType.structName = "ResourceBlock";
     structType.members = structMembers;
     assert(GlslTypeComponentCount(&structType) == 11);
+    memset(structMembers, 0, sizeof(structMembers));
+    structType = GlslNumericType(GLSL_BASE_STRUCT, 0);
+    structType.structName = "RecursiveBlock";
+    structType.members = structMembers;
+    structMembers[0].type = structType;
+    assert(GlslTypeComponentCount(&structType) == 0);
 
     assert(!strcmp(GlslAllocateSymbolName(&module, &firstIdentity, "value"),
         "value"));

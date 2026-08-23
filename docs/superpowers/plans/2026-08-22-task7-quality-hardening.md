@@ -21,7 +21,11 @@
    and constant-fold behavior behind a neutral GLSL-enabled HAL capability.
    Remove generic hashes that froze the broadened behavior and retain/add only
    baseline-compatible expectations.
-7. Run focused RED/GREEN tests, all successful GLSL fixtures through
+7. Add exact global, entry-parameter, nested-array, and collision fixtures for
+   uniform structures.  Canonicalize qualified structure wrappers before
+   identity-based tag lookup and dependency collection, and add a cyclic IR
+   component-count probe plus structure/array 512 and 513 boundary fixtures.
+8. Run focused RED/GREEN tests, all successful GLSL fixtures through
    `glslangValidator`, full Debug and Release CTest, generic hashes, stdlib
    regeneration twice with unchanged hash, parser stability checks, and
    `git diff --check`.  Review the complete Task 7 diff and commit the focused

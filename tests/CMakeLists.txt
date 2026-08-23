@@ -255,6 +255,26 @@ add_glsl_fixture(glslv_uniform_components_512 glslv
     tests/glsl/limits/vp_uniform_components_512.cg
     tests/glsl/limits/vp_uniform_components_512.expected)
 
+add_glsl_fixture(glslv_uniform_struct_global glslv
+    tests/glsl/uniforms/vp_uniform_struct_global.cg
+    tests/glsl/uniforms/vp_uniform_struct_global.expected)
+
+add_glsl_fixture(glslv_uniform_struct_param glslv
+    tests/glsl/uniforms/vp_uniform_struct_param.cg
+    tests/glsl/uniforms/vp_uniform_struct_param.expected)
+
+add_glsl_fixture(glslv_uniform_struct_nested glslv
+    tests/glsl/uniforms/vp_uniform_struct_nested.cg
+    tests/glsl/uniforms/vp_uniform_struct_nested.expected)
+
+add_glsl_fixture(glslv_uniform_struct_collision glslv
+    tests/glsl/uniforms/vp_uniform_struct_collision.cg
+    tests/glsl/uniforms/vp_uniform_struct_collision.expected)
+
+add_glsl_fixture(glslv_uniform_struct_components_512 glslv
+    tests/glsl/limits/vp_uniform_struct_components_512.cg
+    tests/glsl/limits/vp_uniform_struct_components_512.expected)
+
 add_glsl_fixture(glslv_float1_swizzle glslv
     tests/glsl/expressions/vp_float1_swizzle.cg
     tests/glsl/expressions/vp_float1_swizzle.expected)
@@ -338,6 +358,18 @@ add_test(
         -DCODE=6207
         -DEXPECTED_LINE=6
         -DREASON=516.used,.512.available
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+add_test(
+    NAME glslv_uniform_struct_components_513
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_struct_components_513.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_struct_components_513.glsl
+        -DCODE=6207
+        -DEXPECTED_LINE=14
+        -DREASON=513.used,.512.available
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
 )
 add_test(

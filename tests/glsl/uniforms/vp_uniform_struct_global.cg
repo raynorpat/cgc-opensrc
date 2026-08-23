@@ -1,0 +1,18 @@
+struct Material {
+    float3 tint;
+    float intensity;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+uniform Material material;
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position * material.intensity;
+    output.position.xyz = output.position.xyz + material.tint;
+    return output;
+}

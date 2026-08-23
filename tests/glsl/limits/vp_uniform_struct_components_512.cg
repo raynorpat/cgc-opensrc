@@ -1,0 +1,21 @@
+struct Leaf {
+    float4 value;
+};
+
+struct ResourceBlock {
+    Leaf leaves[128];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+uniform ResourceBlock resources;
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position + resources.leaves[0].value +
+                      resources.leaves[127].value;
+    return output;
+}

@@ -223,13 +223,39 @@ static GlslFunction *GlslFindFunction(GlslModule *module,
     return NULL;
 }
 
+static Type *GlslCanonicalStructType(Type *type)
+{
+    Type *canonical;
+
+    if (type == NULL || GetCategory(type) != TYPE_CATEGORY_STRUCT)
+        return NULL;
+    canonical = type->str.unqualifiedtype;
+    if (canonical == NULL)
+        canonical = type;
+    if (GetCategory(canonical) != TYPE_CATEGORY_STRUCT ||
+        (canonical->str.unqualifiedtype != NULL &&
+         canonical->str.unqualifiedtype != canonical))
+    {
+        return NULL;
+    }
+    return canonical;
+}
+
 static Symbol *GlslFindTag(Scope *scope, Type *type)
 {
+    Type *canonical;
     Symbol *tag;
 
-    tag = LookUpTag(scope, type->str.tag);
-    if (tag != NULL && tag->type == type)
-        return tag;
+    canonical = GlslCanonicalStructType(type);
+    if (canonical == NULL)
+        return NULL;
+    if (scope == NULL)
+        scope = CurrentScope;
+    for (; scope != NULL; scope = scope->parent) {
+        tag = LookUpLocalTag(scope, canonical->str.tag);
+        if (tag != NULL &&
+            GlslCanonicalStructType(tag->type) == canonical) return tag;
+    }
     return NULL;
 }
 
@@ -427,6 +453,7 @@ static int GlslEnsureParameterTypes(GlslLowerContext *context,
 
 static int GlslEnsureType(GlslLowerContext *context, Type *type)
 {
+    Type *canonical;
     GlslDecl *decl;
     GlslType structType;
     Symbol *tag;
@@ -443,12 +470,15 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
                GlslEnsureType(context, type->arr.eltype);
     if (GetCategory(type) != TYPE_CATEGORY_STRUCT)
         return 0;
-    if (GlslFindStruct(context, type) != NULL)
+    canonical = GlslCanonicalStructType(type);
+    if (canonical == NULL)
+        return 0;
+    if (GlslFindStruct(context, canonical) != NULL)
         return 1;
-    tag = GlslFindTag(context->scope, type);
+    tag = GlslFindTag(context->scope, canonical);
     if (tag == NULL)
         return 0;
-    sourceName = GetAtomString(atable, type->str.tag);
+    sourceName = GetAtomString(atable, canonical->str.tag);
     name = GlslAllocateSymbolName(context->module, tag, sourceName);
     if (name == NULL)
         return 0;
@@ -459,15 +489,15 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
     if (decl == NULL)
         return 0;
     decl->identity = tag;
-    GlslSetLoc(&decl->loc, &type->str.loc);
+    GlslSetLoc(&decl->loc, &canonical->str.loc);
     GlslAppendDecl(&context->module->structs, decl);
-    if (type->str.members == NULL ||
-        !GlslEnsureSymbolTypes(context, type->str.members->symbols))
+    if (canonical->str.members == NULL ||
+        !GlslEnsureSymbolTypes(context, canonical->str.members->symbols))
     {
         return 0;
     }
-    return GlslCollectMembers(context, type->str.members,
-        type->str.members->symbols, &decl->members);
+    return GlslCollectMembers(context, canonical->str.members,
+        canonical->str.members->symbols, &decl->members);
 }
 
 static int GlslTypeUsesStruct(const GlslType *type, const char *name)

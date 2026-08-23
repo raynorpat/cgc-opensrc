@@ -8,6 +8,22 @@ The changes cover matrix selectors, aggregate uniform-default metadata,
 numeric-uniform resource accounting, and profile isolation for matrix
 constructors.
 
+## Qualified uniform structures
+
+Declarator domains and qualifiers may wrap a structure in a copied `Type`,
+but the structure tag and member scope remain owned by the canonical
+`unqualifiedtype`.  GLSL lowering will canonicalize structure types before tag
+lookup, dependency collection, member lowering, and emitted-name allocation.
+Lookup walks lexical scopes by tag identity so a nearer same-spelling tag never
+aliases a distinct canonical structure.  Uniform storage remains a property of
+the emitted declaration and binding, not a second GLSL structure type.
+
+Arrays recurse through their element type, so qualified structures nested in
+fixed arrays use the same canonical identity.  Resource accounting walks all
+numeric leaves of structures and arrays exactly once.  The IR component-count
+walker rejects invalid, overflowing, and recursive type graphs instead of
+recursing indefinitely or returning a partial count.
+
 ## Matrix selectors
 
 A multi-component matrix selector cannot be emitted by repeating its matrix
@@ -75,6 +91,7 @@ unsafe legacy matrix constant fold.  Common code never checks profile names.
 
 Exact fixtures cover impure getters, impure indexed setters, overlapping
 swaps, mat3 selectors, mat2/mat3/mat4 defaults, fixed arrays, name collisions,
+global and entry-parameter uniform structures, nested arrays of structures,
 512/513/516 uniform boundaries, and restored generic constructor behavior.
 Every successful GLSL fixture is validated as GLSL 1.10 by `glslangValidator`.
 The full Debug and Release suites, bundled shaders, generic hashes, parser and

@@ -1,0 +1,28 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform material
+// cgc-bind builtin gl_Position POSITION0
+
+struct Material
+{
+    vec3 tint;
+    float intensity;
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform Material material;
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = position * material.intensity;
+    cg_output.position.xyz = cg_output.position.xyz + material.tint;
+    gl_Position = cg_output.position;
+}

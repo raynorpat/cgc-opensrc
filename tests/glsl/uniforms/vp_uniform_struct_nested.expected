@@ -1,0 +1,36 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind uniform batches
+// cgc-bind builtin gl_Position POSITION0
+
+struct Sample
+{
+    vec2 offset;
+    float weight;
+};
+
+struct Batch
+{
+    Sample samples[2];
+    float bias;
+};
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+uniform Batch batches[2];
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    position = cg_ATTRIB0;
+    cg_output.position = position;
+    cg_output.position.xy = cg_output.position.xy + batches[1].samples[0].offset;
+    cg_output.position.z = cg_output.position.z + batches[0].samples[1].weight;
+    cg_output.position.w = cg_output.position.w + batches[1].bias;
+    gl_Position = cg_output.position;
+}
