@@ -830,6 +830,7 @@ GlslDecl *GlslNewDecl(GlslModule *module, GlslStorage storage, GlslType type,
         decl->storage = storage;
         decl->type = type;
         decl->name = name;
+        decl->sourceOrdinal = 0;
     }
     return decl;
 }
@@ -879,6 +880,7 @@ GlslBinding *GlslNewBinding(GlslModule *module, GlslStorage storage,
         binding->storage = storage;
         binding->name = name;
         binding->semantic = semantic;
+        binding->sourceOrdinal = 0;
     }
     return binding;
 }

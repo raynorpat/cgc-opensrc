@@ -61,6 +61,7 @@ Scope *ScopeList = NULL;
 Scope *CurrentScope = NULL;
 Scope *GlobalScope = NULL;
 int NextFunctionIndex = 0;
+static int NextSymbolSourceOrdinal = 1;
 
 Type *UndefinedType = NULL;
 Type *CFloatType = NULL;
@@ -129,6 +130,8 @@ int InitSymbolTable(CgStruct *Cg)
 {
     SourceLoc dummyLoc = { 0, 0 };
     int ii, name;
+
+    NextSymbolSourceOrdinal = 1;
 
     // Create the super-global scope and add predefined types and symbols:
 
@@ -360,6 +363,7 @@ Symbol *NewSymbol(SourceLoc *loc, Scope *fScope, int name, Type *fType, symbolki
     lSymb->storageClass = SC_UNKNOWN;
     lSymb->type = fType;
     lSymb->loc = *loc;
+    lSymb->sourceOrdinal = NextSymbolSourceOrdinal++;
     lSymb->kind = kind;
     lSymb->properties = 0;
     lSymb->flags = 0;

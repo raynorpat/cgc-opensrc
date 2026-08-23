@@ -268,6 +268,7 @@ struct GlslDecl_Rec {
     GlslType type;
     const char *name;
     GlslLoc loc;
+    int sourceOrdinal;
     GlslExpr *initializer;
     const void *identity;
     GlslDecl *members;
@@ -295,6 +296,7 @@ struct GlslBinding_Rec {
     const char *semantic;
     const char *interfaceKey;
     GlslLoc loc;
+    int sourceOrdinal;
     GlslDecl *declaration;
     int isOutput;
     int defaultCount;

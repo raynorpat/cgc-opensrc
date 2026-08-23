@@ -422,6 +422,7 @@ static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
     if (decl != NULL) {
         decl->identity = symbol;
         GlslSetLoc(&decl->loc, &symbol->loc);
+        decl->sourceOrdinal = symbol->sourceOrdinal;
     }
     return decl;
 }
@@ -595,6 +596,33 @@ static int GlslSortStructs(GlslLowerContext *context)
 
 static void GlslInsertBinding(GlslBinding **list, GlslBinding *binding);
 
+static int GlslSamplerDeclComesBefore(const GlslDecl *left,
+                                      const GlslDecl *right)
+{
+    if (left->loc.file != right->loc.file)
+        return left->loc.file < right->loc.file;
+    if (left->loc.line != right->loc.line)
+        return left->loc.line < right->loc.line;
+    if (left->sourceOrdinal != right->sourceOrdinal)
+        return left->sourceOrdinal < right->sourceOrdinal;
+    return strcmp(left->name, right->name) < 0;
+}
+
+static void GlslInsertSamplerDecl(GlslDecl **list, GlslDecl *decl)
+{
+    GlslDecl **place;
+
+    place = list;
+    while (*place != NULL &&
+           ((*place)->storage != GLSL_STORAGE_SAMPLER ||
+            !GlslSamplerDeclComesBefore(decl, *place)))
+    {
+        place = &(*place)->next;
+    }
+    decl->next = *place;
+    *place = decl;
+}
+
 static int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
                                  int entry)
 {
@@ -683,9 +711,14 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
         return 0;
     decl->identity = symbol;
     GlslSetLoc(&decl->loc, &symbol->loc);
+    decl->sourceOrdinal = symbol->sourceOrdinal;
     binding->declaration = decl;
     GlslSetLoc(&binding->loc, &symbol->loc);
-    GlslAppendDecl(&context->module->globals, decl);
+    binding->sourceOrdinal = symbol->sourceOrdinal;
+    if (storage == GLSL_STORAGE_SAMPLER)
+        GlslInsertSamplerDecl(&context->module->globals, decl);
+    else
+        GlslAppendDecl(&context->module->globals, decl);
     GlslInsertBinding(&context->module->bindings, binding);
     return 1;
 }
@@ -1371,6 +1404,8 @@ static int GlslBindingComesBefore(const GlslBinding *left,
         return left->loc.file < right->loc.file;
     if (left->loc.line != right->loc.line)
         return left->loc.line < right->loc.line;
+    if (left->sourceOrdinal != right->sourceOrdinal)
+        return left->sourceOrdinal < right->sourceOrdinal;
     return strcmp(left->name, right->name) < 0;
 }
 
@@ -1482,10 +1517,12 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
         return NULL;
     decl->identity = member;
     GlslSetLoc(&decl->loc, &member->loc);
+    decl->sourceOrdinal = member->sourceOrdinal;
     binding->declaration = decl;
     binding->interfaceKey = interfaceName;
     binding->isOutput = isOutput;
     GlslSetLoc(&binding->loc, &member->loc);
+    binding->sourceOrdinal = member->sourceOrdinal;
     if (storage != GLSL_STORAGE_BUILTIN)
         GlslAppendDecl(&context->module->globals, decl);
     GlslInsertBinding(&context->module->bindings, binding);

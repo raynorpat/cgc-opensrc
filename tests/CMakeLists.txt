@@ -233,6 +233,14 @@ add_glsl_fixture(glslf_two_samplers glslf
     tests/glsl/textures/fp_two_samplers.cg
     tests/glsl/textures/fp_two_samplers.expected)
 
+add_glsl_fixture(glslf_same_line_sampler_params glslf
+    tests/glsl/textures/fp_same_line_sampler_params.cg
+    tests/glsl/textures/fp_same_line_sampler_params.expected)
+
+add_glsl_fixture(glslf_same_line_global_samplers glslf
+    tests/glsl/textures/fp_same_line_global_samplers.cg
+    tests/glsl/textures/fp_same_line_global_samplers.expected)
+
 add_glsl_fixture(glslf_helper_sampler glslf
     tests/glsl/textures/fp_helper_sampler.cg
     tests/glsl/textures/fp_helper_sampler.expected)

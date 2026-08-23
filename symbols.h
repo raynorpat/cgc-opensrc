@@ -250,6 +250,7 @@ struct Symbol_Rec {
     int name;       // Name atom
     Type *type;     // Type descriptor
     SourceLoc loc;
+    int sourceOrdinal; // Stable source declaration order
     symbolkind kind;
     int properties; // Symbol properties
     StorageClass storageClass;
