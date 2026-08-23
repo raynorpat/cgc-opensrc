@@ -472,6 +472,7 @@ static int GlslValidateModule(const GlslModule *module)
              binding->declaration->storage != GLSL_STORAGE_SAMPLER ||
              !GlslSamplerType(&binding->declaration->type) ||
              !GlslDeclInList(module->globals, binding->declaration) ||
+             binding->declaration->name == NULL ||
              strcmp(binding->name, binding->declaration->name) ||
              !GlslSamplerUnitText(binding->semantic))) return 0;
         if (binding->storage != GLSL_STORAGE_SAMPLER &&

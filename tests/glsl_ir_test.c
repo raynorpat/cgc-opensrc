@@ -762,6 +762,13 @@ int main(void)
     assert(ftell(writer) > 0);
     assert(!fclose(writer));
 
+    samplerDecl->name = NULL;
+    firstBinding->name = "s";
+    ExpectModuleRejected("sampler declaration without name",
+                         &samplerModule);
+    samplerDecl->name = "first";
+    firstBinding->name = "first";
+
     expr->next = GlslNewExpr(&samplerModule, GLSL_EXPR_SYMBOL,
                              GlslNumericType(GLSL_BASE_FLOAT, 2));
     assert(expr->next != NULL);

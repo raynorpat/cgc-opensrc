@@ -769,7 +769,8 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/glsl/profile/check_diagnostic.cmake
 )
 
-foreach(marker_case missing duplicated reversed nested)
+foreach(marker_case missing duplicated reversed nested prefix suffix
+                    trailing_space cr_only lf crlf eof)
     add_test(
         NAME stdlib_marker_${marker_case}
         COMMAND ${CMAKE_COMMAND}
