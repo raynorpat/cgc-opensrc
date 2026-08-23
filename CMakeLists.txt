@@ -15,6 +15,7 @@ add_executable(cgc
     atom.c
     binding.c
     cgcmain.c
+    cg_types.c
     cgstruct.c
     check.c
     compile.c

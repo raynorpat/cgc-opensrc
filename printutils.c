@@ -453,6 +453,26 @@ void BPrintStmt(stmt *fstmt)
 }
 
 /*
+ * lTypeNameString() - Return a printable string of a type's scalar identity.
+ *
+ * Canonical scalar kinds are authoritative; bases not modeled by the
+ * canonical kind table keep their legacy names.
+ *
+ */
+
+static const char *lTypeNameString(const Type *fType, int base)
+{
+    CgScalarKind kind;
+
+    kind = GetScalarKind(fType);
+    if (kind != CG_SCALAR_NONE) {
+        return CgScalarKindName(kind);
+    } else {
+        return GetBaseTypeNameString(base);
+    }
+} // lTypeNameString
+
+/*
  * FormatTypeString() - Build a printable string of a type.
  *
  * Arrays are shown as: "packed float[4]" instead of "float4".
@@ -488,7 +508,7 @@ void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
             strcat(name, "<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
-            strcat(name, GetBaseTypeNameString(base));
+            strcat(name, lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
             FormatTypeString(name, size, name2, size2, fType->arr.eltype);
@@ -556,15 +576,15 @@ void FormatTypeStringRT(char *name, int size, char *name2, int size2, Type *fTyp
             strcat(name, "<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
-            strcat(name, GetBaseTypeNameString(base));
+            strcat(name, lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
             if (IsMatrix(fType, &len, &len2)) {
-                strcat(name, GetBaseTypeNameString(base));
+                strcat(name, lTypeNameString(fType, base));
                 sprintf(tname, "%dx%d", len2, len);
                 strcat(name, tname);
             } else if (IsVector(fType, &len)) {
-                strcat(name, GetBaseTypeNameString(base));
+                strcat(name, lTypeNameString(fType, base));
                 tname[0] = '0' + len;
                 tname[1] = '\0';
                 strcat(name, tname);
@@ -637,7 +657,7 @@ void PrintType(Type *fType, int level)
             break;
         case TYPE_CATEGORY_SCALAR:
             base = GetBase(fType);
-            printf("%s", GetBaseTypeNameString(base));
+            printf("%s", lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
             PrintType(fType->arr.eltype, level);

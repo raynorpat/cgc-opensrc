@@ -480,6 +480,24 @@ Symbol *AddTag(SourceLoc *loc, Scope *fScope, int atom, int category)
 /*********************************************************************************************/
 
 /*
+ * lKindFromLegacyBase() - Map legacy four-bit base properties to the
+ *                         canonical scalar kind.
+ *
+ */
+
+static CgScalarKind lKindFromLegacyBase(int base)
+{
+    switch (base) {
+    case TYPE_BASE_CFLOAT: return CG_SCALAR_CFLOAT;
+    case TYPE_BASE_CINT: return CG_SCALAR_CINT;
+    case TYPE_BASE_FLOAT: return CG_SCALAR_FLOAT;
+    case TYPE_BASE_INT: return CG_SCALAR_INT;
+    case TYPE_BASE_BOOLEAN: return CG_SCALAR_BOOL;
+    default: return CG_SCALAR_NONE;
+    }
+}
+
+/*
  * InitType() - Initialize a type struct.
  *
  */
@@ -491,6 +509,7 @@ void InitType(Type *fType)
 
     for (ii = 0; ii < sizeof(Type); ii++)
         *c++ = 0;
+    fType->co.scalarKind = CG_SCALAR_NONE;
 } // InitType
 
 /*
@@ -506,6 +525,7 @@ Type *NewType(int properties, int size)
     InitType(lType);
     lType->properties = properties;
     lType->co.size = size;
+    SetScalarKind(lType, lKindFromLegacyBase(properties & TYPE_BASE_MASK));
     return lType;
 } // NewType
 
@@ -533,6 +553,7 @@ Type *NewPackedArrayType(Type *elType, int numels, int properties)
     Type *lType;
 
     lType = NewType(TYPE_CATEGORY_ARRAY | TYPE_MISC_PACKED | properties | GetBase(elType), 0);
+    SetScalarKind(lType, GetScalarKind(elType));
     lType->arr.eltype = elType;
     lType->arr.numels = numels;
     lType->arr.size = Cg->theHAL->GetSizeof(lType);
@@ -590,7 +611,7 @@ int IsVoid(const Type *fType)
 
 int IsBoolean(const Type *fType)
 {
-    if (fType && (fType->properties & TYPE_BASE_MASK) == TYPE_BASE_BOOLEAN) {
+    if (fType && GetScalarKind(fType) == CG_SCALAR_BOOL) {
         return 1;
     } else {
         return 0;
@@ -732,12 +753,16 @@ int IsPacked(const Type *fType)
 
 int IsSameUnqualifiedType(const Type *aType, const Type *bType)
 {
-    const int UnQMask = TYPE_BASE_MASK | TYPE_CATEGORY_MASK ; // 020122 // | TYPE_DOMAIN_MASK;
-
     if (aType == bType) {
         return 1;
     } else {
-        if ((aType->properties & UnQMask) == (bType->properties & UnQMask)) {
+        // Scalar identity is canonical; kinds not modeled by the canonical
+        // table still compare through their legacy base bits.
+        if ((aType->properties & TYPE_CATEGORY_MASK) ==
+                (bType->properties & TYPE_CATEGORY_MASK) &&
+            GetScalarKind(aType) == GetScalarKind(bType) &&
+            (GetScalarKind(aType) != CG_SCALAR_NONE ||
+             GetBase(aType) == GetBase(bType))) {
             switch (aType->properties & TYPE_CATEGORY_MASK) {
             case TYPE_CATEGORY_SCALAR:
                 return 1;

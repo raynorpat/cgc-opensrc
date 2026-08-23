@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __SYMBOLS_H 1
 
 #include "memory.h"
+#include "cg_types.h"
 
 #define MAX_ARRAY_DIMENSIONS 3
 
@@ -130,7 +131,6 @@ union stmt_rec;
 typedef struct Scope_Rec Scope;
 typedef struct FunSymbol_Rec FunSymbol;
 typedef struct Symbol_Rec Symbol;
-typedef union Type_Rec Type;
 typedef struct TypeCommon_Rec TypeCommon;
 typedef struct TypeScalar_Rec TypeScalar;
 typedef struct TypeArray_Rec TypeArray;
@@ -172,16 +172,19 @@ typedef struct TypeList_Rec {
 struct TypeCommon_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
 };
 
 struct TypeScalar_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
 };
 
 struct TypeArray_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
     Type *eltype;
     int numels;
 };
@@ -189,6 +192,7 @@ struct TypeArray_Rec {
 struct TypeStruct_Rec { // for structs and connectors
     int properties;
     int size;
+    CgScalarKind scalarKind;
     Type *unqualifiedtype;
     Scope *members;
     SourceLoc loc;
@@ -204,6 +208,7 @@ struct TypeStruct_Rec { // for structs and connectors
 struct TypeFunction_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
     Type *rettype;
     TypeList *paramtypes;
 };
