@@ -1,0 +1,20 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+uniform float4x4 helperTransform;
+
+float4 use_transform(float4 value)
+{
+    return mul(helperTransform, value);
+}
+
+VertexOut main(float4 position : ATTRIB0,
+               uniform float4 values[124],
+               uniform float extra)
+{
+    VertexOut output;
+    output.position = use_transform(position) + values[0] +
+                      values[123] + extra;
+    return output;
+}

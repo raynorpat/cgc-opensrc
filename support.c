@@ -1171,7 +1171,16 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                 } else {
                     subop = SUBOP_V(vlen, GetBase(vType));
                     dExpr->bin.left = (expr *) NewUnopSubNode(VECTOR_V_OP, subop, dExpr->bin.left);
-                    dExpr->bin.left->un.type = GetStandardType(GetBase(vType), vlen, 0);
+                    if (Cg->theHAL->GetCapsBit(
+                            CAPS_AGGREGATE_DEFAULT_BINDINGS) &&
+                        !IsVector(vType, NULL) &&
+                        !IsMatrix(vType, NULL, NULL))
+                    {
+                        dExpr->bin.left->un.type = vType;
+                    } else {
+                        dExpr->bin.left->un.type =
+                            GetStandardType(GetBase(vType), vlen, 0);
+                    }
                     return 1;
                 }
             } else {
@@ -2724,8 +2733,10 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
             size = vlen;
         } else if (IsMatrix(fType, &vlen, &vlen2)) {
             size = vlen*vlen2;
-            IsMatrixConstructor = 1;
-            MatrixRowSize = vlen;
+            if (Cg->theHAL->GetCapsBit(CAPS_MATRIX_CONSTRUCTOR_AST)) {
+                IsMatrixConstructor = 1;
+                MatrixRowSize = vlen;
+            }
         } else {
             SemanticError(loc, ERROR___INVALID_TYPE_FUNCTION);
             rType = UndefinedType;
@@ -2761,15 +2772,11 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
                 HasError = 1;
                 break;
             }
-        } else if (len > 0 && len + vlen > 4) {
-            SemanticError(loc, ERROR___CONSTRUCTER_VECTOR_LEN_GR_4);
-            HasError = 1;
-            break;
         }
         if (len == 0) {
             nbase = lbase;
             nNumeric = lNumeric;
-        } else {
+        } else if (IsMatrixConstructor || len + vlen <= 4) {
             if (lNumeric == nNumeric) {
                 if (nNumeric) {
                     nbase = Cg->theHAL->GetBinOpBase(VECTOR_V_OP, nbase, lbase, 0, 0);
@@ -2779,6 +2786,10 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
                 HasError = 1;
                 break;
             }
+        } else {
+            SemanticError(loc, ERROR___CONSTRUCTER_VECTOR_LEN_GR_4);
+            HasError = 1;
+            break;
         }
         len += vlen;
         lExpr = lExpr->bin.right;

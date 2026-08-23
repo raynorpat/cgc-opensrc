@@ -47,6 +47,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <string.h>
 #include <float.h>
+#include <limits.h>
 
 #include "slglobals.h"
 #include "glsl_hal.h"
@@ -61,6 +62,21 @@ typedef struct GlslMatrixHelper_Rec {
     int parameterCount;
 } GlslMatrixHelper;
 
+typedef enum GlslMatrixSelectorHelperKind_Enum {
+    GLSL_MATRIX_SELECTOR_GET,
+    GLSL_MATRIX_SELECTOR_SET
+} GlslMatrixSelectorHelperKind;
+
+typedef struct GlslMatrixSelectorHelper_Rec {
+    struct GlslMatrixSelectorHelper_Rec *next;
+    GlslFunction *function;
+    GlslMatrixSelectorHelperKind kind;
+    GlslType matrixType;
+    GlslType valueType;
+    int count;
+    int mask;
+} GlslMatrixSelectorHelper;
+
 typedef struct GlslLowerContext_Rec {
     GlslModule *module;
     const GlslProfileDesc *profile;
@@ -68,6 +84,8 @@ typedef struct GlslLowerContext_Rec {
     GlslFunction *function;
     GlslMatrixHelper *matrixHelpers;
     GlslMatrixHelper *lastMatrixHelper;
+    GlslMatrixSelectorHelper *selectorHelpers;
+    GlslMatrixSelectorHelper *lastSelectorHelper;
     SourceLoc statementLoc;
     int loopDepth;
 } GlslLowerContext;
@@ -714,13 +732,153 @@ static int GlslCollectUniforms(GlslLowerContext *context, Symbol *program)
     return 1;
 }
 
-static void GlslCollectDefaults(GlslLowerContext *context)
+static int GlslValidateUniformLimit(GlslLowerContext *context)
+{
+    GlslBinding *binding;
+    const char *resourceName;
+    int componentCount;
+    int limit;
+    int used;
+
+    limit = context->profile->limits.uniformComponents;
+    if (limit < 0) {
+        GlslRecordFailure(context, "uniform component limit");
+        return 0;
+    }
+    resourceName = context->profile->stage == GLSL_STAGE_FRAGMENT ?
+                   "fragment uniform components" :
+                   "vertex uniform components";
+    used = 0;
+    for (binding = context->module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->storage != GLSL_STORAGE_UNIFORM ||
+            binding->declaration == NULL) continue;
+        componentCount = GlslTypeComponentCount(
+            &binding->declaration->type);
+        if (componentCount <= 0) {
+            context->statementLoc.file =
+                (unsigned short) binding->loc.file;
+            context->statementLoc.line =
+                (unsigned short) binding->loc.line;
+            GlslRecordFailure(context, "uniform component count");
+            return 0;
+        }
+        if (componentCount > limit - used) {
+            context->module->errorLoc = binding->loc;
+            context->module->resourceName = resourceName;
+            context->module->resourceUsed =
+                componentCount > INT_MAX - used ? INT_MAX :
+                used + componentCount;
+            context->module->resourceAvailable = limit;
+            return 0;
+        }
+        used += componentCount;
+    }
+    return 1;
+}
+
+static int GlslAppendDefaultValue(GlslLowerContext *context, float *values,
+    int capacity, int *count, float value)
+{
+    if (values == NULL || count == NULL || *count < 0 ||
+        *count >= capacity)
+    {
+        GlslRecordFailure(context, "uniform default component count");
+        return 0;
+    }
+    if (value != value || value > FLT_MAX || value < -FLT_MAX) {
+        GlslRecordFailure(context, "uniform default finite value");
+        return 0;
+    }
+    values[(*count)++] = value;
+    return 1;
+}
+
+static int GlslFlattenDefaultExpr(GlslLowerContext *context,
+    const expr *source, float *values, int capacity, int *count)
+{
+    const expr *item;
+    int i;
+    int len;
+
+    if (source == NULL) {
+        GlslRecordFailure(context, "uniform default initializer");
+        return 0;
+    }
+    if (source->common.kind == BINARY_N &&
+        source->bin.op == EXPR_LIST_OP)
+    {
+        item = source;
+        while (item != NULL && item->common.kind == BINARY_N &&
+               item->bin.op == EXPR_LIST_OP)
+        {
+            if (item->bin.left == NULL ||
+                !GlslFlattenDefaultExpr(context, item->bin.left, values,
+                                        capacity, count)) return 0;
+            item = item->bin.right;
+        }
+        return item == NULL || GlslFlattenDefaultExpr(context, item, values,
+                                                       capacity, count);
+    }
+    if (source->common.kind == UNARY_N) {
+        if (source->un.op == VECTOR_V_OP)
+            return GlslFlattenDefaultExpr(context, source->un.arg, values,
+                                           capacity, count);
+        if (source->un.op == CAST_CS_OP || source->un.op == CAST_CV_OP ||
+            source->un.op == CAST_CM_OP)
+        {
+            return GlslFlattenDefaultExpr(context, source->un.arg, values,
+                                           capacity, count);
+        }
+    }
+    if (source->common.kind == CONST_N) {
+        len = SUBOP_GET_S1(source->co.subop);
+        if (len == 0)
+            len = 1;
+        if (len < 1 || len > 4) {
+            GlslRecordFailure(context, "uniform default initializer");
+            return 0;
+        }
+        for (i = 0; i < len; i++) {
+            switch (source->co.op) {
+            case FCONST_OP:
+            case FCONST_V_OP:
+            case HCONST_OP:
+            case HCONST_V_OP:
+            case XCONST_OP:
+            case XCONST_V_OP:
+                if (!GlslAppendDefaultValue(context, values, capacity,
+                                            count, source->co.val[i].f))
+                    return 0;
+                break;
+            case ICONST_OP:
+            case ICONST_V_OP:
+            case BCONST_OP:
+            case BCONST_V_OP:
+                if (!GlslAppendDefaultValue(context, values, capacity,
+                                            count,
+                                            (float) source->co.val[i].i))
+                    return 0;
+                break;
+            default:
+                GlslRecordFailure(context, "uniform default initializer");
+                return 0;
+            }
+        }
+        return 1;
+    }
+    GlslRecordFailure(context, "uniform default expression shape");
+    return 0;
+}
+
+static int GlslCollectDefaults(GlslLowerContext *context)
 {
     BindingList *item;
     GlslBinding *binding;
     Symbol *symbol;
     int componentCount;
-    int i;
+    int valueCount;
 
     for (item = Cg->theHAL->defaultBindings; item != NULL;
          item = item->next)
@@ -736,20 +894,36 @@ static void GlslCollectDefaults(GlslLowerContext *context)
             symbol = (Symbol *) binding->declaration->identity;
             if (symbol == NULL || item->identity != symbol)
                 continue;
+            context->statementLoc = symbol->loc;
             componentCount = GlslTypeComponentCount(
                 &binding->declaration->type);
-            if (componentCount > item->binding->constdef.size)
-                componentCount = item->binding->constdef.size;
-            if (componentCount > 4)
-                componentCount = 4;
-            binding->defaultCount = componentCount;
-            for (i = 0; i < componentCount; i++) {
-                binding->defaultValues[i] =
-                    item->binding->constdef.val[i];
+            if (componentCount <= 0 || item->initializer == NULL ||
+                item->type != symbol->type)
+            {
+                GlslRecordFailure(context, "uniform default initializer");
+                return 0;
             }
+            binding->defaultValues = (float *) context->module->alloc(
+                context->module->allocArg,
+                (size_t) componentCount * sizeof(float));
+            if (binding->defaultValues == NULL)
+                return 0;
+            valueCount = 0;
+            if (!GlslFlattenDefaultExpr(context,
+                    (const expr *) item->initializer,
+                    binding->defaultValues, componentCount, &valueCount) ||
+                valueCount != componentCount)
+            {
+                if (valueCount != componentCount)
+                    GlslRecordFailure(context,
+                                      "uniform default component count");
+                return 0;
+            }
+            binding->defaultCount = componentCount;
             break;
         }
     }
+    return 1;
 }
 
 static int GlslCollectLocals(GlslLowerContext *context, Symbol *symbol,
@@ -1433,12 +1607,50 @@ static GlslExpr *GlslMatrixComponent(GlslLowerContext *context,
     return GlslNewIndexLiteral(context, columnExpr, &scalarType, row);
 }
 
+static int GlslMatrixSelectorCount(const expr *source)
+{
+    int count;
+
+    if (source == NULL || source->common.kind != UNARY_N ||
+        source->un.op != SWIZMAT_Z_OP) return 0;
+    count = SUBOP_GET_T2(source->un.subop);
+    return count == 0 ? 1 : count;
+}
+
+static GlslExpr *GlslMatrixMaskComponent(GlslLowerContext *context,
+    GlslExpr *matrix, int mask, int component)
+{
+    int selector;
+    int row;
+    int column;
+
+    selector = (mask >> (component * 4)) & 15;
+    row = (selector >> 2) & 3;
+    column = selector & 3;
+    return GlslMatrixComponent(context, matrix, row, column);
+}
+
+static GlslExpr *GlslMatrixSelectorComponent(GlslLowerContext *context,
+    GlslExpr *matrix, const expr *selectorSource, int component)
+{
+    if (selectorSource == NULL)
+        return NULL;
+    return GlslMatrixMaskComponent(context, matrix,
+        SUBOP_GET_MASK16(selectorSource->un.subop), component);
+}
+
+static GlslMatrixSelectorHelper *GlslGetMatrixSelectorHelper(
+    GlslLowerContext *context, GlslMatrixSelectorHelperKind kind,
+    const GlslType *matrixType, const GlslType *valueType, int count,
+    int mask);
+
 static GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
     expr *source, const GlslType *type)
 {
     GlslExpr *object;
     GlslExpr *target;
     GlslExpr *component;
+    GlslMatrixSelectorHelper *helper;
     int count;
     int mask;
     int selector;
@@ -1460,6 +1672,18 @@ static GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
         row = (selector >> 2) & 3;
         column = selector & 3;
         return GlslMatrixComponent(context, object, row, column);
+    }
+    if (source->un.arg->common.HasSideEffects) {
+        helper = GlslGetMatrixSelectorHelper(context,
+            GLSL_MATRIX_SELECTOR_GET, &object->type, type, count, mask);
+        if (helper == NULL)
+            return NULL;
+        target = GlslNewExpr(context->module, GLSL_EXPR_CALL, *type);
+        if (target == NULL)
+            return NULL;
+        target->u.call.name = helper->function->name;
+        target->u.call.arguments = object;
+        return target;
     }
     target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
     if (target == NULL)
@@ -1559,6 +1783,192 @@ static GlslExpr *GlslNewParameterComponent(GlslLowerContext *context,
     mask[0] = "xyzw"[componentIndex];
     mask[1] = '\0';
     return GlslNewSwizzle(context, symbol, &scalarType, mask);
+}
+
+static GlslMatrixSelectorHelper *GlslFindMatrixSelectorHelper(
+    GlslLowerContext *context, GlslMatrixSelectorHelperKind kind,
+    const GlslType *matrixType, const GlslType *valueType, int count,
+    int mask)
+{
+    GlslMatrixSelectorHelper *helper;
+
+    for (helper = context->selectorHelpers; helper != NULL;
+         helper = helper->next)
+    {
+        if (helper->kind == kind && helper->count == count &&
+            helper->mask == mask &&
+            GlslTypesEqual(&helper->matrixType, matrixType) &&
+            GlslTypesEqual(&helper->valueType, valueType)) return helper;
+    }
+    return NULL;
+}
+
+static const char *GlslMatrixSelectorHelperName(
+    GlslLowerContext *context, GlslMatrixSelectorHelperKind kind,
+    const GlslType *matrixType, int count, int mask)
+{
+    char candidate[128];
+    char *end;
+    int column;
+    int i;
+    int row;
+    int selector;
+
+    if (matrixType == NULL || matrixType->rows < 2 ||
+        matrixType->rows > 4 || matrixType->cols != matrixType->rows ||
+        count < 2 || count > 4) return NULL;
+    sprintf(candidate, "cg_%s_mat%d",
+            kind == GLSL_MATRIX_SELECTOR_GET ? "get" : "set",
+            matrixType->rows);
+    end = candidate + strlen(candidate);
+    for (i = 0; i < count; i++) {
+        selector = (mask >> (i * 4)) & 15;
+        row = (selector >> 2) & 3;
+        column = selector & 3;
+        if (row >= matrixType->rows || column >= matrixType->cols)
+            return NULL;
+        sprintf(end, "_m%d%d", row, column);
+        end += strlen(end);
+    }
+    return GlslAllocateDistinctName(context->module, candidate);
+}
+
+static GlslMatrixSelectorHelper *GlslCreateMatrixSelectorHelper(
+    GlslLowerContext *context, GlslMatrixSelectorHelperKind kind,
+    const GlslType *matrixType, const GlslType *valueType, int count,
+    int mask)
+{
+    GlslMatrixSelectorHelper *helper;
+    GlslFunction *function;
+    GlslDecl *matrixParameter;
+    GlslDecl *valueParameter;
+    GlslExpr *matrixSymbol;
+    GlslExpr *value;
+    GlslExpr *component;
+    GlslExpr *assignment;
+    GlslExpr *constructor;
+    GlslStmt *statement;
+    GlslType resultType;
+    GlslType scalarType;
+    const char *functionName;
+    const char *matrixName;
+    const char *valueName;
+    int i;
+
+    if (valueType == NULL || valueType->base != GLSL_BASE_FLOAT ||
+        valueType->rows != 0 || valueType->cols != 0 ||
+        valueType->arraySize != 0 || valueType->elementType != NULL ||
+        valueType->structName != NULL || valueType->members != NULL ||
+        (valueType->len != 1 && valueType->len != count)) return NULL;
+    functionName = GlslMatrixSelectorHelperName(context, kind, matrixType,
+                                                 count, mask);
+    if (functionName == NULL)
+        return NULL;
+    helper = (GlslMatrixSelectorHelper *) context->module->alloc(
+        context->module->allocArg, sizeof(GlslMatrixSelectorHelper));
+    if (helper == NULL)
+        return NULL;
+    memset(helper, 0, sizeof(GlslMatrixSelectorHelper));
+    if (kind == GLSL_MATRIX_SELECTOR_GET)
+        resultType = *valueType;
+    else
+        resultType = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(context->module, resultType, functionName);
+    if (function == NULL)
+        return NULL;
+    matrixName = GlslAllocateScopedSymbolName(context->module, function,
+                                               NULL, "matrix");
+    matrixParameter = GlslNewDecl(context->module, GLSL_STORAGE_NONE,
+                                  *matrixType, matrixName);
+    if (matrixName == NULL || matrixParameter == NULL)
+        return NULL;
+    if (kind == GLSL_MATRIX_SELECTOR_SET)
+        matrixParameter->parameterQualifier = GLSL_PARAMETER_INOUT;
+    GlslAppendDecl(&function->parameters, matrixParameter);
+    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    if (kind == GLSL_MATRIX_SELECTOR_GET) {
+        constructor = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT,
+                                  *valueType);
+        statement = GlslNewStmt(context->module, GLSL_STMT_RETURN);
+        if (constructor == NULL || statement == NULL)
+            return NULL;
+        for (i = 0; i < count; i++) {
+            matrixSymbol = GlslNewExpr(context->module,
+                                       GLSL_EXPR_SYMBOL, *matrixType);
+            if (matrixSymbol == NULL)
+                return NULL;
+            matrixSymbol->u.symbol = matrixParameter;
+            component = GlslMatrixMaskComponent(context, matrixSymbol,
+                                                 mask, i);
+            if (component == NULL)
+                return NULL;
+            GlslAppendExpr(&constructor->u.construct.arguments, component);
+        }
+        statement->u.returnExpr = constructor;
+        function->body = statement;
+    } else {
+        valueName = GlslAllocateScopedSymbolName(context->module, function,
+                                                 NULL, "value");
+        valueParameter = GlslNewDecl(context->module, GLSL_STORAGE_NONE,
+                                     *valueType, valueName);
+        if (valueName == NULL || valueParameter == NULL)
+            return NULL;
+        GlslAppendDecl(&function->parameters, valueParameter);
+        for (i = 0; i < count; i++) {
+            matrixSymbol = GlslNewExpr(context->module,
+                                       GLSL_EXPR_SYMBOL, *matrixType);
+            if (matrixSymbol == NULL)
+                return NULL;
+            matrixSymbol->u.symbol = matrixParameter;
+            component = GlslMatrixMaskComponent(context, matrixSymbol,
+                                                 mask, i);
+            value = GlslNewParameterComponent(context, valueParameter,
+                valueType->len == 1 ? 0 : i);
+            assignment = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                                     scalarType);
+            statement = GlslNewStmt(context->module,
+                                    GLSL_STMT_EXPRESSION);
+            if (component == NULL || value == NULL || assignment == NULL ||
+                statement == NULL) return NULL;
+            assignment->u.binary.op = GLSL_OP_ASSIGN;
+            assignment->u.binary.left = component;
+            assignment->u.binary.right = value;
+            statement->u.expression = assignment;
+            GlslAppendStmt(&function->body, statement);
+        }
+    }
+    helper->function = function;
+    helper->kind = kind;
+    helper->matrixType = *matrixType;
+    helper->valueType = *valueType;
+    helper->count = count;
+    helper->mask = mask;
+    if (context->selectorHelpers == NULL)
+        context->selectorHelpers = helper;
+    else
+        context->lastSelectorHelper->next = helper;
+    context->lastSelectorHelper = helper;
+    return helper;
+}
+
+static GlslMatrixSelectorHelper *GlslGetMatrixSelectorHelper(
+    GlslLowerContext *context, GlslMatrixSelectorHelperKind kind,
+    const GlslType *matrixType, const GlslType *valueType, int count,
+    int mask)
+{
+    GlslMatrixSelectorHelper *helper;
+    int normalizedMask;
+
+    normalizedMask = mask & ((1 << (count * 4)) - 1);
+    helper = GlslFindMatrixSelectorHelper(context, kind, matrixType,
+                                          valueType, count,
+                                          normalizedMask);
+    if (helper == NULL) {
+        helper = GlslCreateMatrixSelectorHelper(context, kind, matrixType,
+                                                 valueType, count,
+                                                 normalizedMask);
+    }
+    return helper;
 }
 
 static GlslMatrixHelper *GlslCreateMatrixHelper(GlslLowerContext *context,
@@ -2207,6 +2617,16 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
         if (source->bin.op == FUN_CALL_OP ||
             source->bin.op == FUN_BUILTIN_OP)
             return GlslLowerCall(context, source, &type);
+        if ((source->bin.op == ASSIGN_OP ||
+             source->bin.op == ASSIGN_V_OP ||
+             source->bin.op == ASSIGN_GEN_OP ||
+             source->bin.op == ASSIGN_MASKED_KV_OP) &&
+            GlslMatrixSelectorCount(source->bin.left) > 1)
+        {
+            GlslRecordFailure(context,
+                              "matrix selector assignment context");
+            return NULL;
+        }
         if (source->bin.op == ASSIGN_MASKED_KV_OP)
             return GlslLowerMaskedAssignment(context, source, &type);
         comparison = GlslVectorComparisonName(source->bin.op);
@@ -2239,45 +2659,22 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
 static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
                                   GlslStmt **list);
 
-static int GlslMatrixSelectorCount(const expr *source)
-{
-    int count;
-
-    if (source == NULL || source->common.kind != UNARY_N ||
-        source->un.op != SWIZMAT_Z_OP) return 0;
-    count = SUBOP_GET_T2(source->un.subop);
-    return count == 0 ? 1 : count;
-}
-
-static GlslExpr *GlslMatrixSelectorComponent(GlslLowerContext *context,
-    GlslExpr *matrix, const expr *selectorSource, int component)
-{
-    int mask;
-    int selector;
-    int row;
-    int column;
-
-    mask = SUBOP_GET_MASK16(selectorSource->un.subop);
-    selector = (mask >> (component * 4)) & 15;
-    row = (selector >> 2) & 3;
-    column = selector & 3;
-    return GlslMatrixComponent(context, matrix, row, column);
-}
-
 static int GlslLowerMatrixAssignment(GlslLowerContext *context,
     expr *source, const SourceLoc *loc, GlslStmt **list)
 {
+    GlslMatrixSelectorHelper *helper;
     GlslExpr *leftMatrix;
     GlslExpr *rightMatrix;
     GlslExpr *rightValue;
     GlslExpr *left;
     GlslExpr *right;
     GlslExpr *assignment;
+    GlslExpr *call;
     GlslStmt *statement;
     GlslType scalarType;
-    char mask[2];
     int count;
     int rightCount;
+    int mask;
     int i;
 
     count = GlslMatrixSelectorCount(source->bin.left);
@@ -2286,52 +2683,63 @@ static int GlslLowerMatrixAssignment(GlslLowerContext *context,
     rightCount = GlslMatrixSelectorCount(source->bin.right);
     if (rightCount != 0 && rightCount != count)
         return 0;
-    if (rightCount == 0 && source->bin.right->common.HasSideEffects) {
-        GlslRecordFailure(context, "matrix selector side effects");
-        return 0;
-    }
     leftMatrix = GlslLowerExpr(context, source->bin.left->un.arg);
     if (leftMatrix == NULL)
         return 0;
-    rightMatrix = NULL;
-    rightValue = NULL;
-    if (rightCount != 0) {
+    if (!source->bin.left->un.arg->common.HasSideEffects &&
+        rightCount != 0 &&
+        !source->bin.right->un.arg->common.HasSideEffects &&
+        source->bin.left->un.arg->common.kind == SYMB_N &&
+        source->bin.left->un.arg->sym.op == VARIABLE_OP &&
+        source->bin.right->un.arg->common.kind == SYMB_N &&
+        source->bin.right->un.arg->sym.op == VARIABLE_OP &&
+        source->bin.left->un.arg->sym.symbol !=
+            source->bin.right->un.arg->sym.symbol)
+    {
         rightMatrix = GlslLowerExpr(context, source->bin.right->un.arg);
         if (rightMatrix == NULL)
             return 0;
-    } else {
-        rightValue = GlslLowerExpr(context, source->bin.right);
-        if (rightValue == NULL)
-            return 0;
-    }
-    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
-    for (i = 0; i < count; i++) {
-        left = GlslMatrixSelectorComponent(context, leftMatrix,
-                                            source->bin.left, i);
-        if (rightMatrix != NULL) {
+        scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+        for (i = 0; i < count; i++) {
+            left = GlslMatrixSelectorComponent(context, leftMatrix,
+                                                source->bin.left, i);
             right = GlslMatrixSelectorComponent(context, rightMatrix,
                                                  source->bin.right, i);
-        } else if (rightValue->type.len == 1) {
-            right = rightValue;
-        } else {
-            mask[0] = "xyzw"[i];
-            mask[1] = '\0';
-            right = GlslNewSwizzle(context, rightValue, &scalarType, mask);
+            assignment = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                                     scalarType);
+            statement = GlslNewStmt(context->module,
+                                    GLSL_STMT_EXPRESSION);
+            if (left == NULL || right == NULL || assignment == NULL ||
+                statement == NULL) return 0;
+            assignment->u.binary.op = GLSL_OP_ASSIGN;
+            assignment->u.binary.left = left;
+            assignment->u.binary.right = right;
+            statement->u.expression = assignment;
+            GlslSetLoc(&statement->loc, loc);
+            GlslAppendStmt(list, statement);
         }
-        if (left == NULL || right == NULL)
-            return 0;
-        assignment = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
-                                 scalarType);
-        statement = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
-        if (assignment == NULL || statement == NULL)
-            return 0;
-        assignment->u.binary.op = GLSL_OP_ASSIGN;
-        assignment->u.binary.left = left;
-        assignment->u.binary.right = right;
-        statement->u.expression = assignment;
-        GlslSetLoc(&statement->loc, loc);
-        GlslAppendStmt(list, statement);
+        return 1;
     }
+    rightValue = GlslLowerExpr(context, source->bin.right);
+    if (rightValue == NULL)
+        return 0;
+    mask = SUBOP_GET_MASK16(source->bin.left->un.subop);
+    helper = GlslGetMatrixSelectorHelper(context,
+        GLSL_MATRIX_SELECTOR_SET, &leftMatrix->type, &rightValue->type,
+        count, mask);
+    if (helper == NULL)
+        return 0;
+    call = GlslNewExpr(context->module, GLSL_EXPR_CALL,
+                       helper->function->result);
+    statement = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
+    if (call == NULL || statement == NULL)
+        return 0;
+    call->u.call.name = helper->function->name;
+    call->u.call.arguments = leftMatrix;
+    leftMatrix->next = rightValue;
+    statement->u.expression = call;
+    GlslSetLoc(&statement->loc, loc);
+    GlslAppendStmt(list, statement);
     return 1;
 }
 
@@ -2534,6 +2942,29 @@ static void GlslPrependMatrixHelpers(GlslLowerContext *context)
     }
 }
 
+static void GlslPrependMatrixSelectorHelpers(GlslLowerContext *context)
+{
+    GlslMatrixSelectorHelper *helper;
+    GlslFunction *first;
+    GlslFunction *last;
+
+    first = NULL;
+    last = NULL;
+    for (helper = context->selectorHelpers; helper != NULL;
+         helper = helper->next)
+    {
+        if (first == NULL)
+            first = helper->function;
+        else
+            last->next = helper->function;
+        last = helper->function;
+    }
+    if (last != NULL) {
+        last->next = context->module->functions;
+        context->module->functions = first;
+    }
+}
+
 int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
                      SourceLoc *loc, Scope *scope, Symbol *program)
 {
@@ -2569,9 +3000,11 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
         !GlslCollectCallsInStatements(&context,
                                       program->details.fun.statements) ||
         !GlslCollectUniforms(&context, program) ||
+        !GlslValidateUniformLimit(&context) ||
         !GlslSortStructs(&context) ||
         !GlslAssignHelperNames(&context)) return GlslLowerError(&context);
-    GlslCollectDefaults(&context);
+    if (!GlslCollectDefaults(&context))
+        return GlslLowerError(&context);
     GlslMarkForwardCalls(&context);
     for (helper = module->functions; helper != NULL; helper = next) {
         next = helper->next;
@@ -2599,5 +3032,6 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
         return GlslLowerError(&context);
     }
     GlslPrependMatrixHelpers(&context);
+    GlslPrependMatrixSelectorHelpers(&context);
     return module->errors == 0;
 }

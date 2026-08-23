@@ -259,6 +259,8 @@ void AddConstantBinding(Binding *fBind)
     nBindList->next = NULL;
     nBindList->binding = fBind;
     nBindList->identity = NULL;
+    nBindList->initializer = NULL;
+    nBindList->type = NULL;
     lBindList = Cg->theHAL->constantBindings;
     if (lBindList) {
         while (lBindList->next)
@@ -274,7 +276,8 @@ void AddConstantBinding(Binding *fBind)
  *
  */
 
-void AddDefaultBinding(Binding *fBind, const void *identity)
+void AddDefaultBinding(Binding *fBind, const void *identity,
+                       const void *initializer, const void *type)
 {
     BindingList *lBindList, *nBindList;
 
@@ -282,6 +285,8 @@ void AddDefaultBinding(Binding *fBind, const void *identity)
     nBindList->next = NULL;
     nBindList->binding = fBind;
     nBindList->identity = identity;
+    nBindList->initializer = initializer;
+    nBindList->type = type;
     lBindList = Cg->theHAL->defaultBindings;
     if (lBindList) {
         while (lBindList->next)

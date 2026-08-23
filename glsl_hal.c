@@ -546,6 +546,8 @@ static int GetCapsBit_glsl(int bitNumber)
     case CAPS_LATE_BINDINGS:
     case CAPS_INDEXED_ARRAYS:
     case CAPS_DONT_FLATTEN_IF_STATEMENTS:
+    case CAPS_MATRIX_CONSTRUCTOR_AST:
+    case CAPS_AGGREGATE_DEFAULT_BINDINGS:
         return 1;
     default:
         return 0;
@@ -580,10 +582,16 @@ static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
             failureLoc.file = (unsigned short) module.errorLoc.file;
             failureLoc.line = (unsigned short) module.errorLoc.line;
         }
-        failureReason = module.errorReason != NULL ? module.errorReason :
-                        "GLSL 1.10 program";
-        SemanticError(&failureLoc, ERROR_S_UNSUPPORTED_PROFILE_OP,
-                      failureReason);
+        if (module.resourceName != NULL) {
+            SemanticError(&failureLoc, ERROR_SII_GLSL_RESOURCE_LIMIT,
+                          module.resourceName, module.resourceUsed,
+                          module.resourceAvailable);
+        } else {
+            failureReason = module.errorReason != NULL ?
+                            module.errorReason : "GLSL 1.10 program";
+            SemanticError(&failureLoc, ERROR_S_UNSUPPORTED_PROFILE_OP,
+                          failureReason);
+        }
         return 0;
     }
     errorCount = GetErrorCount();

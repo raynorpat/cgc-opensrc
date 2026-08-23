@@ -432,10 +432,18 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
             case TYPE_CATEGORY_STRUCT:
                 if (lBindUniformVariable(formal, program->name, 1) && formal->details.var.init) {
                     formal->details.var.init = FoldConstants(formal->details.var.init);
-                    GetVectorConst(lVal, formal->details.var.init);
+                    if (Cg->theHAL->GetCapsBit(
+                            CAPS_AGGREGATE_DEFAULT_BINDINGS))
+                    {
+                        memset(lVal, 0, sizeof(lVal));
+                    } else {
+                        GetVectorConst(lVal, formal->details.var.init);
+                    }
                     lBind = NewConstDefaultBinding(0, formal->name, 4, 0, 0, lVal);
                     lBind->constdef.kind = BK_DEFAULT;
-                    AddDefaultBinding(lBind, formal);
+                    AddDefaultBinding(lBind, formal,
+                                      formal->details.var.init,
+                                      formal->type);
                 }
                 break;
             default:
@@ -571,10 +579,17 @@ void BindDefaultSemantic(Symbol *lSymb, int category, int gname)
         gname = 0;
         if (lBindUniformVariable(lSymb, gname, 0) && lSymb->details.var.init) {
             lSymb->details.var.init = FoldConstants(lSymb->details.var.init);
-            GetVectorConst(lVal, lSymb->details.var.init);
+            if (Cg->theHAL->GetCapsBit(
+                    CAPS_AGGREGATE_DEFAULT_BINDINGS))
+            {
+                memset(lVal, 0, sizeof(lVal));
+            } else {
+                GetVectorConst(lVal, lSymb->details.var.init);
+            }
             lBind = NewConstDefaultBinding(0, lSymb->name, 4, 0, 0, lVal);
             lBind->constdef.kind = BK_DEFAULT;
-            AddDefaultBinding(lBind, lSymb);
+            AddDefaultBinding(lBind, lSymb,
+                              lSymb->details.var.init, lSymb->type);
         }
         break;
     default:

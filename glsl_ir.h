@@ -296,7 +296,7 @@ struct GlslBinding_Rec {
     GlslLoc loc;
     GlslDecl *declaration;
     int defaultCount;
-    float defaultValues[4];
+    float *defaultValues;
 };
 
 typedef struct GlslModule_Rec {
@@ -311,6 +311,9 @@ typedef struct GlslModule_Rec {
     GlslBinding *bindings;
     GlslLoc errorLoc;
     const char *errorReason;
+    const char *resourceName;
+    int resourceUsed;
+    int resourceAvailable;
     int errors;
 } GlslModule;
 

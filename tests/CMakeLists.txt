@@ -51,6 +51,20 @@ function(add_generic_failure name source expected_line reason)
     )
 endfunction()
 
+function(add_generic_diagnostic name source code expected_line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/${name}.txt
+            -DCODE=${code}
+            -DEXPECTED_LINE=${expected_line}
+            -DREASON=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_generic_failure.cmake
+    )
+endfunction()
+
 function(add_glsl_common_failure name source expected_line reason)
     add_test(
         NAME ${name}
@@ -122,18 +136,18 @@ add_generic_regression(vertexlight4 vertexlight4.cg
     5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
-add_generic_regression(matrix_constructors
-    tests/glsl/expressions/vp_matrix_constructors.cg
-    81aa1a161295604282418efb49977a31a6c0961c4e9bf853db11dacebee69d1f)
-add_generic_regression(matrix_side_effects
-    tests/glsl/expressions/vp_matrix_side_effects.cg
-    c2c21eae0ea60e5ad522d75e1fa43e747124100443bea973a6377e04e056bd83)
-add_generic_regression(matrix_numeric_args
-    tests/glsl/expressions/vp_matrix_numeric_args.cg
-    4d8121ef07c7595ecfc0ab6ac9dac7fc2912d19f323c90c576011ed797719264)
-add_generic_regression(matrix_bool_constructor
-    tests/glsl/diagnostics/vp_matrix_bool_constructor.cg
-    d712b839746efd515acb18cf68b06c265e029d960df636baa00ef9db514e2685)
+add_generic_diagnostic(generic_matrix_scalar2_baseline
+    tests/glsl/diagnostics/generic_matrix_scalar2.cg 1035 9
+    "assignment.of.incompatible.types")
+add_generic_diagnostic(generic_matrix_rows_baseline
+    tests/glsl/diagnostics/generic_matrix_rows.cg 5503 9
+    "non-scalar.not.allowed")
+add_generic_diagnostic(generic_matrix_scalar3_baseline
+    tests/glsl/diagnostics/generic_matrix_scalar3.cg 5018 11
+    "length.of.constructed.vectors")
+add_generic_diagnostic(generic_matrix_bool_baseline
+    tests/glsl/diagnostics/vp_matrix_bool_constructor.cg 1035 9
+    "assignment.of.incompatible.types")
 add_generic_failure(generic_break_outside_loop
     tests/glsl/diagnostics/vp_break_outside_loop.cg 5 break)
 add_generic_failure(generic_continue_outside_loop
@@ -225,6 +239,22 @@ add_glsl_fixture(glslv_matrix_numeric_args glslv
     tests/glsl/expressions/vp_matrix_numeric_args.cg
     tests/glsl/expressions/vp_matrix_numeric_args.expected)
 
+add_glsl_fixture(glslv_matrix_selectors_once glslv
+    tests/glsl/expressions/vp_matrix_selectors_once.cg
+    tests/glsl/expressions/vp_matrix_selectors_once.expected)
+
+add_glsl_fixture(glslv_aggregate_defaults glslv
+    tests/glsl/uniforms/vp_aggregate_defaults.cg
+    tests/glsl/uniforms/vp_aggregate_defaults.expected)
+
+add_glsl_fixture(glslv_aggregate_default_collision glslv
+    tests/glsl/uniforms/vp_aggregate_default_collision.cg
+    tests/glsl/uniforms/vp_aggregate_default_collision.expected)
+
+add_glsl_fixture(glslv_uniform_components_512 glslv
+    tests/glsl/limits/vp_uniform_components_512.cg
+    tests/glsl/limits/vp_uniform_components_512.expected)
+
 add_glsl_fixture(glslv_float1_swizzle glslv
     tests/glsl/expressions/vp_float1_swizzle.cg
     tests/glsl/expressions/vp_float1_swizzle.expected)
@@ -274,6 +304,42 @@ add_glsl_failure(glslv_nonsquare_matrix
 add_glsl_failure(glslv_matrix_bool_constructor
     tests/glsl/diagnostics/vp_matrix_bool_constructor.cg 9
     "matrix constructor argument type")
+add_test(
+    NAME glslv_uniform_struct_default
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/diagnostics/vp_uniform_struct_default.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_struct_default.glsl
+        -DCODE=1056
+        -DEXPECTED_LINE=11
+        -DREASON=invalid.initialization
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+add_test(
+    NAME glslv_uniform_components_513
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_components_513.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_components_513.glsl
+        -DCODE=6207
+        -DEXPECTED_LINE=14
+        -DREASON=513.used,.512.available
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+add_test(
+    NAME glslv_uniform_components_516
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_components_516.cg
+        -DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/glslv_uniform_components_516.glsl
+        -DCODE=6207
+        -DEXPECTED_LINE=6
+        -DREASON=516.used,.512.available
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
 add_test(
     NAME glslv_matrix_constructor_underfilled
     COMMAND ${CMAKE_COMMAND}

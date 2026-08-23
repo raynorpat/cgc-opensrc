@@ -267,6 +267,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Numbers 6000 to 6999 are reserved for profile specific messages
 
+#define ERROR_SII_GLSL_RESOURCE_LIMIT       6207, "GLSL portable %s limit exceeded: %d used, %d available"
+
 // Warnings:
 
 #define WARNING___QUALIFIER_SPECIFIED_TWICE 7001, "qualifier specified twice"

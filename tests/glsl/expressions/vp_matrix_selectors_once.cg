@@ -1,0 +1,48 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+float2x2 next_matrix(inout float state)
+{
+    state = state + 1.0;
+    return float2x2(state, state + 1.0,
+                    state + 2.0, state + 3.0);
+}
+
+float3x3 next_matrix3(inout float state)
+{
+    state = state + 1.0;
+    return float3x3(state, state + 1.0, state + 2.0,
+                    state + 3.0, state + 4.0, state + 5.0,
+                    state + 6.0, state + 7.0, state + 8.0);
+}
+
+int next_index(inout float state)
+{
+    int result = (int) state;
+    state = state + 1.0;
+    return result;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    float state = 0.0;
+    float indexState = 0.0;
+    float state3 = 10.0;
+    float2x2 mats[2];
+    float2 selected;
+    float3 selected3;
+
+    mats[0] = float2x2(1.0, 2.0, 3.0, 4.0);
+    mats[1] = float2x2(5.0, 6.0, 7.0, 8.0);
+    selected = next_matrix(state)._m00_m01;
+    mats[next_index(indexState)]._m00_m01 = position.xy;
+    mats[0]._m00_m01 = mats[0]._m01_m00;
+    selected3 = next_matrix3(state3)._m00_m01_m02;
+    output.position = float4(selected.x + mats[0]._m00 + selected3.x,
+                             selected.y + mats[0]._m01 + selected3.y,
+                             state + indexState + state3,
+                             1.0);
+    return output;
+}

@@ -1,0 +1,70 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+};
+
+attribute vec4 cg_ATTRIB0;
+
+vec2 cg_get_mat2_m00_m01(mat2 matrix)
+{
+    return vec2(matrix[0][0], matrix[1][0]);
+}
+
+void cg_set_mat2_m00_m01(inout mat2 matrix, vec2 value)
+{
+    matrix[0][0] = value.x;
+    matrix[1][0] = value.y;
+}
+
+vec3 cg_get_mat3_m00_m01_m02(mat3 matrix)
+{
+    return vec3(matrix[0][0], matrix[1][0], matrix[2][0]);
+}
+
+mat2 next_matrix(inout float state)
+{
+    state = state + 1.0;
+    return mat2(state, state + 2.0, state + 1.0, state + 3.0);
+}
+
+mat3 next_matrix3(inout float state)
+{
+    state = state + 1.0;
+    return mat3(state, state + 3.0, state + 6.0, state + 1.0, state + 4.0, state + 7.0, state + 2.0, state + 5.0, state + 8.0);
+}
+
+int next_index(inout float state)
+{
+    int result;
+    result = int(state);
+    state = state + 1.0;
+    return result;
+}
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    float state;
+    float indexState;
+    float state3;
+    mat2 mats[2];
+    vec2 selected;
+    vec3 selected3;
+    position = cg_ATTRIB0;
+    state = 0.0;
+    indexState = 0.0;
+    state3 = 10.0;
+    mats[0] = mat2(1.0, 3.0, 2.0, 4.0);
+    mats[1] = mat2(5.0, 7.0, 6.0, 8.0);
+    selected = cg_get_mat2_m00_m01(next_matrix(state));
+    cg_set_mat2_m00_m01(mats[next_index(indexState)], position.xy);
+    cg_set_mat2_m00_m01(mats[0], vec2(mats[0][1][0], mats[0][0][0]));
+    selected3 = cg_get_mat3_m00_m01_m02(next_matrix3(state3));
+    cg_output.position = vec4(selected.x + mats[0][0][0] + selected3.x, selected.y + mats[0][1][0] + selected3.y, state + indexState + state3, 1.0);
+    gl_Position = cg_output.position;
+}

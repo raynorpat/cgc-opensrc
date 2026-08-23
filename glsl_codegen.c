@@ -212,7 +212,8 @@ static int GlslValidateModule(const GlslModule *module)
 
         if (GlslStorageName(binding->storage) == NULL ||
             binding->name == NULL || binding->semantic == NULL) return 0;
-        if (binding->defaultCount < 0 || binding->defaultCount > 4)
+        if (binding->defaultCount < 0 ||
+            (binding->defaultCount > 0 && binding->defaultValues == NULL))
             return 0;
         for (i = 0; i < binding->defaultCount; i++) {
             if (!GlslFiniteFloat(binding->defaultValues[i])) return 0;

@@ -1,0 +1,25 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0,
+               uniform float2x2 matrix2 =
+                   float2x2(1.0, 2.0, 3.0, 4.0),
+               uniform float3x3 matrix3 =
+                   float3x3(11.0, 12.0, 13.0,
+                            14.0, 15.0, 16.0,
+                            17.0, 18.0, 19.0),
+               uniform float4x4 matrix4 =
+                   float4x4(21.0, 22.0, 23.0, 24.0,
+                            25.0, 26.0, 27.0, 28.0,
+                            29.0, 30.0, 31.0, 32.0,
+                            33.0, 34.0, 35.0, 36.0),
+               uniform float3 pairs[2] = { { 41.0, 42.0, 43.0 },
+                                            { 44.0, 45.0, 46.0 } })
+{
+    VertexOut output;
+    output.position = mul(matrix4, position);
+    output.position.xy = mul(matrix2, output.position.xy) +
+                         mul(matrix3, pairs[0]).xy;
+    return output;
+}

@@ -79,6 +79,8 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_LATE_BINDINGS              5
 #define CAPS_INDEXED_ARRAYS             6
 #define CAPS_DONT_FLATTEN_IF_STATEMENTS 7
+#define CAPS_MATRIX_CONSTRUCTOR_AST     8
+#define CAPS_AGGREGATE_DEFAULT_BINDINGS 9
 
 struct slProfile_Rec {
     slProfile *next;
@@ -216,6 +218,7 @@ ConnectorDescriptor *LookupConnectorHAL(ConnectorDescriptor *connectors, int cid
 void SetSymbolConnectorBindingHAL(Binding *fBind, ConnectorRegisters *fConn);
 
 void AddConstantBinding(Binding *fBind);
-void AddDefaultBinding(Binding *fBind, const void *identity);
+void AddDefaultBinding(Binding *fBind, const void *identity,
+    const void *initializer, const void *type);
 
 #endif // !defined(__HAL_H)
