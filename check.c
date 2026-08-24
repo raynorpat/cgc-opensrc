@@ -136,7 +136,7 @@ static int ProgramReturnExprNeedsTemp(expr *fExpr)
         return ProgramReturnExprNeedsTemp(fExpr->un.arg);
     case BINARY_N:
         if (fExpr->bin.op == FUN_CALL_OP ||
-            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+            fExpr->bin.op == FUN_INTRINSIC_OP) return 1;
         return ProgramReturnExprNeedsTemp(fExpr->bin.left) ||
                ProgramReturnExprNeedsTemp(fExpr->bin.right);
     case TRINARY_N:

@@ -376,7 +376,7 @@ expr *ConstantFoldNode(expr *fexpr, void *_arg1, int arg2)
         case MEMBER_SELECTOR_OP:
         case ARRAY_INDEX_OP:
         case FUN_CALL_OP:
-        case FUN_BUILTIN_OP:
+        case FUN_INTRINSIC_OP:
         case FUN_ARG_OP:
         case EXPR_LIST_OP:
             break;

@@ -1,26 +1,17 @@
 // Standard library for CG
 // The contents of this file will be automatically #included in a special
 // global scope before every CG input file
-
-typedef packed float4 float4x4[4];
-typedef packed float3 float4x3[4];
-typedef packed float2 float4x2[4];
-typedef packed float1 float4x1[4];
-typedef packed float4 float3x4[3];
-typedef packed float3 float3x3[3];
-typedef packed float2 float3x2[3];
-typedef packed float1 float3x1[3];
-typedef packed float4 float2x4[2];
-typedef packed float3 float2x3[2];
-typedef packed float2 float2x2[2];
-typedef packed float1 float2x1[2];
-typedef packed float4 float1x4[1];
-typedef packed float3 float1x3[1];
-typedef packed float2 float1x2[1];
-typedef packed float1 float1x1[1];
-
-// various useful library functions can be defined here, to make up
-// the standard library
+//
+// The Cg 2.0 intrinsics are installed declaratively by the compiler
+// itself (cg_stdlib.def / cg_stdlib.c) before this file parses, so only
+// portable function bodies whose implementation is itself valid Cg
+// remain here.  Canonical scalar, vector, and float matrix type
+// spellings are likewise predefined language types.
+//
+// Token-stream note: this source must stay free of double-precision
+// and greater-than-32-bit integer literals -- the 4-byte stdlib token
+// record cannot represent them.  It currently contains no numeric
+// literals at all, so the recorded stream is exact.
 
 #ifdef PROFILE_GLSLV
 #define PROFILE_GLSL 1
@@ -31,140 +22,14 @@ typedef packed float1 float1x1[1];
 
 #ifdef PROFILE_GLSL
 
-__internal float2 mul(float2x2 matrix, float2 value);
-__internal float3 mul(float3x3 matrix, float3 value);
-__internal float4 mul(float4x4 matrix, float4 value);
-
-__internal float dot(float left, float right);
-__internal float dot(float2 left, float2 right);
-__internal float dot(float3 left, float3 right);
-__internal float dot(float4 left, float4 right);
-__internal float3 cross(float3 left, float3 right);
-
-__internal float normalize(float value);
-__internal float2 normalize(float2 value);
-__internal float3 normalize(float3 value);
-__internal float4 normalize(float4 value);
-__internal float length(float value);
-__internal float length(float2 value);
-__internal float length(float3 value);
-__internal float length(float4 value);
-__internal float distance(float left, float right);
-__internal float distance(float2 left, float2 right);
-__internal float distance(float3 left, float3 right);
-__internal float distance(float4 left, float4 right);
-__internal float reflect(float incident, float normal);
-__internal float2 reflect(float2 incident, float2 normal);
-__internal float3 reflect(float3 incident, float3 normal);
-__internal float4 reflect(float4 incident, float4 normal);
-__internal float refract(float incident, float normal, float eta);
-__internal float2 refract(float2 incident, float2 normal, float eta);
-__internal float3 refract(float3 incident, float3 normal, float eta);
-__internal float4 refract(float4 incident, float4 normal, float eta);
-
-__internal float min(float left, float right);
-__internal float2 min(float2 left, float2 right);
-__internal float3 min(float3 left, float3 right);
-__internal float4 min(float4 left, float4 right);
-__internal float max(float left, float right);
-__internal float2 max(float2 left, float2 right);
-__internal float3 max(float3 left, float3 right);
-__internal float4 max(float4 left, float4 right);
-__internal float clamp(float value, float low, float high);
-__internal float2 clamp(float2 value, float2 low, float2 high);
-__internal float3 clamp(float3 value, float3 low, float3 high);
-__internal float4 clamp(float4 value, float4 low, float4 high);
-__internal float2 clamp(float2 value, float low, float high);
-__internal float3 clamp(float3 value, float low, float high);
-__internal float4 clamp(float4 value, float low, float high);
-__internal float lerp(float left, float right, float amount);
-__internal float2 lerp(float2 left, float2 right, float2 amount);
-__internal float3 lerp(float3 left, float3 right, float3 amount);
-__internal float4 lerp(float4 left, float4 right, float4 amount);
-__internal float2 lerp(float2 left, float2 right, float amount);
-__internal float3 lerp(float3 left, float3 right, float amount);
-__internal float4 lerp(float4 left, float4 right, float amount);
-
-__internal float abs(float value);
-__internal float2 abs(float2 value);
-__internal float3 abs(float3 value);
-__internal float4 abs(float4 value);
-__internal float sign(float value);
-__internal float2 sign(float2 value);
-__internal float3 sign(float3 value);
-__internal float4 sign(float4 value);
-__internal float floor(float value);
-__internal float2 floor(float2 value);
-__internal float3 floor(float3 value);
-__internal float4 floor(float4 value);
-__internal float ceil(float value);
-__internal float2 ceil(float2 value);
-__internal float3 ceil(float3 value);
-__internal float4 ceil(float4 value);
-__internal float sqrt(float value);
-__internal float2 sqrt(float2 value);
-__internal float3 sqrt(float3 value);
-__internal float4 sqrt(float4 value);
-__internal float rsqrt(float value);
-__internal float2 rsqrt(float2 value);
-__internal float3 rsqrt(float3 value);
-__internal float4 rsqrt(float4 value);
-__internal float frac(float value);
-__internal float2 frac(float2 value);
-__internal float3 frac(float3 value);
-__internal float4 frac(float4 value);
-__internal float saturate(float value);
-__internal float2 saturate(float2 value);
-__internal float3 saturate(float3 value);
-__internal float4 saturate(float4 value);
-
-__internal float exp(float value);
-__internal float2 exp(float2 value);
-__internal float3 exp(float3 value);
-__internal float4 exp(float4 value);
-__internal float exp2(float value);
-__internal float2 exp2(float2 value);
-__internal float3 exp2(float3 value);
-__internal float4 exp2(float4 value);
-__internal float log(float value);
-__internal float2 log(float2 value);
-__internal float3 log(float3 value);
-__internal float4 log(float4 value);
-__internal float log2(float value);
-__internal float2 log2(float2 value);
-__internal float3 log2(float3 value);
-__internal float4 log2(float4 value);
-__internal float sin(float value);
-__internal float2 sin(float2 value);
-__internal float3 sin(float3 value);
-__internal float4 sin(float4 value);
-__internal float cos(float value);
-__internal float2 cos(float2 value);
-__internal float3 cos(float3 value);
-__internal float4 cos(float4 value);
-__internal float tan(float value);
-__internal float2 tan(float2 value);
-__internal float3 tan(float3 value);
-__internal float4 tan(float4 value);
-__internal float asin(float value);
-__internal float2 asin(float2 value);
-__internal float3 asin(float3 value);
-__internal float4 asin(float4 value);
-__internal float acos(float value);
-__internal float2 acos(float2 value);
-__internal float3 acos(float3 value);
-__internal float4 acos(float4 value);
-__internal float atan(float value);
-__internal float2 atan(float2 value);
-__internal float3 atan(float3 value);
-__internal float4 atan(float4 value);
+// GLSL profiles lower catalog intrinsics by stable identity in
+// glsl_lower.c; no source-level prototypes are needed.  The marker
+// comments delimit the region stripped from the generic token stream
+// during stdlib regeneration.
 
 // CGC_GLSL_TEXTURES_BEGIN
-__internal float4 tex1D(sampler1D image, float coord);
-__internal float4 tex2D(sampler2D image, float2 coord);
-__internal float4 tex3D(sampler3D image, float3 coord);
-__internal float4 texCUBE(samplerCUBE image, float3 coord);
 // CGC_GLSL_TEXTURES_END
+
 #else
 
 float dot(float1 a, float1 b) { return a.x*b.x; }
@@ -196,10 +61,8 @@ float4 mul(float4x4 m, float4 v) {
     return rv;
 }
 
-// things can be declared __internal, which the profile needs to handle
-// specially (usually by generating a special instruction)
-
-__internal float rsqrt(float x);
+// Catalog rsqrt overloads gain vector wrappers written in portable Cg;
+// the scalar form stays a pure catalog intrinsic.
 
 float1 rsqrt(float1 x) {
     return float1(rsqrt(x.x));
@@ -217,8 +80,6 @@ float4 rsqrt(float4 x) {
 // different profiles can have things defined for them specifically
 
 #ifdef PROFILE_SPECIAL
-
-__internal float sin(float x);
 
 float1 sin(float1 x) {
     return float1(sin(x.x));
@@ -247,4 +108,3 @@ float3 max(float3 a, float3 b) { return a>b ? a : b; }
 float4 max(float4 a, float4 b) { return a>b ? a : b; }
 
 #endif /* PROFILE_GLSL */
-

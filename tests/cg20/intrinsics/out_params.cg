@@ -1,0 +1,37 @@
+// Cg 2.0 standard-library out-parameter intrinsics (Task 13).
+//
+// sincos, frexp, and modf deliver results through out-parameters bound
+// to real lvalues.  Compiled through the generic profile.
+
+struct OutParamsOut
+{
+    float4 value : POSITION;
+};
+
+OutParamsOut main(float4 position : ATTRIB0)
+{
+    OutParamsOut result;
+
+    float  x = position.x + 1.5;
+    float  s;
+    float  c;
+    float  e;
+    float  whole;
+
+    sincos(x, s, c);
+    frexp(x, e);
+    modf(x, whole);
+
+    float3 v = float3(position.x, position.y, position.z);
+    float3 w = float3(position.w, position.y, position.x);
+    float3 sv;
+    float3 cv;
+    float3 ev;
+
+    sincos(v + w, sv, cv);
+    frexp(length(v), ev.x);
+
+    result.value = float4(s + c, e + whole,
+                          sv.x + cv.y + ev.z, position.w);
+    return result;
+}

@@ -281,6 +281,47 @@ add_cg20_success(cg20_interface_conformance tests/cg20/interfaces/conformance.cg
 add_cg20_success(cg20_interface_dispatch tests/cg20/interfaces/dispatch.cg)
 add_cg20_success(cg20_overload_defaults tests/cg20/overloads/defaults.cg)
 
+# Cg 2.0 standard-library fixtures (Task 13): the numeric and texture
+# families compile through generic only; predefined_outputs exercises
+# the fragment-family helper structures under glslf and rejects them
+# under glslv.
+
+add_cg20_success(cg20_intrinsic_numeric
+    tests/cg20/intrinsics/numeric.cg)
+add_cg20_success(cg20_intrinsic_out_params
+    tests/cg20/intrinsics/out_params.cg)
+add_cg20_success(cg20_intrinsic_texture_families
+    tests/cg20/intrinsics/texture_families.cg)
+add_cg20_success(cg20_intrinsic_debug
+    tests/cg20/intrinsics/debug.cg)
+# The fragment-family helper structures answer only under glslf; both
+# rejecting profiles report the unknown-profile-specifier diagnostic at
+# the first use of the undeclared structure name.
+
+add_test(
+    NAME cg20_intrinsic_predefined_outputs_glslf
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslf
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/predefined_outputs.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake
+)
+
+set(cg20_predefined_outputs_source
+    ${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/predefined_outputs.cg)
+foreach(reject_profile glslv generic)
+    add_test(
+        NAME cg20_intrinsic_predefined_outputs_reject_${reject_profile}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${reject_profile}
+            -DSOURCE=${cg20_predefined_outputs_source}
+            -DCODE=1165
+            -DREASON=does.not.name.a.known.profile
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_helper_reject.cmake
+    )
+endforeach()
+
 # Profile-qualified overload resolution: each stage must select its own
 # exact overload and pass glslang validation on the generated program.
 function(add_cg20_profile_selection name profile stage entry marker)
@@ -436,6 +477,7 @@ add_executable(cg_types_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
     cg_types_test.c
@@ -458,6 +500,7 @@ add_executable(cg_overload_unit
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_overload.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
     cg_overload_test.c
@@ -475,10 +518,32 @@ add_test(
     COMMAND cg_overload_unit
 )
 
+add_executable(cg_stdlib_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    cg_stdlib_test.c
+)
+target_include_directories(cg_stdlib_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+set_target_properties(cg_stdlib_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_stdlib_unit
+    COMMAND cg_stdlib_unit
+)
+
 add_generic_regression(position position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
 add_generic_regression(reflection reflection.cg
-    aa2c396563920d50a7b45a6a06c359ec865faa338de4ad42294143a1243b6d8b)
+    54c9eafeef857ed7d520e5e487293e0ff623e6463363edced7bde9877c5b159e)
 add_generic_regression(vertexlight vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
 # Hashes updated by "Parse Cg 2.0 type keywords": the new fixed keyword
@@ -490,6 +555,10 @@ add_generic_regression(vertexlight vertexlight.cg
 # IDs, which reorders top-level declarations in generic output.  Content
 # is unchanged (verified byte-equal modulo declaration order against the
 # pre-change build).
+# Hash updated by "Add the Cg 2.0 intrinsic catalog": the FUN_BUILTIN_OP
+# opcode was renamed FUN_INTRINSIC_OP, so the node dump for the one
+# intrinsic call in reflection.cg now prints "intrinsic" instead of
+# "builtin".  No other output content changed.
 add_generic_regression(vertexlight4 vertexlight4.cg
     8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg

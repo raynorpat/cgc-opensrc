@@ -30,5 +30,11 @@ OVERLOAD-DEFAULTS,valid-generic,cg20_overload_defaults,Function overloading
 OVERLOAD-DEFAULT-ORDER-DIAG,invalid-language,cg20_default_after_optional,Function overloading
 OVERLOAD-AMBIGUOUS-DIAG,invalid-language,cg20_ambiguous_overload,Function overloading
 STDLIB-INTRINSICS,valid-generic,cg20_stdlib_coverage,Cg Standard Library Functions
+STDLIB-NUMERIC,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-OUT-PARAMS,valid-generic,cg20_intrinsic_out_params,Cg Standard Library Functions
+STDLIB-TEXTURE-FAMILIES,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-DEBUG,valid-generic,cg20_intrinsic_debug,Cg Standard Library Functions
+STDLIB-PREDEFINED-OUTPUTS,valid-generic,cg20_intrinsic_predefined_outputs_glslf,Cg Standard Library Functions
+STDLIB-HELPER-REJECT,invalid-language,cg20_intrinsic_predefined_outputs_reject_glslv,Cg Standard Library Functions
 PROFILE-UNREACHABLE,backend-reject,cg20_unreachable_profile_feature,Profiles
 CGFX-TECHNIQUE,out-of-scope,cg20_manifest,CgFX exclusion

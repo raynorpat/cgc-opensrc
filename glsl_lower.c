@@ -51,6 +51,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "glsl_hal.h"
+#include "cg_stdlib.h"
 
 #define GLSL_MATRIX_MAX_ARGUMENTS 16
 
@@ -3146,6 +3147,57 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     return 1;
 }
 
+/*
+ * GlslIntrinsicBuiltin() - Map a stable catalog intrinsic identity to
+ *        its exact GLSL 1.10 builtin.  GLSL_BUILTIN_NONE means the
+ *        cataloged intrinsic has no exact GLSL 1.10 lowering and must
+ *        reach profile validation.  The Cg spellings map once here:
+ *        lerp to mix, frac to fract, rsqrt to inversesqrt,
+ *        saturate to clamp, and tex* to texture*.
+ */
+
+static GlslBuiltin GlslIntrinsicBuiltin(CgIntrinsic intrinsic)
+{
+    switch (intrinsic) {
+    case CG_INTRINSIC_MUL:       return GLSL_BUILTIN_MUL;
+    case CG_INTRINSIC_DOT:       return GLSL_BUILTIN_DOT;
+    case CG_INTRINSIC_CROSS:     return GLSL_BUILTIN_CROSS;
+    case CG_INTRINSIC_NORMALIZE: return GLSL_BUILTIN_NORMALIZE;
+    case CG_INTRINSIC_REFLECT:   return GLSL_BUILTIN_REFLECT;
+    case CG_INTRINSIC_REFRACT:   return GLSL_BUILTIN_REFRACT;
+    case CG_INTRINSIC_LENGTH:    return GLSL_BUILTIN_LENGTH;
+    case CG_INTRINSIC_DISTANCE:  return GLSL_BUILTIN_DISTANCE;
+    case CG_INTRINSIC_MIN:       return GLSL_BUILTIN_MIN;
+    case CG_INTRINSIC_MAX:       return GLSL_BUILTIN_MAX;
+    case CG_INTRINSIC_CLAMP:     return GLSL_BUILTIN_CLAMP;
+    case CG_INTRINSIC_ABS:       return GLSL_BUILTIN_ABS;
+    case CG_INTRINSIC_SIGN:      return GLSL_BUILTIN_SIGN;
+    case CG_INTRINSIC_FLOOR:     return GLSL_BUILTIN_FLOOR;
+    case CG_INTRINSIC_CEIL:      return GLSL_BUILTIN_CEIL;
+    case CG_INTRINSIC_SQRT:      return GLSL_BUILTIN_SQRT;
+    case CG_INTRINSIC_EXP:       return GLSL_BUILTIN_EXP;
+    case CG_INTRINSIC_EXP2:      return GLSL_BUILTIN_EXP2;
+    case CG_INTRINSIC_LOG:       return GLSL_BUILTIN_LOG;
+    case CG_INTRINSIC_LOG2:      return GLSL_BUILTIN_LOG2;
+    case CG_INTRINSIC_SIN:       return GLSL_BUILTIN_SIN;
+    case CG_INTRINSIC_COS:       return GLSL_BUILTIN_COS;
+    case CG_INTRINSIC_TAN:       return GLSL_BUILTIN_TAN;
+    case CG_INTRINSIC_ASIN:      return GLSL_BUILTIN_ASIN;
+    case CG_INTRINSIC_ACOS:      return GLSL_BUILTIN_ACOS;
+    case CG_INTRINSIC_ATAN:      return GLSL_BUILTIN_ATAN;
+    case CG_INTRINSIC_RSQRT:     return GLSL_BUILTIN_RSQRT;
+    case CG_INTRINSIC_LERP:      return GLSL_BUILTIN_LERP;
+    case CG_INTRINSIC_FRAC:      return GLSL_BUILTIN_FRAC;
+    case CG_INTRINSIC_SATURATE:  return GLSL_BUILTIN_SATURATE;
+    case CG_INTRINSIC_TEX1D:     return GLSL_BUILTIN_TEX1D;
+    case CG_INTRINSIC_TEX2D:     return GLSL_BUILTIN_TEX2D;
+    case CG_INTRINSIC_TEX3D:     return GLSL_BUILTIN_TEX3D;
+    case CG_INTRINSIC_TEXCUBE:   return GLSL_BUILTIN_TEXCUBE;
+    default:
+        return GLSL_BUILTIN_NONE;
+    }
+} // GlslIntrinsicBuiltin
+
 static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
                                const GlslType *type)
 {
@@ -3167,14 +3219,26 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
     function = GlslFindFunction(context->module, symbol);
     if (function != NULL) {
         name = function->name;
-    } else if (source->bin.op == FUN_BUILTIN_OP && symbol != NULL &&
+    } else if (source->bin.op == FUN_INTRINSIC_OP && symbol != NULL &&
                symbol->kind == FUNCTION_S &&
-               (symbol->properties & SYMB_IS_BUILTIN) &&
-               symbol->details.fun.group == GLSL_BUILTIN_GROUP &&
-               (source->bin.subop >> 16) == GLSL_BUILTIN_GROUP &&
-               (source->bin.subop & 0xffff) == symbol->details.fun.index)
+               (symbol->properties & SYMB_IS_BUILTIN))
     {
-        builtin = (GlslBuiltin) symbol->details.fun.index;
+        const CgIntrinsicSignature *signature =
+            CgIntrinsicSignatureForSymbol(symbol);
+
+        /* Lowering is keyed on the stable intrinsic identity carried by
+         * the selected symbol, never on a name lookup.  A cataloged
+         * intrinsic without an exact GLSL 1.10 lowering fails profile
+         * validation with the existing intrinsic diagnostic. */
+        builtin = signature != NULL ?
+                  GlslIntrinsicBuiltin(signature->intrinsic) :
+                  GLSL_BUILTIN_NONE;
+        if (builtin == GLSL_BUILTIN_NONE) {
+            GlslRecordFailureKind(context, GLSL_ERROR_INTRINSIC,
+                signature != NULL ? signature->name :
+                GetAtomString(atable, symbol->name));
+            return NULL;
+        }
         name = GlslBuiltinSpelling(builtin);
         if (name == NULL)
             return NULL;
@@ -3196,7 +3260,6 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
             return NULL;
     }
     if (function == NULL) {
-        builtin = (GlslBuiltin) symbol->details.fun.index;
         if (!GlslValidateTextureCall(context, builtin, type, arguments))
             return NULL;
         if (builtin == GLSL_BUILTIN_MUL ||
@@ -3537,7 +3600,7 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
             return target;
         }
         if (source->bin.op == FUN_CALL_OP ||
-            source->bin.op == FUN_BUILTIN_OP)
+            source->bin.op == FUN_INTRINSIC_OP)
             return GlslLowerCall(context, source, &type);
         if ((source->bin.op == ASSIGN_OP ||
              source->bin.op == ASSIGN_V_OP ||

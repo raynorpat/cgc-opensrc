@@ -128,6 +128,11 @@ typedef enum StrorageClass {
 
 union stmt_rec;
 
+// Defined in "cg_stdlib.h"; kept as a forward declaration here so the
+// symbol table never includes that header (header-cycle rule):
+
+struct CgIntrinsicSignature_Rec;
+
 // Typedefs for things defined here in "symbols.h":
 
 typedef struct Scope_Rec Scope;
@@ -258,6 +263,9 @@ struct FunSymbol_Rec {
     int flags;          // Unused since Cg 2.0: resolution is non-mutating (cg_overload.h)
     short group;        // Built-in function group
     short index;        // Built-in function index
+    const struct CgIntrinsicSignature_Rec *intrinsic;
+                        // Immutable catalog signature of a declarative
+                        // standard-library intrinsic, NULL otherwise
     char HasOutParams;
     int semantics;      // Return value semantic recorded on declaration, 0 if none
     Type *ownerType;    // Owning struct or interface for methods, NULL otherwise

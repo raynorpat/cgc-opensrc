@@ -979,7 +979,7 @@ void lPrintExpr(expr *fexpr)
             printf("[");
             break;
         case FUN_CALL_OP:
-        case FUN_BUILTIN_OP:
+        case FUN_INTRINSIC_OP:
         case INTERFACE_CALL_OP:
             printf("(");
             break;
@@ -1137,7 +1137,7 @@ void lPrintExpr(expr *fexpr)
             printf("]");
             break;
         case FUN_CALL_OP:
-        case FUN_BUILTIN_OP:
+        case FUN_INTRINSIC_OP:
         case INTERFACE_CALL_OP:
             printf(")");
             break;

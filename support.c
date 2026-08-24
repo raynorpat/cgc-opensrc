@@ -2676,7 +2676,11 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
         }
     }
     if (lSymb->type->properties & TYPE_MISC_INTERNAL) {
-        {
+        if (lSymb->details.fun.intrinsic != NULL) {
+            /* Declarative catalog intrinsic: identity and validity are
+             * pinned at installation; no profile name-mapping here. */
+            lSymb->properties |= SYMB_IS_BUILTIN;
+        } else {
             int errorsBefore = GetErrorCount();
             index = Cg->theHAL->CheckInternalFunction(lSymb, &group);
             if (index) {
@@ -4131,21 +4135,23 @@ static Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb,
         if (lResult.ambiguous) {
             SemanticError(loc, ERROR_S_AMBIGUOUS_FUN_REFERENCE,
                           GetAtomString(atable, fSymb->name));
-        } else {
-            SemanticError(loc, ERROR_S_NO_COMPAT_OVERLOADED_FUN,
-                          GetAtomString(atable, fSymb->name));
-        }
 #if 1 // Detailed error messages - requires printing of types
-        lSymb = fSymb;
-        while (lSymb) {
-            printf("    #%d: ", ++numvalid);
-            PrintType(lSymb->type->fun.rettype, 0);
-            printf(" %s", GetAtomString(atable, lSymb->name));
-            PrintType(lSymb->type, 0);
-            printf("\n");
-            lSymb = lSymb->details.fun.overload;
-        }
+            lSymb = fSymb;
+            while (lSymb) {
+                printf("    #%d: ", ++numvalid);
+                PrintType(lSymb->type->fun.rettype, 0);
+                printf(" %s", GetAtomString(atable, lSymb->name));
+                PrintType(lSymb->type, 0);
+                printf("\n");
+                lSymb = lSymb->details.fun.overload;
+            }
 #endif
+            return fSymb;
+        }
+        /* No viable overload: fall back to ordinary argument binding
+         * against the first declaration so the call reports its one
+         * precise diagnostic (arity, parameter type, ...) exactly like
+         * a lone prototype would. */
         return fSymb;
     }
     lSymb = lResult.symbol;
@@ -4267,8 +4273,14 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                     funType = funExpr->common.type = lSymb->type;
                 }
                 if (funType->properties & TYPE_MISC_INTERNAL) {
-                    lop = FUN_BUILTIN_OP;
-                    lsubop = (lSymb->details.fun.group << 16) | lSymb->details.fun.index;
+                    /* An intrinsic call carries its identity through
+                     * the selected symbol's immutable catalog
+                     * signature; a body attached by a portable
+                     * stdlib definition turns the call back into an
+                     * ordinary inlined call.  No packed group/index
+                     * encoding exists anymore. */
+                    if (lSymb->details.fun.statements == NULL)
+                        lop = FUN_INTRINSIC_OP;
                 }
             } else {
                 InternalError(loc, ERROR_S_SYMBOL_NOT_FUNCTION, GetAtomString(atable, lSymb->name));

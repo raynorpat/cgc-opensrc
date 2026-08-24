@@ -1,0 +1,20 @@
+// Cg 2.0 debug() intrinsic (Task 13).
+//
+// Calls debug(float4), whose catalog signature carries the side-effect
+// flag (CG_INTRINSIC_SIDE_EFFECTS).  The unit test asserts the flag on
+// the installed signature; this fixture proves a program using it
+// still compiles cleanly.
+
+struct DebugOut
+{
+    float4 col : POSITION;
+};
+
+DebugOut main(float4 color : ATTRIB0)
+{
+    DebugOut result;
+
+    debug(color);
+    result.col = color * 0.5;
+    return result;
+}

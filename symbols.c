@@ -52,6 +52,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_stdlib.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Symbol Table Variables: ///////////////////////////////////
@@ -152,12 +153,9 @@ void SetScalarTypeName(int base, int name, Type *fType)
  * RegisterStandardTypeSpellings() - Add typedef symbols for the scalar and
  *                                    vector spellings of one canonical kind.
  *
- * Matrix spellings are deliberately not registered here: predefined
- * typedefs of those names collide with the scanner's typedef-name lookup
- * when stdlib.cg (float1x1-float4x4) or user code redefines them, and
- * bulk-interning the extra atoms reshuffles symbol-tree order enough to
- * perturb generic-profile output.  Task 5 moves the spellings into the
- * grammar; the registry itself already interns every matrix shape.
+ * Matrix spellings are registered separately (see
+ * RegisterMatrixSpellings): the language now owns the canonical
+ * float1x1-float4x4 names, and stdlib.cg no longer redefines them.
  *
  */
 
@@ -176,6 +174,34 @@ static void RegisterStandardTypeSpellings(SourceLoc *loc, Scope *fScope,
         AddSymbol(loc, fScope, LookUpAddString(atable, spelling), fType, TYPEDEF_S);
     }
 } // RegisterStandardTypeSpellings
+
+/*
+ * RegisterMatrixSpellings() - Add typedef symbols for the canonical
+ *                             matrix spellings of one canonical kind
+ *                             over every interned (rows, columns)
+ *                             shape.  The spellings alias the registry
+ *                             types directly, so a predefined float4x3
+ *                             is the same type the old stdlib.cg
+ *                             "typedef packed float3 float4x3[4]"
+ *                             produced.
+ */
+
+static void RegisterMatrixSpellings(SourceLoc *loc, Scope *fScope,
+                                    CgScalarKind kind, const char *base)
+{
+    char spelling[16];
+    Type *fType;
+    int rows, columns;
+
+    for (rows = 1; rows <= 4; rows++) {
+        for (columns = 1; columns <= 4; columns++) {
+            sprintf(spelling, "%s%dx%d", base, rows, columns);
+            fType = GetStandardTypeKind(kind, rows, columns);
+            AddSymbol(loc, fScope, LookUpAddString(atable, spelling),
+                      fType, TYPEDEF_S);
+        }
+    }
+} // RegisterMatrixSpellings
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Symbol Table Fuctions: ////////////////////////////////////
@@ -252,6 +278,11 @@ int InitSymbolTable(CgStruct *Cg)
                                       standardTypeNames[declarationKinds[ii]]);
     }
 
+    // Canonical float matrix spellings are language-level predefined
+    // types (the stdlib.cg source-level duplicates are gone):
+
+    RegisterMatrixSpellings(&dummyLoc, CurrentScope, CG_SCALAR_FLOAT, "float");
+
     // Canonical sampler typedefs are language types in every profile;
     // profile backends adapt them to their texture-object bases.
 
@@ -300,6 +331,15 @@ int InitSymbolTable(CgStruct *Cg)
 
     Cg->theHAL->RegisterNames(Cg->theHAL);
     AddAtom(atable, "<*** end hal specific atoms ***>");
+
+    // Install the declarative Cg 2.0 standard library over the
+    // super-global scope: every catalog signature becomes an ordinary
+    // internal function symbol, and the helper-structure variants
+    // follow the selected profile family.  This runs before stdlib.cg
+    // parses, so portable bodies in that file merge onto the matching
+    // catalog symbols.
+
+    InitCgStdlib(CurrentScope);
 
     // Initialize misc. other globals:
 

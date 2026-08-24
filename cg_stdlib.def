@@ -1,0 +1,155 @@
+/****************************************************************************\
+Copyright (c) 2002, NVIDIA Corporation.
+
+NVIDIA Corporation("NVIDIA") supplies this software to you in
+consideration of your agreement to the following terms, and your use,
+installation, modification or redistribution of this NVIDIA software
+constitutes acceptance of these terms.  If you do not agree with these
+terms, please do not use, install, modify or redistribute this NVIDIA
+software.
+
+In consideration of your agreement to abide by the following terms, and
+subject to these terms, NVIDIA grants you a personal, non-exclusive
+license, under NVIDIA's copyrights in this original NVIDIA software (the
+"NVIDIA Software"), to use, reproduce, modify and redistribute the
+NVIDIA Software, with or without modifications, in source and/or binary
+forms; provided that if you redistribute the NVIDIA Software, you must
+retain the copyright notice of NVIDIA, this notice and the following
+text and disclaimers in all such redistributions of the NVIDIA Software.
+Neither the name, trademarks, service marks nor logos of NVIDIA
+Corporation may be used to endorse or promote products derived from the
+NVIDIA Software without specific prior written permission from NVIDIA.
+Except as expressly stated in this notice, no other rights or licenses
+express or implied, are granted by NVIDIA herein, including but not
+limited to any patent rights that may be infringed by your derivative
+works or by other works in which the NVIDIA Software may be
+incorporated. No hardware is licensed hereunder.
+
+THE NVIDIA SOFTWARE IS BEING PROVIDED ON AN "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+INCLUDING WITHOUT LIMITATION, WARRANTIES OF CONDITIONS OF TITLE,
+NON-INFRINGEMENT, MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY SPECIAL,
+INDIRECT, INCIDENTAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
+OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+\****************************************************************************/
+
+//
+// cg_stdlib.def - Declarative rows of the Cg 2.0 intrinsic catalog.
+//
+// Each CG_INTRINSIC row names one stable intrinsic identity whose id is
+// fixed by row order; cg_stdlib.c expands every id into its documented
+// overload family.  The pinned name set is Tables 1-5 of the archived
+// Cg 2.0.0010 User's Manual; later Cg entries (bias/lod/fetch/size,
+// clip, fwidth, integer samplers) are deliberately absent.
+//
+// The helper-structure rows at the bottom introduce predefined types,
+// not calls, so they are expanded only when CG_STDLIB_HELPERS is
+// defined; the opcode pass skips them entirely.
+//
+
+CG_INTRINSIC(ABS,          "abs",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ACOS,         "acos",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ALL,          "all",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ANY,          "any",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ASIN,         "asin",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ATAN,         "atan",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ATAN2,        "atan2",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(CEIL,         "ceil",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(CLAMP,        "clamp",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(COS,          "cos",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(COSH,         "cosh",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(CROSS,        "cross",        CG_INTRINSIC_PURE)
+CG_INTRINSIC(DEGREES,      "degrees",      CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(DETERMINANT,  "determinant",  CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(DOT,          "dot",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(EXP,          "exp",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(EXP2,         "exp2",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(FLOOR,        "floor",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(FMOD,         "fmod",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(FRAC,         "frac",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(FREXP,        "frexp",        CG_INTRINSIC_OUT_PARAMS)
+CG_INTRINSIC(ISFINITE,     "isfinite",     CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ISINF,        "isinf",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ISNAN,        "isnan",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(LDEXP,        "ldexp",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(LERP,         "lerp",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(LIT,          "lit",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(LOG,          "log",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(LOG10,        "log10",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(LOG2,         "log2",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(MAX,          "max",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(MIN,          "min",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(MODF,         "modf",         CG_INTRINSIC_OUT_PARAMS)
+CG_INTRINSIC(MUL,          "mul",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(NOISE,        "noise",        CG_INTRINSIC_PURE)
+CG_INTRINSIC(POW,          "pow",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(RADIANS,      "radians",      CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(ROUND,        "round",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(RSQRT,        "rsqrt",        CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(SATURATE,     "saturate",     CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(SIGN,         "sign",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(SIN,          "sin",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(SINCOS,       "sincos",       CG_INTRINSIC_OUT_PARAMS)
+CG_INTRINSIC(SINH,         "sinh",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(SMOOTHSTEP,   "smoothstep",   CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(SQRT,         "sqrt",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(STEP,         "step",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(TAN,          "tan",          CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(TANH,         "tanh",         CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(TRANSPOSE,    "transpose",    CG_INTRINSIC_PURE)
+CG_INTRINSIC(DISTANCE,     "distance",     CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(FACEFORWARD,  "faceforward",  CG_INTRINSIC_PURE)
+CG_INTRINSIC(LENGTH,       "length",       CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
+CG_INTRINSIC(NORMALIZE,    "normalize",    CG_INTRINSIC_PURE)
+CG_INTRINSIC(REFLECT,      "reflect",      CG_INTRINSIC_PURE)
+CG_INTRINSIC(REFRACT,      "refract",      CG_INTRINSIC_PURE)
+CG_INTRINSIC(DDX,          "ddx",          CG_INTRINSIC_DERIVATIVE)
+CG_INTRINSIC(DDY,          "ddy",          CG_INTRINSIC_DERIVATIVE)
+CG_INTRINSIC(DEBUG,        "debug",        CG_INTRINSIC_SIDE_EFFECTS)
+CG_INTRINSIC(TEX1D,        "tex1D",        CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEX1DPROJ,    "tex1Dproj",    CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEX2D,        "tex2D",        CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEX2DPROJ,    "tex2Dproj",    CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEX3D,        "tex3D",        CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEX3DPROJ,    "tex3Dproj",    CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEXCUBE,      "texCUBE",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEXCUBEPROJ,  "texCUBEproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEXRECT,      "texRECT",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(TEXRECTPROJ,  "texRECTproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEX1D,      "h4tex1D",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEX1D,      "x4tex1D",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEX1DPROJ,  "h4tex1Dproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEX1DPROJ,  "x4tex1Dproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEX2D,      "h4tex2D",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEX2D,      "x4tex2D",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEX2DPROJ,  "h4tex2Dproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEX2DPROJ,  "x4tex2Dproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEX3D,      "h4tex3D",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEX3D,      "x4tex3D",      CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEX3DPROJ,  "h4tex3Dproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEX3DPROJ,  "x4tex3Dproj",  CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEXCUBE,    "h4texCUBE",    CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEXCUBE,    "x4texCUBE",    CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEXCUBEPROJ, "h4texCUBEproj", CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEXCUBEPROJ, "x4texCUBEproj", CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEXRECT,    "h4texRECT",    CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEXRECT,    "x4texRECT",    CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(H4TEXRECTPROJ, "h4texRECTproj", CG_INTRINSIC_TEXTURE)
+CG_INTRINSIC(X4TEXRECTPROJ, "x4texRECTproj", CG_INTRINSIC_TEXTURE)
+
+#ifdef CG_STDLIB_HELPERS
+
+// Predefined output helper structures: declarative type rows selected
+// by the current profile family during installation.  They never
+// participate in intrinsic opcode generation because they introduce
+// types, not calls.
+
+CG_STDLIB_HELPER(FRAGOUT,      "fragout",      CG_PROFILE_STAGE_FRAGMENT)
+CG_STDLIB_HELPER(FRAGOUT_FLOAT, "fragout_float", CG_PROFILE_STAGE_FRAGMENT)
+
+#endif // CG_STDLIB_HELPERS

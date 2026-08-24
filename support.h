@@ -128,7 +128,7 @@ typedef enum subopkind {
     PICK( MEMBER_SELECTOR_OP, "mselect", '.',   BINARY_N, SUB_NONE ), \
     PICK( ARRAY_INDEX_OP,     "index",   '[',   BINARY_N, SUB_NONE ), \
     PICK( FUN_CALL_OP,        "call",    '(',   BINARY_N, SUB_NONE ), \
-    PICK( FUN_BUILTIN_OP,     "builtin", 0,     BINARY_N, SUB_NONE ), \
+    PICK( FUN_INTRINSIC_OP,   "intrinsic", 0,   BINARY_N, SUB_NONE ), \
     PICK( INTERFACE_CALL_OP,  "icall",   '(',   BINARY_N, SUB_NONE ), \
     PICK( FUN_ARG_OP,         "arg",     0,     BINARY_N, SUB_NONE ), \
     PICK( EXPR_LIST_OP,       "list",    0,     BINARY_N, SUB_NONE ), \

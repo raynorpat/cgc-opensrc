@@ -57,6 +57,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "glsl_hal.h"
+#include "cg_stdlib.h"
 
 /*
  * OpenOutputFile()
@@ -962,13 +963,17 @@ stmt *ConvertDebugCallsStmt(stmt *fStmt, void *arg1, int arg2)
         // Look for a call to "debug(float4)":
 
         eExpr = fStmt->exprst.exp;
-        if (eExpr && eExpr->common.kind == BINARY_N && eExpr->bin.op == FUN_BUILTIN_OP) {
+        if (eExpr && eExpr->common.kind == BINARY_N &&
+            eExpr->bin.op == FUN_INTRINSIC_OP)
+        {
             sExpr = eExpr->bin.left;
             if (sExpr->common.kind == SYMB_N) {
+                /* debug(float4) is recognized by its stable catalog
+                 * identity, not by any group/index encoding. */
                 lSymb = sExpr->sym.symbol;
-#define BUILTIN_GROUP_NV30FP_DBG     0
-                if (lSymb->details.fun.group == BUILTIN_GROUP_NV30FP_DBG &&
-                    lSymb->details.fun.index == 0x444)
+                if (CgIntrinsicSignatureForSymbol(lSymb) != NULL &&
+                    CgIntrinsicSignatureForSymbol(lSymb)->intrinsic ==
+                        CG_INTRINSIC_DEBUG)
                 {
                     if (arg2) {
 
@@ -1870,7 +1875,7 @@ static int AggregateExprNeedsMaterialization(expr *fExpr)
         return AggregateExprNeedsMaterialization(fExpr->un.arg);
     case BINARY_N:
         if (fExpr->bin.op == FUN_CALL_OP ||
-            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+            fExpr->bin.op == FUN_INTRINSIC_OP) return 1;
         return AggregateExprNeedsMaterialization(fExpr->bin.left) ||
                AggregateExprNeedsMaterialization(fExpr->bin.right);
     case TRINARY_N:
