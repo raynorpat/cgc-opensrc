@@ -229,13 +229,32 @@ void PrintOptions(int argc, char **argv)
 } // PrintOptions
 
 /*
+ * CloseListingFile() - Write the closing trailer to an open listing
+ *          file and close it.  Returns zero if the close fails.
+ */
+
+static int CloseListingFile(const char *mess)
+{
+    if (Cg->options.ListFileOpen) {
+        fprintf(Cg->options.listfd, "%s %s\n", Cg->theHAL->comment, mess);
+        Cg->options.ListFileOpen = 0;
+        if (fclose(Cg->options.listfd)) {
+            FatalError("Error closing listing file.");
+            return 0;
+        }
+    }
+    return 1;
+} // CloseListingFile
+
+/*
  * CloseOutputFiles() - Write the closing trailer, then finish the
  *          output transaction.  The transaction commits -- replacing
  *          the destination atomically -- only when compilation is
- *          error-free and the closing write succeeds; every other
- *          path aborts, leaving the destination untouched and
- *          removing just the temporary.  The listing file keeps its
- *          historical close semantics.
+ *          error-free and every closing operation has succeeded,
+ *          including the listing close; every other path aborts,
+ *          leaving the destination untouched and removing just the
+ *          temporary.  The listing file keeps its historical close
+ *          semantics.
  */
 
 int CloseOutputFiles(const char *mess)
@@ -244,21 +263,22 @@ int CloseOutputFiles(const char *mess)
         if (!Cg->options.ListFileOpen)
             fprintf(Cg->options.outfd, "%s %s\n", Cg->theHAL->comment, mess);
         Cg->options.OutputFileOpen = 0;
+        Cg->options.outfd = NULL;
         if (GetErrorCount() != 0) {
             AbortOutputTransaction(&Cg->options.outputTransaction);
+            if (!CloseListingFile(mess))
+                return 0;
+        } else if (!CloseListingFile(mess)) {
+            /* The listing never finished, so the output must not be
+             * published either. */
+            AbortOutputTransaction(&Cg->options.outputTransaction);
+            return 0;
         } else if (CommitOutputTransaction(&Cg->options.outputTransaction)) {
             FatalError("Error closing output file.");
             return 0;
         }
-        Cg->options.outfd = NULL;
-    }
-    if (Cg->options.ListFileOpen) {
-        fprintf(Cg->options.listfd, "%s %s\n", Cg->theHAL->comment, mess);
-        Cg->options.ListFileOpen = 0;
-        if (fclose(Cg->options.listfd)) {
-            FatalError("Error closing listing file.");
-            return 0;
-        }
+    } else if (!CloseListingFile(mess)) {
+        return 0;
     }
     return 1;
 } // CloseOutputFiles

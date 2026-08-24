@@ -63,8 +63,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <process.h>
+#define CGC_GETPID() ((int) _getpid())
 #else
 #include <unistd.h>
+#define CGC_GETPID() ((int) getpid())
 #endif
 
 #include "output.h"
@@ -105,7 +107,7 @@ int BeginOutputTransaction(OutputTransaction *transaction,
         FILE *probe;
 
         sprintf(transaction->temporary, "%s.cgc-tmp-%d-%d",
-                destination, (int) _getpid(), lTempCounter++);
+                destination, CGC_GETPID(), lTempCounter++);
         probe = fopen(transaction->temporary, "rb");
         if (probe) {
             /* Candidate already taken; never touch another run's
