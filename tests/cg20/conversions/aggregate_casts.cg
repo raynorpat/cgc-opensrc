@@ -1,7 +1,9 @@
 // Cg 2.0 aggregate conversion coverage:
 //   - explicit pairwise casts between structs with equally many
 //     member-convertible members,
-//   - explicit casts between equal-size arrays whose element types convert.
+//   - explicit casts between equal-size arrays whose element types convert,
+//   - pairwise casts between structs whose data members match but which
+//     carry one method each (methods never participate in conversions).
 
 struct PairSource
 {
@@ -15,6 +17,28 @@ struct PairTarget
     unsigned int label;
 };
 
+struct MethodFirst
+{
+    float spin(float value)
+    {
+        return value * 2.0;
+    }
+
+    float amount;
+    int label;
+};
+
+struct MethodLast
+{
+    half amount;
+    unsigned int label;
+
+    float shift(float value)
+    {
+        return value + 1.0;
+    }
+};
+
 typedef float SourceRow[4];
 typedef int TargetRow[4];
 
@@ -24,12 +48,20 @@ float4 main(float4 position : POSITION) : POSITION
     PairTarget dst;
     SourceRow row;
     TargetRow counts;
+    MethodFirst mfirst;
+    MethodLast mlast;
 
     src.amount = 1.0;
     src.label = 2;
 
     // Pairwise struct cast: every member pair converts explicitly.
     dst = (PairTarget)src;
+
+    // Methods are not data: identical data members plus one method each
+    // (declared before the data in mfirst, after it in mlast) still cast.
+    mfirst.amount = 3.0;
+    mfirst.label = 4;
+    mlast = (MethodLast)mfirst;
 
     // Equal-size array element conversion.
     row[0] = 1.0;
@@ -40,5 +72,6 @@ float4 main(float4 position : POSITION) : POSITION
 
     return position +
            float4(dst.amount + counts[0], dst.label * 0.0,
-                  counts[1] * 0.0, counts[3] * 0.0) * 0.0;
+                  counts[1] * 0.0, mlast.amount * 0.0 +
+                  mlast.label * 0.0) * 0.0;
 }

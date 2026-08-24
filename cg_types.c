@@ -427,7 +427,9 @@ static CgConversionRank lClassifyArrayToScalar(const Type *from,
 } // lClassifyArrayToScalar
 
 /*
- * lStructMembers() - Return the member symbol list of a struct type.
+ * lStructMembers() - Return the ordered data-member symbol list of a
+ *                    struct type.  Methods live only in the name-lookup
+ *                    tree, never in this list.
  *
  */
 
@@ -436,7 +438,7 @@ static Symbol *lStructMembers(const Type *structType)
     if (!structType->str.members) {
         return NULL;
     }
-    return structType->str.members->symbols;
+    return structType->str.members->params;
 } // lStructMembers
 
 /*
@@ -452,6 +454,20 @@ static int lImplementsInterface(const Type *from, const Type *to)
     return from->str.implementedInterface != NULL &&
            from->str.implementedInterface == to;
 } // lImplementsInterface
+
+/*
+ * lNextDataMember() - Advance to the next data member; methods are not
+ *                     data and never participate in conversions.
+ *
+ */
+
+static Symbol *lNextDataMember(Symbol *member)
+{
+    while (member && IsFunction(member)) {
+        member = member->next;
+    }
+    return member;
+} // lNextDataMember
 
 /*
  * lClassifyStructConversion() - Structure casts are explicit-only and take
@@ -475,16 +491,16 @@ static CgConversionRank lClassifyStructConversion(const Type *from,
     if (!explicitCast) {
         return CG_CONVERSION_NONE;
     }
-    fmember = lStructMembers(from);
-    tmember = lStructMembers(to);
+    fmember = lNextDataMember(lStructMembers(from));
+    tmember = lNextDataMember(lStructMembers(to));
     while (fmember && tmember) {
         if (CgClassifyConversion(fmember->type, tmember->type, 1) ==
             CG_CONVERSION_NONE)
         {
             return CG_CONVERSION_NONE;
         }
-        fmember = fmember->next;
-        tmember = tmember->next;
+        fmember = lNextDataMember(fmember->next);
+        tmember = lNextDataMember(tmember->next);
     }
     if (fmember || tmember) {
         return CG_CONVERSION_NONE;
@@ -494,8 +510,8 @@ static CgConversionRank lClassifyStructConversion(const Type *from,
 
 /*
  * lClassifyStructFrom() - Explicit cast of a structure to another category:
- *                         the value of its first member converts to the
- *                         target type.
+ *                         the value of its first data member converts to
+ *                         the target type.
  *
  */
 
@@ -507,7 +523,7 @@ static CgConversionRank lClassifyStructFrom(const Type *from,
     if (!explicitCast) {
         return CG_CONVERSION_NONE;
     }
-    first = lStructMembers(from);
+    first = lNextDataMember(lStructMembers(from));
     if (!first) {
         return CG_CONVERSION_NONE;
     }
@@ -515,9 +531,9 @@ static CgConversionRank lClassifyStructFrom(const Type *from,
 } // lClassifyStructFrom
 
 /*
- * lClassifyStructTo() - Explicit cast into a structure: only one-member
- *                       structures can be formed, from a value convertible
- *                       to that member's type.
+ * lClassifyStructTo() - Explicit cast into a structure: only structures
+ *                       with a single data member can be formed, from a
+ *                       value convertible to that member's type.
  *
  */
 
@@ -529,8 +545,8 @@ static CgConversionRank lClassifyStructTo(const Type *from,
     if (!explicitCast) {
         return CG_CONVERSION_NONE;
     }
-    first = lStructMembers(to);
-    if (!first || first->next) {
+    first = lNextDataMember(lStructMembers(to));
+    if (!first || lNextDataMember(first->next)) {
         return CG_CONVERSION_NONE;
     }
     return CgClassifyConversion(from, first->type, 1);
