@@ -36,5 +36,6 @@ STDLIB-TEXTURE-FAMILIES,valid-generic,cg20_intrinsic_texture_families,Cg Standar
 STDLIB-DEBUG,valid-generic,cg20_intrinsic_debug,Cg Standard Library Functions
 STDLIB-PREDEFINED-OUTPUTS,valid-generic,cg20_intrinsic_predefined_outputs_glslf,Cg Standard Library Functions
 STDLIB-HELPER-REJECT,invalid-language,cg20_intrinsic_predefined_outputs_reject_glslv,Cg Standard Library Functions
+STDLIB-HELPER-REJECT-GENERIC,invalid-language,cg20_intrinsic_predefined_outputs_reject_generic,Cg Standard Library Functions
 PROFILE-UNREACHABLE,backend-reject,cg20_unreachable_profile_feature,Profiles
 CGFX-TECHNIQUE,out-of-scope,cg20_manifest,CgFX exclusion

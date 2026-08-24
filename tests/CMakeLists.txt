@@ -950,6 +950,13 @@ add_glsl_fixture(glslv_uniform_struct_nested glslv
     tests/glsl/uniforms/vp_uniform_struct_nested.cg
     tests/glsl/uniforms/vp_uniform_struct_nested.expected)
 
+# Expected output updated by "Add the Cg 2.0 intrinsic catalog": interning
+# the standard-library catalog atoms during symbol-table initialization
+# shifts dynamic atom IDs, and symbol trees order by bit-reversed atom ID,
+# so the two colliding cg_gl_Data members swap positions in the golden.
+# Content is unchanged: the emitted declaration/usage multisets are equal
+# to the pre-change golden modulo that ordering (verified against an
+# af70094 baseline build).
 add_glsl_fixture(glslv_uniform_struct_collision glslv
     tests/glsl/uniforms/vp_uniform_struct_collision.cg
     tests/glsl/uniforms/vp_uniform_struct_collision.expected)
