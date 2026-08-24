@@ -514,7 +514,10 @@ void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
             break;
         case TYPE_CATEGORY_ARRAY:
             FormatTypeString(name, size, name2, size2, fType->arr.eltype);
-            sprintf(tname, "[%d]", fType->arr.numels);
+            if (fType->arr.numels == CG_ARRAY_UNSIZED)
+                strcpy(tname, "[]");
+            else
+                sprintf(tname, "[%d]", fType->arr.numels);
             strcat(name2, tname);
             break;
         case TYPE_CATEGORY_FUNCTION:
@@ -592,7 +595,10 @@ void FormatTypeStringRT(char *name, int size, char *name2, int size2, Type *fTyp
                 strcat(name, tname);
             } else {
                 FormatTypeStringRT(name, size, name2, size2, fType->arr.eltype, Unqualified);
-                sprintf(tname, "[%d]", fType->arr.numels);
+                if (fType->arr.numels == CG_ARRAY_UNSIZED)
+                    strcpy(tname, "[]");
+                else
+                    sprintf(tname, "[%d]", fType->arr.numels);
                 strcat(name2, tname);
             }
             break;
@@ -663,7 +669,10 @@ void PrintType(Type *fType, int level)
             break;
         case TYPE_CATEGORY_ARRAY:
             PrintType(fType->arr.eltype, level);
-            printf("[%d]", fType->arr.numels);
+            if (fType->arr.numels == CG_ARRAY_UNSIZED)
+                printf("[]");
+            else
+                printf("[%d]", fType->arr.numels);
             break;
         case TYPE_CATEGORY_FUNCTION:
             printf("(");
@@ -931,6 +940,9 @@ void lPrintExpr(expr *fexpr)
         case VECTOR_V_OP:
             printf(" }");
             break;
+        case ARRAY_LENGTH_OP:
+            printf(".length");
+            break;
         case POSTDEC_OP:
             printf("--");
             break;
@@ -1064,6 +1076,7 @@ void lPrintExpr(expr *fexpr)
         case ASSIGN_OP:
         case ASSIGN_V_OP:
         case ASSIGN_GEN_OP:
+        case ASSIGN_DYN_OP:
             printf(" = ");
             break;
         case ASSIGNMINUS_OP:

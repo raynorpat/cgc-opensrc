@@ -1238,6 +1238,11 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
         return 0;
     case TYPE_CATEGORY_SCALAR:
         if (dExpr->common.kind == BINARY_N && dExpr->bin.op == EXPR_LIST_OP) {
+            if (!dExpr->bin.left) {
+                /* "{}" parses as an empty initializer list. */
+                SemanticError(loc, ERROR___TOO_LITTLE_DATA);
+                return 0;
+            }
             lExpr = FoldConstants(dExpr->bin.left);
             if (lExpr->common.kind == CONST_N) {
                 if (ConvertType(loc, lExpr, vType, lExpr->co.type, &tExpr, 1, 0, 1)) {
@@ -1295,11 +1300,10 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                 } else {
                     subop = SUBOP_V(vlen, GetBase(vType));
                     dExpr->bin.left = (expr *) NewUnopSubNode(VECTOR_V_OP, subop, dExpr->bin.left);
-                    if (Cg->theHAL->GetCapsBit(
-                            CAPS_AGGREGATE_DEFAULT_BINDINGS) &&
-                        !IsVector(vType, NULL) &&
-                        !IsMatrix(vType, NULL, NULL))
-                    {
+                    if (!IsVector(vType, NULL) && !IsMatrix(vType, NULL, NULL)) {
+                        /* First-class arrays copy as their declared shape;
+                         * repacking them would change packedness and break
+                         * the whole-array rvalue copy. */
                         dExpr->bin.left->un.type = vType;
                     } else {
                         dExpr->bin.left->un.type =
@@ -1352,6 +1356,18 @@ decl *Param_Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fE
                 SemanticError(loc, ERROR_S_NON_UNIFORM_PARAM_INIT,
                               GetAtomString(atable, fDecl->name));
             }
+            /* An empty-bracket array parameter sizes its top-level
+             * dimension from the initializer list exactly like a local
+             * declaration; the count lives in the declaration-local
+             * dtype copy and survives GetTypePointer(). */
+            if (IsUnsizedArray(lType)) {
+                int numels = lCountInitializerElements(fExpr);
+                if (numels <= 0) {
+                    SemanticError(loc, ERROR_S_CANNOT_INFER_ARRAY_SIZE);
+                    return fDecl;
+                }
+                lType->arr.numels = numels;
+            }
             if (lCheckInitializationData(loc, lType, fExpr, 0)) {
                 fDecl->initexpr = fExpr;
             }
@@ -1361,13 +1377,73 @@ decl *Param_Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fE
 } // Param_Init_Declarator
 
 /*
+ * lCountInitializerElements() - Count the top-level elements of an
+ *         initializer list.  The grammar wraps every initializer in an
+ *         EXPR_LIST_OP node and chains the members of a brace list off the
+ *         wrapper's left node, so counting starts one level down.  An
+ *         empty or malformed list counts as zero so callers can report
+ *         that the size cannot be inferred.
+ *
+ */
+
+static int lCountInitializerElements(expr *fExpr)
+{
+    int numels = 0;
+
+    if (!fExpr || fExpr->common.kind != BINARY_N ||
+        fExpr->bin.op != EXPR_LIST_OP)
+    {
+        return 0;
+    }
+    fExpr = fExpr->bin.left;
+    while (fExpr &&
+           fExpr->common.kind == BINARY_N &&
+           fExpr->bin.op == EXPR_LIST_OP)
+    {
+        numels++;
+        fExpr = fExpr->bin.right;
+    }
+    return numels;
+} // lCountInitializerElements
+
+/*
+ * lSizeUnsizedArrayFromInitializer() - Replace the declared unsized array
+ *         type of "lSymb" with a concrete array whose top-level length is
+ *         the number of top-level elements in the initializer list.  The
+ *         declaration context owns this Type object (unsized types are not
+ *         interned), so replacing it cannot alias any other declaration.
+ *
+ * Returns: TRUE if the type was sized, FALSE after emitting the language
+ *          diagnostic for lists from which no size can be inferred.
+ *
+ */
+
+static int lSizeUnsizedArrayFromInitializer(SourceLoc *loc, Symbol *lSymb,
+                                            expr *fExpr)
+{
+    Type *nType;
+    int numels;
+
+    numels = lCountInitializerElements(fExpr);
+    if (numels <= 0) {
+        SemanticError(loc, ERROR_S_CANNOT_INFER_ARRAY_SIZE);
+        return 0;
+    }
+    nType = DupType(lSymb->type);
+    nType->arr.numels = numels;
+    nType->arr.size = Cg->theHAL->GetSizeof(nType);
+    lSymb->type = nType;
+    return 1;
+} // lSizeUnsizedArrayFromInitializer
+
+/*
  * Init_Declarator() - Set initial value and/or semantics for this declarator.
  *
  */
 
 stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
 {
-    int category, len, len2, base;
+    int category, base;
     stmt *lStmt = NULL;
     int IsGlobal, IsStatic, IsUniform, IsParam, DontAssign;
     Symbol *lSymb;
@@ -1392,6 +1468,17 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                 IsStatic = lSymb->storageClass == SC_STATIC;
                 IsUniform = GetDomain(lType) == TYPE_DOMAIN_UNIFORM;
                 IsParam = lSymb->properties & SYMB_IS_PARAMETER;
+                if (IsUnsizedArray(lType)) {
+                    /* An empty-bracket declarator with an initializer list
+                     * takes its top-level length from that list; without
+                     * one it stays dynamically sized and is only usable
+                     * through whole-array assignment. */
+                    if (fExpr) {
+                        if (!lSizeUnsizedArrayFromInitializer(loc, lSymb, fExpr))
+                            return lStmt;
+                        lType = lSymb->type;
+                    }
+                }
                 if (IsGlobal && !IsStatic) {
                     DontAssign = 1;
                 } else if (IsParam) {
@@ -1417,16 +1504,15 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                         }
                         break;
                     case TYPE_CATEGORY_ARRAY:
-                        if (IsVector(lType, &len) || IsMatrix(lType, &len, &len2)) {
-                            assert(fExpr->common.kind == BINARY_N && fExpr->bin.op == EXPR_LIST_OP);
-                            if (DontAssign) {
-                                lSymb->details.var.init = fExpr;
-                            } else {
-                                lExpr = (expr *) NewSymbNode(VARIABLE_OP, lSymb);
-                                lStmt = NewSimpleAssignmentStmt(loc, lExpr, fExpr->bin.left, 1);
-                            }
+                        /* Vectors, matrices, and first-class arrays all
+                         * take whole-aggregate initializers; the rvalue
+                         * copy is a full-array assignment. */
+                        assert(fExpr->common.kind == BINARY_N && fExpr->bin.op == EXPR_LIST_OP);
+                        if (DontAssign) {
+                            lSymb->details.var.init = fExpr;
                         } else {
-                            SemanticError(loc, ERROR___ARRAY2_INIT_NOT_DONE);
+                            lExpr = (expr *) NewSymbNode(VARIABLE_OP, lSymb);
+                            lStmt = NewSimpleAssignmentStmt(loc, lExpr, fExpr->bin.left, 1);
                         }
                         break;
                     }
@@ -1505,7 +1591,14 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                         SemanticError(&fDecl->loc, ERROR_S_INLINE_FOR_FUN,
                                       GetAtomString(atable, fDecl->name));
                     }
-                    if (IsUnsizedArray(lType)) {
+                    /* Unsized arrays are permitted where the language
+                     * gives them a dynamic shape: formal parameters are
+                     * handled above, and function locals can be assigned
+                     * from a sized array.  Globals and struct members
+                     * have no such context and stay invalid. */
+                    if (IsUnsizedArray(lType) &&
+                        (CurrentScope->level <= 1 || CurrentScope->IsStructScope))
+                    {
                         SemanticError(&fDecl->loc, ERROR_S_UNSIZED_ARRAY,
                                       GetAtomString(atable, fDecl->name));
                     }
@@ -1623,7 +1716,11 @@ decl *Array_Declarator(SourceLoc *loc, decl *fDecl, int size, int Empty)
     int dims;
 
     lDtype = &fDecl->type;
-    if (size <= 0 && !Empty) {
+    if (Empty) {
+        /* An empty bracket pair declares a dynamically sized array; the
+         * explicit sentinel keeps 0 reserved for invalid/recovery types. */
+        size = CG_ARRAY_UNSIZED;
+    } else if (size <= 0) {
         SemanticError(loc, ERROR___DIMENSION_LT_1);
         size = 1;
     }
@@ -2159,6 +2256,22 @@ int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
     if (IsSameUnqualifiedType(toType, fromType) &&
         ((ToPacked == FromPacked) || IgnorePacked))
     {
+        if (result)
+            *result = fExpr;
+        return 1;
+    }
+    if (GetCategory(toType) == TYPE_CATEGORY_ARRAY &&
+        GetCategory(fromType) == TYPE_CATEGORY_ARRAY &&
+        IsUnsizedArray(toType) &&
+        IsPacked(toType) == IsPacked(fromType) &&
+        IsSameUnqualifiedType(toType->arr.eltype, fromType->arr.eltype))
+    {
+        /* A concrete array binds identically to an unsized array with the
+         * same element shape (parameter passing and whole-array copies):
+         * the runtime length travels with the value, so no conversion
+         * node exists and no shape information is lost.  This is exact-
+         * shape compatibility, not a scalar<->aggregate shape conversion,
+         * so it stays valid while probing overload resolution too. */
         if (result)
             *result = fExpr;
         return 1;
@@ -3120,6 +3233,38 @@ expr *NewCastOperator(SourceLoc *loc, expr *fExpr, Type *toType)
 } // NewCastOperator
 
 /*
+ * lNewArrayLengthOperator() - Build the ".length" query on an array.
+ *
+ * Sized arrays fold to a compile-time int constant; unsized arrays keep
+ * an explicit ARRAY_LENGTH_OP node of canonical int type so the length
+ * stays a runtime value.
+ *
+ */
+
+static expr *lNewArrayLengthOperator(SourceLoc *loc, expr *fExpr)
+{
+    Type *ftype = fExpr->common.type;
+    constant *cexpr;
+    unary *result;
+    CgNumericValue value;
+
+    if (ftype && GetCategory(ftype) == TYPE_CATEGORY_ARRAY &&
+        ftype->arr.numels != CG_ARRAY_UNSIZED)
+    {
+        CgNumericSetSigned(&value, CG_SCALAR_CINT, ftype->arr.numels);
+        cexpr = NewNumericConstNode(ICONST_OP, &value);
+        return (expr *) cexpr;
+    }
+    result = NewUnopSubNode(ARRAY_LENGTH_OP, 0, fExpr);
+    result->type = GetStandardTypeKind(CG_SCALAR_INT, 0, 0);
+    result->targetType = NULL;
+    result->IsLValue = 0;
+    result->IsConst = 0;
+    result->HasSideEffects = fExpr->common.HasSideEffects;
+    return (expr *) result;
+} // lNewArrayLengthOperator
+
+/*
  * NewMemberSelectorOrSwizzleOrWriteMaskOperator() - Construct either a struct member
  *         operator,or a swizzle operator, or a writemask operator, depending upon the
  *         type of the expression "fExpr".   I think I'm gonna barf.
@@ -3131,7 +3276,16 @@ expr *NewMemberSelectorOrSwizzleOrWriteMaskOperator(SourceLoc *loc, expr *fExpr,
     int len, len2;
     expr *lExpr, *mExpr;
     Symbol *lSymb;
+    static int lengthAtom = 0;
 
+    /* ".length" on an array is a typed length query, detected before any
+     * structure lookup; arrays are never structs, so member access on
+     * structures is unaffected. */
+    if (!lengthAtom)
+        lengthAtom = LookUpAddString(atable, "length");
+    if (ident == lengthAtom && IsArray(lType)) {
+        return lNewArrayLengthOperator(loc, fExpr);
+    }
     if (IsCategory(lType, TYPE_CATEGORY_STRUCT)) {
         lSymb = LookUpLocalSymbol(lType->str.members, ident);
         if (lSymb) {
@@ -3433,6 +3587,22 @@ expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
         SemanticError(loc, ERROR___ASSIGN_TO_CONST_VALUE);
     if (vdomain == TYPE_DOMAIN_UNIFORM && edomain == TYPE_DOMAIN_VARYING)
         SemanticError(loc, ERROR___ASSIGN_VARYING_TO_UNIFORM);
+    if (IsArray(vType) && IsUnsizedArray(vType) && IsArray(eType)) {
+        /* Dynamic-array assignment: the destination keeps its declared
+         * unsized canonical type object; the node carries the runtime
+         * shape of the source.  The element shapes must agree, and
+         * packedness must agree at every nesting layer. */
+        if (IsPacked(vType) == IsPacked(eType) &&
+            IsSameUnqualifiedType(vType->arr.eltype, eType->arr.eltype))
+        {
+            lExpr = (expr *) NewBinopSubNode(ASSIGN_DYN_OP,
+                                             SUBOP__(GetBase(vType)),
+                                             fVar, fExpr);
+            lExpr->common.type = IsUnsizedArray(eType) ? vType : eType;
+            return lExpr;
+        }
+        SemanticError(loc, ERROR___ASSIGN_INCOMPATIBLE_TYPES);
+    }
     if (ConvertType(loc, fExpr, vType, eType, &lExpr, InInit, 0, 1)) {
         fExpr = lExpr;
     } else {

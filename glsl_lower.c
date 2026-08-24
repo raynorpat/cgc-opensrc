@@ -2976,7 +2976,8 @@ static GlslOperator GlslBinaryOperator(opcode op)
     switch (op) {
     case ASSIGN_OP:
     case ASSIGN_V_OP:
-    case ASSIGN_GEN_OP: return GLSL_OP_ASSIGN;
+    case ASSIGN_GEN_OP:
+    case ASSIGN_DYN_OP: return GLSL_OP_ASSIGN;
     case MUL_OP: case MUL_V_OP: case MUL_SV_OP: case MUL_VS_OP:
         return GLSL_OP_MULTIPLY;
     case DIV_OP: case DIV_V_OP: case DIV_SV_OP: case DIV_VS_OP:
@@ -3492,6 +3493,7 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
         if ((source->bin.op == ASSIGN_OP ||
              source->bin.op == ASSIGN_V_OP ||
              source->bin.op == ASSIGN_GEN_OP ||
+             source->bin.op == ASSIGN_DYN_OP ||
              source->bin.op == ASSIGN_MASKED_KV_OP) &&
             GlslMatrixSelectorCount(source->bin.left) > 1)
         {

@@ -715,6 +715,7 @@ static expr *CheckConnectorUsage(expr *fExpr, void *arg1, int arg2)
             case ASSIGN_OP:
             case ASSIGN_V_OP:
             case ASSIGN_GEN_OP:
+            case ASSIGN_DYN_OP:
             case ASSIGN_MASKED_KV_OP:
                 fExpr->bin.left = CheckConnectorUsage(fExpr->bin.left, arg1, 1);
                 fExpr->bin.right = CheckConnectorUsage(fExpr->bin.right, arg1, 0);

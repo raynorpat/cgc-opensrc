@@ -1,0 +1,32 @@
+struct Skinning
+{
+    float4 weights[8];
+    int count;
+};
+
+float4 blend(Skinning s)
+{
+    float4 acc = 0.0;
+    int i;
+    for (i = 0; i < s.weights.length; ++i)
+        acc += s.weights[i] * 0.0;
+    return acc;
+}
+
+Skinning rebind(Skinning s)
+{
+    Skinning t;
+    t = s;
+    t.count = s.weights.length;
+    return t;
+}
+
+float4 main(float4 p : POSITION) : POSITION
+{
+    Skinning skin;
+    int i;
+    for (i = 0; i < 8; ++i)
+        skin.weights[i] = p * 0.0;
+    skin.count = skin.weights.length;
+    return p + blend(skin) * 0.0 + rebind(skin).weights[0] * 0.0;
+}

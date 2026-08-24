@@ -403,6 +403,9 @@ static int GetSizeof_HAL(Type *fType)
                 } else {
                     size = len2*4;
                 }
+            } else if (fType->arr.numels == CG_ARRAY_UNSIZED) {
+                /* A dynamically sized array has no compile-time size. */
+                size = 0;
             } else {
                 size = Cg->theHAL->GetSizeof(fType->arr.eltype);
                 alignment = Cg->theHAL->GetAlignment(fType->arr.eltype);
@@ -466,7 +469,7 @@ static int CheckDeclarators_HAL(SourceLoc *loc, const dtype *fDtype)
 
     lType = &fDtype->type;
     while (GetCategory(lType) == TYPE_CATEGORY_ARRAY) {
-        if (lType->arr.numels == 0 && numdims > 0) {
+        if (lType->arr.numels == CG_ARRAY_UNSIZED && numdims > 0) {
             SemanticError(loc, ERROR___LOW_DIM_UNSPECIFIED);
             return 0;
         }

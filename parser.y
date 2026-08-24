@@ -590,6 +590,12 @@ initializer:              expression
                               { $$ = Initializer(Cg->tokenLoc, $2); }
                         | '{' initializer_list ',' '}'
                               { $$ = Initializer(Cg->tokenLoc, $2); }
+                        | '{' '}'
+                              /* An empty list: element counting in the
+                               * semantic actions decides whether the size
+                               * can be inferred ("cannot infer array size").
+                               */
+                              { $$ = Initializer(Cg->tokenLoc, NULL); }
 ;
 
 initializer_list:         initializer

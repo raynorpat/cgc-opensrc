@@ -108,6 +108,7 @@ typedef enum subopkind {
     PICK( CAST_CM_OP,   "castm",   '(', UNARY_N, SUB_CM ), \
     PICK( CAST_SHAPE_OP, "castshape", '(', UNARY_N, SUB_NONE ), \
     PICK( CAST_STRUCT_OP, "caststruct", '(', UNARY_N, SUB_NONE ), \
+    PICK( ARRAY_LENGTH_OP, "length", '.', UNARY_N, SUB_NONE ), \
     PICK( NEG_OP,       "neg",     '-', UNARY_N, SUB_S  ), \
     PICK( NEG_V_OP,     "negv",    '-', UNARY_N, SUB_V  ), \
     PICK( POS_OP,       "pos",     '+', UNARY_N, SUB_S  ), \
@@ -201,6 +202,7 @@ typedef enum subopkind {
     PICK( ASSIGN_OP,          "assign",  '=',   BINARY_N, SUB_S    ), \
     PICK( ASSIGN_V_OP,        "assignv", '=',   BINARY_N, SUB_V    ), \
     PICK( ASSIGN_GEN_OP,      "assigngen", '=', BINARY_N, SUB_NONE ), \
+    PICK( ASSIGN_DYN_OP,      "assigndyn", '=', BINARY_N, SUB_NONE ), \
     PICK( ASSIGN_MASKED_KV_OP, "assignm", '=',  BINARY_N, SUB_KV  ), \
     \
     PICK( ASSIGNMINUS_OP,     "assign-", ASSIGNMINUS_SY, BINARY_N, SUB_S ), \

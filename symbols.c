@@ -749,14 +749,16 @@ int IsMatrix(const Type *fType, int *len, int *len2)
 } // IsMatrix
 
 /*
- * IsUnsizedArray() - Returns TRUE if an array with an unspecified number of elements.
+ * IsUnsizedArray() - Returns TRUE if an array with an unspecified number of
+ *         elements.  Unsized arrays carry the CG_ARRAY_UNSIZED sentinel;
+ *         zero is reserved for invalid/recovery types.
  *
  */
 
 int IsUnsizedArray(const Type *fType)
 {
     if (GetCategory(fType) == TYPE_CATEGORY_ARRAY &&
-        fType->arr.numels == 0)
+        fType->arr.numels == CG_ARRAY_UNSIZED)
     {
         return 1;
     } else {
@@ -829,8 +831,12 @@ int IsSameUnqualifiedType(const Type *aType, const Type *bType)
             case TYPE_CATEGORY_SCALAR:
                 return 1;
             case TYPE_CATEGORY_ARRAY:
-                if (aType->arr.numels == bType->arr.numels) {
-                    // Should we check for Packed here??? I think so!
+                // Packedness is part of the type at every nesting layer,
+                // and the numels comparison is sentinel-aware: two unsized
+                // arrays of the same element type match, sized never
+                // matches unsized.
+                if (aType->arr.numels == bType->arr.numels &&
+                    IsPacked(aType) == IsPacked(bType)) {
                     return IsSameUnqualifiedType(aType->arr.eltype, bType->arr.eltype);
                 }
                 break;

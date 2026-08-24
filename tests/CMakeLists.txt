@@ -177,6 +177,9 @@ add_cg20_success(cg20_literal_suffixes tests/cg20/literals/suffixes.cg)
 add_cg20_success(cg20_conversions_numeric tests/cg20/conversions/numeric.cg)
 add_cg20_success(cg20_conversions_aggregate
     tests/cg20/conversions/aggregate_casts.cg)
+add_cg20_success(cg20_unsized_array tests/cg20/arrays/unsized.cg)
+add_cg20_success(cg20_arrays_nested_struct tests/cg20/arrays/nested_struct.cg)
+add_cg20_success(cg20_array_length tests/cg20/arrays/length.cg)
 add_test(
     NAME cg20_invalid_conversion
     COMMAND ${CMAKE_COMMAND}
@@ -187,6 +190,9 @@ add_test(
         -DMESSAGE=cast.not.allowed
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
 )
+add_generic_diagnostic(cg20_unsized_initializer
+    tests/cg20/diagnostics/unsized_initializer.cg 1117 3
+    "cannot.infer.array.size")
 add_test(
     NAME cg20_reserved_word
     COMMAND ${CMAKE_COMMAND}

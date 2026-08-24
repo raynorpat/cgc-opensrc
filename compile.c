@@ -1103,7 +1103,7 @@ int IsAssignSVOp(expr *fExpr)
         if (fExpr->common.kind == BINARY_N) {
             lop = fExpr->bin.op;
             if (lop == ASSIGN_OP || lop == ASSIGN_V_OP || lop == ASSIGN_GEN_OP ||
-                lop == ASSIGN_MASKED_KV_OP)
+                lop == ASSIGN_DYN_OP || lop == ASSIGN_MASKED_KV_OP)
             {
                 return 1;
             }
@@ -1792,6 +1792,11 @@ static void AssignAggregate(StmtList *fStatements, Type *fType,
         }
         break;
     case TYPE_CATEGORY_ARRAY:
+        /* A dynamically sized array carries its length at runtime, so it
+         * cannot be element-expanded here; such copies only exist in
+         * programs that reach a backend supporting them wholesale. */
+        if (fType->arr.numels == CG_ARRAY_UNSIZED)
+            break;
         lType = fType->arr.eltype;
         for (index = 0; index < fType->arr.numels; index++) {
             lExpr = NewIndexOperator(Cg->pLastSourceLoc,
@@ -2300,6 +2305,7 @@ static stmt *FlattenIfStatementsStmt(stmt *fStmt, void *arg1, int flevel)
                             nsubop = lsubop;
                             break;
                         case ASSIGN_GEN_OP:
+                        case ASSIGN_DYN_OP:
                             nop = ASSIGN_COND_GEN_OP;
                             nsubop = lsubop;
                             break;
@@ -2479,6 +2485,8 @@ static void lPrintUniformVariableDescription(FILE *out, const char *symbolName, 
             }
             fprintf(out, " : %d : %d", paramNo, 1);
             fprintf(out, "\n");
+        } else if (IsUnsizedArray(fType)) {
+            /* A dynamically sized uniform has no enumerable layout. */
         } else {
             for (ii = 0; ii < fType->arr.numels; ii++) {
                 sprintf(newSymbolName, "%s[%d]", symbolName, ii);

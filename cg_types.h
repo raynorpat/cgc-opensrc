@@ -51,6 +51,14 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 typedef union Type_Rec Type;
 
+/*
+ * Sentinel stored in TypeArray::numels for a dynamically sized (unsized)
+ * array.  Zero remains reserved for invalid/recovery types so that "no
+ * elements" is never confused with "unknown number of elements":
+ */
+
+#define CG_ARRAY_UNSIZED (-1)
+
 typedef enum CgScalarKind_Rec {
     CG_SCALAR_NONE = 0,
     CG_SCALAR_UNDEFINED,
