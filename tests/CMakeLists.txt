@@ -540,6 +540,29 @@ add_test(
     COMMAND cg_stdlib_unit
 )
 
+add_executable(cg_ir_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    cg_ir_test.c
+)
+target_include_directories(cg_ir_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+set_target_properties(cg_ir_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_ir_unit
+    COMMAND cg_ir_unit
+)
+
 add_generic_regression(position position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
 add_generic_regression(reflection reflection.cg

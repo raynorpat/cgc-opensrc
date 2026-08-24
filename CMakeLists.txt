@@ -15,6 +15,7 @@ add_executable(cgc
     atom.c
     binding.c
     cgcmain.c
+    cg_ir.c
     cg_numeric.c
     cg_overload.c
     cg_stdlib.c
