@@ -600,6 +600,7 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
     TypeList *parameter;
     Type *objectType, *expected;
     Symbol *member, *found;
+    const Symbol *methodFormals;
     CgConversionRank rank;
     int len, components, argumentCount, parameterCount, singleScalar;
 
@@ -804,7 +805,9 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
             return CgIRFail(ctx, CGIR_VERIFY_TYPE, expr->loc, expr);
         break;
     case CGIR_EXPR_BINARY:
-        return lVerifyBinary(ctx, expr);
+        if (!lVerifyBinary(ctx, expr))
+            return 0;
+        break;
     case CGIR_EXPR_ASSIGN:
         if (expr->u.assign.target == NULL || expr->u.assign.value == NULL)
             return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
@@ -894,14 +897,34 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
         {
             return CgIRFail(ctx, CGIR_VERIFY_INTERFACE, expr->loc, expr);
         }
-        if (!IsSameUnqualifiedType(expr->type,
-                                   expr->u.interfaceCall.method->type))
+        /*
+         * Real function/method symbols carry a FUNCTION type whose
+         * result lives in ->fun.rettype; hand-built symbols may carry
+         * the bare result type directly.
+         */
+        expected = IsCategory(expr->u.interfaceCall.method->type,
+                              TYPE_CATEGORY_FUNCTION)
+                       ? expr->u.interfaceCall.method->type->fun.rettype
+                       : expr->u.interfaceCall.method->type;
+        if (!IsSameUnqualifiedType(expr->type, expected))
         {
             return CgIRFail(ctx, CGIR_VERIFY_INTERFACE, expr->loc, expr);
         }
+        /*
+         * Receiver-formal policy: production methods carry the implicit
+         * receiver as a prepended leading formal sharing the owner type
+         * (lSynthesizeMethodReceiver), while this node keeps the
+         * receiver in its own field and binds "arguments" to the
+         * declared formals alone.  Skip that one leading formal -- its
+         * compatibility is already enforced by the ownerType identity
+         * above; synthetic symbols without a receiver formal verify
+         * unchanged.
+         */
+        methodFormals = expr->u.interfaceCall.method->details.fun.params;
+        if (methodFormals != NULL && methodFormals->type == objectType)
+            methodFormals = methodFormals->next;
         if (!lVerifyCallArguments(ctx, expr, CGIR_VERIFY_INTERFACE, NULL,
-                                  expr->u.interfaceCall.method->details.fun
-                                      .params,
+                                  methodFormals,
                                   expr->u.interfaceCall.arguments))
         {
             return 0;

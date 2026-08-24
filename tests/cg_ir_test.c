@@ -369,6 +369,12 @@ int main(int argc, char **argv)
     CgIRStmt *rBody;
     CgIRStmt *rInner;
     CgIRStmt *rStmt;
+    Type prodFnType;
+    TypeList prodParamFirst;
+    TypeList prodParamLast;
+    Symbol *prodEvalSymb;
+    Symbol *prodReceiverSymb;
+    Symbol *prodXFormalSymb;
 
     /*
      * Assertion seam: check_assertions_active.cmake runs this unit with
@@ -1483,6 +1489,69 @@ int main(int argc, char **argv)
     rejectModule.entry = rFn;
     CgIRAppendFunction(&rejectModule.functions, rFn);
     lVerifyAccept(&rejectModule);
+
+    /*
+     * Production-shaped method symbol: FUNCTION-typed with the result
+     * in fun.rettype and the implicit receiver prepended to
+     * details.fun.params, exactly as support.c's
+     * lSynthesizeMethodReceiver builds real methods.  A conforming
+     * dispatch -- receiver field carrying the ifaceA object, one
+     * declared float formal beyond the receiver, call result equal to
+     * fun.rettype -- must verify clean.
+     */
+    memset(&prodFnType, 0, sizeof(prodFnType));
+    prodFnType.properties = TYPE_CATEGORY_FUNCTION;
+    prodFnType.fun.rettype = floatType;
+    prodParamLast.next = NULL;
+    prodParamLast.type = floatType;
+    prodParamFirst.next = &prodParamLast;
+    prodParamFirst.type = &ifaceAType;
+    prodFnType.fun.paramtypes = &prodParamFirst;
+    prodEvalSymb = lMakeSymbol(FUNCTION_S, "eval", &prodFnType);
+    assert(prodEvalSymb != NULL);
+    prodEvalSymb->details.fun.isMethod = 1;
+    prodEvalSymb->details.fun.ownerType = &ifaceAType;
+    prodReceiverSymb = lMakeSymbol(VARIABLE_S, "$this", &ifaceAType);
+    prodXFormalSymb = lMakeSymbol(VARIABLE_S, "x", floatType);
+    assert(prodReceiverSymb != NULL && prodXFormalSymb != NULL);
+    prodReceiverSymb->next = prodXFormalSymb;
+    prodXFormalSymb->next = NULL;
+    prodEvalSymb->details.fun.params = prodReceiverSymb;
+
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rDecl = CgIRNewDecl(&rejectModule, objSymb, objSymb->name, &ifaceAType,
+                        CGIR_STORAGE_UNIFORM, CGIR_DOMAIN_UNIFORM, 0, NULL,
+                        &paramLoc);
+    assert(rDecl != NULL);
+    CgIRAppendDecl(&rejectModule.globals, rDecl);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rValue = CgIRNewSymbol(&rejectModule, &ifaceAType, &constLoc, objSymb);
+    rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
+    assert(rValue != NULL && rLeft != NULL);
+    rArgs = NULL;
+    CgIRAppendExpr(&rArgs, rLeft);
+    interfaceExpr = CgIRNewInterfaceCall(&rejectModule, floatType,
+                                         &paramLoc, prodEvalSymb, rValue,
+                                         rArgs);
+    assert(interfaceExpr != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, interfaceExpr);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyAccept(&rejectModule);
+
+    /* The same dispatch advertising a result that disagrees with
+     * fun.rettype is rejected at the dispatch node itself. */
+    interfaceExpr->type = float2Type;
+    memset(&verifyDiagnostic, 0, sizeof(verifyDiagnostic));
+    assert(!CgIRVerifyModule(&rejectModule, &verifyDiagnostic));
+    assert(verifyDiagnostic.reason == CGIR_VERIFY_INTERFACE);
+    assert(verifyDiagnostic.node == interfaceExpr);
 
     FreeSymbolTable(Cg);
     FreeAtomTable(atable);
