@@ -876,6 +876,10 @@ int IsSameUnqualifiedType(const Type *aType, const Type *bType)
             case TYPE_CATEGORY_STRUCT:
                 if (aType->str.unqualifiedtype == bType->str.unqualifiedtype)
                     return 1;
+                break;
+            case TYPE_CATEGORY_INTERFACE:
+                // Interface identity is the declared type itself.
+                return aType == bType;
             default:
                 break;
             }
@@ -1273,6 +1277,11 @@ void SetStructMemberOffsets(Type *fType)
     addr = 0;
     lSymb = fType->str.members->symbols;
     while (lSymb) {
+        if (IsFunction(lSymb)) {
+            /* Methods occupy no storage and carry no member offset. */
+            lSymb = lSymb->next;
+            continue;
+        }
         alignment = Cg->theHAL->GetAlignment(lSymb->type);
         size = Cg->theHAL->GetSizeof(lSymb->type);
         addr = ((addr + alignment - 1)/alignment)*alignment;

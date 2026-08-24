@@ -150,6 +150,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <dummy> compound_tail
 %type <dummy> external_declaration
 %type <dummy> function_definition
+%type <dummy> interface_compound_header
 %type <dummy> struct_compound_header
 
 %type <sc_int> function_specifier
@@ -184,6 +185,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <sc_type> abstract_declaration_specifiers
 %type <sc_type> abstract_declaration_specifiers2
 %type <sc_type> declaration_specifiers
+%type <sc_ptype> interface_specifier
 %type <sc_ptype> struct_or_connector_header
 %type <sc_ptype> struct_or_connector_specifier
 /***
@@ -242,6 +244,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <sc_stmt> if_statement
 %type <sc_stmt> init_declarator
 %type <sc_stmt> init_declarator_list
+%type <sc_stmt> interface_member_declaration
+%type <sc_stmt> interface_member_declaration_list
 %type <sc_stmt> iteration_statement
 %type <sc_stmt> jump_statement
 %type <sc_stmt> return_statement
@@ -373,6 +377,8 @@ type_specifier:           INT_SY
                               { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
                         | struct_or_connector_specifier
                               { $$ = $1; }
+                        | interface_specifier
+                              { $$ = $1; }
                         | type_identifier
                               { $$ = LookUpTypeSymbol(NULL, $1); }
                         | error
@@ -439,9 +445,11 @@ in_out:                   IN_SY
 
 struct_or_connector_specifier:
                           struct_or_connector_header struct_compound_header struct_declaration_list '}'
-                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope()); }
+                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope());
+                                CheckInterfaceConformance(Cg->tokenLoc, $$); }
                         | untagged_struct_header struct_compound_header struct_declaration_list '}'
-                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope()); }
+                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope());
+                                CheckInterfaceConformance(Cg->tokenLoc, $$); }
                         | struct_or_connector_header
                               { $$ = $1; }
 ;
@@ -455,6 +463,8 @@ struct_or_connector_header:
                               { $$ = StructHeader(Cg->tokenLoc, CurrentScope, 0, $2); }
                         | STRUCT_SY struct_identifier ':' semantics_identifier
                               { $$ = StructHeader(Cg->tokenLoc, CurrentScope, $4, $2); }
+                        | STRUCT_SY struct_identifier ':' type_identifier
+                              { $$ = SetStructInterface(Cg->tokenLoc, CurrentScope, $2, $4); }
 ;
 
 struct_identifier:        identifier
@@ -471,6 +481,43 @@ struct_declaration_list:  struct_declaration
 
 struct_declaration:       declaration
                             { $$ = $1; }
+                        | function_definition
+                            { $$ = NULL; }
+;
+
+/******************/
+/* Interface Types */
+/******************/
+
+interface_specifier:
+                          INTERFACE_SY struct_identifier interface_compound_header
+                          interface_member_declaration_list
+                          '}'
+                              { $$ = SetInterfaceMembers(Cg->tokenLoc,
+                                                         InterfaceHeader(Cg->tokenLoc, CurrentScope, $2),
+                                                         PopScope()); }
+;
+
+interface_compound_header:
+                          compound_header
+                              { CurrentScope->IsStructScope = 1; $$ = $1; }
+;
+
+/* Interface members are method prototypes only: a declaration ending in
+ * ';'.  Bodies cannot be parsed here, and the completion action rejects
+ * anything that is not a function. */
+
+interface_member_declaration_list:
+                          interface_member_declaration
+                        | interface_member_declaration_list interface_member_declaration
+;
+
+interface_member_declaration:
+                          declaration_specifiers declarator ';'
+                              /* Data members are rejected when the body
+                               * completes (SetInterfaceMembers), which
+                               * reports at the offending declaration. */
+                              { $$ = NULL; }
 ;
 
 /**************/
@@ -836,9 +883,11 @@ expression:               conditional_expression
 /***********************/
 
 function_definition:      function_definition_header block_item_list '}'
-                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, $2); PopScope(); }
+                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, $2); PopScope();
+                                ResumeStructScopeAfterMethodBody(); }
                         | function_definition_header '}'
-                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, NULL); PopScope(); }
+                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, NULL); PopScope();
+                                ResumeStructScopeAfterMethodBody(); }
 ;
 
 function_definition_header: declaration_specifiers declarator '{'

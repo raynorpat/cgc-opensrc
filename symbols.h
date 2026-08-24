@@ -79,6 +79,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TYPE_CATEGORY_STRUCT        0x00000040
 #define TYPE_CATEGORY_CONNECTOR     0x00000050
 #define TYPE_CATEGORY_SAMPLER       0x00000060
+#define TYPE_CATEGORY_INTERFACE     0x00000070
 
 #define TYPE_DOMAIN_MASK            0x00000f00
 #define TYPE_DOMAIN_SHIFT           8
@@ -136,6 +137,7 @@ typedef struct TypeCommon_Rec TypeCommon;
 typedef struct TypeScalar_Rec TypeScalar;
 typedef struct TypeArray_Rec TypeArray;
 typedef struct TypeStruct_Rec TypeStruct;
+typedef struct TypeInterface_Rec TypeInterface;
 typedef struct TypeFunction_Rec TypeFunction;
 typedef struct TypeSampler_Rec TypeSampler;
 
@@ -205,6 +207,16 @@ struct TypeStruct_Rec { // for structs and connectors
     char *allocated;  // set if corresponding register has been bound
     int csize;
     void *tempptr;    // temp for FP30 backend connectors: dagnode* to DOP_VARYING
+    Type *implementedInterface; // interface this struct implements, or NULL
+};
+
+struct TypeInterface_Rec {
+    int properties;
+    int size;
+    CgScalarKind scalarKind;
+    Scope *members;
+    SourceLoc loc;
+    int tag;          // interface tag
 };
 
 struct TypeFunction_Rec {
@@ -228,6 +240,7 @@ union Type_Rec {
     TypeScalar sc;
     TypeArray arr;
     TypeStruct str;
+    TypeInterface iface;
     TypeFunction fun;
     TypeSampler samp;
 };
@@ -245,6 +258,8 @@ struct FunSymbol_Rec {
     short index;        // Built-in function index
     char HasOutParams;
     int semantics;      // Return value semantic recorded on declaration, 0 if none
+    Type *ownerType;    // Owning struct or interface for methods, NULL otherwise
+    int isMethod;       // > 0 when declared inside an interface or struct body
 };
 
 typedef struct VarSymbol_Rec {

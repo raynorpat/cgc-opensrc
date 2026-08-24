@@ -1779,6 +1779,11 @@ static void AssignAggregate(StmtList *fStatements, Type *fType,
     case TYPE_CATEGORY_STRUCT:
         lSymb = fType->str.members->symbols;
         while (lSymb) {
+            if (IsFunction(lSymb)) {
+                /* Methods are not data: aggregate copies skip them. */
+                lSymb = lSymb->next;
+                continue;
+            }
             lType = lSymb->type;
             lExpr = DupExpr(varExpr);
             mExpr = GenMember(lSymb);

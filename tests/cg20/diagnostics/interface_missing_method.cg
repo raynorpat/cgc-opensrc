@@ -1,0 +1,12 @@
+interface Scale
+{
+    float apply(float value);
+};
+
+struct Once : Scale
+{
+    float twice(float value)
+    {
+        return value * 2.0;
+    }
+};

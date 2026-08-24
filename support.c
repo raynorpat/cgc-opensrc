@@ -1169,6 +1169,48 @@ stmt *CheckStmt(stmt *fStmt)
 } // CheckStmt
 
 /*
+ * Struct scopes are suspended while a method body parses so that method
+ * definitions sit at ordinary function depth: their locals scopes,
+ * return-statement bookkeeping, and inlining metadata then behave exactly
+ * like free functions.  SuspendStructScopeForMethodBody() runs from
+ * Function_Definition_Header() when the header appears inside a struct;
+ * ResumeStructScopeAfterMethodBody() runs from the function-definition
+ * grammar action after the body scope is popped.  The pair is a no-op for
+ * definitions outside struct bodies.
+ */
+
+typedef struct SuspendedScopeRec {
+    Scope *scope;
+    struct SuspendedScopeRec *next;
+} SuspendedScope;
+
+static SuspendedScope *lSuspendedStructScopes;
+
+void SuspendStructScopeForMethodBody(void)
+{
+    SuspendedScope *lSuspend;
+
+    if (CurrentScope && CurrentScope->IsStructScope) {
+        lSuspend = (SuspendedScope *) malloc(sizeof(SuspendedScope));
+        lSuspend->scope = PopScope();
+        lSuspend->next = lSuspendedStructScopes;
+        lSuspendedStructScopes = lSuspend;
+    }
+} // SuspendStructScopeForMethodBody
+
+void ResumeStructScopeAfterMethodBody(void)
+{
+    SuspendedScope *lSuspend;
+
+    if (lSuspendedStructScopes) {
+        lSuspend = lSuspendedStructScopes;
+        lSuspendedStructScopes = lSuspend->next;
+        PushScope(lSuspend->scope);
+        free(lSuspend);
+    }
+} // ResumeStructScopeAfterMethodBody
+
+/*
  * Function_Definition_Header() - Combine function <declaration_specifiers> and <declarator>.
  *
  */
@@ -1181,6 +1223,8 @@ decl *Function_Definition_Header(SourceLoc *loc, decl *fDecl)
     int InProgram;
     int category, domain, qualifiers;
     Type *retType;
+
+    SuspendStructScopeForMethodBody();
 
     if (IsFunction(lSymb)) {
         if (fDecl->type.type.properties & TYPE_MISC_ABSTRACT_PARAMS) {
@@ -1950,6 +1994,257 @@ Type *StructHeader(SourceLoc *loc, Scope *fScope, int cType, int tag)
     }
     return lType;
 } // StructOrConnectorHeader
+
+/*
+ * InterfaceHeader() - Process an interface header.  The interface analog
+ *         of StructHeader(): register or reuse the tag, whose type carries
+ *         TYPE_CATEGORY_INTERFACE and an initially empty member scope.
+ */
+
+Type *InterfaceHeader(SourceLoc *loc, Scope *fScope, int tag)
+{
+    Symbol *lSymb;
+    Type *lType;
+
+    if (tag) {
+        lSymb = LookUpTag(fScope, tag);
+        if (!lSymb) {
+            lSymb = AddTag(loc, fScope, tag, TYPE_CATEGORY_INTERFACE);
+            /* AddTag seeds str.unqualifiedtype, which aliases
+             * iface.members in the type union; interfaces never use
+             * unqualifiedtype, so clear the overlap before the member
+             * scope is attached at completion. */
+            lSymb->type->iface.members = NULL;
+            lSymb->type->iface.tag = tag;
+        }
+        lType = lSymb->type;
+        if (!IsCategory(lType, TYPE_CATEGORY_INTERFACE)) {
+            SemanticError(loc, ERROR_S_NAME_ALREADY_DEFINED,
+                          GetAtomString(atable, tag));
+            lType = UndefinedType;
+        }
+    } else {
+        lType = NewType(TYPE_CATEGORY_INTERFACE, 0);
+    }
+    return lType;
+} // InterfaceHeader
+
+/*
+ * SetStructInterface() - Interpret "struct Name : Type" where the
+ *         right-hand identifier resolved to a declared type name.  Only
+ *         interfaces may appear there; the connector-semantic form is
+ *         handled by a separate production before a type name is ever
+ *         consulted.  The implemented interface is recorded on the struct
+ *         type so completion can check conformance.
+ */
+
+Type *SetStructInterface(SourceLoc *loc, Scope *fScope, int tag, int interfaceAtom)
+{
+    Type *interfaceType;
+    Type *structType;
+
+    interfaceType = LookUpTypeSymbol(fScope, interfaceAtom);
+    if (!IsCategory(interfaceType, TYPE_CATEGORY_INTERFACE)) {
+        SemanticError(loc, ERROR_S_TAG_IS_NOT_AN_INTERFACE,
+                      GetAtomString(atable, interfaceAtom));
+        interfaceType = NULL;
+    }
+    structType = StructHeader(loc, fScope, 0, tag);
+    if (IsCategory(structType, TYPE_CATEGORY_STRUCT))
+        structType->str.implementedInterface = interfaceType;
+    return structType;
+} // SetStructInterface
+
+/*
+ * lMarkMethod() - Record that this member function belongs to "fOwner".
+ */
+
+static void lMarkMethod(Symbol *fSymb, Type *fOwner)
+{
+    fSymb->details.fun.ownerType = fOwner;
+    fSymb->details.fun.isMethod = 1;
+} // lMarkMethod
+
+/*
+ * lSynthesizeMethodReceiver() - Give a method an implicit leading formal
+ *         holding its receiver.  The receiver exists only inside the
+ *         compiler: call sites prepend the receiver expression as an
+ *         ordinary argument while source-level signatures keep the
+ *         declared formals alone.  Both the formal symbol and the front
+ *         of the function type's parameter list grow the owner type so
+ *         argument binding, inlining, and conformance matching stay
+ *         positionally consistent.
+ */
+
+static void lSynthesizeMethodReceiver(SourceLoc *loc, Symbol *fSymb, Type *fOwner)
+{
+    static int receiverAtom = 0;
+    Symbol *receiver;
+    TypeList *param;
+
+    if (receiverAtom == 0)
+        receiverAtom = LookUpAddString(atable, "$this");
+    /* The owner type is shared, not duplicated: the receiver slot must
+     * compare identical to the owning type at call sites. */
+    receiver = AddSymbol(loc, fSymb->details.fun.locals, receiverAtom,
+                         fOwner, VARIABLE_S);
+    receiver->properties |= SYMB_IS_PARAMETER;
+    receiver->next = fSymb->details.fun.params;
+    fSymb->details.fun.params = receiver;
+    param = (TypeList *) malloc(sizeof(TypeList));
+    param->type = fOwner;
+    param->next = fSymb->type->fun.paramtypes;
+    fSymb->type->fun.paramtypes = param;
+} // lSynthesizeMethodReceiver
+
+/*
+ * SetInterfaceMembers() - Complete an interface declaration: attach the
+ *         member scope, keep only method prototypes (data members are
+ *         rejected; bodies cannot be parsed inside an interface), mark
+ *         the methods, and publish the tag as a type name.
+ */
+
+Type *SetInterfaceMembers(SourceLoc *loc, Type *fType, Scope *members)
+{
+    Symbol *lSymb, *tSymb;
+
+    if (!fType || IsCategory(fType, TYPE_CATEGORY_INTERFACE) == 0)
+        return fType;
+    if (fType->iface.members) {
+        SemanticError(loc, ERROR_SSD_STRUCT_ALREADY_DEFINED,
+                      GetAtomString(atable, fType->iface.tag),
+                      GetAtomString(atable, fType->iface.loc.file),
+                      fType->iface.loc.line);
+        return fType;
+    }
+    lSymb = members->symbols;
+    while (lSymb) {
+        if (!IsFunction(lSymb)) {
+            SemanticError(&lSymb->loc, ERROR_S_INTERFACE_DATA_MEMBER,
+                          GetAtomString(atable, fType->iface.tag));
+        } else if (!lSymb->details.fun.isMethod) {
+            lMarkMethod(lSymb, fType);
+            lSynthesizeMethodReceiver(&lSymb->loc, lSymb, fType);
+        }
+        lSymb = lSymb->next;
+    }
+    fType->iface.members = members;
+    fType->iface.loc = *loc;
+    if (fType->iface.tag) {
+        tSymb = LookUpLocalSymbol(CurrentScope, fType->iface.tag);
+        if (!tSymb) {
+            DefineTypedef(loc, CurrentScope, fType->iface.tag, fType);
+        } else if (!IsTypedef(tSymb)) {
+            SemanticError(loc, ERROR_S_NAME_ALREADY_DEFINED,
+                          GetAtomString(atable, fType->iface.tag));
+        }
+    }
+    return fType;
+} // SetInterfaceMembers
+
+/*
+ * lSignatureMatches() - Compare an implementing method against an
+ *         interface method: same name is checked by the caller; here the
+ *         return type, parameter count, parameter directions, and
+ *         unqualified parameter types must agree.  The implicit receiver
+ *         parameter both sides carry is skipped.
+ */
+
+static int lSignatureMatches(Symbol *fImpl, Symbol *fDecl)
+{
+    TypeList *implParam, *declParam;
+
+    if (!IsSameUnqualifiedType(fImpl->type->fun.rettype,
+                               fDecl->type->fun.rettype))
+    {
+        return 0;
+    }
+    implParam = fImpl->type->fun.paramtypes;
+    declParam = fDecl->type->fun.paramtypes;
+    if (implParam)
+        implParam = implParam->next;
+    if (declParam)
+        declParam = declParam->next;
+    while (implParam && declParam) {
+        if ((GetQualifiers(implParam->type) & (TYPE_QUALIFIER_IN |
+             TYPE_QUALIFIER_OUT)) !=
+            (GetQualifiers(declParam->type) & (TYPE_QUALIFIER_IN |
+             TYPE_QUALIFIER_OUT)))
+        {
+            return 0;
+        }
+        if (!IsSameUnqualifiedType(implParam->type, declParam->type))
+            return 0;
+        implParam = implParam->next;
+        declParam = declParam->next;
+    }
+    return implParam == NULL && declParam == NULL;
+} // lSignatureMatches
+
+/*
+ * CheckInterfaceConformance() - Complete a struct definition and validate
+ *         it against the interface it implements, if any.  Completion
+ *     marks every member function as a method and synthesizes its
+ *         implicit receiver, so later phases see one uniform calling
+ *         convention regardless of inheritance.  Conformance requires
+ *         exactly one implementing method per interface method with a
+ *         matching signature; failures report at the struct with the
+ *         interface method's declaration as the note.
+ */
+
+void CheckInterfaceConformance(SourceLoc *loc, Type *fType)
+{
+    Type *interfaceType;
+    Symbol *member, *decl, *named, *impl;
+
+    if (!fType || !IsCategory(fType, TYPE_CATEGORY_STRUCT))
+        return;
+    for (member = fType->str.members ? fType->str.members->symbols : NULL;
+         member; member = member->next)
+    {
+        if (IsFunction(member) && !member->details.fun.isMethod) {
+            lMarkMethod(member, fType);
+            lSynthesizeMethodReceiver(&member->loc, member, fType);
+        }
+    }
+    interfaceType = fType->str.implementedInterface;
+    if (!interfaceType)
+        return;
+    for (decl = interfaceType->iface.members ?
+             interfaceType->iface.members->symbols : NULL;
+         decl; decl = decl->next)
+    {
+        if (!IsFunction(decl))
+            continue;
+        named = impl = NULL;
+        for (member = fType->str.members->symbols; member;
+             member = member->next)
+        {
+            if (!IsFunction(member) || member->name != decl->name)
+                continue;
+            named = member;
+            if (lSignatureMatches(member, decl)) {
+                impl = member;
+                break;
+            }
+        }
+        if (impl)
+            continue;
+        if (named) {
+            SemanticError(loc, ERROR_SSSSD_INTERFACE_METHOD_SIGNATURE,
+                          GetAtomString(atable, decl->name),
+                          GetAtomString(atable, fType->str.tag),
+                          GetAtomString(atable, decl->loc.file),
+                          decl->loc.line);
+        } else {
+            SemanticError(loc, ERROR_SSSSD_INTERFACE_METHOD_MISSING,
+                          GetAtomString(atable, fType->str.tag),
+                          GetAtomString(atable, decl->name),
+                          GetAtomString(atable, decl->loc.file),
+                          decl->loc.line);
+        }
+    }
+} // CheckInterfaceConformance
 
 /*
  * DefineVar() - Define a new variable in the current scope.
@@ -3378,12 +3673,33 @@ expr *NewMemberSelectorOrSwizzleOrWriteMaskOperator(SourceLoc *loc, expr *fExpr,
         if (lSymb) {
             mExpr = (expr *) NewSymbNode(MEMBER_OP, lSymb);
             lExpr = (expr *) NewBinopNode(MEMBER_SELECTOR_OP, fExpr, mExpr);
-            lExpr->common.IsLValue = fExpr->common.IsLValue;
-            lExpr->common.IsConst = fExpr->common.IsConst;
+            if (IsFunction(lSymb)) {
+                /* Method selection keeps both the receiver expression and
+                 * the selected method symbol for the call operator; a
+                 * method by itself is not an l-value. */
+                lExpr->common.IsLValue = 0;
+            } else {
+                lExpr->common.IsLValue = fExpr->common.IsLValue;
+                lExpr->common.IsConst = fExpr->common.IsConst;
+            }
             lExpr->common.type = lSymb->type;
         } else {
             SemanticError(loc, ERROR_SS_NOT_A_MEMBER,
                           GetAtomString(atable, ident), GetAtomString(atable, lType->str.tag));
+            lExpr = fExpr;
+        }
+    } else if (IsCategory(lType, TYPE_CATEGORY_INTERFACE)) {
+        /* Interfaces carry methods only: data members are rejected when
+         * the interface body is completed. */
+        lSymb = LookUpLocalSymbol(lType->iface.members, ident);
+        if (lSymb && IsFunction(lSymb)) {
+            mExpr = (expr *) NewSymbNode(MEMBER_OP, lSymb);
+            lExpr = (expr *) NewBinopNode(MEMBER_SELECTOR_OP, fExpr, mExpr);
+            lExpr->common.IsLValue = 0;
+            lExpr->common.type = lSymb->type;
+        } else {
+            SemanticError(loc, ERROR_SS_NOT_A_MEMBER,
+                          GetAtomString(atable, ident), GetAtomString(atable, lType->iface.tag));
             lExpr = fExpr;
         }
     } else if (IsScalar(lType) || IsVector(lType, &len)) {
@@ -3551,6 +3867,77 @@ Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb, expr *actuals)
 } // lResolveOverloadedFunction
 
 /*
+ * lNewMethodCallActuals() - Prepend the implicit receiver to a method
+ *         call's declared actuals.  The receiver is an internal argument
+ *         only; it is never exposed as a source-level formal.
+ */
+
+static expr *lNewMethodCallActuals(SourceLoc *loc, expr *fReceiver, expr *fActuals)
+{
+    expr *head, *tail;
+
+    head = ArgumentList(loc, NULL, fReceiver);
+    tail = head;
+    while (tail->bin.right)
+        tail = tail->bin.right;
+    tail->bin.right = fActuals;
+    return head;
+} // lNewMethodCallActuals
+
+/*
+ * lIsMethodSelection() - TRUE when a function-call callee is a member
+ *         selection naming a method symbol rather than an ordinary data
+ *         member or plain function reference.
+ */
+
+static int lIsMethodSelection(const expr *fExpr)
+{
+    return fExpr != NULL &&
+           fExpr->common.kind == BINARY_N &&
+           fExpr->bin.op == MEMBER_SELECTOR_OP &&
+           fExpr->bin.right != NULL &&
+           fExpr->bin.right->common.kind == SYMB_N &&
+           fExpr->bin.right->sym.op == MEMBER_OP &&
+           fExpr->bin.right->sym.symbol != NULL &&
+           IsFunction(fExpr->bin.right->sym.symbol) &&
+           fExpr->bin.right->sym.symbol->details.fun.isMethod;
+} // lIsMethodSelection
+
+/*
+ * lNewMethodCallOperator() - Build a method call.  The implicit receiver
+ *         becomes an internal first argument and ordinary argument
+ *         conversion applies to every slot including the receiver.  A
+ *         call through an interface receiver becomes INTERFACE_CALL_OP:
+ *         no implementing function is known at compile time, so dispatch
+ *         stays symbolic while the node preserves the interface's
+ *         declared result type.  A struct receiver produces an ordinary
+ *         direct call to the implementing method.
+ */
+
+static expr *lNewMethodCallOperator(SourceLoc *loc, expr *selection, expr *actuals)
+{
+    Symbol *method;
+    expr *receiver, *funExpr, *result;
+
+    method = selection->bin.right->sym.symbol;
+    receiver = selection->bin.left;
+    funExpr = (expr *) NewSymbNode(VARIABLE_OP, method);
+    result = NewFunctionCallOperator(loc, funExpr,
+                                     lNewMethodCallActuals(loc, receiver,
+                                                           actuals));
+    if (result->common.kind == BINARY_N &&
+        result->bin.op == FUN_CALL_OP &&
+        IsCategory(receiver->common.type, TYPE_CATEGORY_INTERFACE))
+    {
+        /* Keep the full selection expression so dumps show both the
+         * receiver and the selected interface method. */
+        result->bin.op = INTERFACE_CALL_OP;
+        result->bin.left = selection;
+    }
+    return result;
+} // lNewMethodCallOperator
+
+/*
  * NewFunctionCallOperator() - Construct a function call node.  Check types of parameters,
  *         resolve overloaded function, etc.
  *
@@ -3566,6 +3953,9 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
     CgSamplerKind formalKind, actualKind;
     int paramno, inout;
     int lop, lsubop = FUN_CALL_OP;
+
+    if (lIsMethodSelection(funExpr))
+        return lNewMethodCallOperator(loc, funExpr, actuals);
 
     funType = funExpr->common.type;
     if (IsCategory(funType, TYPE_CATEGORY_FUNCTION)) {

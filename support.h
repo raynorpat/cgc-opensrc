@@ -129,6 +129,7 @@ typedef enum subopkind {
     PICK( ARRAY_INDEX_OP,     "index",   '[',   BINARY_N, SUB_NONE ), \
     PICK( FUN_CALL_OP,        "call",    '(',   BINARY_N, SUB_NONE ), \
     PICK( FUN_BUILTIN_OP,     "builtin", 0,     BINARY_N, SUB_NONE ), \
+    PICK( INTERFACE_CALL_OP,  "icall",   '(',   BINARY_N, SUB_NONE ), \
     PICK( FUN_ARG_OP,         "arg",     0,     BINARY_N, SUB_NONE ), \
     PICK( EXPR_LIST_OP,       "list",    0,     BINARY_N, SUB_NONE ), \
     PICK( MUL_OP,             "mul",     '*',   BINARY_N, SUB_S    ), \
@@ -569,8 +570,14 @@ decl *Array_Declarator(SourceLoc *loc, decl *fDecl, int size, int Empty);
 Symbol *AddFormalParamDecls(Scope *fScope, decl *params);
 decl *SetFunTypeParams(Scope *fScope, decl *func, decl *params, decl *actuals);
 decl *FunctionDeclHeader(SourceLoc *loc, Scope *fScope, decl *func);
+void SuspendStructScopeForMethodBody(void);
+void ResumeStructScopeAfterMethodBody(void);
 
 Type *StructHeader(SourceLoc *loc, Scope *fScope, int ctype, int tag);
+Type *InterfaceHeader(SourceLoc *loc, Scope *fScope, int tag);
+Type *SetStructInterface(SourceLoc *loc, Scope *fScope, int tag, int interfaceAtom);
+Type *SetInterfaceMembers(SourceLoc *loc, Type *fType, Scope *members);
+void CheckInterfaceConformance(SourceLoc *loc, Type *fType);
 
 Symbol *DefineVar(SourceLoc *loc, Scope *fScope, int atom, Type *fType);
 Symbol *DefineTypedef(SourceLoc *loc, Scope *fScope, int atom, Type *fType);

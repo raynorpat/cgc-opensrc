@@ -210,6 +210,8 @@ static const char *GlslUnsupportedExprReason(const expr *source)
         case XOR_OP: case XOR_V_OP: case XOR_SV_OP: case XOR_VS_OP:
         case OR_OP: case OR_V_OP: case OR_SV_OP: case OR_VS_OP:
             return "bitwise operator";
+        case INTERFACE_CALL_OP:
+            return "interface dispatch";
         default:
             break;
         }

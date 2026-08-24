@@ -1,0 +1,5 @@
+interface Broken
+{
+    float weight;
+    float apply(float value);
+};

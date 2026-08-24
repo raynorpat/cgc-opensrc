@@ -1,0 +1,12 @@
+interface Scale
+{
+    float apply(float value);
+};
+
+struct Wrong : Scale
+{
+    int apply(int value)
+    {
+        return value;
+    }
+};

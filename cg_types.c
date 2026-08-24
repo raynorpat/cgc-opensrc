@@ -440,6 +440,20 @@ static Symbol *lStructMembers(const Type *structType)
 } // lStructMembers
 
 /*
+ * lImplementsInterface() - TRUE when the struct's implemented interface
+ *                         is exactly "to".  Structs inherit a single
+ *                         interface and interface identity is pointer
+ *                         uniqueness of the declared type.
+ *
+ */
+
+static int lImplementsInterface(const Type *from, const Type *to)
+{
+    return from->str.implementedInterface != NULL &&
+           from->str.implementedInterface == to;
+} // lImplementsInterface
+
+/*
  * lClassifyStructConversion() - Structure casts are explicit-only and take
  *                               three forms: pairwise member conversion with
  *                               equal member counts, extraction of the first
@@ -547,12 +561,22 @@ CgConversionRank CgClassifyConversion(const Type *from, const Type *to,
             return lClassifyArrayConversion(from, to, explicitCast);
         case TYPE_CATEGORY_STRUCT:
             return lClassifyStructConversion(from, to, explicitCast);
+        case TYPE_CATEGORY_INTERFACE:
+            /* Interface identity is the declared type itself. */
+            return from == to ? CG_CONVERSION_EXACT : CG_CONVERSION_NONE;
         default:
             return CG_CONVERSION_NONE;
         }
     }
     switch (fromCategory) {
     case TYPE_CATEGORY_STRUCT:
+        /* A struct converts dynamically to the interface it implements;
+         * no other struct conversion is implicit. */
+        if (toCategory == TYPE_CATEGORY_INTERFACE &&
+            lImplementsInterface(from, to))
+        {
+            return CG_CONVERSION_DYNAMIC;
+        }
         return lClassifyStructFrom(from, to, explicitCast);
     case TYPE_CATEGORY_ARRAY:
         if (toCategory == TYPE_CATEGORY_SCALAR) {

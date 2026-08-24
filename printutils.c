@@ -528,6 +528,10 @@ void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
             strcat(name, "struct ");
             strcat(name, GetAtomString(atable, fType->str.tag));
             break;
+        case TYPE_CATEGORY_INTERFACE:
+            strcat(name, "interface ");
+            strcat(name, GetAtomString(atable, fType->iface.tag));
+            break;
         case TYPE_CATEGORY_CONNECTOR:
             cid = Cg->theHAL->GetConnectorAtom(fType->str.variety);
             strcat(name, GetAtomString(atable, cid));
@@ -611,6 +615,10 @@ void FormatTypeStringRT(char *name, int size, char *name2, int size2, Type *fTyp
             strcat(name, "struct ");
             strcat(name, GetAtomString(atable, fType->str.tag));
             break;
+        case TYPE_CATEGORY_INTERFACE:
+            strcat(name, "interface ");
+            strcat(name, GetAtomString(atable, fType->iface.tag));
+            break;
         case TYPE_CATEGORY_CONNECTOR:
             cid = Cg->theHAL->GetConnectorAtom(fType->str.variety);
             strcat(name, GetAtomString(atable, cid));
@@ -693,6 +701,13 @@ void PrintType(Type *fType, int level)
                 printf("struct %s", GetAtomString(atable, fType->str.tag));
             } else {
                 printf("struct");
+            }
+            break;
+        case TYPE_CATEGORY_INTERFACE:
+            if (fType->iface.tag) {
+                printf("interface %s", GetAtomString(atable, fType->iface.tag));
+            } else {
+                printf("interface");
             }
             break;
         case TYPE_CATEGORY_CONNECTOR:
@@ -965,6 +980,7 @@ void lPrintExpr(expr *fexpr)
             break;
         case FUN_CALL_OP:
         case FUN_BUILTIN_OP:
+        case INTERFACE_CALL_OP:
             printf("(");
             break;
         case FUN_ARG_OP:
@@ -1122,6 +1138,7 @@ void lPrintExpr(expr *fexpr)
             break;
         case FUN_CALL_OP:
         case FUN_BUILTIN_OP:
+        case INTERFACE_CALL_OP:
             printf(")");
             break;
         default:

@@ -277,6 +277,38 @@ add_test(
         -DMESSAGE=outputs.conflict.at.semantic
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
 )
+add_cg20_success(cg20_interface_conformance tests/cg20/interfaces/conformance.cg)
+add_cg20_success(cg20_interface_dispatch tests/cg20/interfaces/dispatch.cg)
+add_test(
+    NAME cg20_interface_data_member
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/interface_data.cg
+        -DCODE=1155
+        -DMESSAGE=data.members.not.allowed.in.interface
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+add_test(
+    NAME cg20_interface_missing_method
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/interface_missing_method.cg
+        -DCODE=1156
+        -DMESSAGE=does.not.implement.interface.method
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+add_test(
+    NAME cg20_interface_bad_signature
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/interface_bad_signature.cg
+        -DCODE=1157
+        -DMESSAGE=does.not.match.interface.method
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
 add_test(
     NAME cg20_manifest
     COMMAND ${CMAKE_COMMAND}

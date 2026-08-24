@@ -176,6 +176,13 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_SAMPLER_OUT_PARAM           1153, "sampler \"%s\" may only be passed as an in parameter"
 #define ERROR___SAMPLER_CONDITIONAL         1154, "samplers are not allowed in conditional selection"
 
+// Cg 2.0 interface language rules
+
+#define ERROR_S_INTERFACE_DATA_MEMBER       1155, "data members not allowed in interface \"%s\""
+#define ERROR_SSSSD_INTERFACE_METHOD_MISSING 1156, "struct \"%s\" does not implement interface method \"%s\" declared at %s(%d)"
+#define ERROR_SSSSD_INTERFACE_METHOD_SIGNATURE 1157, "implementation of interface method \"%s\" in struct \"%s\" does not match interface method declared at %s(%d)"
+#define ERROR_S_TAG_IS_NOT_AN_INTERFACE     1158, "tag \"%s\" is not an interface"
+
 #define ERROR___QSTN_SCALAR_3RD_OPND_EXPECTED   1201, "expected scalar third operand to \"? :\""
 #define ERROR___QSTN_VECTOR_3RD_OPND_EXPECTED   1202, "expected vector third operand to \"? :\""
 #define ERROR___QSTN_VECTOR_23_OPNDS_EXPECTED   1203, "expected vector second and third operands to \"? :\""
