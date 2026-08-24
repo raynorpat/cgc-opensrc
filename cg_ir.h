@@ -421,7 +421,15 @@ void CgIRAppendExpr(CgIRExpr **list, CgIRExpr *expr);
 /*
  * One builder per expression kind.  Each takes the explicit canonical
  * result type and source location (NULL location means
- * compiler-synthesized and stores all zeroes).  Argument lists are
+ * compiler-synthesized and stores all zeroes).  Encoding authority:
+ * the empty (all-zero) location is authoritative, so a node whose
+ * location is all zeroes is compiler-synthesized.  Builders leave the
+ * synthesized flag clear, making those nodes synthesized by
+ * convention; callers that instead mark synthesis through the
+ * synthesized flag must keep the flag coherent with the location -
+ * setting the flag requires a real (non-empty) location on the same
+ * node, and leaving it clear over a zero location still denotes
+ * conventionally synthesized.  Argument lists are
  * NULL-terminated CgIRExpr chains built with CgIRAppendExpr; NULL
  * arguments mean an empty list.  Only cheap local assertions apply;
  * complete validation is the verifier's job.
