@@ -703,7 +703,7 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
         category = GetCategory(formal->type);
         domain = GetDomain(formal->type);
         qualifiers = GetQualifiers(formal->type);
-        if (!CgLegacySamplerChecks() && IsSampler(formal->type, NULL)) {
+        if (IsSampler(formal->type, NULL)) {
             /* Samplers enter a program only through its uniform
              * interface; varying-domain sampler parameters have no
              * binding semantics at the language level. */

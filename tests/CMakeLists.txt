@@ -317,6 +317,40 @@ add_cg20_success(cg20_interface_conformance tests/cg20/interfaces/conformance.cg
 add_cg20_success(cg20_interface_dispatch tests/cg20/interfaces/dispatch.cg)
 add_cg20_success(cg20_overload_defaults tests/cg20/overloads/defaults.cg)
 
+# Task 19 profile-reject fixtures: valid Cg 2.0 sources (generic must
+# compile each) whose GLSL lowering is rejected at profile validation
+# with a specific unsupported reason instead of reaching codegen.
+
+add_test(
+    NAME cg20_glsl_interface_dispatch_generic
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/glsl_interface_dispatch.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake
+)
+add_glsl_profile_failure(glslv_glsl_interface_dispatch glslv
+    tests/cg20/diagnostics/glsl_interface_dispatch.cg 6200 19
+    "interface")
+
+add_test(
+    NAME cg20_glsl_unsized_array_generic
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/glsl_unsized_array.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake
+)
+add_glsl_profile_failure(glslv_glsl_unsized_array glslv
+    tests/cg20/diagnostics/glsl_unsized_array.cg 6200 6
+    "dynamic.unsized.array")
+
+# Task 9 carry-in pin: samplerRECT has no GLSL spelling; rejection is
+# anchored in the language sampler rules (post pid-gate retirement).
+add_glsl_profile_failure(glslf_sampler_rect glslf
+    tests/cg20/samplers/rect.cg 6200 4
+    "samplerRECT")
+
 # Cg 2.0 reachability fixtures (Task 16): reachable.cg compiles through
 # generic; unreachable_profile_feature keeps a glslv-rejected operation
 # inside an uncalled helper and must still generate code under glslv.
@@ -811,29 +845,36 @@ add_glsl_profile_failure(glslv_sampler glslv
     tests/glsl/textures/vp_sampler.cg 6202 7
     "texture.sampling")
 
+# Sampler pins updated by "Lower Cg IR to GLSL 1.10" (Task 19): the GLSL
+# pid-gate around the Cg 2.0 language sampler rules was retired, so these
+# rejections now surface at the language layer with the shared 1150-1154
+# families instead of the lowering-only 6208 family.  Lines shift where
+# the language rule anchors at the declaration/return rather than the
+# first use.  Content each test pins is unchanged: one diagnostic, same
+# rejected program.
 add_glsl_profile_failure(glslf_local_sampler glslf
-    tests/glsl/textures/fp_local_sampler.cg 6208 6
-    "samplers.must.be.uniforms")
+    tests/glsl/textures/fp_local_sampler.cg 1151 6
+    "global.uniforms.or.function.parameters")
 
 add_glsl_profile_failure(glslf_sampler_array glslf
-    tests/glsl/textures/fp_sampler_array.cg 6208 3
-    "sampler.arrays.or.aggregates")
+    tests/glsl/textures/fp_sampler_array.cg 1151 3
+    "global.uniforms.or.function.parameters")
 
 add_glsl_profile_failure(glslf_sampler_default glslf
     tests/glsl/textures/fp_sampler_default.cg 1056 3
     "invalid.initialization")
 
 add_glsl_profile_failure(glslf_sampler_helper_return glslf
-    tests/glsl/textures/fp_sampler_helper_return.cg 6208 3
-    "sampler.helper.result")
+    tests/glsl/textures/fp_sampler_helper_return.cg 1152 5
+    "cannot.return.a.sampler.value")
 
 add_glsl_profile_failure(glslf_sampler_conditional glslf
-    tests/glsl/textures/fp_sampler_conditional.cg 6208 7
-    "texture.sampler.argument.must.be.a.direct.bound.uniform")
+    tests/glsl/textures/fp_sampler_conditional.cg 1154 7
+    "samplers.are.not.allowed.in.conditional.selection")
 
 add_glsl_profile_failure(glslf_sampler_assignment glslf
-    tests/glsl/textures/fp_sampler_assignment.cg 6208 7
-    "opaque.sampler.expression")
+    tests/glsl/textures/fp_sampler_assignment.cg 1150 7
+    "assignment.of.sampler.values.is.not.allowed")
 
 add_glsl_profile_failure(glslf_sampler_cast glslf
     tests/glsl/textures/fp_sampler_cast.cg 1033 5
@@ -852,8 +893,8 @@ add_glsl_profile_failure(glslf_sampler_helper_parameter glslf
     "samplers.must.be.uniforms")
 
 add_glsl_profile_failure(glslf_sampler_struct glslf
-    tests/glsl/textures/fp_sampler_struct.cg 6208 1
-    "samplers.must.be.uniforms")
+    tests/glsl/textures/fp_sampler_struct.cg 1151 1
+    "global.uniforms.or.function.parameters")
 
 add_glsl_profile_failure(glslf_invalid_texture_coord glslf
     tests/glsl/textures/fp_invalid_coord.cg 1102 6

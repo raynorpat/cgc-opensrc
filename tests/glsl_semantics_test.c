@@ -839,6 +839,77 @@ static void CheckGenerateCodeWriterFailure(void)
     CurrentScope = NULL;
 }
 
+/*
+ * CheckIRHooks() - The Cg 2.0 IR hooks: ValidateIR_glsl lowers into a
+ *      scratch module (success emits nothing; failure translates the
+ *      recorded error exactly once), and GenerateIR_glsl keeps the
+ *      historical module-writer failure protocol.
+ */
+
+static void CheckIRHooks(void)
+{
+    slHAL hal;
+    Scope scope;
+    Symbol program;
+    SymbolList programList;
+    SourceLoc loc;
+    /* Opaque to this test: the hooks only forward it to the lowering
+     * entry point, which is stubbed here. */
+    static int dummyIRModule;
+    const CgIRModule *irModule = (const CgIRModule *) &dummyIRModule;
+    FILE *out;
+
+    InitStage(&hal, 1);
+    memset(&scope, 0, sizeof(scope));
+    memset(&program, 0, sizeof(program));
+    memset(&programList, 0, sizeof(programList));
+    memset(&loc, 0, sizeof(loc));
+    program.loc.line = 37;
+    programList.symb = &program;
+    scope.programs = &programList;
+    CurrentScope = &scope;
+
+    /* Successful scratch validation writes nothing and stays silent. */
+    out = tmpfile();
+    assert(out != NULL);
+    Cg->options.outfd = out;
+    lowerProgramResult = 1;
+    semanticErrorCount = 0;
+    assert(hal.ValidateIR(&loc, irModule));
+    assert(semanticErrorCount == 0);
+    assert(!fclose(out));
+
+    /* A lowering failure surfaces as one profile diagnostic naming the
+     * construct (the generic fallback reason here). */
+    lowerProgramResult = 0;
+    semanticErrorCount = 0;
+    assert(!hal.ValidateIR(&loc, irModule));
+    if (semanticErrorCount != 1 || lastSemanticError != 6201) {
+        fprintf(stderr,
+                "validation failure produced %d diagnostics, last C%04d\n",
+                semanticErrorCount, lastSemanticError);
+        exit(1);
+    }
+
+    /* Generation re-lowers and then writes: a writer failure keeps the
+     * accounted "module writer" protocol. */
+    out = tmpfile();
+    assert(out != NULL);
+    Cg->options.outfd = out;
+    lowerProgramResult = 1;
+    writeModuleResult = 0;
+    semanticErrorCount = 0;
+    assert(!hal.GenerateIR(&loc, irModule));
+    if (semanticErrorCount != 1 || lastSemanticError != 6201) {
+        fprintf(stderr,
+                "IR writer failure produced %d diagnostics, last C%04d\n",
+                semanticErrorCount, lastSemanticError);
+        exit(1);
+    }
+    assert(!fclose(out));
+    CurrentScope = NULL;
+}
+
 int main(void)
 {
     int result;
@@ -850,6 +921,7 @@ int main(void)
     CheckFragment();
     CheckOperatorFilter();
     CheckGenerateCodeWriterFailure();
+    CheckIRHooks();
     FreeAtomTable(atable);
     return 0;
 }
@@ -907,9 +979,28 @@ Symbol *AddSymbol(SourceLoc *loc, Scope *scope, int atom, Type *type,
     return symbol;
 }
 
-int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
-                     SourceLoc *loc, Scope *scope, Symbol *program)
+int GlslLowerLegacyProgram(GlslModule *module,
+                           const GlslProfileDesc *profile, SourceLoc *loc,
+                           Scope *scope, Symbol *program)
 {
+    (void) module;
+    (void) profile;
+    (void) loc;
+    (void) scope;
+    (void) program;
+    return lowerProgramResult;
+}
+
+/* The IR hooks are exercised through the same GenerateCode-free seam:
+ * ValidateIR_glsl/GenerateIR_glsl lower via GlslLowerCgIR, which the
+ * test stubs to drive success and failure translations. */
+
+int GlslLowerCgIR(GlslModule *module, const GlslProfileDesc *profile,
+                  const CgIRModule *source)
+{
+    (void) module;
+    (void) profile;
+    (void) source;
     return lowerProgramResult;
 }
 

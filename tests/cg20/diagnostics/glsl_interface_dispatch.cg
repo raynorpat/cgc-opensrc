@@ -1,0 +1,35 @@
+// Task 19 fixture: interface dispatch is valid Cg 2.0 (generic compiles
+// it through the verified IR) and must fail GLSL profile validation with
+// the unsupported-operation diagnostic naming the construct, never
+// reaching code generation.
+
+interface Scale
+{
+    float apply(float value);
+};
+
+struct Twice : Scale
+{
+    float apply(float value)
+    {
+        return value * 2.0;
+    }
+};
+
+float applyScale(Scale operation, float value)
+{
+    return operation.apply(value);
+}
+
+float4 main(float4 p : POSITION) : POSITION
+{
+    Twice doubleStep;
+    Scale operation;
+
+    if (p.x > 0.5)
+        operation = doubleStep;
+    else
+        operation = doubleStep;
+
+    return p * 0.0 + applyScale(operation, p.y) * 0.0;
+}

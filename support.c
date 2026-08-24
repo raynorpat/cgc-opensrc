@@ -680,9 +680,8 @@ return_stmt *NewReturnStmt(SourceLoc *loc, Scope *fScope, expr *fExpr)
         while (fScope->level > 2)
             fScope = fScope->next;
         fScope->HasReturnStmt = 1;
-        if (!CgLegacySamplerChecks() &&
-            ((fExpr && IsSampler(fExpr->common.type, NULL)) ||
-             IsSampler(fScope->returnType, NULL)))
+        if ((fExpr && IsSampler(fExpr->common.type, NULL)) ||
+            IsSampler(fScope->returnType, NULL))
         {
             SemanticError(loc, ERROR___SAMPLER_RETURN);
         }
@@ -1610,8 +1609,6 @@ static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,
 {
     Type *element;
 
-    if (CgLegacySamplerChecks())
-        return;
     if (!IsSampler(fType, NULL)) {
         element = fType;
         while (element && IsArray(element))
@@ -2191,7 +2188,7 @@ Symbol *AddFormalParamDecls(Scope *fScope, decl *params)
             }
             /* Sampler formals must be plain samplers: aggregates of
              * samplers have no language meaning in any profile. */
-            if (!CgLegacySamplerChecks()) {
+            {
                 Type *element = lType;
                 while (element && IsArray(element))
                     element = element->arr.eltype;
@@ -2856,19 +2853,6 @@ int IsConst(const expr *fExpr)
     }
 } // IsConst
 
-/*
- * CgLegacySamplerChecks() - TRUE when the active target is a GLSL 1.10
- * profile that still enforces its own sampler rules during lowering.
- * The Cg 2.0 language sampler restrictions stay silent for those targets
- * so every existing profile diagnostic keeps coming from the layer that
- * has always produced it; Task 19 migrates the checks.
- */
-
-int CgLegacySamplerChecks(void)
-{
-    return Cg->theHAL->pid == PROFILE_GLSLV_ID ||
-           Cg->theHAL->pid == PROFILE_GLSLF_ID;
-} // CgLegacySamplerChecks
 
 /*
  * IsArrayIndex() - Is this expression an array index expression?
@@ -3687,7 +3671,7 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
                  category == TYPE_CATEGORY_SAMPLER) &&
                 !IsVoid(lType))
             {
-                if (category == TYPE_CATEGORY_SAMPLER && !CgLegacySamplerChecks())
+                if (category == TYPE_CATEGORY_SAMPLER)
                 {
                     /* Conditional selection would copy a sampler value. */
                     SemanticError(loc, ERROR___SAMPLER_CONDITIONAL);
@@ -4373,7 +4357,7 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                 inout |= 1;
             if (formalType->properties & TYPE_QUALIFIER_OUT) {
                 inout |= 2;
-                if (!CgLegacySamplerChecks() && IsSampler(formalType, NULL)) {
+                if (IsSampler(formalType, NULL)) {
                     /* Samplers are read-only interface values: only in
                      * parameter passing copies them. */
                     lExpr = lActuals->bin.left;
@@ -4470,8 +4454,7 @@ expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
     //if ((vqualifiers & TYPE_QUALIFIER_CONST) && !InInit)
     if (fVar->common.IsConst && !InInit)
         SemanticError(loc, ERROR___ASSIGN_TO_CONST_VALUE);
-    if (!CgLegacySamplerChecks() &&
-        (IsSampler(vType, NULL) || IsSampler(eType, NULL)))
+    if (IsSampler(vType, NULL) || IsSampler(eType, NULL))
     {
         /* Samplers are opaque language types: they may only be copied
          * through parameter passing, never assigned or initialized. */

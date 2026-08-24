@@ -1,0 +1,21 @@
+// Task 19 fixture: dynamic unsized arrays are valid Cg 2.0 (generic
+// compiles assignment and .length query through the verified IR) and
+// must fail GLSL profile validation with a specific unsupported
+// diagnostic instead of reaching code generation.
+
+float sum(float values[])
+{
+    float result = 0.0;
+    int i;
+    for (i = 0; i < values.length; ++i)
+        result += values[i];
+    return result;
+}
+
+float4 main(float4 p : POSITION) : POSITION
+{
+    float source[2] = { 1.0, 2.0 };
+    float dynamic[];
+    dynamic = source;
+    return p * 0.0 + sum(dynamic) * 0.0;
+}

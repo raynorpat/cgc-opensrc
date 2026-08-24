@@ -594,7 +594,6 @@ expr *BasicVariable(SourceLoc *loc, int name);
 int IsLValue(const expr *fExpr);
 int IsConst(const expr *fExpr);
 int IsArrayIndex(const expr *fExpr);
-int CgLegacySamplerChecks(void);
 int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
                 expr **result, int IgnorePacked, int Explicit,
                 int AllowShapeConversions);

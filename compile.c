@@ -3019,19 +3019,34 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
 
                 // Cg 2.0 IR emission: the interface description still
                 // goes out first, then the profile validates and
-                // prints the verified module all-or-nothing.
+                // prints the verified module all-or-nothing.  A
+                // profile that reports its own diagnostic (GLSL
+                // 6200-6209 rejections, for example) owns the failure;
+                // the internal invariant fires only for silent hook
+                // failures.  The legacy error gate is mirrored so
+                // hooks never run on a compilation already in error.
 
                 if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
                     OutputBindings(Cg->options.outfd, theHAL, program);
 
                 irLoc = *loc;
-                if (!theHAL->ValidateIR(&irLoc, &irModule)) {
-                    InternalError(loc, ERROR_S_CG_IR_INVARIANT,
-                                  "profile validation of Cg IR");
-                } else if (!Cg->options.NoCodeGen &&
-                           !theHAL->GenerateIR(&irLoc, &irModule)) {
-                    InternalError(loc, ERROR_S_CG_IR_INVARIANT,
-                                  "profile IR generation");
+                if (GetErrorCount() == 0) {
+                    int errorsBeforeHook = GetErrorCount();
+
+                    if (!theHAL->ValidateIR(&irLoc, &irModule)) {
+                        if (GetErrorCount() == errorsBeforeHook) {
+                            InternalError(loc, ERROR_S_CG_IR_INVARIANT,
+                                          "profile validation of Cg IR");
+                        }
+                    } else if (!Cg->options.NoCodeGen &&
+                               GetErrorCount() == 0) {
+                        errorsBeforeHook = GetErrorCount();
+                        if (!theHAL->GenerateIR(&irLoc, &irModule) &&
+                            GetErrorCount() == errorsBeforeHook) {
+                            InternalError(loc, ERROR_S_CG_IR_INVARIANT,
+                                          "profile IR generation");
+                        }
+                    }
                 }
             }
 

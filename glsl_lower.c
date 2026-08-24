@@ -46,12 +46,14 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <float.h>
 #include <limits.h>
 
 #include "slglobals.h"
 #include "glsl_hal.h"
 #include "cg_stdlib.h"
+#include "cg_ir.h"
 
 #define GLSL_MATRIX_MAX_ARGUMENTS 16
 
@@ -89,7 +91,11 @@ typedef struct GlslInterfaceSource_Rec {
 typedef struct GlslLowerContext_Rec {
     GlslModule *module;
     const GlslProfileDesc *profile;
+    /* Legacy -version 1.1 tree path only; the Cg IR lowering never
+     * reads frontend scopes (see GlslLowerCgIR below). */
     Scope *scope;
+    /* Verified Cg IR module consumed by the Cg 2.0 lowering path. */
+    const CgIRModule *source;
     GlslFunction *function;
     GlslMatrixHelper *matrixHelpers;
     GlslMatrixHelper *lastMatrixHelper;
@@ -99,6 +105,11 @@ typedef struct GlslLowerContext_Rec {
     SourceLoc statementLoc;
     int loopDepth;
 } GlslLowerContext;
+
+static int GlslLowerTypeAuto(GlslLowerContext *context, Type *source,
+                             GlslType *target, const SourceLoc *loc);
+static int GlslEnsureTypeAuto(GlslLowerContext *context, Type *type,
+                              const SourceLoc *loc);
 
 static void GlslSetLoc(GlslLoc *target, const SourceLoc *source)
 {
@@ -537,7 +548,7 @@ static GlslDecl *GlslNewSourceDecl(GlslLowerContext *context,
     const char *sourceName;
     const char *name;
 
-    if (!GlslLowerType(context, symbol->type, &type, &symbol->loc))
+    if (!GlslLowerTypeAuto(context, symbol->type, &type, &symbol->loc))
         return NULL;
     sourceName = GetAtomString(atable, symbol->name);
     if (nameSpace != NULL) {
@@ -869,9 +880,9 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
                               "sampler arrays or aggregates");
         return 0;
     }
-    if (!GlslEnsureTypeAt(context, symbol->type, &symbol->loc) ||
-        !GlslLowerType(context, symbol->type, &type,
-                       &symbol->loc)) return 0;
+    if (!GlslEnsureTypeAuto(context, symbol->type, &symbol->loc) ||
+        !GlslLowerTypeAuto(context, symbol->type, &type,
+                           &symbol->loc)) return 0;
     storage = Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) ?
               GLSL_STORAGE_SAMPLER : GLSL_STORAGE_UNIFORM;
     sourceName = GetAtomString(atable, symbol->name);
@@ -1744,8 +1755,8 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
     interfaceName = GlslCanonicalInterfaceName(context->profile,
         sourceBinding->conn.rname, isOutput);
     if (canonical == NULL || interfaceName == NULL ||
-        !GlslLowerType(context, member->type, &type,
-                       &member->loc)) return NULL;
+        !GlslLowerTypeAuto(context, member->type, &type,
+                           &member->loc)) return NULL;
     if (GlslHasInterfaceBinding(context, interfaceName, isOutput)) {
         context->statementLoc = member->loc;
         GlslRecordFailureKind(context, GLSL_ERROR_INTERFACE_CONFLICT,
@@ -1973,10 +1984,10 @@ static int GlslMappedSignatureEqual(GlslLowerContext *context,
     leftParam = left->details.fun.params;
     rightParam = right->details.fun.params;
     while (leftParam != NULL && rightParam != NULL) {
-        if (!GlslLowerType(context, leftParam->type, &leftType,
-                           &leftParam->loc) ||
-            !GlslLowerType(context, rightParam->type, &rightType,
-                           &rightParam->loc) ||
+        if (!GlslLowerTypeAuto(context, leftParam->type, &leftType,
+                               &leftParam->loc) ||
+            !GlslLowerTypeAuto(context, rightParam->type, &rightType,
+                               &rightParam->loc) ||
             !GlslTypesEqual(&leftType, &rightType)) return 0;
         leftParam = leftParam->next;
         rightParam = rightParam->next;
@@ -1997,8 +2008,8 @@ static int GlslBuildSignature(GlslLowerContext *context,
     for (parameter = symbol->details.fun.params; parameter != NULL;
          parameter = parameter->next)
     {
-        if (!GlslLowerType(context, parameter->type, &type,
-                           &parameter->loc)) return 0;
+        if (!GlslLowerTypeAuto(context, parameter->type, &type,
+                               &parameter->loc)) return 0;
         typeName = GlslTypeName(&type);
         if (typeName == NULL || used + strlen(typeName) + 2 > size) return 0;
         if (used != 0)
@@ -4113,8 +4124,16 @@ static int GlslValidateEntryInterfaces(GlslLowerContext *context,
     return 1;
 }
 
-int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
-                     SourceLoc *loc, Scope *scope, Symbol *program)
+/*
+ * GlslLowerLegacyProgram() - Lower the post-transform frontend tree for
+ *          explicit -version 1.1 compiles only.  Cg 2.0 sources lower
+ *          from the verified Cg IR through GlslLowerCgIR; this tree
+ *          consumer remains solely so the historical language path
+ *          keeps its exact bytes until final parity retires it.
+ */
+
+int GlslLowerLegacyProgram(GlslModule *module, const GlslProfileDesc *profile,
+                           SourceLoc *loc, Scope *scope, Symbol *program)
 {
     GlslLowerContext context;
     GlslFunction *function;
@@ -4192,3 +4211,3914 @@ int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
     }
     return module->errors == 0;
 }
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// Cg IR lowering (Cg 2.0 sources) //////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Everything below consumes a verified Cg IR module (cg_ir.h) instead
+ * of the frontend tree: declarations come from the module's ordered
+ * globals/functions/DECL statements, expressions switch over
+ * CgIRExprKind, and statements over CgIRStmtKind.  Uniform bindings,
+ * default values, and resource limits keep reading the HAL binding
+ * metadata exactly as the legacy path did: the reach-filtered IR
+ * intentionally omits unreferenced declarations, while the GLSL
+ * interface must stay silent about them and still emit every bound
+ * uniform (documented unused-uniform silence).
+ *
+ * Three synthesized IR shapes are recognized and re-collapsed into the
+ * historical output forms here:
+ *   - matrix group reads whose shared object has side effects lower to
+ *     the cg_get_matN helper call;
+ *   - matrix group writes (optionally preceded by the Task 16 object or
+ *     value temporaries) lower back to one cg_set_matN call or to the
+ *     per-component scalar fan-out between two plain variables;
+ *   - aggregate assignments flatten member-wise with cg_index /
+ *     cg_aggregate temporaries, mirroring the legacy transform pass
+ *     that used to run ahead of tree lowering.
+ */
+
+static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
+                                 const CgIRExpr *expr);
+static GlslExpr *GlslIRLowerExprList(GlslLowerContext *context,
+                                     const CgIRExpr *args);
+static int GlslIRLowerStatement(GlslLowerContext *context,
+                                const CgIRStmt *stmt, GlslStmt **list);
+static int GlslIRBlockBody(GlslLowerContext *context,
+                           const CgIRStmt *stmt, GlslStmt **out);
+static int GlslIRBranch(GlslLowerContext *context, const CgIRStmt *branch,
+                        GlslStmt **out);
+static int GlslIRForPart(GlslLowerContext *context, const CgIRStmt *init,
+                         GlslStmt **out);
+static int GlslIRLocalDeclaration(GlslLowerContext *context,
+                                  const CgIRStmt *stmt,
+                                  const CgIRStmt **nextOut, GlslStmt **out);
+static int GlslIRCollectHelper(GlslLowerContext *context,
+                               const Symbol *symbol);
+static int GlslIRLowerAggregateAssign(GlslLowerContext *context,
+                                      const CgIRExpr *assign,
+                                      GlslStmt **list);
+static GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
+                                     GlslExpr *matrix, int row,
+                                     int column);
+
+/*
+ * GlslLowerTypeAuto() - Shared helpers run under both lowering paths;
+ *          struct resolution needs the scope-tag lookup on the legacy
+ *          tree path and the IR registration map on the Cg 2.0 path.
+ */
+
+static int GlslLowerTypeAuto(GlslLowerContext *context, Type *source,
+                             GlslType *target, const SourceLoc *loc)
+{
+    if (context->source != NULL)
+        return GlslIRType(context, source, target, loc);
+    return GlslLowerType(context, source, target, loc);
+} // GlslLowerTypeAuto
+
+static int GlslEnsureTypeAuto(GlslLowerContext *context, Type *type,
+                              const SourceLoc *loc)
+{
+    if (context->source != NULL)
+        return GlslIREnsureType(context, type, loc);
+    return GlslEnsureType(context, type);
+} // GlslEnsureTypeAuto
+
+/*
+ * GlslIRScalarBase() - Canonical scalar kind to GLSL base.  Kinds with
+ *          no GLSL 1.10 spelling record the existing unsupported-type
+ *          diagnostic and return zero.
+ */
+
+static int GlslIRScalarBase(GlslLowerContext *context, CgScalarKind kind,
+                            GlslBase *base, const SourceLoc *loc)
+{
+    switch (kind) {
+    case CG_SCALAR_FLOAT:
+    case CG_SCALAR_CFLOAT:
+        *base = GLSL_BASE_FLOAT;
+        return 1;
+    case CG_SCALAR_INT:
+    case CG_SCALAR_CINT:
+        *base = GLSL_BASE_INT;
+        return 1;
+    case CG_SCALAR_BOOL:
+        *base = GLSL_BASE_BOOL;
+        return 1;
+    default:
+        /* half/fixed/double and every unsigned width carry no GLSL
+         * 1.10 spelling; profile validation rejects them here. */
+        GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                CgScalarKindName(kind), loc);
+        return 0;
+    }
+} // GlslIRScalarBase
+
+/*
+ * GlslIRIsSamplerValue() - Canonical sampler values (the language
+ *          sampler category with a bound texture family).  The legacy
+ *          typedef bases never appear in Cg 2.0 IR.
+ */
+
+static int GlslIRIsSamplerValue(const Type *type)
+{
+    if (type == NULL || GetCategory(type) != TYPE_CATEGORY_SAMPLER)
+        return 0;
+    switch (type->samp.samplerKind) {
+    case CG_SAMPLER_1D:
+    case CG_SAMPLER_2D:
+    case CG_SAMPLER_3D:
+    case CG_SAMPLER_CUBE:
+        return 1;
+    default:
+        return 0;
+    }
+} // GlslIRIsSamplerValue
+
+/*
+ * GlslIRFindStruct() - Struct declarations register with the canonical
+ *          Type pointer as identity; no scope-tag lookup exists on the
+ *          IR path.  Duplicated copies of one source structure share
+ *          their tag atom and declaration location, so those match too.
+ */
+
+static GlslDecl *GlslIRFindStruct(GlslLowerContext *context, Type *type)
+{
+    Type *canonical;
+    GlslDecl *decl;
+
+    canonical = GlslCanonicalStructType(type);
+    if (canonical == NULL)
+        return NULL;
+    for (decl = context->module->structs; decl != NULL; decl = decl->next) {
+        if (decl->identity == canonical)
+            return decl;
+        if (decl->sourceOrdinal == canonical->str.tag &&
+            decl->loc.file == canonical->str.loc.file &&
+            decl->loc.line == canonical->str.loc.line)
+        {
+            return decl;
+        }
+    }
+    return NULL;
+} // GlslIRFindStruct
+
+/*
+ * GlslIRRegisterStruct() - Translate one canonical struct type into the
+ *          module's struct list.  Anonymous internal structures (the
+ *          "$vin"/"$vout" connectors) never emit.  "sourceOrdinal"
+ *          doubles as the tag atom for duplicate matching (structure
+ *          sorting reads location and name only).
+ */
+
+static int GlslIRRegisterStruct(GlslLowerContext *context, Type *type,
+                                const SourceLoc *loc)
+{
+    Type *canonical;
+    GlslDecl *decl;
+    GlslType structType;
+    const char *sourceName;
+    const char *name;
+
+    canonical = GlslCanonicalStructType(type);
+    if (canonical == NULL)
+        return 0;
+    if (GlslIRFindStruct(context, canonical) != NULL)
+        return 1;
+    sourceName = GetAtomString(atable, canonical->str.tag);
+    if (sourceName == NULL)
+        return 0;
+    if (sourceName[0] == '$')
+        return 1;
+    name = GlslAllocateSymbolNameForSource(context, canonical, sourceName,
+                                           loc);
+    if (name == NULL)
+        return 0;
+    structType = GlslNumericType(GLSL_BASE_STRUCT, 0);
+    structType.structName = name;
+    decl = GlslNewDecl(context->module, GLSL_STORAGE_NONE,
+                       structType, name);
+    if (decl == NULL)
+        return 0;
+    decl->identity = canonical;
+    decl->sourceOrdinal = canonical->str.tag;
+    GlslSetLoc(&decl->loc, &canonical->str.loc);
+    GlslAppendDecl(&context->module->structs, decl);
+    if (canonical->str.members == NULL ||
+        !GlslCollectMembers(context, canonical->str.members,
+                            canonical->str.members->symbols, &decl->members))
+    {
+        return 0;
+    }
+    return 1;
+} // GlslIRRegisterStruct
+
+/*
+ * GlslIRType() - Cg IR canonical type to GlslType.  Mirrors the legacy
+ *          mapping but derives everything from the canonical type
+ *          object; profile-only features reject here with the existing
+ *          6200-family diagnostics.
+ */
+
+static int GlslIRType(GlslLowerContext *context, Type *source,
+                      GlslType *target, const SourceLoc *loc)
+{
+    GlslDecl *structDecl;
+    GlslBase glslBase;
+    GlslType elementType;
+    GlslType *element;
+    int len;
+    int rows;
+    int cols;
+
+    if (source == NULL || target == NULL)
+        return 0;
+    if (IsVoid(source)) {
+        *target = GlslNumericType(GLSL_BASE_VOID, 0);
+        return 1;
+    }
+    if (GetCategory(source) == TYPE_CATEGORY_INTERFACE) {
+        GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                "interface", loc);
+        return 0;
+    }
+    if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
+        /* Canonical language samplers keep the historical texture-object
+         * bases; samplerRECT and the deprecated base sampler have no
+         * GLSL 1.10 spelling and fail profile validation. */
+        switch (source->samp.samplerKind) {
+        case CG_SAMPLER_1D:
+            *target = GlslNumericType(GLSL_BASE_SAMPLER1D, 1);
+            return 1;
+        case CG_SAMPLER_2D:
+            *target = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+            return 1;
+        case CG_SAMPLER_3D:
+            *target = GlslNumericType(GLSL_BASE_SAMPLER3D, 1);
+            return 1;
+        case CG_SAMPLER_CUBE:
+            *target = GlslNumericType(GLSL_BASE_SAMPLERCUBE, 1);
+            return 1;
+        default:
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                    source->samp.samplerKind ==
+                                        CG_SAMPLER_RECT ? "samplerRECT" :
+                                                          "sampler",
+                                    loc);
+            return 0;
+        }
+    }
+    if (IsMatrix(source, &cols, &rows)) {
+        if (!GlslIRScalarBase(context, GetScalarKind(source), &glslBase,
+                              loc))
+            return 0;
+        if (glslBase != GLSL_BASE_FLOAT) {
+            GlslRecordFailureKindAt(context,
+                                    GLSL_ERROR_UNSUPPORTED_TYPE,
+                                    "matrix", loc);
+            return 0;
+        }
+        if (rows != cols || rows < 2 || rows > 4) {
+            char matrixName[32];
+
+            sprintf(matrixName, "float%dx%d", rows, cols);
+            GlslRecordFailureKindAt(context,
+                                    GLSL_ERROR_NON_SQUARE_MATRIX,
+                                    GlslCopyText(context->module,
+                                                 matrixName), loc);
+            return 0;
+        }
+        *target = GlslMatrixType(rows);
+        return 1;
+    }
+    if (GetCategory(source) == TYPE_CATEGORY_STRUCT) {
+        structDecl = GlslIRFindStruct(context, source);
+        if (structDecl == NULL) {
+            /* Lazy registration: a struct first seen through another
+             * type's element/member walk registers here, mirroring
+             * the legacy ensure-before-lower discipline. */
+            if (!GlslIRRegisterStruct(context, source, loc))
+                return 0;
+            structDecl = GlslIRFindStruct(context, source);
+            if (structDecl == NULL)
+                return 0;
+        }
+        *target = GlslNumericType(GLSL_BASE_STRUCT, 0);
+        target->structName = structDecl->name;
+        target->members = structDecl->members;
+        return 1;
+    }
+    if (IsVector(source, &len)) {
+        if (!GlslIRScalarBase(context, GetScalarKind(source), &glslBase,
+                              loc))
+            return 0;
+        if (len >= 1 && len <= 4) {
+            *target = GlslNumericType(glslBase, len);
+            return 1;
+        }
+        GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                "vector", loc);
+        return 0;
+    }
+    if (IsScalar(source)) {
+        if (!GlslIRScalarBase(context, GetScalarKind(source), &glslBase,
+                              loc))
+            return 0;
+        *target = GlslNumericType(glslBase, 1);
+        return 1;
+    }
+    if (GetCategory(source) == TYPE_CATEGORY_ARRAY &&
+        source->arr.numels != CG_ARRAY_UNSIZED && source->arr.numels > 0 &&
+        GlslIRType(context, source->arr.eltype, &elementType, loc))
+    {
+        element = (GlslType *) context->module->alloc(
+            context->module->allocArg, sizeof(GlslType));
+        if (element == NULL)
+            return 0;
+        *element = elementType;
+        *target = GlslNumericType(GLSL_BASE_VOID, 0);
+        target->arraySize = source->arr.numels;
+        target->elementType = element;
+        return 1;
+    }
+    if (GetCategory(source) == TYPE_CATEGORY_ARRAY) {
+        GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                "dynamic unsized array", loc);
+        return 0;
+    }
+    return 0;
+} // GlslIRType
+
+/*
+ * GlslIREnsureType() - Validate one canonical type for GLSL and
+ *          register every struct it mentions.  Mirrors the legacy
+ *          ensure walk without any scope dependency.
+ */
+
+static int GlslIREnsureType(GlslLowerContext *context, Type *type,
+                            const SourceLoc *loc)
+{
+    int len;
+    int rows;
+    int cols;
+
+    if (type == NULL)
+        return 0;
+    if (IsVoid(type))
+        return 1;
+    if (IsMatrix(type, &cols, &rows) || IsVector(type, &len) ||
+        GetCategory(type) == TYPE_CATEGORY_SCALAR)
+    {
+        CgScalarKind kind;
+
+        kind = GetScalarKind(type);
+        switch (kind) {
+        case CG_SCALAR_FLOAT:
+        case CG_SCALAR_CFLOAT:
+        case CG_SCALAR_INT:
+        case CG_SCALAR_CINT:
+        case CG_SCALAR_BOOL:
+            return 1;
+        default:
+            /* half/fixed/double and unsigned widths carry no GLSL 1.10
+             * spelling; profile validation rejects them here. */
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                    CgScalarKindName(kind), loc);
+            return 0;
+        }
+    }
+    if (GetCategory(type) == TYPE_CATEGORY_INTERFACE) {
+        GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                "interface", loc);
+        return 0;
+    }
+    if (GetCategory(type) == TYPE_CATEGORY_SAMPLER) {
+        switch (type->samp.samplerKind) {
+        case CG_SAMPLER_1D:
+        case CG_SAMPLER_2D:
+        case CG_SAMPLER_3D:
+        case CG_SAMPLER_CUBE:
+            return 1;
+        default:
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                    type->samp.samplerKind ==
+                                        CG_SAMPLER_RECT ? "samplerRECT" :
+                                                          "sampler",
+                                    loc);
+            return 0;
+        }
+    }
+    if (GetCategory(type) == TYPE_CATEGORY_ARRAY) {
+        if (type->arr.numels == CG_ARRAY_UNSIZED || type->arr.numels <= 0)
+        {
+            /* Dynamic unsized arrays have no GLSL 1.10 storage rule;
+             * name the construct instead of a generic fallback. */
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                    "dynamic unsized array", loc);
+            return 0;
+        }
+        return GlslIREnsureType(context, type->arr.eltype, loc);
+    }
+    if (GetCategory(type) == TYPE_CATEGORY_STRUCT)
+        return GlslIRRegisterStruct(context, type, loc);
+    return 0;
+} // GlslIREnsureType
+
+static int GlslIREnsureTypeAt(GlslLowerContext *context, Type *type,
+                              const SourceLoc *loc)
+{
+    SourceLoc savedLoc;
+    int result;
+
+    if (loc == NULL)
+        return GlslIREnsureType(context, type, NULL);
+    savedLoc = context->statementLoc;
+    context->statementLoc = *loc;
+    result = GlslIREnsureType(context, type, loc);
+    context->statementLoc = savedLoc;
+    return result;
+} // GlslIREnsureTypeAt
+
+/*
+ * GlslIRSamplerPlacementCheck() - Samplers reach a shader only as
+ *          global uniforms or as in-qualified formals; a helper formal
+ *          (or local) sampler outside the uniform domain keeps failing
+ *          with the historical sampler diagnostic because the language
+ *          rules deliberately allow plain sampler formals.
+ */
+
+static int GlslIRSamplerPlacementCheck(GlslLowerContext *context,
+                                       const CgIRDecl *decl)
+{
+    if (decl->symbol == NULL || decl->symbol->type == NULL)
+        return 1;
+    if (GlslIRIsSamplerValue(decl->symbol->type) &&
+        GetDomain(decl->symbol->type) != TYPE_DOMAIN_UNIFORM)
+    {
+        GlslRecordFailureKindAt(context, GLSL_ERROR_SAMPLER,
+                                "samplers must be uniforms",
+                                &decl->loc);
+        return 0;
+    }
+    return 1;
+} // GlslIRSamplerPlacementCheck
+
+/*
+ * GlslIRNewSourceDecl() - One GlslDecl translated from an ordered Cg IR
+ *          declaration.  Source symbol identity drives name allocation
+ *      exactly as the tree path did; anonymous temporaries fall back to
+ *          their canonical type as identity.
+ */
+
+static GlslDecl *GlslIRNewSourceDecl(GlslLowerContext *context,
+                                     const CgIRDecl *source,
+                                     const void *nameSpace)
+{
+    GlslDecl *decl;
+    GlslType type;
+    const char *sourceName;
+    const char *name;
+    const void *identity;
+
+    if (!GlslIRType(context, source->type, &type, &source->loc))
+        return NULL;
+    sourceName = GetAtomString(atable, source->name);
+    if (sourceName == NULL)
+        return NULL;
+    identity = source->symbol != NULL ? (const void *) source->symbol
+                                      : (const void *) source->type;
+    if (nameSpace != NULL) {
+        name = GlslAllocateScopedSymbolNameForSource(context, nameSpace,
+                                                     identity, sourceName,
+                                                     &source->loc);
+    } else {
+        name = GlslAllocateSymbolNameForSource(context, identity,
+                                               sourceName, &source->loc);
+    }
+    if (name == NULL)
+        return NULL;
+    decl = GlslNewDecl(context->module, GLSL_STORAGE_NONE, type, name);
+    if (decl != NULL) {
+        decl->identity = identity;
+        GlslSetLoc(&decl->loc, &source->loc);
+        decl->sourceOrdinal = source->symbol != NULL ?
+                              source->symbol->sourceOrdinal : 0;
+    }
+    return decl;
+} // GlslIRNewSourceDecl
+
+
+/*
+ * GlslIRCollectUniformsInExpr() - Uniform references inside statement
+ *          trees join the binding metadata scan so referenced uniforms
+ *          are never missed.  GlslCollectUniformSymbol filters
+ *          non-uniform symbols itself.
+ */
+
+static int GlslIRCollectUniformsInExpr(GlslLowerContext *context,
+                                       const CgIRExpr *expr)
+{
+    const CgIRExpr *argument;
+
+    if (expr == NULL)
+        return 1;
+    switch (expr->kind) {
+    case CGIR_EXPR_SYMBOL:
+        return GlslCollectUniformSymbol(context, expr->u.symbol);
+    case CGIR_EXPR_CONSTANT:
+        return 1;
+    case CGIR_EXPR_MEMBER:
+        return GlslIRCollectUniformsInExpr(context, expr->u.member.object);
+    case CGIR_EXPR_INDEX:
+        return GlslIRCollectUniformsInExpr(context,
+                                           expr->u.index.object) &&
+               GlslIRCollectUniformsInExpr(context, expr->u.index.index);
+    case CGIR_EXPR_LENGTH:
+        return GlslIRCollectUniformsInExpr(context,
+                                           expr->u.length.object);
+    case CGIR_EXPR_SWIZZLE:
+        return GlslIRCollectUniformsInExpr(context,
+                                           expr->u.swizzle.object);
+    case CGIR_EXPR_CONSTRUCT:
+        for (argument = expr->u.construct.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectUniformsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    case CGIR_EXPR_CAST:
+        return GlslIRCollectUniformsInExpr(context, expr->u.cast.operand);
+    case CGIR_EXPR_UNARY:
+        return GlslIRCollectUniformsInExpr(context,
+                                           expr->u.unary.operand);
+    case CGIR_EXPR_BINARY:
+        return GlslIRCollectUniformsInExpr(context,
+                                           expr->u.binary.left) &&
+               GlslIRCollectUniformsInExpr(context,
+                                           expr->u.binary.right);
+    case CGIR_EXPR_ASSIGN:
+        return GlslIRCollectUniformsInExpr(context,
+                                           expr->u.assign.target) &&
+               GlslIRCollectUniformsInExpr(context,
+                                           expr->u.assign.value);
+    case CGIR_EXPR_CONDITIONAL:
+        return GlslIRCollectUniformsInExpr(context,
+                                           expr->u.conditional.condition) &&
+               GlslIRCollectUniformsInExpr(context,
+                                           expr->u.conditional.trueExpr) &&
+               GlslIRCollectUniformsInExpr(context,
+                                           expr->u.conditional.falseExpr);
+    case CGIR_EXPR_CALL:
+        for (argument = expr->u.call.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectUniformsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    case CGIR_EXPR_INTERFACE_CALL:
+        if (!GlslIRCollectUniformsInExpr(context,
+                                         expr->u.interfaceCall.receiver))
+            return 0;
+        for (argument = expr->u.interfaceCall.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectUniformsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    case CGIR_EXPR_INTRINSIC:
+        for (argument = expr->u.intrinsicCall.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectUniformsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    default:
+        return 1;
+    }
+} // GlslIRCollectUniformsInExpr
+
+static int GlslIRCollectUniformsInStmt(GlslLowerContext *context,
+                                       const CgIRStmt *stmt)
+{
+    if (stmt == NULL)
+        return 1;
+    switch (stmt->kind) {
+    case CGIR_STMT_BLOCK:
+        for (stmt = stmt->u.block; stmt != NULL; stmt = stmt->next) {
+            if (!GlslIRCollectUniformsInStmt(context, stmt)) return 0;
+        }
+        return 1;
+    case CGIR_STMT_DECL:
+        return stmt->u.decl->initializer == NULL ||
+               GlslIRCollectUniformsInExpr(context,
+                                           stmt->u.decl->initializer);
+    case CGIR_STMT_EXPR:
+        return GlslIRCollectUniformsInExpr(context, stmt->u.expression);
+    case CGIR_STMT_IF:
+        return GlslIRCollectUniformsInExpr(context,
+                                           stmt->u.ifStmt.condition) &&
+               GlslIRCollectUniformsInStmt(context,
+                                           stmt->u.ifStmt.trueBranch) &&
+               GlslIRCollectUniformsInStmt(context,
+                                           stmt->u.ifStmt.falseBranch);
+    case CGIR_STMT_WHILE:
+    case CGIR_STMT_DO:
+        return GlslIRCollectUniformsInExpr(context,
+                                           stmt->u.loop.condition) &&
+               GlslIRCollectUniformsInStmt(context, stmt->u.loop.body);
+    case CGIR_STMT_FOR:
+        return GlslIRCollectUniformsInStmt(context,
+                                           stmt->u.forStmt.init) &&
+               (stmt->u.forStmt.condition == NULL ||
+                GlslIRCollectUniformsInExpr(context,
+                                            stmt->u.forStmt.condition)) &&
+               (stmt->u.forStmt.step == NULL ||
+                GlslIRCollectUniformsInExpr(context,
+                                            stmt->u.forStmt.step)) &&
+               GlslIRCollectUniformsInStmt(context, stmt->u.forStmt.body);
+    case CGIR_STMT_RETURN:
+        return stmt->u.returnExpr == NULL ||
+               GlslIRCollectUniformsInExpr(context, stmt->u.returnExpr);
+    case CGIR_STMT_DISCARD:
+        return stmt->u.discard.condition == NULL ||
+               GlslIRCollectUniformsInExpr(context,
+                                           stmt->u.discard.condition);
+    default:
+        return 1;
+    }
+} // GlslIRCollectUniformsInStmt
+
+/*
+ * GlslIRFindIRFunction() - The Cg IR definition matching a resolved
+ *          callee identity.
+ */
+
+static const CgIRFunction *GlslIRFindIRFunction(const CgIRModule *source,
+                                                const Symbol *symbol)
+{
+    const CgIRFunction *function;
+
+    for (function = source->functions; function != NULL;
+         function = function->next)
+    {
+        if (function->symbol == symbol)
+            return function;
+    }
+    return NULL;
+} // GlslIRFindIRFunction
+
+static int GlslIRCollectCallsInExpr(GlslLowerContext *context,
+                                    const CgIRExpr *expr)
+{
+    const CgIRExpr *argument;
+
+    if (expr == NULL)
+        return 1;
+    switch (expr->kind) {
+    case CGIR_EXPR_CALL:
+        if (!GlslIRCollectHelper(context, expr->u.call.callee)) return 0;
+        for (argument = expr->u.call.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectCallsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    case CGIR_EXPR_MEMBER:
+        return GlslIRCollectCallsInExpr(context, expr->u.member.object);
+    case CGIR_EXPR_INDEX:
+        return GlslIRCollectCallsInExpr(context,
+                                        expr->u.index.object) &&
+               GlslIRCollectCallsInExpr(context, expr->u.index.index);
+    case CGIR_EXPR_LENGTH:
+        return GlslIRCollectCallsInExpr(context, expr->u.length.object);
+    case CGIR_EXPR_SWIZZLE:
+        return GlslIRCollectCallsInExpr(context, expr->u.swizzle.object);
+    case CGIR_EXPR_CONSTRUCT:
+        for (argument = expr->u.construct.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectCallsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    case CGIR_EXPR_CAST:
+        return GlslIRCollectCallsInExpr(context, expr->u.cast.operand);
+    case CGIR_EXPR_UNARY:
+        return GlslIRCollectCallsInExpr(context, expr->u.unary.operand);
+    case CGIR_EXPR_BINARY:
+        return GlslIRCollectCallsInExpr(context, expr->u.binary.left) &&
+               GlslIRCollectCallsInExpr(context, expr->u.binary.right);
+    case CGIR_EXPR_ASSIGN:
+        return GlslIRCollectCallsInExpr(context,
+                                        expr->u.assign.target) &&
+               GlslIRCollectCallsInExpr(context, expr->u.assign.value);
+    case CGIR_EXPR_CONDITIONAL:
+        return GlslIRCollectCallsInExpr(context,
+                                        expr->u.conditional.condition) &&
+               GlslIRCollectCallsInExpr(context,
+                                        expr->u.conditional.trueExpr) &&
+               GlslIRCollectCallsInExpr(context,
+                                        expr->u.conditional.falseExpr);
+    case CGIR_EXPR_INTERFACE_CALL:
+        if (!GlslIRCollectCallsInExpr(context,
+                                      expr->u.interfaceCall.receiver))
+            return 0;
+        for (argument = expr->u.interfaceCall.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectCallsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    case CGIR_EXPR_INTRINSIC:
+        for (argument = expr->u.intrinsicCall.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!GlslIRCollectCallsInExpr(context, argument)) return 0;
+        }
+        return 1;
+    default:
+        return 1;
+    }
+} // GlslIRCollectCallsInExpr
+
+static int GlslIRCollectCallsInStmt(GlslLowerContext *context,
+                                    const CgIRStmt *stmt)
+{
+    if (stmt == NULL)
+        return 1;
+    switch (stmt->kind) {
+    case CGIR_STMT_BLOCK:
+        for (stmt = stmt->u.block; stmt != NULL; stmt = stmt->next) {
+            if (!GlslIRCollectCallsInStmt(context, stmt)) return 0;
+        }
+        return 1;
+    case CGIR_STMT_DECL:
+        return stmt->u.decl->initializer == NULL ||
+               GlslIRCollectCallsInExpr(context,
+                                        stmt->u.decl->initializer);
+    case CGIR_STMT_EXPR:
+        return GlslIRCollectCallsInExpr(context, stmt->u.expression);
+    case CGIR_STMT_IF:
+        return GlslIRCollectCallsInExpr(context,
+                                        stmt->u.ifStmt.condition) &&
+               GlslIRCollectCallsInStmt(context,
+                                        stmt->u.ifStmt.trueBranch) &&
+               GlslIRCollectCallsInStmt(context,
+                                        stmt->u.ifStmt.falseBranch);
+    case CGIR_STMT_WHILE:
+    case CGIR_STMT_DO:
+        return GlslIRCollectCallsInExpr(context,
+                                        stmt->u.loop.condition) &&
+               GlslIRCollectCallsInStmt(context, stmt->u.loop.body);
+    case CGIR_STMT_FOR:
+        return GlslIRCollectCallsInStmt(context, stmt->u.forStmt.init) &&
+               (stmt->u.forStmt.condition == NULL ||
+                GlslIRCollectCallsInExpr(context,
+                                         stmt->u.forStmt.condition)) &&
+               (stmt->u.forStmt.step == NULL ||
+                GlslIRCollectCallsInExpr(context, stmt->u.forStmt.step)) &&
+               GlslIRCollectCallsInStmt(context, stmt->u.forStmt.body);
+    case CGIR_STMT_RETURN:
+        return stmt->u.returnExpr == NULL ||
+               GlslIRCollectCallsInExpr(context, stmt->u.returnExpr);
+    case CGIR_STMT_DISCARD:
+        return stmt->u.discard.condition == NULL ||
+               GlslIRCollectCallsInExpr(context,
+                                        stmt->u.discard.condition);
+    default:
+        return 1;
+    }
+} // GlslIRCollectCallsInStmt
+
+/*
+ * GlslIRFirstBodyLoc() - Helper functions sort by their first executable
+ *          statement location, mirroring the legacy collection that read
+ *      the raw statement list head (declarations are not statements).
+ */
+
+static const SourceLoc *GlslIRFirstBodyLoc(const CgIRFunction *function,
+                                           const Symbol *symbol)
+{
+    const CgIRStmt *first;
+
+    first = function->body;
+    if (first != NULL && first->kind == CGIR_STMT_BLOCK)
+        first = first->u.block;
+    for (; first != NULL; first = first->next) {
+        if (first->kind != CGIR_STMT_DECL)
+            return &first->loc;
+    }
+    return &symbol->loc;
+} // GlslIRFirstBodyLoc
+
+/*
+ * GlslIRCollectHelper() - IR-driven twin of the legacy helper walk:
+ *          resolve identity, reject standard-library and sampler-result
+ *          helpers, ensure every mentioned type, then recurse into the
+ *          body depth-first with a cycle guard.
+ */
+
+static int GlslIRCollectHelper(GlslLowerContext *context,
+                               const Symbol *symbol)
+{
+    const CgIRFunction *irFunction;
+    const CgIRDecl *decl;
+    GlslFunction *function;
+    GlslType result;
+    const char *fileName;
+
+    if (symbol == NULL || symbol->kind != FUNCTION_S)
+        return 0;
+    if (symbol->properties & SYMB_IS_BUILTIN)
+        return 1;
+    fileName = GetAtomString(atable, symbol->loc.file);
+    if (fileName != NULL && !strcmp(fileName, "<stdlib>")) {
+        GlslRecordFailure(context, "GLSL standard-library helper");
+        return 0;
+    }
+    if (symbol->type == NULL ||
+        GlslIRIsSamplerValue(symbol->type->fun.rettype))
+    {
+        context->statementLoc = symbol->loc;
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                              "sampler helper result");
+        return 0;
+    }
+    function = GlslFindFunction(context->module, symbol);
+    if (function != NULL) {
+        if (function->visitState == 1) {
+            GlslRecordFailure(context, "recursive GLSL helper");
+            return 0;
+        }
+        return 1;
+    }
+    irFunction = GlslIRFindIRFunction(context->source, symbol);
+    if (irFunction == NULL)
+        return 0;
+    if (!GlslIREnsureTypeAt(context, symbol->type->fun.rettype,
+                            &symbol->loc))
+    {
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "GLSL helper type");
+        return 0;
+    }
+    for (decl = irFunction->parameters; decl != NULL; decl = decl->next) {
+        if (!GlslIRSamplerPlacementCheck(context, decl) ||
+            !GlslIREnsureTypeAt(context, decl->type, &decl->loc))
+        {
+            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                  "GLSL helper type");
+            return 0;
+        }
+    }
+    for (decl = irFunction->locals; decl != NULL; decl = decl->next) {
+        const char *localName;
+
+        localName = GetAtomString(atable, decl->name);
+        if (localName == NULL || localName[0] == '$')
+            continue;
+        if (!GlslIRSamplerPlacementCheck(context, decl) ||
+            !GlslIREnsureTypeAt(context, decl->type, &decl->loc))
+        {
+            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                  "GLSL helper type");
+            return 0;
+        }
+    }
+    if (!GlslIRType(context, symbol->type->fun.rettype, &result,
+                    &symbol->loc))
+    {
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "GLSL helper type");
+        return 0;
+    }
+    function = GlslNewFunction(context->module, result, NULL);
+    if (function == NULL)
+        return 0;
+    function->identity = symbol;
+    function->visitState = 1;
+    GlslSetLoc(&function->loc, GlslIRFirstBodyLoc(irFunction, symbol));
+    GlslInsertFunction(&context->module->functions, function);
+    if (!GlslIRCollectCallsInStmt(context, irFunction->body)) return 0;
+    function->visitState = 2;
+    return 1;
+} // GlslIRCollectHelper
+
+/*
+ * GlslIRMarkForwardCalls* - Calls whose target sorts after its caller
+ *          need a prototype declaration.
+ */
+
+static void GlslIRMarkForwardCallsInExpr(GlslLowerContext *context,
+                                         GlslFunction *caller,
+                                         const CgIRExpr *expr)
+{
+    const CgIRExpr *argument;
+    GlslFunction *callee;
+
+    if (expr == NULL)
+        return;
+    switch (expr->kind) {
+    case CGIR_EXPR_CALL:
+        callee = GlslFindFunction(context->module, expr->u.call.callee);
+        if (callee != NULL &&
+            GlslFunctionIsAfter(context->module, caller, callee))
+        {
+            callee->needsPrototype = 1;
+        }
+        for (argument = expr->u.call.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            GlslIRMarkForwardCallsInExpr(context, caller, argument);
+        }
+        break;
+    case CGIR_EXPR_MEMBER:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.member.object);
+        break;
+    case CGIR_EXPR_INDEX:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.index.object);
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.index.index);
+        break;
+    case CGIR_EXPR_LENGTH:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.length.object);
+        break;
+    case CGIR_EXPR_SWIZZLE:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.swizzle.object);
+        break;
+    case CGIR_EXPR_CONSTRUCT:
+        for (argument = expr->u.construct.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            GlslIRMarkForwardCallsInExpr(context, caller, argument);
+        }
+        break;
+    case CGIR_EXPR_CAST:
+        GlslIRMarkForwardCallsInExpr(context, caller, expr->u.cast.operand);
+        break;
+    case CGIR_EXPR_UNARY:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.unary.operand);
+        break;
+    case CGIR_EXPR_BINARY:
+        GlslIRMarkForwardCallsInExpr(context, caller, expr->u.binary.left);
+        GlslIRMarkForwardCallsInExpr(context, caller, expr->u.binary.right);
+        break;
+    case CGIR_EXPR_ASSIGN:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.assign.target);
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.assign.value);
+        break;
+    case CGIR_EXPR_CONDITIONAL:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.conditional.condition);
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.conditional.trueExpr);
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.conditional.falseExpr);
+        break;
+    case CGIR_EXPR_INTERFACE_CALL:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     expr->u.interfaceCall.receiver);
+        for (argument = expr->u.interfaceCall.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            GlslIRMarkForwardCallsInExpr(context, caller, argument);
+        }
+        break;
+    case CGIR_EXPR_INTRINSIC:
+        for (argument = expr->u.intrinsicCall.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            GlslIRMarkForwardCallsInExpr(context, caller, argument);
+        }
+        break;
+    default:
+        break;
+    }
+} // GlslIRMarkForwardCallsInExpr
+
+static void GlslIRMarkForwardCallsInStmt(GlslLowerContext *context,
+                                         GlslFunction *caller,
+                                         const CgIRStmt *stmt)
+{
+    if (stmt == NULL)
+        return;
+    switch (stmt->kind) {
+    case CGIR_STMT_BLOCK:
+        for (stmt = stmt->u.block; stmt != NULL; stmt = stmt->next) {
+            GlslIRMarkForwardCallsInStmt(context, caller, stmt);
+        }
+        break;
+    case CGIR_STMT_DECL:
+        if (stmt->u.decl->initializer != NULL) {
+            GlslIRMarkForwardCallsInExpr(context, caller,
+                                         stmt->u.decl->initializer);
+        }
+        break;
+    case CGIR_STMT_EXPR:
+        GlslIRMarkForwardCallsInExpr(context, caller, stmt->u.expression);
+        break;
+    case CGIR_STMT_IF:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     stmt->u.ifStmt.condition);
+        GlslIRMarkForwardCallsInStmt(context, caller,
+                                     stmt->u.ifStmt.trueBranch);
+        GlslIRMarkForwardCallsInStmt(context, caller,
+                                     stmt->u.ifStmt.falseBranch);
+        break;
+    case CGIR_STMT_WHILE:
+    case CGIR_STMT_DO:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     stmt->u.loop.condition);
+        GlslIRMarkForwardCallsInStmt(context, caller, stmt->u.loop.body);
+        break;
+    case CGIR_STMT_FOR:
+        GlslIRMarkForwardCallsInStmt(context, caller, stmt->u.forStmt.init);
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     stmt->u.forStmt.condition);
+        GlslIRMarkForwardCallsInExpr(context, caller, stmt->u.forStmt.step);
+        GlslIRMarkForwardCallsInStmt(context, caller, stmt->u.forStmt.body);
+        break;
+    case CGIR_STMT_RETURN:
+        GlslIRMarkForwardCallsInExpr(context, caller, stmt->u.returnExpr);
+        break;
+    case CGIR_STMT_DISCARD:
+        GlslIRMarkForwardCallsInExpr(context, caller,
+                                     stmt->u.discard.condition);
+        break;
+    default:
+        break;
+    }
+} // GlslIRMarkForwardCallsInStmt
+
+/*
+ * GlslIRValidateEntryInterfaces() - Reserve canonical interface names
+ *          for every varying-domain entry formal (and its members)
+ *          before bodies allocate names.  The void entry result needs
+ *          no output-side reservation: output members surface through
+ *          $vout writes and conflict-check live.
+ */
+
+static int GlslIRValidateEntryInterfaces(GlslLowerContext *context,
+                                         const CgIRFunction *entry)
+{
+    const CgIRDecl *param;
+    Symbol *member;
+    int isOutput;
+
+    for (param = entry->parameters; param != NULL; param = param->next) {
+        if (param->domain == CGIR_DOMAIN_UNIFORM)
+            continue;
+        if (param->symbol == NULL)
+            continue;
+        isOutput = (GetQualifiers(param->type) &
+                    TYPE_QUALIFIER_OUT) != 0;
+        if (GetCategory(param->type) != TYPE_CATEGORY_STRUCT) {
+            if (!GlslValidateInterfaceSource(context, param->symbol,
+                                             isOutput))
+            {
+                return 0;
+            }
+            continue;
+        }
+        if (param->type->str.members == NULL)
+            continue;
+        for (member = param->type->str.members->symbols; member != NULL;
+             member = member->next)
+        {
+            if (!GlslValidateInterfaceSource(context, member, isOutput))
+                return 0;
+        }
+    }
+    /* The void entry result's output members surface only through $vout
+     * writes; reserve their canonical names here exactly as the legacy
+     * result-structure walk did.  Members whose key a formal already
+     * claimed are skipped (they are the same interface value).  The
+     * input connector covers global varyings read through $vin. */
+    {
+        const Symbol *connMember;
+
+        if (Cg->theHAL->varyingOut != NULL &&
+            Cg->theHAL->varyingOut->type->str.members != NULL)
+        {
+            for (connMember =
+                     Cg->theHAL->varyingOut->type->str.members->symbols;
+                 connMember != NULL; connMember = connMember->next)
+            {
+                Binding *bind = connMember->details.var.bind;
+                const char *key;
+                const GlslInterfaceSource *src;
+
+                if (bind == NULL || bind->none.kind != BK_CONNECTOR ||
+                    !(bind->none.properties & BIND_IS_BOUND) ||
+                    bind->conn.rname == 0)
+                    continue;
+                key = GlslCanonicalInterfaceName(context->profile,
+                                                 bind->conn.rname, 1);
+                if (key == NULL)
+                    continue;
+                {
+                    int seen = 0;
+
+                    for (src = context->interfaceSources; src != NULL;
+                         src = src->next)
+                    {
+                        if (src->isOutput == 1 &&
+                            !strcmp(src->interfaceKey, key))
+                        {
+                            seen = 1;
+                            break;
+                        }
+                    }
+                    if (seen)
+                        continue;
+                }
+                if (!GlslValidateInterfaceSource(context,
+                    (Symbol *) connMember, 1)) return 0;
+            }
+        }
+        if (Cg->theHAL->varyingIn != NULL &&
+            Cg->theHAL->varyingIn->type->str.members != NULL)
+        {
+            for (connMember =
+                     Cg->theHAL->varyingIn->type->str.members->symbols;
+                 connMember != NULL; connMember = connMember->next)
+            {
+                Binding *bind = connMember->details.var.bind;
+                const char *key;
+                const GlslInterfaceSource *src;
+
+                if (bind == NULL || bind->none.kind != BK_CONNECTOR ||
+                    !(bind->none.properties & BIND_IS_BOUND) ||
+                    bind->conn.rname == 0)
+                    continue;
+                key = GlslCanonicalInterfaceName(context->profile,
+                                                 bind->conn.rname, 0);
+                if (key == NULL)
+                    continue;
+                {
+                    int seen = 0;
+
+                    for (src = context->interfaceSources; src != NULL;
+                         src = src->next)
+                    {
+                        if (src->isOutput == 0 &&
+                            !strcmp(src->interfaceKey, key))
+                        {
+                            seen = 1;
+                            break;
+                        }
+                    }
+                    if (seen)
+                        continue;
+                }
+                if (!GlslValidateInterfaceSource(context,
+                    (Symbol *) connMember, 0)) return 0;
+            }
+        }
+    }
+    return 1;
+} // GlslIRValidateEntryInterfaces
+
+/*
+ * GlslIRNeedsMaterialization() - IR twin of the legacy aggregate
+ *          operand test: side effects, calls, and anything unusual must
+ *          evaluate through a temporary before leaf fan-out shares it.
+ */
+
+static int GlslIRNeedsMaterialization(const CgIRExpr *expr)
+{
+    const CgIRExpr *argument;
+
+    if (expr == NULL)
+        return 0;
+    if (expr->sideEffects)
+        return 1;
+    switch (expr->kind) {
+    case CGIR_EXPR_SYMBOL:
+    case CGIR_EXPR_CONSTANT:
+        return 0;
+    case CGIR_EXPR_MEMBER:
+        return GlslIRNeedsMaterialization(expr->u.member.object);
+    case CGIR_EXPR_INDEX:
+        return GlslIRNeedsMaterialization(expr->u.index.object) ||
+               GlslIRNeedsMaterialization(expr->u.index.index);
+    case CGIR_EXPR_LENGTH:
+        return GlslIRNeedsMaterialization(expr->u.length.object);
+    case CGIR_EXPR_SWIZZLE:
+        return GlslIRNeedsMaterialization(expr->u.swizzle.object);
+    case CGIR_EXPR_CAST:
+        return GlslIRNeedsMaterialization(expr->u.cast.operand);
+    case CGIR_EXPR_UNARY:
+        return GlslIRNeedsMaterialization(expr->u.unary.operand);
+    case CGIR_EXPR_BINARY:
+        return GlslIRNeedsMaterialization(expr->u.binary.left) ||
+               GlslIRNeedsMaterialization(expr->u.binary.right);
+    case CGIR_EXPR_CONDITIONAL:
+        return GlslIRNeedsMaterialization(
+                   expr->u.conditional.condition) ||
+               GlslIRNeedsMaterialization(
+                   expr->u.conditional.trueExpr) ||
+               GlslIRNeedsMaterialization(
+                   expr->u.conditional.falseExpr);
+    case CGIR_EXPR_CONSTRUCT:
+        for (argument = expr->u.construct.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (GlslIRNeedsMaterialization(argument)) return 1;
+        }
+        return 0;
+    default:
+        return 1;
+    }
+} // GlslIRNeedsMaterialization
+
+/*
+ * GlslIRContainsArray() - Legacy AggregateContainsArray over canonical
+ *          Cg types: any nested array makes side-effecting operand
+ *          materialization unsound.
+ */
+
+static int GlslIRContainsArray(const Type *type)
+{
+    const Symbol *member;
+    int len;
+    int len2;
+
+    len = len2 = 0;
+    if (IsScalar(type) || IsVector(type, &len) ||
+        IsMatrix(type, &len, &len2))
+    {
+        return 0;
+    }
+    if (GetCategory(type) == TYPE_CATEGORY_ARRAY)
+        return 1;
+    if (GetCategory(type) == TYPE_CATEGORY_STRUCT &&
+        type->str.members != NULL)
+    {
+        for (member = type->str.members->symbols; member != NULL;
+             member = member->next)
+        {
+            if (GlslIRContainsArray(member->type)) return 1;
+        }
+    }
+    return 0;
+} // GlslIRContainsArray
+
+/*
+ * GlslIRPostNormalizeNeedsMaterialization() - Operand test evaluated
+ *          after index hoisting: every dynamic index already moved into
+ *          its own temporary, so only remaining effects count.
+ */
+
+static int GlslIRPostNormalizeNeedsMaterialization(const CgIRExpr *expr)
+{
+    const CgIRExpr *argument;
+
+    if (expr == NULL)
+        return 0;
+    if (expr->sideEffects)
+        return 1;
+    switch (expr->kind) {
+    case CGIR_EXPR_SYMBOL:
+    case CGIR_EXPR_CONSTANT:
+    case CGIR_EXPR_INDEX:
+        return 0;
+    case CGIR_EXPR_MEMBER:
+        return GlslIRPostNormalizeNeedsMaterialization(
+            expr->u.member.object);
+    case CGIR_EXPR_LENGTH:
+        return GlslIRPostNormalizeNeedsMaterialization(
+            expr->u.length.object);
+    case CGIR_EXPR_SWIZZLE:
+        return GlslIRPostNormalizeNeedsMaterialization(
+            expr->u.swizzle.object);
+    case CGIR_EXPR_CAST:
+        return GlslIRPostNormalizeNeedsMaterialization(
+            expr->u.cast.operand);
+    case CGIR_EXPR_UNARY:
+        return GlslIRPostNormalizeNeedsMaterialization(
+            expr->u.unary.operand);
+    case CGIR_EXPR_BINARY:
+        return GlslIRPostNormalizeNeedsMaterialization(
+                   expr->u.binary.left) ||
+               GlslIRPostNormalizeNeedsMaterialization(
+                   expr->u.binary.right);
+    case CGIR_EXPR_CONDITIONAL:
+        return GlslIRPostNormalizeNeedsMaterialization(
+                   expr->u.conditional.condition) ||
+               GlslIRPostNormalizeNeedsMaterialization(
+                   expr->u.conditional.trueExpr) ||
+               GlslIRPostNormalizeNeedsMaterialization(
+                   expr->u.conditional.falseExpr);
+    case CGIR_EXPR_CONSTRUCT:
+        for (argument = expr->u.construct.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (GlslIRPostNormalizeNeedsMaterialization(argument))
+                return 1;
+        }
+        return 0;
+    default:
+        return 1;
+    }
+} // GlslIRPostNormalizeNeedsMaterialization
+
+/*
+ * GlslCloneExpr() - Deep copy of a lowered GLSL expression.  Aggregate
+ *          fan-out duplicates the base object per leaf exactly as the
+ *          legacy AssignAggregate duplicated its operands.
+ */
+
+static GlslExpr *GlslCloneExpr(GlslModule *module, const GlslExpr *expr)
+{
+    GlslExpr *clone;
+    GlslExpr *last;
+    GlslExpr *argument;
+
+    if (expr == NULL)
+        return NULL;
+    clone = (GlslExpr *) module->alloc(module->allocArg, sizeof(GlslExpr));
+    if (clone == NULL)
+        return NULL;
+    *clone = *expr;
+    clone->next = NULL;
+    switch (clone->kind) {
+    case GLSL_EXPR_UNARY:
+        clone->u.unary.operand = GlslCloneExpr(module,
+                                               expr->u.unary.operand);
+        if (clone->u.unary.operand == NULL) return NULL;
+        break;
+    case GLSL_EXPR_BINARY:
+        clone->u.binary.left = GlslCloneExpr(module,
+                                             expr->u.binary.left);
+        clone->u.binary.right = GlslCloneExpr(module,
+                                              expr->u.binary.right);
+        if (clone->u.binary.left == NULL || clone->u.binary.right == NULL)
+            return NULL;
+        break;
+    case GLSL_EXPR_CONDITIONAL:
+        clone->u.conditional.condition = GlslCloneExpr(
+            module, expr->u.conditional.condition);
+        clone->u.conditional.trueExpr = GlslCloneExpr(
+            module, expr->u.conditional.trueExpr);
+        clone->u.conditional.falseExpr = GlslCloneExpr(
+            module, expr->u.conditional.falseExpr);
+        if (clone->u.conditional.condition == NULL ||
+            clone->u.conditional.trueExpr == NULL ||
+            clone->u.conditional.falseExpr == NULL) return NULL;
+        break;
+    case GLSL_EXPR_CALL:
+        last = NULL;
+        for (argument = expr->u.call.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            GlslExpr *copy = GlslCloneExpr(module, argument);
+
+            if (copy == NULL)
+                return NULL;
+            if (last == NULL)
+                clone->u.call.arguments = copy;
+            else
+                last->next = copy;
+            last = copy;
+        }
+        break;
+    case GLSL_EXPR_CONSTRUCT:
+        last = NULL;
+        for (argument = expr->u.construct.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            GlslExpr *copy = GlslCloneExpr(module, argument);
+
+            if (copy == NULL)
+                return NULL;
+            if (last == NULL)
+                clone->u.construct.arguments = copy;
+            else
+                last->next = copy;
+            last = copy;
+        }
+        break;
+    case GLSL_EXPR_MEMBER:
+        clone->u.member.object = GlslCloneExpr(module,
+                                               expr->u.member.object);
+        if (clone->u.member.object == NULL) return NULL;
+        break;
+    case GLSL_EXPR_INDEX:
+        clone->u.index.object = GlslCloneExpr(module,
+                                              expr->u.index.object);
+        clone->u.index.index = GlslCloneExpr(module,
+                                             expr->u.index.index);
+        if (clone->u.index.object == NULL || clone->u.index.index == NULL)
+            return NULL;
+        break;
+    case GLSL_EXPR_SWIZZLE:
+        clone->u.swizzle.object = GlslCloneExpr(module,
+                                                expr->u.swizzle.object);
+        if (clone->u.swizzle.object == NULL) return NULL;
+        break;
+    default:
+        break;
+    }
+    return clone;
+} // GlslCloneExpr
+
+static GlslExpr *GlslIRDeclRef(GlslLowerContext *context,
+                               const GlslDecl *decl)
+{
+    GlslExpr *ref;
+
+    ref = GlslNewExpr(context->module, GLSL_EXPR_SYMBOL, decl->type);
+    if (ref != NULL)
+        ref->u.symbol = (GlslDecl *) decl;
+    return ref;
+} // GlslIRDeclRef
+
+static GlslExpr *GlslIRAppendMemberStep(GlslLowerContext *context,
+                                        GlslExpr *base,
+                                        const GlslDecl *member,
+                                        const SourceLoc *loc)
+{
+    GlslExpr *step;
+
+    step = GlslNewExpr(context->module, GLSL_EXPR_MEMBER,
+                       member->type);
+    if (step == NULL)
+        return NULL;
+    GlslSetLoc(&step->loc, loc);
+    step->u.member.object = base;
+    step->u.member.decl = (GlslDecl *) member;
+    step->u.member.name = member->name;
+    return step;
+} // GlslIRAppendMemberStep
+
+static GlslExpr *GlslIRAppendIndexStep(GlslLowerContext *context,
+                                       GlslExpr *base, int index,
+                                       GlslType type,
+                                       const SourceLoc *loc)
+{
+    GlslExpr *literal;
+    GlslExpr *step;
+    GlslType intType;
+
+    intType = GlslNumericType(GLSL_BASE_INT, 1);
+    literal = GlslNewExpr(context->module, GLSL_EXPR_INT, intType);
+    step = GlslNewExpr(context->module, GLSL_EXPR_INDEX, type);
+    if (literal == NULL || step == NULL)
+        return NULL;
+    literal->u.literalInt = index;
+    GlslSetLoc(&step->loc, loc);
+    step->u.index.object = base;
+    step->u.index.index = literal;
+    return step;
+} // GlslIRAppendIndexStep
+
+static GlslExpr *GlslIRAppendDynamicIndex(GlslLowerContext *context,
+                                          GlslExpr *object,
+                                          GlslExpr *index,
+                                          GlslType type,
+                                          const SourceLoc *loc)
+{
+    GlslExpr *step;
+
+    step = GlslNewExpr(context->module, GLSL_EXPR_INDEX, type);
+    if (step == NULL)
+        return NULL;
+    GlslSetLoc(&step->loc, loc);
+    step->u.index.object = object;
+    step->u.index.index = index;
+    return step;
+} // GlslIRAppendDynamicIndex
+
+/*
+ * GlslIRChooseFlattenName() - First free cg_index/cg_aggregate-style
+ *          name within the current function's declarations, mirroring
+ *          the legacy flatten-temp naming search against the function
+ *          scope.
+ */
+
+static void GlslIRChooseFlattenName(GlslLowerContext *context,
+                                    const char *prefix, char *candidate,
+                                    size_t size)
+{
+    const GlslDecl *decl;
+    int index;
+    int taken;
+
+    for (index = 0;; index++) {
+        if (index == 0)
+            strcpy(candidate, prefix);
+        else
+            sprintf(candidate, "%s%d", prefix, index);
+        taken = 0;
+        for (decl = context->function->parameters; decl != NULL && !taken;
+             decl = decl->next)
+        {
+            taken = decl->name != NULL &&
+                    !strcmp(decl->name, candidate);
+        }
+        for (decl = context->function->locals; decl != NULL && !taken;
+             decl = decl->next)
+        {
+            taken = decl->name != NULL &&
+                    !strcmp(decl->name, candidate);
+        }
+        if (!taken)
+            break;
+    }
+} // GlslIRChooseFlattenName
+
+static Symbol *GlslIRNewTempSymbol(GlslLowerContext *context,
+                                   Type *type, const char *name,
+                                   const SourceLoc *loc)
+{
+    Symbol *temp;
+
+    temp = (Symbol *) (calloc)(1, sizeof(Symbol));
+    if (temp == NULL)
+        return NULL;
+    temp->name = LookUpAddString(atable, name);
+    temp->type = type;
+    if (loc != NULL)
+        temp->loc = *loc;
+    return temp;
+} // GlslIRNewTempSymbol
+
+/*
+ * GlslIRAddLocal() - Register one local declaration (including
+ *          synthesized temporaries) into the current function.  Sorted
+ *          insertion reproduces the legacy locals ordering.
+ */
+
+static GlslDecl *GlslIRAddLocal(GlslLowerContext *context, Symbol *symbol,
+                                Type *type, const SourceLoc *loc)
+{
+    GlslDecl *decl;
+    GlslType glslType;
+    const char *sourceName;
+    const char *name;
+    const void *identity;
+    const void *nameSpace;
+
+    if (!GlslIRType(context, type, &glslType, loc))
+        return NULL;
+    sourceName = GetAtomString(atable, symbol->name);
+    if (sourceName == NULL)
+        return NULL;
+    identity = symbol != NULL ? (const void *) symbol
+                              : (const void *) type;
+    nameSpace = context->function->isEntry ? NULL : context->function;
+    if (nameSpace != NULL) {
+        name = GlslAllocateScopedSymbolNameForSource(context, nameSpace,
+                                                     identity, sourceName,
+                                                     loc);
+    } else {
+        name = GlslAllocateSymbolNameForSource(context, identity,
+                                               sourceName, loc);
+    }
+    if (name == NULL)
+        return NULL;
+    decl = GlslNewDecl(context->module, GLSL_STORAGE_NONE, glslType, name);
+    if (decl == NULL)
+        return NULL;
+    decl->identity = identity;
+    GlslSetLoc(&decl->loc, loc);
+    decl->sourceOrdinal = symbol != NULL ? symbol->sourceOrdinal : 0;
+    GlslInsertDecl(&context->function->locals, decl);
+    return decl;
+} // GlslIRAddLocal
+
+/*
+ * GlslIRNewIndexTemp() - Hoist one dynamic aggregate index into its own
+ *          cg_index temporary exactly once.
+ */
+
+static GlslDecl *GlslIRNewIndexTemp(GlslLowerContext *context, Type *type,
+                                    const CgIRExpr *index,
+                                    GlslStmt **list)
+{
+    Symbol *temp;
+    GlslDecl *decl;
+    GlslExpr *init;
+    GlslExpr *ref;
+    GlslExpr *assign;
+    GlslStmt *stmt;
+    char candidate[64];
+
+    GlslIRChooseFlattenName(context, "cg_index", candidate,
+                            sizeof(candidate));
+    temp = GlslIRNewTempSymbol(context, type, candidate, &index->loc);
+    if (temp == NULL)
+        return NULL;
+    decl = GlslIRAddLocal(context, temp, type, &index->loc);
+    if (decl == NULL)
+        return NULL;
+    ref = GlslIRDeclRef(context, decl);
+    init = GlslIRLowerExpr(context, index);
+    assign = NULL;
+    stmt = NULL;
+    if (ref != NULL && init != NULL) {
+        assign = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                             decl->type);
+        if (assign != NULL) {
+            assign->u.binary.op = GLSL_OP_ASSIGN;
+            assign->u.binary.left = ref;
+            assign->u.binary.right = init;
+            stmt = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
+            if (stmt != NULL) {
+                GlslSetLoc(&stmt->loc, &index->loc);
+                stmt->u.expression = assign;
+                GlslAppendStmt(list, stmt);
+            }
+        }
+    }
+    if (ref == NULL || init == NULL || assign == NULL || stmt == NULL)
+        return NULL;
+    return decl;
+} // GlslIRNewIndexTemp
+
+/*
+ * GlslIREmitAggregateLeaves() - Recursive leaf fan-out of one aggregate
+ *          assignment; scalar, vector, and matrix leaves become one
+ *          plain assignment each.
+ */
+
+static int GlslIREmitAggregateLeaves(GlslLowerContext *context,
+                                     const GlslType *type,
+                                     GlslExpr *target, GlslExpr *value,
+                                     const SourceLoc *loc,
+                                     GlslStmt **list)
+{
+    const GlslDecl *member;
+    GlslExpr *targetLeaf;
+    GlslExpr *valueLeaf;
+    GlslExpr *assign;
+    GlslStmt *stmt;
+    int i;
+
+    if (type->elementType != NULL) {
+        for (i = 0; i < type->arraySize; i++) {
+            targetLeaf = GlslIRAppendIndexStep(context,
+                GlslCloneExpr(context->module, target), i,
+                *type->elementType, loc);
+            valueLeaf = GlslIRAppendIndexStep(context,
+                GlslCloneExpr(context->module, value), i,
+                *type->elementType, loc);
+            if (targetLeaf == NULL || valueLeaf == NULL) return 0;
+            if (!GlslIREmitAggregateLeaves(context, type->elementType,
+                                           targetLeaf, valueLeaf, loc,
+                                           list)) return 0;
+        }
+        return 1;
+    }
+    if (type->base == GLSL_BASE_STRUCT) {
+        for (member = type->members; member != NULL;
+             member = member->next)
+        {
+            targetLeaf = GlslIRAppendMemberStep(context,
+                GlslCloneExpr(context->module, target), member, loc);
+            valueLeaf = GlslIRAppendMemberStep(context,
+                GlslCloneExpr(context->module, value), member, loc);
+            if (targetLeaf == NULL || valueLeaf == NULL) return 0;
+            if (!GlslIREmitAggregateLeaves(context, &member->type,
+                                           targetLeaf, valueLeaf, loc,
+                                           list)) return 0;
+        }
+        return 1;
+    }
+    assign = GlslNewExpr(context->module, GLSL_EXPR_BINARY, *type);
+    stmt = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
+    if (assign == NULL || stmt == NULL)
+        return 0;
+    assign->u.binary.op = GLSL_OP_ASSIGN;
+    assign->u.binary.left = target;
+    assign->u.binary.right = value;
+    GlslSetLoc(&stmt->loc, loc);
+    stmt->u.expression = assign;
+    GlslAppendStmt(list, stmt);
+    return 1;
+} // GlslIREmitAggregateLeaves
+
+/*
+ * GlslIRLowerMaterialized() - Lower an aggregate operand while hoisting
+ *          every dynamic index into a cg_index temporary (children
+ *          first, matching the legacy traversal order).
+ */
+
+static GlslExpr *GlslIRLowerMaterialized(GlslLowerContext *context,
+                                         const CgIRExpr *expr,
+                                         GlslStmt **list)
+{
+    GlslExpr *object;
+    GlslExpr *index;
+    GlslType type;
+
+    if (expr == NULL)
+        return NULL;
+    switch (expr->kind) {
+    case CGIR_EXPR_INDEX:
+        object = GlslIRLowerMaterialized(context, expr->u.index.object,
+                                         list);
+        if (object == NULL)
+            return NULL;
+        if (!GlslIRType(context, expr->type, &type, &expr->loc))
+            return NULL;
+        if (GlslIRNeedsMaterialization(expr->u.index.index)) {
+            GlslDecl *temp;
+
+            temp = GlslIRNewIndexTemp(context, expr->u.index.index->type,
+                                      expr->u.index.index, list);
+            if (temp == NULL)
+                return NULL;
+            index = GlslIRDeclRef(context, temp);
+            if (index == NULL)
+                return NULL;
+        } else {
+            index = GlslIRLowerExpr(context, expr->u.index.index);
+            if (index == NULL)
+                return NULL;
+        }
+        return GlslIRAppendDynamicIndex(context, object, index, type,
+                                        &expr->loc);
+    case CGIR_EXPR_MEMBER: {
+        GlslDecl *memberDecl;
+
+        object = GlslIRLowerMaterialized(context, expr->u.member.object,
+                                         list);
+        if (object == NULL)
+            return NULL;
+        if (!GlslIRType(context, expr->type, &type, &expr->loc))
+            return NULL;
+        memberDecl = GlslFindDecl(context, expr->u.member.member);
+        if (memberDecl == NULL)
+            return NULL;
+        return GlslIRAppendMemberStep(context, object, memberDecl,
+                                      &expr->loc);
+    }
+    case CGIR_EXPR_SWIZZLE: {
+        char maskText[5];
+        int i;
+
+        object = GlslIRLowerMaterialized(context, expr->u.swizzle.object,
+                                         list);
+        if (object == NULL)
+            return NULL;
+        if (!GlslIRType(context, expr->type, &type, &expr->loc))
+            return NULL;
+        for (i = 0; i < expr->u.swizzle.componentCount; i++)
+            maskText[i] = "xyzw"[(expr->u.swizzle.mask >> (i * 2)) & 3];
+        maskText[expr->u.swizzle.componentCount] = '\0';
+        return GlslNewSwizzle(context, object, &type, maskText);
+    }
+    default:
+        return GlslIRLowerExpr(context, expr);
+    }
+} // GlslIRLowerMaterialized
+
+/*
+ * GlslIRNewAggregateTemp() - The cg_aggregate materialization temporary
+ *          holding one aggregate right-hand side.
+ */
+
+static GlslDecl *GlslIRNewAggregateTemp(GlslLowerContext *context,
+                                        Type *type,
+                                        const CgIRExpr *assign,
+                                        GlslExpr *materializedValue,
+                                        GlslStmt **list)
+{
+    Symbol *temp;
+    GlslDecl *decl;
+    GlslExpr *ref;
+    GlslExpr *assignExpr;
+    GlslStmt *stmt;
+    GlslType declType;
+    char candidate[64];
+
+    GlslIRChooseFlattenName(context, "cg_aggregate", candidate,
+                            sizeof(candidate));
+    temp = GlslIRNewTempSymbol(context, type, candidate, &assign->loc);
+    if (temp == NULL)
+        return NULL;
+    if (!GlslIRType(context, type, &declType, &assign->loc))
+        return NULL;
+    decl = GlslIRAddLocal(context, temp, type, &assign->loc);
+    if (decl == NULL)
+        return NULL;
+    ref = GlslIRDeclRef(context, decl);
+    assignExpr = NULL;
+    stmt = NULL;
+    if (ref != NULL && materializedValue != NULL) {
+        assignExpr = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                                 declType);
+        if (assignExpr != NULL) {
+            assignExpr->u.binary.op = GLSL_OP_ASSIGN;
+            assignExpr->u.binary.left = ref;
+            assignExpr->u.binary.right = materializedValue;
+            stmt = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
+            if (stmt != NULL) {
+                GlslSetLoc(&stmt->loc, &assign->loc);
+                stmt->u.expression = assignExpr;
+                GlslAppendStmt(list, stmt);
+            }
+        }
+    }
+    if (ref == NULL || materializedValue == NULL || assignExpr == NULL ||
+        stmt == NULL)
+    {
+        return NULL;
+    }
+    return decl;
+} // GlslIRNewAggregateTemp
+
+/*
+ * GlslIRLowerAggregateAssign() - Struct/array assignment fan-out: index
+ *          temporaries, the side-effecting-aggregate-with-arrays
+ *          rejection, optional cg_aggregate materialization, then one
+ *          assignment per scalar/vector/matrix leaf.
+ */
+
+static int GlslIRLowerAggregateAssign(GlslLowerContext *context,
+                                      const CgIRExpr *assign,
+                                      GlslStmt **list)
+{
+    Type *aggregateType;
+    GlslType leafRoot;
+    GlslExpr *target;
+    GlslExpr *value;
+    GlslDecl *temp;
+    GlslExpr *ref;
+
+    aggregateType = assign->type;
+    context->statementLoc = assign->loc;
+    target = GlslIRLowerMaterialized(context, assign->u.assign.target,
+                                     list);
+    if (target == NULL)
+        return 0;
+    value = GlslIRLowerMaterialized(context, assign->u.assign.value, list);
+    if (value == NULL)
+        return 0;
+    if (GlslIRPostNormalizeNeedsMaterialization(assign->u.assign.value))
+    {
+        if (GlslIRContainsArray(aggregateType)) {
+            GlslRecordFailureKindAt(context,
+                GLSL_ERROR_UNSUPPORTED_OPERATION,
+                "side-effecting aggregate with arrays", &assign->loc);
+            return 0;
+        }
+        temp = GlslIRNewAggregateTemp(context, aggregateType, assign,
+                                      value, list);
+        if (temp == NULL)
+            return 0;
+        ref = GlslIRDeclRef(context, temp);
+        if (ref == NULL)
+            return 0;
+        value = ref;
+    }
+    if (!GlslIRType(context, aggregateType, &leafRoot, &assign->loc))
+        return 0;
+    return GlslIREmitAggregateLeaves(context, &leafRoot, target, value,
+                                     &assign->loc, list);
+} // GlslIRLowerAggregateAssign
+
+
+/*
+ * GlslIRUnaryOperator() / GlslIRBinaryOperator() - Cg IR op identity to
+ *          the GLSL writer's operator enum.
+ */
+
+static GlslOperator GlslIRUnaryOperator(CgIROp op)
+{
+    switch (op) {
+    case CGIR_OP_NEGATE: return GLSL_OP_NEGATE;
+    case CGIR_OP_POSITIVE: return GLSL_OP_POSITIVE;
+    case CGIR_OP_LOGICAL_NOT: return GLSL_OP_LOGICAL_NOT;
+    default: return GLSL_OP_NONE;
+    }
+} // GlslIRUnaryOperator
+
+static GlslOperator GlslIRBinaryOperator(CgIROp op)
+{
+    switch (op) {
+    case CGIR_OP_MULTIPLY: return GLSL_OP_MULTIPLY;
+    case CGIR_OP_DIVIDE: return GLSL_OP_DIVIDE;
+    case CGIR_OP_ADD: return GLSL_OP_ADD;
+    case CGIR_OP_SUBTRACT: return GLSL_OP_SUBTRACT;
+    case CGIR_OP_LESS: return GLSL_OP_LESS;
+    case CGIR_OP_GREATER: return GLSL_OP_GREATER;
+    case CGIR_OP_LESS_EQUAL: return GLSL_OP_LESS_EQUAL;
+    case CGIR_OP_GREATER_EQUAL: return GLSL_OP_GREATER_EQUAL;
+    case CGIR_OP_EQUAL: return GLSL_OP_EQUAL;
+    case CGIR_OP_NOT_EQUAL: return GLSL_OP_NOT_EQUAL;
+    case CGIR_OP_LOGICAL_AND: return GLSL_OP_LOGICAL_AND;
+    case CGIR_OP_LOGICAL_OR: return GLSL_OP_LOGICAL_OR;
+    default: return GLSL_OP_NONE;
+    }
+} // GlslIRBinaryOperator
+
+static const char *GlslIRComparisonName(CgIROp op)
+{
+    switch (op) {
+    case CGIR_OP_LESS: return "lessThan";
+    case CGIR_OP_GREATER: return "greaterThan";
+    case CGIR_OP_LESS_EQUAL: return "lessThanEqual";
+    case CGIR_OP_GREATER_EQUAL: return "greaterThanEqual";
+    case CGIR_OP_EQUAL: return "equal";
+    case CGIR_OP_NOT_EQUAL: return "notEqual";
+    default: return NULL;
+    }
+} // GlslIRComparisonName
+
+/*
+ * GlslIRUnsupportedReason() - Historical unsupported-operation text for
+ *          the operator families GLSL 1.10 never carried.
+ */
+
+static const char *GlslIRUnsupportedReason(CgIROp op)
+{
+    switch (op) {
+    case CGIR_OP_MODULO:
+    case CGIR_OP_MODULO_ASSIGN:
+        return "remainder (%)";
+    case CGIR_OP_SHIFT_LEFT:
+    case CGIR_OP_SHIFT_RIGHT:
+        return "shift operator";
+    case CGIR_OP_BITWISE_AND:
+    case CGIR_OP_BITWISE_XOR:
+    case CGIR_OP_BITWISE_OR:
+    case CGIR_OP_BITWISE_NOT:
+        return "bitwise operator";
+    default:
+        return NULL;
+    }
+} // GlslIRUnsupportedReason
+
+static GlslOperator GlslIRCompoundOperator(CgIROp op)
+{
+    switch (op) {
+    case CGIR_OP_ADD_ASSIGN: return GLSL_OP_ADD;
+    case CGIR_OP_SUBTRACT_ASSIGN: return GLSL_OP_SUBTRACT;
+    case CGIR_OP_MULTIPLY_ASSIGN: return GLSL_OP_MULTIPLY;
+    case CGIR_OP_DIVIDE_ASSIGN: return GLSL_OP_DIVIDE;
+    default: return GLSL_OP_NONE;
+    }
+} // GlslIRCompoundOperator
+
+/*
+ * GlslIRSharedSelection() - Recognize the Task 16 group-read encoding:
+ *          a constructor whose components are nested constant selections
+ *      over ONE shared object node.  Node sharing identifies synthesized
+ *          selector groups; user-written duplicates never share nodes.
+ */
+
+static int GlslIRSharedSelection(const CgIRExpr *expr,
+                                 const CgIRExpr **objectOut,
+                                 int *countOut, int *maskOut)
+{
+    const CgIRExpr *argument;
+    const CgIRExpr *object;
+    int count;
+    int mask;
+    int i;
+
+    if (expr == NULL || expr->kind != CGIR_EXPR_CONSTRUCT)
+        return 0;
+    count = 0;
+    for (argument = expr->u.construct.arguments; argument != NULL;
+         argument = argument->next)
+        count++;
+    if (count < 2 || count > 4)
+        return 0;
+    object = NULL;
+    mask = 0;
+    i = 0;
+    for (argument = expr->u.construct.arguments; argument != NULL;
+         argument = argument->next, i++)
+    {
+        const CgIRExpr *rowSel;
+        const CgIRExpr *columnSel;
+        int row;
+        int column;
+
+        if (argument->kind != CGIR_EXPR_INDEX)
+            return 0;
+        columnSel = argument->u.index.index;
+        if (columnSel == NULL || columnSel->kind != CGIR_EXPR_CONSTANT ||
+            columnSel->u.constant.kind != CG_SCALAR_INT)
+            return 0;
+        rowSel = argument->u.index.object;
+        if (rowSel == NULL || rowSel->kind != CGIR_EXPR_INDEX ||
+            rowSel->u.index.index == NULL ||
+            rowSel->u.index.index->kind != CGIR_EXPR_CONSTANT ||
+            rowSel->u.index.index->u.constant.kind != CG_SCALAR_INT)
+        {
+            return 0;
+        }
+        if (object == NULL) {
+            object = rowSel->u.index.object;
+        } else if (object != rowSel->u.index.object) {
+            return 0;
+        }
+        row = (int) rowSel->u.index.index->u.constant.value.i;
+        column = (int) columnSel->u.constant.value.i;
+        if (row < 0 || row > 3 || column < 0 || column > 3) return 0;
+        mask |= ((row << 2) | column) << (i * 4);
+    }
+    if (object == NULL)
+        return 0;
+    *objectOut = object;
+    *countOut = count;
+    *maskOut = mask;
+    return 1;
+} // GlslIRSharedSelection
+
+static GlslExpr *GlslIRConstantComponent(GlslLowerContext *context,
+                                         const CgNumericValue *value,
+                                         GlslBase base)
+{
+    float component;
+
+    if (base == GLSL_BASE_FLOAT) {
+        component = (float) value->value.f;
+
+        if (!GlslFiniteDefaultFloat(component)) {
+            GlslRecordFailure(context,
+                              "non-finite floating-point constant");
+            return NULL;
+        }
+        return GlslNewLiteral(context, base, 0, component);
+    }
+    return GlslNewLiteral(context, base, (int) value->value.i, 0.0f);
+} // GlslIRConstantComponent
+
+static GlslExpr *GlslIRLowerConstant(GlslLowerContext *context,
+                                     const CgIRExpr *expr)
+{
+    GlslType type;
+
+    if (!GlslIRType(context, expr->type, &type, &expr->loc))
+        return NULL;
+    return GlslIRConstantComponent(context, &expr->u.constant, type.base);
+} // GlslIRLowerConstant
+
+static GlslExpr *GlslIRLowerSwizzle(GlslLowerContext *context,
+                                    const CgIRExpr *expr)
+{
+    GlslExpr *object;
+    GlslType type;
+    char maskText[5];
+    int count;
+    int i;
+
+    object = GlslIRLowerExpr(context, expr->u.swizzle.object);
+    if (object == NULL)
+        return NULL;
+    if (!GlslIRType(context, expr->type, &type, &expr->loc))
+        return NULL;
+    count = expr->u.swizzle.componentCount;
+    if (count < 1 || count > 4)
+        return NULL;
+    for (i = 0; i < count; i++)
+        maskText[i] = "xyzw"[(expr->u.swizzle.mask >> (i * 2)) & 3];
+    maskText[count] = '\0';
+    if (object->type.len == 1) {
+        GlslExpr *target;
+
+        if (type.len == 1)
+            return object;
+        target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, type);
+        if (target != NULL)
+            target->u.construct.arguments = object;
+        return target;
+    }
+    return GlslNewSwizzle(context, object, &type, maskText);
+} // GlslIRLowerSwizzle
+
+/*
+ * GlslIRLowerMatrixConstructor() - Row-major source arguments into a
+ *          column-major GLSL constructor, or the impure-helper call.
+ */
+
+static GlslExpr *GlslIRLowerMatrixConstructor(GlslLowerContext *context,
+                                              const CgIRExpr *expr,
+                                              const GlslType *type)
+{
+    GlslExpr *arguments[GLSL_MATRIX_MAX_ARGUMENTS];
+    GlslExpr *argument;
+    GlslExpr *next;
+    GlslExpr *target;
+    GlslExpr *component;
+    GlslType scalarType;
+    const CgIRExpr *sourceArgument;
+    char mask[2];
+    int size;
+    int count;
+    int componentIndex;
+    int componentCount;
+    int row;
+    int column;
+    int hasSideEffects;
+
+    size = type->rows;
+    if (size < 2 || size > 4 || type->cols != size)
+        return NULL;
+    hasSideEffects = 0;
+    for (sourceArgument = expr->u.construct.arguments;
+         sourceArgument != NULL;
+         sourceArgument = sourceArgument->next)
+    {
+        if (sourceArgument->sideEffects)
+            hasSideEffects = 1;
+    }
+    argument = GlslIRLowerExprList(context, expr->u.construct.arguments);
+    if (argument == NULL && expr->u.construct.arguments != NULL)
+        return NULL;
+    /* Keep impure expressions at the constructor call site and use each
+       exactly once; argument evaluation order remains language-defined. */
+    if (hasSideEffects)
+        return GlslLowerImpureMatrixConstructor(context, argument, type);
+    count = 0;
+    while (argument != NULL) {
+        next = argument->next;
+        argument->next = NULL;
+        componentCount = argument->type.len;
+        if (!GlslMatrixNumericParameterType(&argument->type) ||
+            count > size * size - componentCount)
+        {
+            if (!GlslMatrixNumericParameterType(&argument->type)) {
+                GlslRecordFailureKind(context,
+                                      GLSL_ERROR_UNSUPPORTED_TYPE,
+                                      "matrix constructor argument type");
+            }
+            return NULL;
+        }
+        if (componentCount == 1) {
+            arguments[count++] = argument;
+        } else {
+            for (componentIndex = 0;
+                 componentIndex < componentCount;
+                 componentIndex++)
+            {
+                scalarType = GlslNumericType(argument->type.base, 1);
+                mask[0] = "xyzw"[componentIndex];
+                mask[1] = '\0';
+                component = GlslNewSwizzle(context, argument,
+                                           &scalarType, mask);
+                if (component == NULL)
+                    return NULL;
+                arguments[count++] = component;
+            }
+        }
+        argument = next;
+    }
+    if (count != size * size)
+        return NULL;
+    target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
+    if (target == NULL)
+        return NULL;
+    for (column = 0; column < size; column++) {
+        for (row = 0; row < size; row++) {
+            GlslAppendExpr(&target->u.construct.arguments,
+                           arguments[row * size + column]);
+        }
+    }
+    return target;
+} // GlslIRLowerMatrixConstructor
+
+static GlslExpr *GlslIRLowerExprList(GlslLowerContext *context,
+                                     const CgIRExpr *args)
+{
+    GlslExpr *list;
+    GlslExpr *item;
+
+    list = NULL;
+    for (; args != NULL; args = args->next) {
+        item = GlslIRLowerExpr(context, args);
+        if (item == NULL)
+            return NULL;
+        GlslAppendExpr(&list, item);
+    }
+    return list;
+} // GlslIRLowerExprList
+
+/*
+ * GlslIRLowerTextureArguments() - tex* intrinsics keep their historical
+ *          shape: a direct bound sampler uniform followed by the
+ *          coordinate.
+ */
+
+static GlslExpr *GlslIRLowerTextureArguments(GlslLowerContext *context,
+                                             const CgIRExpr *args)
+{
+    GlslExpr *sampler;
+    GlslExpr *coord;
+    GlslDecl *decl;
+
+    if (args == NULL || args->next == NULL || args->next->next != NULL) {
+        GlslRecordFailureKind(context, GLSL_ERROR_INTRINSIC,
+                              "texture intrinsic");
+        return NULL;
+    }
+    if (args->kind != CGIR_EXPR_SYMBOL ||
+        args->u.symbol == NULL)
+    {
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+            "texture sampler argument must be a direct bound uniform");
+        return NULL;
+    }
+    decl = GlslFindDecl(context, args->u.symbol);
+    if (decl == NULL || decl->storage != GLSL_STORAGE_SAMPLER ||
+        !GlslIsSamplerType(&decl->type))
+    {
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+            "texture sampler argument must be a direct bound uniform");
+        return NULL;
+    }
+    sampler = GlslNewExpr(context->module, GLSL_EXPR_SYMBOL, decl->type);
+    if (sampler == NULL)
+        return NULL;
+    sampler->u.symbol = decl;
+    coord = GlslIRLowerExpr(context, args->next);
+    if (coord == NULL)
+        return NULL;
+    sampler->next = coord;
+    return sampler;
+} // GlslIRLowerTextureArguments
+
+/*
+ * GlslIRLowerCallCore() - User helper calls and catalog intrinsics.
+ *      The mul/dot-scalar and saturate special shapes keep their
+ *      legacy expansions; texture families keep their direct-uniform
+ *          sampler rule through GlslValidateTextureCall above.
+ */
+
+static GlslExpr *GlslIRLowerCallCore(GlslLowerContext *context,
+                                     Symbol *symbol,
+                                     const CgIntrinsicSignature *signature,
+                                     const CgIRExpr *argumentSource,
+                                     const GlslType *type)
+{
+    GlslExpr *target;
+    GlslExpr *arguments;
+    GlslExpr *left;
+    GlslExpr *right;
+    GlslExpr *zero;
+    GlslExpr *one;
+    GlslFunction *function;
+    const char *name;
+    GlslBuiltin builtin;
+    GlslType scalarType;
+
+    function = symbol != NULL ?
+               GlslFindFunction(context->module, symbol) : NULL;
+    builtin = GLSL_BUILTIN_NONE;
+    if (function != NULL) {
+        name = function->name;
+    } else {
+        /* Lowering is keyed on the stable intrinsic identity carried by
+         * the selected signature, never on a name lookup.  A cataloged
+         * intrinsic without an exact GLSL 1.10 lowering fails profile
+         * validation with the existing intrinsic diagnostic. */
+        builtin = signature != NULL ?
+                  GlslIntrinsicBuiltin(signature->intrinsic) :
+                  GLSL_BUILTIN_NONE;
+        if (builtin == GLSL_BUILTIN_NONE) {
+            GlslRecordFailureKind(context, GLSL_ERROR_INTRINSIC,
+                signature != NULL ? signature->name :
+                symbol != NULL ? GetAtomString(atable, symbol->name) :
+                                 NULL);
+            return NULL;
+        }
+        name = GlslBuiltinSpelling(builtin);
+        if (name == NULL)
+            return NULL;
+    }
+    arguments = NULL;
+    if (argumentSource != NULL) {
+        if (function == NULL && builtin >= GLSL_BUILTIN_TEX1D &&
+            builtin <= GLSL_BUILTIN_TEXCUBE)
+        {
+            arguments = GlslIRLowerTextureArguments(context,
+                                                    argumentSource);
+        } else {
+            arguments = GlslIRLowerExprList(context, argumentSource);
+        }
+        if (arguments == NULL)
+            return NULL;
+    }
+    if (function == NULL) {
+        if (!GlslValidateTextureCall(context, builtin, type, arguments))
+            return NULL;
+        if (builtin == GLSL_BUILTIN_MUL ||
+            (builtin == GLSL_BUILTIN_DOT &&
+             arguments != NULL && arguments->type.len == 1))
+        {
+            left = arguments;
+            right = left != NULL ? left->next : NULL;
+            if (left == NULL || right == NULL || right->next != NULL)
+                return NULL;
+            left->next = NULL;
+            right->next = NULL;
+            target = GlslNewExpr(context->module, GLSL_EXPR_BINARY, *type);
+            if (target == NULL)
+                return NULL;
+            target->u.binary.op = GLSL_OP_MULTIPLY;
+            target->u.binary.left = left;
+            target->u.binary.right = right;
+            return target;
+        }
+        if (builtin == GLSL_BUILTIN_SATURATE) {
+            if (arguments == NULL || arguments->next != NULL)
+                return NULL;
+            scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+            zero = GlslNewLiteral(context, GLSL_BASE_FLOAT, 0, 0.0f);
+            one = GlslNewLiteral(context, GLSL_BASE_FLOAT, 0, 1.0f);
+            if (zero == NULL || one == NULL)
+                return NULL;
+            if (type->len > 1) {
+                target = GlslNewExpr(context->module,
+                                     GLSL_EXPR_CONSTRUCT, *type);
+                if (target == NULL)
+                    return NULL;
+                target->u.construct.arguments = zero;
+                zero = target;
+                target = GlslNewExpr(context->module,
+                                     GLSL_EXPR_CONSTRUCT, *type);
+                if (target == NULL)
+                    return NULL;
+                target->u.construct.arguments = one;
+                one = target;
+            } else if (!GlslTypesEqual(type, &scalarType)) {
+                return NULL;
+            }
+            arguments->next = zero;
+            zero->next = one;
+        }
+    }
+    target = GlslNewExpr(context->module, GLSL_EXPR_CALL, *type);
+    if (target == NULL)
+        return NULL;
+    target->u.call.name = name;
+    target->u.call.arguments = arguments;
+    target->u.call.builtin = function == NULL ? builtin : GLSL_BUILTIN_NONE;
+    return target;
+} // GlslIRLowerCallCore
+
+static GlslExpr *GlslIRLowerVectorComparison(GlslLowerContext *context,
+                                             const CgIRExpr *expr,
+                                             const GlslType *type,
+                                             const char *name)
+{
+    GlslExpr *target;
+    GlslExpr *constructor;
+    GlslExpr *left;
+    GlslExpr *right;
+    GlslType vectorType;
+
+    left = GlslIRLowerExpr(context, expr->u.binary.left);
+    right = left ? GlslIRLowerExpr(context, expr->u.binary.right) : NULL;
+    if (left == NULL || right == NULL)
+        return NULL;
+    if (left->type.len == 1 && type->len > 1) {
+        vectorType = GlslNumericType(left->type.base, type->len);
+        constructor = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT,
+                                  vectorType);
+        if (constructor == NULL)
+            return NULL;
+        constructor->u.construct.arguments = left;
+        left = constructor;
+    }
+    if (right->type.len == 1 && type->len > 1) {
+        vectorType = GlslNumericType(right->type.base, type->len);
+        constructor = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT,
+                                  vectorType);
+        if (constructor == NULL)
+            return NULL;
+        constructor->u.construct.arguments = right;
+        right = constructor;
+    }
+    target = GlslNewExpr(context->module, GLSL_EXPR_CALL, *type);
+    if (target == NULL)
+        return NULL;
+    target->u.call.name = name;
+    target->u.call.arguments = left;
+    left->next = right;
+    return target;
+} // GlslIRLowerVectorComparison
+
+static GlslExpr *GlslIRLowerComponent(GlslLowerContext *context,
+                                      const CgIRExpr *source, int component,
+                                      GlslBase base)
+{
+    GlslExpr *target;
+    GlslType type;
+    int len;
+    char mask[2];
+
+    target = GlslIRLowerExpr(context, source);
+    if (target == NULL)
+        return NULL;
+    len = 0;
+    if (source->type == NULL || !IsVector(source->type, &len) || len <= 1)
+        return target;
+    type = GlslNumericType(base, 1);
+    mask[0] = "xyzw"[component];
+    mask[1] = '\0';
+    return GlslNewSwizzle(context, target, &type, mask);
+} // GlslIRLowerComponent
+
+static GlslExpr *GlslIRLowerConditional(GlslLowerContext *context,
+                                        const CgIRExpr *expr,
+                                        const GlslType *type)
+{
+    GlslExpr *target;
+    GlslExpr *componentExpr;
+    GlslExpr *condition;
+    GlslExpr *trueExpr;
+    GlslExpr *falseExpr;
+    GlslType componentType;
+    int conditionLen;
+    int i;
+
+    conditionLen = 0;
+    IsVector(expr->u.conditional.condition->type, &conditionLen);
+    if (conditionLen <= 1) {
+        target = GlslNewExpr(context->module, GLSL_EXPR_CONDITIONAL, *type);
+        if (target == NULL)
+            return NULL;
+        target->u.conditional.condition = GlslIRLowerExpr(
+            context, expr->u.conditional.condition);
+        target->u.conditional.trueExpr = GlslIRLowerExpr(
+            context, expr->u.conditional.trueExpr);
+        target->u.conditional.falseExpr = GlslIRLowerExpr(
+            context, expr->u.conditional.falseExpr);
+        if (target->u.conditional.condition == NULL ||
+            target->u.conditional.trueExpr == NULL ||
+            target->u.conditional.falseExpr == NULL) return NULL;
+        return target;
+    }
+    if (type->len < 2 || type->len > 4 || conditionLen != type->len)
+        return NULL;
+    target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
+    if (target == NULL)
+        return NULL;
+    componentType = GlslNumericType(type->base, 1);
+    for (i = 0; i < type->len; i++) {
+        condition = GlslIRLowerComponent(context,
+                                         expr->u.conditional.condition, i,
+                                         GLSL_BASE_BOOL);
+        trueExpr = GlslIRLowerComponent(context,
+                                        expr->u.conditional.trueExpr, i,
+                                        type->base);
+        falseExpr = GlslIRLowerComponent(context,
+                                         expr->u.conditional.falseExpr, i,
+                                         type->base);
+        if (condition == NULL || trueExpr == NULL || falseExpr == NULL)
+            return NULL;
+        componentExpr = GlslNewExpr(context->module,
+            GLSL_EXPR_CONDITIONAL, componentType);
+        if (componentExpr == NULL)
+            return NULL;
+        componentExpr->u.conditional.condition = condition;
+        componentExpr->u.conditional.trueExpr = trueExpr;
+        componentExpr->u.conditional.falseExpr = falseExpr;
+        GlslAppendExpr(&target->u.construct.arguments, componentExpr);
+    }
+    return target;
+} // GlslIRLowerConditional
+
+/*
+ * GlslIRLowerIncrement() - Legacy expansion order: ++A became A = A + 1
+ *          before tree lowering saw it; the same shape is rebuilt here.
+ */
+
+static GlslExpr *GlslIRLowerIncrement(GlslLowerContext *context,
+                                      const CgIRExpr *expr,
+                                      const GlslType *type)
+{
+    GlslExpr *target;
+    GlslExpr *operand;
+    GlslExpr *one;
+    GlslExpr *arithmetic;
+    GlslOperator op;
+
+    op = expr->u.unary.op == CGIR_OP_PRE_INCREMENT ||
+         expr->u.unary.op == CGIR_OP_POST_INCREMENT ?
+         GLSL_OP_ADD : GLSL_OP_SUBTRACT;
+    operand = GlslIRLowerExpr(context, expr->u.unary.operand);
+    if (operand == NULL)
+        return NULL;
+    one = GlslNewLiteral(context, operand->type.base, 1, 0.0f);
+    if (one == NULL)
+        return NULL;
+    arithmetic = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                             operand->type);
+    if (arithmetic == NULL)
+        return NULL;
+    arithmetic->u.binary.op = op;
+    arithmetic->u.binary.left = operand;
+    arithmetic->u.binary.right = one;
+    target = GlslNewExpr(context->module, GLSL_EXPR_BINARY, *type);
+    if (target == NULL)
+        return NULL;
+    target->u.binary.op = GLSL_OP_ASSIGN;
+    target->u.binary.left = GlslCloneExpr(context->module, operand);
+    if (target->u.binary.left == NULL)
+        return NULL;
+    target->u.binary.right = arithmetic;
+    return target;
+} // GlslIRLowerIncrement
+
+/*
+ * GlslIRLowerExpr() - One Cg IR expression to the GLSL expression tree.
+ *      Every decision reads the canonical type and the stable node
+ *          kind; no four-bit subop is ever decoded here.
+ */
+
+static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
+                                 const CgIRExpr *expr)
+{
+    GlslExpr *target;
+    GlslExpr *operand;
+    GlslExpr *inner;
+    GlslDecl *decl;
+    GlslType type;
+    GlslOperator op;
+    const CgIRExpr *sharedObject;
+    int sharedCount;
+    int sharedMask;
+    int rows;
+    int cols;
+
+    if (expr == NULL)
+        return NULL;
+    if (!GlslIRType(context, expr->type, &type, &expr->loc)) {
+        GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                              "GLSL 1.10 expression type");
+        return NULL;
+    }
+    if (GlslIsSamplerType(&type)) {
+        GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
+                              "opaque sampler expression");
+        return NULL;
+    }
+    switch (expr->kind) {
+    case CGIR_EXPR_SYMBOL:
+        decl = GlslFindDecl(context, expr->u.symbol);
+        if (decl == NULL)
+            return NULL;
+        target = GlslNewExpr(context->module, GLSL_EXPR_SYMBOL, type);
+        if (target != NULL)
+            target->u.symbol = decl;
+        return target;
+    case CGIR_EXPR_CONSTANT:
+        return GlslIRLowerConstant(context, expr);
+    case CGIR_EXPR_MEMBER:
+        if (expr->u.member.object != NULL &&
+            expr->u.member.object->kind == CGIR_EXPR_SYMBOL &&
+            expr->u.member.object->u.symbol != NULL &&
+            (expr->u.member.object->u.symbol == Cg->theHAL->varyingIn ||
+             expr->u.member.object->u.symbol ==
+                 Cg->theHAL->varyingOut))
+        {
+            decl = GlslLowerInterface(context, expr->u.member.member);
+            if (decl == NULL)
+                return NULL;
+            target = GlslNewExpr(context->module, GLSL_EXPR_SYMBOL, type);
+            if (target != NULL)
+                target->u.symbol = decl;
+            return target;
+        }
+        decl = GlslFindDecl(context, expr->u.member.member);
+        if (decl == NULL)
+            return NULL;
+        target = GlslNewExpr(context->module, GLSL_EXPR_MEMBER, type);
+        if (target == NULL)
+            return NULL;
+        target->u.member.object = GlslIRLowerExpr(
+            context, expr->u.member.object);
+        if (target->u.member.object == NULL)
+            return NULL;
+        target->u.member.decl = decl;
+        target->u.member.name = decl->name;
+        return target;
+    case CGIR_EXPR_INDEX:
+        /* A two-level constant-index chain over a matrix is a Task 16
+         * selector component (_mRC): legacy printed those transposed
+         * (GLSL m[col][row]).  Explicit source indexing never appears
+         * in supported GLSL programs today. */
+        if (expr->u.index.object != NULL &&
+            expr->u.index.object->kind == CGIR_EXPR_INDEX &&
+            expr->u.index.object->u.index.object != NULL &&
+            expr->u.index.index != NULL &&
+            expr->u.index.index->kind == CGIR_EXPR_CONSTANT &&
+            expr->u.index.index->u.constant.kind == CG_SCALAR_INT &&
+            expr->u.index.object->u.index.index != NULL &&
+            expr->u.index.object->u.index.index->kind ==
+                CGIR_EXPR_CONSTANT &&
+            expr->u.index.object->u.index.index->u.constant.kind ==
+                CG_SCALAR_INT &&
+            expr->u.index.object->u.index.object->type != NULL &&
+            IsMatrix(expr->u.index.object->u.index.object->type,
+                     &cols, &rows) && cols == rows)
+        {
+            int selRow = (int) expr->u.index.object->u.index.index->
+                         u.constant.value.i;
+            int selColumn = (int) expr->u.index.index->u.constant.value.i;
+            GlslExpr *base;
+
+            if (selRow < 0 || selRow > 3 || selColumn < 0 ||
+                selColumn > 3 || rows < 2 || rows > 4)
+                return NULL;
+            base = GlslIRLowerExpr(context,
+                                   expr->u.index.object->u.index.object);
+            if (base == NULL)
+                return NULL;
+            return GlslIRMatrixElement(context, base, selRow, selColumn);
+        }
+        target = GlslNewExpr(context->module, GLSL_EXPR_INDEX, type);
+        if (target == NULL)
+            return NULL;
+        target->u.index.object = GlslIRLowerExpr(context,
+                                                 expr->u.index.object);
+        target->u.index.index = target->u.index.object ?
+            GlslIRLowerExpr(context, expr->u.index.index) : NULL;
+        if (target->u.index.object == NULL ||
+            target->u.index.index == NULL) return NULL;
+        return target;
+    case CGIR_EXPR_LENGTH:
+        /* The legacy path had no array-length lowering either; the
+         * generic unsupported-expression reason keeps that behavior. */
+        GlslRecordFailure(context, "GLSL 1.10 expression");
+        return NULL;
+    case CGIR_EXPR_SWIZZLE:
+        return GlslIRLowerSwizzle(context, expr);
+    case CGIR_EXPR_CONSTRUCT:
+        if (type.rows != 0)
+            return GlslIRLowerMatrixConstructor(context, expr, &type);
+        if (GlslIRSharedSelection(expr, &sharedObject, &sharedCount,
+                                  &sharedMask))
+        {
+            /* Task 16 selector group read: rebuild the historical form.
+             * A side-effecting object evaluates once through the
+             * cg_get_matN helper; a pure object prints the transposed
+             * component constructor. */
+            GlslMatrixSelectorHelper *helper;
+            GlslType matrixType;
+            GlslExpr *baseGlsl;
+            int baseEffects;
+
+            if (!GlslIRType(context, sharedObject->type, &matrixType,
+                            &expr->loc))
+                return NULL;
+            baseEffects = GlslIRNeedsMaterialization(sharedObject);
+            baseGlsl = GlslIRLowerExpr(context, sharedObject);
+            if (baseGlsl == NULL)
+                return NULL;
+            if (sharedObject->sideEffects || baseEffects) {
+                helper = GlslGetMatrixSelectorHelper(context,
+                    GLSL_MATRIX_SELECTOR_GET, &matrixType, &type,
+                    sharedCount, sharedMask);
+                if (helper == NULL)
+                    return NULL;
+                target = GlslNewExpr(context->module, GLSL_EXPR_CALL,
+                                     type);
+                if (target == NULL)
+                    return NULL;
+                target->u.call.name = helper->function->name;
+                target->u.call.arguments = baseGlsl;
+                return target;
+            }
+            /* Pure group read: one lowered base, transposed selections
+             * (Cg m[row][col] prints as GLSL m[col][row]), each on its
+             * own clone exactly like the legacy constructor path. */
+            target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT,
+                                 type);
+            if (target == NULL)
+                return NULL;
+            {
+                int k;
+
+                for (k = 0; k < sharedCount; k++) {
+                    /* Frontend nibble packing: row<<2 | column. */
+                    int column = (sharedMask >> (k * 4)) & 3;
+                    int row = ((sharedMask >> (k * 4)) >> 2) & 3;
+                    GlslExpr *leaf;
+
+                    leaf = GlslCloneExpr(context->module, baseGlsl);
+                    leaf = leaf ? GlslIRMatrixElement(context, leaf,
+                                                       row, column)
+                                : NULL;
+                    if (leaf == NULL)
+                        return NULL;
+                    GlslAppendExpr(&target->u.construct.arguments, leaf);
+                }
+            }
+            return target;
+        }
+        target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, type);
+        if (target == NULL)
+            return NULL;
+        target->u.construct.arguments = GlslIRLowerExprList(
+            context, expr->u.construct.arguments);
+        if (target->u.construct.arguments == NULL &&
+            expr->u.construct.arguments != NULL)
+            return NULL;
+        return target;
+    case CGIR_EXPR_CAST:
+        operand = GlslIRLowerExpr(context, expr->u.cast.operand);
+        if (operand == NULL)
+            return NULL;
+        if (GlslTypesEqual(&operand->type, &type))
+            return operand;
+        /* Legacy ConstantFoldNode folded casts of scalar constants into
+         * the converted literal — in MAIN only (helpers kept their raw
+         * casts); reproduce that scope. */
+        if (context->function != NULL && context->function->isEntry &&
+            expr->u.cast.operand != NULL &&
+            expr->u.cast.operand->kind == CGIR_EXPR_CONSTANT)
+        {
+            CgNumericValue folded = expr->u.cast.operand->u.constant;
+            CgScalarKind targetKind = GetScalarKind(expr->type);
+
+            if (IsScalar(expr->type) && targetKind != CG_SCALAR_NONE &&
+                CgNumericConvert(&folded, targetKind,
+                                 &expr->u.cast.operand->u.constant) &&
+                GlslIRScalarBase(context, targetKind, &type.base,
+                                 &expr->loc))
+            {
+                return GlslIRConstantComponent(context, &folded,
+                                               type.base);
+            }
+        }
+        target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, type);
+        if (target != NULL)
+            target->u.construct.arguments = operand;
+        return target;
+    case CGIR_EXPR_UNARY:
+        switch (expr->u.unary.op) {
+        case CGIR_OP_NEGATE:
+        case CGIR_OP_POSITIVE:
+            op = GlslIRUnaryOperator(expr->u.unary.op);
+            target = GlslNewExpr(context->module, GLSL_EXPR_UNARY, type);
+            if (target == NULL)
+                return NULL;
+            target->u.unary.op = op;
+            target->u.unary.operand = GlslIRLowerExpr(
+                context, expr->u.unary.operand);
+            if (target->u.unary.operand == NULL)
+                return NULL;
+            return target;
+        case CGIR_OP_LOGICAL_NOT:
+            operand = GlslIRLowerExpr(context, expr->u.unary.operand);
+            if (operand == NULL)
+                return NULL;
+            if (type.len > 1) {
+                /* Vector '!' lowers to the not() builtin call exactly
+                 * as the tree path emitted it. */
+                target = GlslNewExpr(context->module, GLSL_EXPR_CALL,
+                                     type);
+                if (target != NULL) {
+                    target->u.call.name = "not";
+                    target->u.call.arguments = operand;
+                }
+                return target;
+            }
+            target = GlslNewExpr(context->module, GLSL_EXPR_UNARY, type);
+            if (target == NULL)
+                return NULL;
+            target->u.unary.op = GLSL_OP_LOGICAL_NOT;
+            target->u.unary.operand = operand;
+            return target;
+        case CGIR_OP_PRE_INCREMENT:
+        case CGIR_OP_POST_INCREMENT:
+        case CGIR_OP_PRE_DECREMENT:
+        case CGIR_OP_POST_DECREMENT:
+            return GlslIRLowerIncrement(context, expr, &type);
+        default:
+            GlslRecordFailure(context,
+                              GlslIRUnsupportedReason(expr->u.unary.op));
+            return NULL;
+        }
+    case CGIR_EXPR_ASSIGN:
+        switch (expr->u.assign.op) {
+        case CGIR_OP_ASSIGN:
+            target = GlslNewExpr(context->module, GLSL_EXPR_BINARY, type);
+            if (target == NULL)
+                return NULL;
+            target->u.binary.op = GLSL_OP_ASSIGN;
+            target->u.binary.left = GlslIRLowerExpr(
+                context, expr->u.assign.target);
+            target->u.binary.right = target->u.binary.left ?
+                GlslIRLowerExpr(context, expr->u.assign.value) : NULL;
+            if (target->u.binary.left == NULL ||
+                target->u.binary.right == NULL) return NULL;
+            return target;
+        case CGIR_OP_ADD_ASSIGN:
+        case CGIR_OP_SUBTRACT_ASSIGN:
+        case CGIR_OP_MULTIPLY_ASSIGN:
+        case CGIR_OP_DIVIDE_ASSIGN:
+            /* Legacy order: A op= B expanded to A = A op B before the
+             * tree path ever saw it. */
+            op = GlslIRCompoundOperator(expr->u.assign.op);
+            operand = GlslIRLowerExpr(context, expr->u.assign.target);
+            inner = NULL;
+            target = NULL;
+            if (operand != NULL) {
+                inner = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                                    operand->type);
+                if (inner != NULL) {
+                    inner->u.binary.op = op;
+                    inner->u.binary.left = GlslCloneExpr(context->module,
+                                                         operand);
+                    inner->u.binary.right = inner->u.binary.left ?
+                        GlslIRLowerExpr(context,
+                                        expr->u.assign.value) : NULL;
+                }
+            }
+            if (inner != NULL && inner->u.binary.left != NULL &&
+                inner->u.binary.right != NULL)
+            {
+                target = GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                                     type);
+                if (target != NULL) {
+                    target->u.binary.op = GLSL_OP_ASSIGN;
+                    target->u.binary.left = operand;
+                    target->u.binary.right = inner;
+                }
+            }
+            return target;
+        default:
+            GlslRecordFailure(context,
+                              GlslIRUnsupportedReason(expr->u.assign.op));
+            return NULL;
+        }
+    case CGIR_EXPR_BINARY:
+        if (GlslIRUnsupportedReason(expr->u.binary.op) != NULL) {
+            GlslRecordFailure(context,
+                              GlslIRUnsupportedReason(expr->u.binary.op));
+            return NULL;
+        }
+        op = GlslIRBinaryOperator(expr->u.binary.op);
+        if (op == GLSL_OP_NONE) {
+            GlslRecordFailure(context, "GLSL 1.10 expression");
+            return NULL;
+        }
+        if ((op == GLSL_OP_LESS || op == GLSL_OP_GREATER ||
+             op == GLSL_OP_LESS_EQUAL || op == GLSL_OP_GREATER_EQUAL ||
+             op == GLSL_OP_EQUAL || op == GLSL_OP_NOT_EQUAL) &&
+            type.len > 1)
+        {
+            return GlslIRLowerVectorComparison(context, expr, &type,
+                GlslIRComparisonName(expr->u.binary.op));
+        }
+        if ((op == GLSL_OP_ADD || op == GLSL_OP_SUBTRACT ||
+             op == GLSL_OP_MULTIPLY || op == GLSL_OP_DIVIDE) &&
+            context->function != NULL && context->function->isEntry &&
+            expr->u.binary.left != NULL &&
+            expr->u.binary.left->kind == CGIR_EXPR_CONSTANT &&
+            expr->u.binary.right != NULL &&
+            expr->u.binary.right->kind == CGIR_EXPR_CONSTANT &&
+            IsScalar(expr->type))
+        {
+            /* Legacy ConstantFoldNode folded scalar constant arithmetic
+             * ahead of lowering (division by zero yielding the infinity
+             * that the non-finite rejection pins); reproduce here. */
+            CgNumericValue folded;
+            CgNumericOp numop = op == GLSL_OP_ADD ? CG_NUMERIC_ADD :
+                                op == GLSL_OP_SUBTRACT ? CG_NUMERIC_SUB :
+                                op == GLSL_OP_MULTIPLY ?
+                                                       CG_NUMERIC_MUL :
+                                                       CG_NUMERIC_DIV;
+
+            if (CgNumericBinary(&folded, numop,
+                                &expr->u.binary.left->u.constant,
+                                &expr->u.binary.right->u.constant))
+            {
+                return GlslIRConstantComponent(context, &folded,
+                                               type.base);
+            }
+        }
+        target = GlslNewExpr(context->module, GLSL_EXPR_BINARY, type);
+        if (target == NULL)
+            return NULL;
+        target->u.binary.op = op;
+        target->u.binary.left = GlslIRLowerExpr(context,
+                                                expr->u.binary.left);
+        target->u.binary.right = target->u.binary.left ?
+            GlslIRLowerExpr(context, expr->u.binary.right) : NULL;
+        if (target->u.binary.left == NULL ||
+            target->u.binary.right == NULL) return NULL;
+        return target;
+    case CGIR_EXPR_CONDITIONAL:
+        return GlslIRLowerConditional(context, expr, &type);
+    case CGIR_EXPR_CALL:
+        return GlslIRLowerCallCore(context, expr->u.call.callee, NULL,
+                                   expr->u.call.arguments, &type);
+    case CGIR_EXPR_INTRINSIC:
+        return GlslIRLowerCallCore(context, NULL,
+                                   expr->u.intrinsicCall.signature,
+                                   expr->u.intrinsicCall.arguments, &type);
+    case CGIR_EXPR_INTERFACE_CALL:
+        /* Interface dispatch has no GLSL 1.10 meaning; profile
+         * validation rejects it with the historical reason. */
+        GlslRecordFailure(context, "interface dispatch");
+        return NULL;
+    default:
+        GlslRecordFailure(context, "GLSL 1.10 expression");
+        return NULL;
+    }
+} // GlslIRLowerExpr
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////// Cg IR statement lowering (Cg 2.0) //////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+static const char *GlslIRDeclNameText(const CgIRDecl *decl)
+{
+    return GetAtomString(atable, decl->name);
+} // GlslIRDeclNameText
+
+/*
+ * GlslIRMatrixStoreShape() - Match one scalar matrix-element store:
+ *          ASSIGN(INDEX(INDEX(base,row),column), value) with constant
+ *          element coordinates.
+ */
+
+static int GlslIRMatrixStoreShape(const CgIRExpr *expr,
+                                  const CgIRExpr **base,
+                                  const CgIRExpr **value,
+                                  int *row, int *column)
+{
+    const CgIRExpr *rowSel;
+    const CgIRExpr *rowIdx;
+    const CgIRExpr *colIdx;
+
+    if (expr == NULL || expr->kind != CGIR_EXPR_ASSIGN ||
+        expr->u.assign.op != CGIR_OP_ASSIGN)
+        return 0;
+    rowSel = expr->u.assign.target;
+    if (rowSel == NULL || rowSel->kind != CGIR_EXPR_INDEX)
+        return 0;
+    colIdx = rowSel->u.index.index;
+    if (colIdx == NULL || colIdx->kind != CGIR_EXPR_CONSTANT ||
+        colIdx->u.constant.kind != CG_SCALAR_INT)
+        return 0;
+    rowIdx = rowSel->u.index.object;
+    if (rowIdx == NULL || rowIdx->kind != CGIR_EXPR_INDEX)
+        return 0;
+    {
+        const CgIRExpr *rowConst = rowIdx->u.index.index;
+
+        if (rowConst == NULL || rowConst->kind != CGIR_EXPR_CONSTANT ||
+            rowConst->u.constant.kind != CG_SCALAR_INT)
+            return 0;
+        *row = (int) rowConst->u.constant.value.i;
+    }
+    *column = (int) colIdx->u.constant.value.i;
+    if (*row < 0 || *row > 3 || *column < 0 || *column > 3)
+        return 0;
+    *base = rowIdx->u.index.object;
+    *value = expr->u.assign.value;
+    return 1;
+} // GlslIRMatrixStoreShape
+
+/*
+ * GlslIRIsTempMove() - A synthesized temporary assignment: temp = expr.
+ */
+
+static int GlslIRIsTempMove(const CgIRExpr *expr, const void *identity,
+                            const CgIRExpr **value)
+{
+    if (expr == NULL || expr->kind != CGIR_EXPR_ASSIGN ||
+        expr->u.assign.op != CGIR_OP_ASSIGN)
+        return 0;
+    if (expr->u.assign.target == NULL ||
+        expr->u.assign.target->kind != CGIR_EXPR_SYMBOL ||
+        expr->u.assign.target->u.symbol != identity)
+        return 0;
+    *value = expr->u.assign.value;
+    return 1;
+} // GlslIRIsTempMove
+
+static GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
+                                     GlslExpr *matrix, int row,
+                                     int column)
+{
+    GlslExpr *columnExpr;
+    GlslType columnType;
+    GlslType scalarType;
+
+    if (matrix == NULL || matrix->type.rows < 2 ||
+        matrix->type.rows != matrix->type.cols || row < 0 || column < 0 ||
+        row >= matrix->type.rows || column >= matrix->type.cols)
+    {
+        return NULL;
+    }
+    columnType = GlslNumericType(GLSL_BASE_FLOAT, matrix->type.rows);
+    scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+    columnExpr = GlslIRAppendIndexStep(context, matrix, column,
+                                       columnType, &context->statementLoc);
+    if (columnExpr == NULL)
+        return NULL;
+    return GlslIRAppendIndexStep(context, columnExpr, row, scalarType,
+                                 &context->statementLoc);
+} // GlslIRMatrixElement
+
+/*
+ * GlslIRTryGroupWrite() - Rebuild the historical output form of a Task
+ *          16 matrix group write: either the cg_set_matN helper call
+ *          (with any synthesized object/value temporaries folded back
+ *          into their single-evaluation arguments) or the plain
+ *          per-component fan-out between two simple variables.
+ *          Returns 1 with *nextOut past the consumed run, 0 when the
+ *          head is not a group write, and -1 on lowering failure.
+ */
+
+static int GlslIRTryGroupWrite(GlslLowerContext *context,
+                               const CgIRStmt *head,
+                               const CgIRStmt **nextOut, GlslStmt **list)
+{
+    const CgIRStmt *cursor;
+    const void *objectTemp = NULL;
+    const void *valueTemp = NULL;
+    const CgIRExpr *objectSource = NULL;
+    const CgIRExpr *valueSource = NULL;
+    const CgIRStmt *storeLoop;
+    const CgIRExpr *storeBase = NULL;
+    const CgIRExpr *sharedValue = NULL;
+    const CgIRExpr *rightBase = NULL;
+    int storeCount = 0;
+    int mask = 0;
+    int rightMask = 0;
+    int rows[4];
+    int columns[4];
+    int scalarFanout = 0;
+
+    if (head == NULL)
+        return 0;
+    /* Optional leading temporaries: the object, then the value, each
+     * declared and moved exactly once ahead of the stores. */
+    cursor = head;
+    if (head->kind == CGIR_STMT_DECL) {
+        const char *declName = GlslIRDeclNameText(head->u.decl);
+
+        if (declName == NULL || declName[0] != '$')
+            return 0;
+        if (head->next != NULL && head->next->kind == CGIR_STMT_EXPR &&
+            GlslIRIsTempMove(head->next->u.expression,
+                             head->u.decl->symbol, &objectSource))
+        {
+            const CgIRStmt *afterObject = head->next->next;
+
+            objectTemp = head->u.decl->symbol;
+            cursor = afterObject;
+            if (afterObject != NULL &&
+                afterObject->kind == CGIR_STMT_DECL &&
+                afterObject->next != NULL &&
+                afterObject->next->kind == CGIR_STMT_EXPR)
+            {
+                const char *secondName = GlslIRDeclNameText(
+                    afterObject->u.decl);
+
+                if (secondName != NULL && secondName[0] == '$' &&
+                    GlslIRIsTempMove(afterObject->next->u.expression,
+                                     afterObject->u.decl->symbol,
+                                     &valueSource))
+                {
+                    valueTemp = afterObject->u.decl->symbol;
+                    cursor = afterObject->next->next;
+                }
+            }
+        }
+    } else if (head->kind != CGIR_STMT_EXPR ||
+               !GlslIRMatrixStoreShape(head->u.expression, &storeBase,
+                                        &sharedValue, &rows[0],
+                                        &columns[0]))
+    {
+        return 0;
+    }
+    /* Count consecutive constant-coordinate stores against one base. */
+    storeLoop = cursor;
+    for (; storeLoop != NULL; storeLoop = storeLoop->next) {
+        const CgIRExpr *base;
+        const CgIRExpr *value;
+        int row;
+        int column;
+
+        if (storeLoop->kind != CGIR_STMT_EXPR ||
+            !GlslIRMatrixStoreShape(storeLoop->u.expression, &base,
+                                     &value, &row, &column))
+            break;
+        if (storeCount >= 4)
+            return -1;
+        if (storeCount == 0)
+            storeBase = base;
+        else if (base != storeBase)
+            break;
+        if (objectTemp != NULL &&
+            (base->kind != CGIR_EXPR_SYMBOL ||
+             base->u.symbol != objectTemp))
+            return -1;
+        rows[storeCount] = row;
+        columns[storeCount] = column;
+        mask |= ((row << 2) | column) << (storeCount * 4);
+        storeCount++;
+    }
+    if (storeCount < 2)
+        return 0;
+    if (objectTemp == NULL && storeBase->sideEffects)
+        return -1;
+    /* Classify the store values: one shared node, the value temporary,
+     * or distinct selections over one right variable (scalar fan-out). */
+    {
+        const CgIRStmt *walk = cursor;
+        const CgIRExpr *candidate = NULL;
+        int allSame = 1;
+
+        for (; walk != storeLoop; walk = walk->next) {
+            const CgIRExpr *base;
+            const CgIRExpr *value;
+            int row;
+            int column;
+
+            (void) GlslIRMatrixStoreShape(walk->u.expression, &base,
+                                           &value, &row, &column);
+            if (candidate == NULL)
+                candidate = value;
+            else if (value != candidate)
+                allSame = 0;
+        }
+        sharedValue = allSame ? candidate : NULL;
+        if (sharedValue != NULL && objectTemp == NULL && valueTemp == NULL)
+        {
+            /* A shared group-read over a plain right variable paired
+             * with a plain left variable is the legacy componentwise
+             * fan-out, not the set-helper call. */
+            const CgIRExpr *rbase = NULL;
+            int rcount = 0;
+            int rmask = 0;
+
+            if (GlslIRSharedSelection(sharedValue, &rbase, &rcount,
+                                      &rmask) &&
+                rcount == storeCount &&
+                rbase->kind == CGIR_EXPR_SYMBOL &&
+                storeBase->kind == CGIR_EXPR_SYMBOL &&
+                storeBase->u.symbol != rbase->u.symbol)
+            {
+                scalarFanout = 1;
+                rightBase = rbase;
+                rightMask = rmask;
+            }
+        }
+        if (sharedValue == NULL && valueTemp != NULL) {
+            /* Values must be the value temporary itself. */
+            walk = cursor;
+            for (; walk != storeLoop; walk = walk->next) {
+                const CgIRExpr *base;
+                const CgIRExpr *value;
+                int row;
+                int column;
+
+                (void) GlslIRMatrixStoreShape(walk->u.expression, &base,
+                                               &value, &row, &column);
+                if (value->kind != CGIR_EXPR_SYMBOL ||
+                    value->u.symbol != valueTemp)
+                    return -1;
+            }
+        } else if (sharedValue == NULL && objectTemp == NULL &&
+                   valueTemp == NULL)
+        {
+            /* Distinct per-store values: either the legacy scalar
+             * fan-out between two plain variables, or two unrelated
+             * scalar element stores.  Validate the fan-out shape;
+             * anything else falls back to independent statements. */
+            const CgIRStmt *fanWalk = cursor;
+
+            scalarFanout = 1;
+            for (; fanWalk != storeLoop; fanWalk = fanWalk->next) {
+                const CgIRExpr *base;
+                const CgIRExpr *value;
+                const CgIRExpr *rightRowSel;
+                int row;
+                int column;
+
+                if (!GlslIRMatrixStoreShape(fanWalk->u.expression, &base,
+                                             &value, &row, &column))
+                    return -1;
+                if (value->kind != CGIR_EXPR_INDEX ||
+                    value->u.index.index == NULL ||
+                    value->u.index.index->kind != CGIR_EXPR_CONSTANT ||
+                    value->u.index.object == NULL ||
+                    value->u.index.object->kind != CGIR_EXPR_INDEX ||
+                    value->u.index.object->u.index.index == NULL ||
+                    value->u.index.object->u.index.index->kind !=
+                        CGIR_EXPR_CONSTANT ||
+                    value->u.index.object->u.index.object == NULL ||
+                    value->u.index.object->u.index.object->kind !=
+                        CGIR_EXPR_SYMBOL)
+                {
+                    return 0;
+                }
+                rightRowSel = value->u.index.object;
+                if (rightBase == NULL)
+                    rightBase = rightRowSel->u.index.object;
+                else if (rightBase != rightRowSel->u.index.object)
+                    return 0;
+                if (storeBase->kind != CGIR_EXPR_SYMBOL ||
+                    storeBase->u.symbol ==
+                        rightRowSel->u.index.object->u.symbol)
+                {
+                    return 0;
+                }
+            }
+            if (rightBase == NULL)
+                return 0;
+        } else if (sharedValue == NULL) {
+            return -1;
+        }
+    }
+    {
+        SourceLoc emitLoc = cursor->loc;
+        GlslExpr *leftGlsl;
+        GlslExpr *valueGlsl;
+
+        if (scalarFanout) {
+            GlslExpr *rightGlsl;
+            GlslType scalarType;
+            int i;
+
+            leftGlsl = GlslIRLowerExpr(context, storeBase);
+            rightGlsl = leftGlsl ?
+                        GlslIRLowerExpr(context, rightBase) : NULL;
+            if (leftGlsl == NULL || rightGlsl == NULL)
+                return -1;
+            scalarType = GlslNumericType(GLSL_BASE_FLOAT, 1);
+            for (i = 0; i < storeCount; i++) {
+                GlslExpr *leftLeaf;
+                GlslExpr *rightLeaf;
+                GlslExpr *assignment;
+                GlslStmt *statement;
+                int rightRow;
+                int rightColumn;
+
+                leftLeaf = GlslCloneExpr(context->module, leftGlsl);
+                leftLeaf = leftLeaf ?
+                    GlslIRMatrixElement(context, leftLeaf, rows[i],
+                                         columns[i]) : NULL;
+                if (rightMask != 0) {
+                    /* Right selections come from the shared group-read
+                     * mask (same row<<2|column nibble encoding). */
+                    rightRow = ((rightMask >> (i * 4)) >> 2) & 3;
+                    rightColumn = (rightMask >> (i * 4)) & 3;
+                } else {
+                    rightRow = rows[i];
+                    rightColumn = columns[i];
+                }
+                rightLeaf = GlslCloneExpr(context->module, rightGlsl);
+                rightLeaf = rightLeaf ?
+                    GlslIRMatrixElement(context, rightLeaf, rightRow,
+                                         rightColumn) : NULL;
+                assignment = leftLeaf != NULL && rightLeaf != NULL ?
+                    GlslNewExpr(context->module, GLSL_EXPR_BINARY,
+                                scalarType) : NULL;
+                statement = assignment != NULL ?
+                    GlslNewStmt(context->module,
+                                GLSL_STMT_EXPRESSION) : NULL;
+                if (statement == NULL)
+                    return -1;
+                assignment->u.binary.op = GLSL_OP_ASSIGN;
+                assignment->u.binary.left = leftLeaf;
+                assignment->u.binary.right = rightLeaf;
+                GlslSetLoc(&statement->loc, &emitLoc);
+                statement->u.expression = assignment;
+                GlslAppendStmt(list, statement);
+            }
+        } else {
+            GlslMatrixSelectorHelper *helper;
+            GlslExpr *call;
+            GlslStmt *statement;
+
+            leftGlsl = GlslIRLowerExpr(context,
+                objectTemp != NULL ? objectSource : storeBase);
+            if (leftGlsl == NULL)
+                return -1;
+            valueGlsl = GlslIRLowerExpr(context,
+                valueTemp != NULL ? valueSource :
+                                    (sharedValue != NULL ? sharedValue :
+                                                           valueSource));
+            if (valueGlsl == NULL)
+                return -1;
+            helper = GlslGetMatrixSelectorHelper(context,
+                GLSL_MATRIX_SELECTOR_SET, &leftGlsl->type,
+                &valueGlsl->type, storeCount, mask);
+            if (helper == NULL)
+                return -1;
+            call = GlslNewExpr(context->module, GLSL_EXPR_CALL,
+                               helper->function->result);
+            statement = call != NULL ?
+                        GlslNewStmt(context->module,
+                                    GLSL_STMT_EXPRESSION) : NULL;
+            if (statement == NULL)
+                return -1;
+            call->u.call.name = helper->function->name;
+            call->u.call.arguments = leftGlsl;
+            leftGlsl->next = valueGlsl;
+            GlslSetLoc(&statement->loc, &emitLoc);
+            statement->u.expression = call;
+            GlslAppendStmt(list, statement);
+        }
+    }
+    *nextOut = storeLoop;
+    return 1;
+} // GlslIRTryGroupWrite
+
+static int GlslIRLowerStatement(GlslLowerContext *context,
+                                const CgIRStmt *source, GlslStmt **list)
+{
+    GlslStmt *target;
+    GlslExpr *condition;
+    GlslType boolType;
+    GlslType conditionType;
+
+    if (source == NULL)
+        return 1;
+    context->statementLoc = source->loc;
+    switch (source->kind) {
+    case CGIR_STMT_DECL:
+        /* Declarations are consumed by the enclosing block walker;
+         * reaching this point means an unexpected producer shape. */
+        GlslRecordFailure(context, "GLSL 1.10 declaration placement");
+        return 0;
+    case CGIR_STMT_EXPR:
+        if (source->u.expression == NULL)
+            return 1;
+        /* Struct assignments flatten member-wise exactly as the legacy
+         * FlattenStructAssignments pass arranged before tree lowering
+         * saw them; targets that are themselves native aggregate
+         * temporaries (the return rewrite's cg_return) stay whole. */
+        if (source->u.expression->kind == CGIR_EXPR_ASSIGN &&
+            source->u.expression->u.assign.op == CGIR_OP_ASSIGN &&
+            source->u.expression->type != NULL &&
+            IsStruct(source->u.expression->type) &&
+            !(source->u.expression->u.assign.target != NULL &&
+              source->u.expression->u.assign.target->kind ==
+                  CGIR_EXPR_SYMBOL &&
+              source->u.expression->u.assign.target->u.symbol != NULL &&
+              (source->u.expression->u.assign.target->u.symbol->properties &
+               SYMB_IS_NATIVE_AGGREGATE_TEMP)))
+        {
+            return GlslIRLowerAggregateAssign(context,
+                                              source->u.expression, list);
+        }
+        target = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
+        if (target == NULL)
+            return 0;
+        target->u.expression = GlslIRLowerExpr(context,
+                                               source->u.expression);
+        if (target->u.expression == NULL)
+            return 0;
+        break;
+    case CGIR_STMT_IF:
+        target = GlslNewStmt(context->module, GLSL_STMT_IF);
+        if (target == NULL)
+            return 0;
+        target->u.ifStmt.condition = GlslIRLowerExpr(
+            context, source->u.ifStmt.condition);
+        if (target->u.ifStmt.condition == NULL)
+            return 0;
+        if (!GlslIRBranch(context, source->u.ifStmt.trueBranch,
+                          &target->u.ifStmt.trueBranch) ||
+            !GlslIRBranch(context, source->u.ifStmt.falseBranch,
+                          &target->u.ifStmt.falseBranch)) return 0;
+        break;
+    case CGIR_STMT_WHILE:
+    case CGIR_STMT_DO:
+        target = GlslNewStmt(context->module,
+            source->kind == CGIR_STMT_WHILE ? GLSL_STMT_WHILE :
+                                              GLSL_STMT_DO);
+        if (target == NULL)
+            return 0;
+        target->u.loop.condition = GlslIRLowerExpr(
+            context, source->u.loop.condition);
+        if (target->u.loop.condition == NULL)
+            return 0;
+        context->loopDepth++;
+        if (!GlslIRBranch(context, source->u.loop.body,
+                          &target->u.loop.body))
+        {
+            context->loopDepth--;
+            return 0;
+        }
+        context->loopDepth--;
+        break;
+    case CGIR_STMT_FOR:
+        target = GlslNewStmt(context->module, GLSL_STMT_FOR);
+        if (target == NULL)
+            return 0;
+        if (source->u.forStmt.init != NULL &&
+            !GlslIRForPart(context, source->u.forStmt.init,
+                           &target->u.forStmt.init))
+            return 0;
+        if (source->u.forStmt.condition != NULL) {
+            target->u.forStmt.condition = GlslIRLowerExpr(
+                context, source->u.forStmt.condition);
+            if (target->u.forStmt.condition == NULL)
+                return 0;
+        }
+        if (source->u.forStmt.step != NULL) {
+            GlslStmt *stepStmt;
+
+            stepStmt = GlslNewStmt(context->module,
+                                   GLSL_STMT_EXPRESSION);
+            if (stepStmt == NULL)
+                return 0;
+            stepStmt->u.expression = GlslIRLowerExpr(
+                context, source->u.forStmt.step);
+            if (stepStmt->u.expression == NULL)
+                return 0;
+            target->u.forStmt.step = stepStmt;
+        }
+        context->loopDepth++;
+        if (!GlslIRBranch(context, source->u.forStmt.body,
+                          &target->u.forStmt.body))
+        {
+            context->loopDepth--;
+            return 0;
+        }
+        context->loopDepth--;
+        break;
+    case CGIR_STMT_BLOCK:
+        target = GlslNewStmt(context->module, GLSL_STMT_BLOCK);
+        if (target == NULL)
+            return 0;
+        if (!GlslIRBlockBody(context, source->u.block, &target->u.block))
+            return 0;
+        break;
+    case CGIR_STMT_RETURN:
+        target = GlslNewStmt(context->module, GLSL_STMT_RETURN);
+        if (target == NULL)
+            return 0;
+        if (source->u.returnExpr != NULL) {
+            target->u.returnExpr = GlslIRLowerExpr(
+                context, source->u.returnExpr);
+            if (target->u.returnExpr == NULL)
+                return 0;
+        }
+        break;
+    case CGIR_STMT_DISCARD:
+        if (context->module->stage != GLSL_STAGE_FRAGMENT) {
+            GlslRecordFailureKind(context, GLSL_ERROR_STAGE_OPERATION,
+                                  "discard");
+            return 0;
+        }
+        if (source->u.discard.condition == NULL) {
+            target = GlslNewStmt(context->module, GLSL_STMT_DISCARD);
+            if (target == NULL)
+                return 0;
+        } else {
+            GlslStmt *discard;
+            GlslExpr *reduction;
+
+            target = GlslNewStmt(context->module, GLSL_STMT_IF);
+            discard = GlslNewStmt(context->module, GLSL_STMT_DISCARD);
+            if (target == NULL || discard == NULL)
+                return 0;
+            condition = GlslIRLowerExpr(context,
+                                        source->u.discard.condition);
+            if (condition == NULL)
+                return 0;
+            if (condition->type.base != GLSL_BASE_BOOL ||
+                condition->type.rows != 0 || condition->type.cols != 0 ||
+                condition->type.arraySize != 0 ||
+                condition->type.structName != NULL ||
+                condition->type.elementType != NULL ||
+                condition->type.len < 1 || condition->type.len > 4)
+            {
+                GlslRecordFailureKind(context,
+                                      GLSL_ERROR_UNSUPPORTED_TYPE,
+                                      "discard condition type");
+                return 0;
+            }
+            if (condition->type.len > 1) {
+                boolType = GlslNumericType(GLSL_BASE_BOOL, 1);
+                reduction = GlslNewExpr(context->module,
+                                        GLSL_EXPR_CALL, boolType);
+                if (reduction == NULL)
+                    return 0;
+                reduction->u.call.name = "any";
+                reduction->u.call.arguments = condition;
+                condition = reduction;
+            }
+            (void) conditionType;
+            target->u.ifStmt.condition = condition;
+            GlslSetLoc(&discard->loc, &source->loc);
+            target->u.ifStmt.trueBranch = discard;
+        }
+        break;
+    case CGIR_STMT_BREAK:
+        if (context->loopDepth == 0) {
+            GlslRecordFailure(context, "break outside loop");
+            return 0;
+        }
+        target = GlslNewStmt(context->module, GLSL_STMT_BREAK);
+        break;
+    case CGIR_STMT_CONTINUE:
+        if (context->loopDepth == 0) {
+            GlslRecordFailure(context, "continue outside loop");
+            return 0;
+        }
+        target = GlslNewStmt(context->module, GLSL_STMT_CONTINUE);
+        break;
+    default:
+        GlslRecordFailure(context, "GLSL 1.10 statement");
+        return 0;
+    }
+    if (target == NULL)
+        return 0;
+    GlslSetLoc(&target->loc, &source->loc);
+    GlslAppendStmt(list, target);
+    return 1;
+} // GlslIRLowerStatement
+
+/*
+ * GlslIRLocalDeclaration() - One block-level declaration: user locals
+ *          join the function's locals; synthesized "$" temporaries must
+ *          open a group-write pattern that consumes their statements.
+ */
+
+static int GlslIRLocalDeclaration(GlslLowerContext *context,
+                                  const CgIRStmt *stmt,
+                                  const CgIRStmt **nextOut, GlslStmt **out)
+{
+    const char *declName;
+
+    declName = GlslIRDeclNameText(stmt->u.decl);
+    if (declName != NULL && declName[0] == '$') {
+        /* Reached only when the group-write pattern rejected this
+         * synthesized temporary: nothing else may consume it. */
+        GlslRecordFailureKindAt(context,
+                                GLSL_ERROR_UNSUPPORTED_OPERATION,
+                                "matrix selector assignment context",
+                                &stmt->loc);
+        return 0;
+    }
+    if (!GlslIRSamplerPlacementCheck(context, stmt->u.decl))
+        return 0;
+    if (!GlslIREnsureTypeAt(context, stmt->u.decl->type,
+                            &stmt->u.decl->loc))
+        return 0;
+    if (GlslIRAddLocal(context, stmt->u.decl->symbol, stmt->u.decl->type,
+                       &stmt->u.decl->loc) == NULL)
+    {
+        return 0;
+    }
+    *nextOut = stmt->next;
+    return 1;
+} // GlslIRLocalDeclaration
+
+/*
+ * GlslIRBlockBody() - Walk one IR block: declarations become function
+ *          locals (or feed the group-write reconstruction), everything
+ *          else lowers statement by statement.
+ */
+
+static int GlslIRBlockBody(GlslLowerContext *context,
+                           const CgIRStmt *stmt, GlslStmt **out)
+{
+    while (stmt != NULL) {
+        const CgIRStmt *next = stmt->next;
+        int consumed;
+
+        /* Group writes may start at a bare store run (pure case) or at
+         * a synthesized "$" temporary declaration (hoisted case). */
+        consumed = GlslIRTryGroupWrite(context, stmt, &next, out);
+        if (consumed < 0)
+            return 0;
+        if (consumed > 0) {
+            stmt = next;
+            continue;
+        }
+        if (stmt->kind == CGIR_STMT_DECL) {
+            if (!GlslIRLocalDeclaration(context, stmt, &next, out))
+                return 0;
+        } else {
+            if (!GlslIRLowerStatement(context, stmt, out)) return 0;
+        }
+        stmt = next;
+    }
+    return 1;
+} // GlslIRBlockBody
+
+/*
+ * GlslIRBranch() - An IR branch is one statement or a wrapped block;
+ *          the GLSL branch slot takes the flat statement list.
+ */
+
+static int GlslIRBranch(GlslLowerContext *context, const CgIRStmt *branch,
+                        GlslStmt **out)
+{
+    if (branch == NULL)
+        return 1;
+    if (branch->kind == CGIR_STMT_BLOCK)
+        return GlslIRBlockBody(context, branch->u.block, out);
+    return GlslIRLowerStatement(context, branch, out);
+} // GlslIRBranch
+
+/*
+ * GlslIRForPart() - The for-header init keeps expression statements
+ *      only, exactly as the legacy for-part walker demanded.
+ */
+
+static int GlslIRForPart(GlslLowerContext *context, const CgIRStmt *init,
+                         GlslStmt **out)
+{
+    GlslStmt *target;
+
+    if (init == NULL)
+        return 1;
+    if (init->kind == CGIR_STMT_BLOCK)
+        init = init->u.block;
+    for (; init != NULL; init = init->next) {
+        if (init->kind != CGIR_STMT_EXPR ||
+            init->u.expression == NULL)
+        {
+            GlslRecordFailure(context, "GLSL for expression");
+            return 0;
+        }
+        target = GlslNewStmt(context->module, GLSL_STMT_EXPRESSION);
+        if (target == NULL)
+            return 0;
+        target->u.expression = GlslIRLowerExpr(context,
+                                               init->u.expression);
+        if (target->u.expression == NULL)
+            return 0;
+        GlslSetLoc(&target->loc, &init->loc);
+        GlslAppendStmt(out, target);
+    }
+    return 1;
+} // GlslIRForPart
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// Cg IR module assembly (public) ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * GlslIRLowerFunctionBody() - Parameters, then the structured body.
+ *          Entry uniform formals skip the local list: they surface
+ *          through the HAL uniform scan exactly as in the legacy path.
+ */
+
+static int GlslIRLowerFunctionBody(GlslLowerContext *context,
+                                   const CgIRFunction *irFunction)
+{
+    GlslFunction *function;
+    const CgIRDecl *param;
+    int isEntry;
+
+    function = context->function;
+    isEntry = irFunction->isEntry;
+    for (param = irFunction->parameters; param != NULL;
+         param = param->next)
+    {
+        GlslDecl *decl;
+        GlslType type;
+        const char *sourceName;
+        const char *name;
+        int qualifiers;
+        const void *identity;
+        const void *nameSpace;
+
+        if (isEntry && param->domain == CGIR_DOMAIN_UNIFORM)
+            continue;
+        if (!GlslIRSamplerPlacementCheck(context, param))
+            return 0;
+        if (!GlslIREnsureTypeAt(context, param->type, &param->loc))
+            return 0;
+        if (!GlslIRType(context, param->type, &type, &param->loc))
+            return 0;
+        sourceName = GetAtomString(atable, param->name);
+        if (sourceName == NULL)
+            return 0;
+        identity = param->symbol != NULL ? (const void *) param->symbol
+                                         : (const void *) param->type;
+        nameSpace = isEntry ? NULL : (const void *) function;
+        if (nameSpace != NULL) {
+            name = GlslAllocateScopedSymbolNameForSource(context,
+                nameSpace, identity, sourceName, &param->loc);
+        } else {
+            name = GlslAllocateSymbolNameForSource(context, identity,
+                                                   sourceName,
+                                                   &param->loc);
+        }
+        if (name == NULL)
+            return 0;
+        decl = GlslNewDecl(context->module, GLSL_STORAGE_NONE, type, name);
+        if (decl == NULL)
+            return 0;
+        decl->identity = identity;
+        GlslSetLoc(&decl->loc, &param->loc);
+        decl->sourceOrdinal = param->symbol != NULL ?
+                              param->symbol->sourceOrdinal : 0;
+        if (isEntry) {
+            GlslAppendDecl(&function->locals, decl);
+        } else {
+            qualifiers = GetQualifiers(param->type);
+            if ((qualifiers & TYPE_QUALIFIER_INOUT) ==
+                TYPE_QUALIFIER_INOUT)
+            {
+                decl->parameterQualifier = GLSL_PARAMETER_INOUT;
+            } else if (qualifiers & TYPE_QUALIFIER_OUT) {
+                decl->parameterQualifier = GLSL_PARAMETER_OUT;
+            }
+            GlslAppendDecl(&function->parameters, decl);
+        }
+    }
+    /* The body block's declarations register as locals while its
+     * statements lower. */
+    return irFunction->body == NULL ||
+           irFunction->body->kind != CGIR_STMT_BLOCK ||
+           GlslIRBlockBody(context, irFunction->body->u.block,
+                           &function->body);
+} // GlslIRLowerFunctionBody
+
+/*
+ * GlslIRCollectUniforms() - Binding metadata first (every bound uniform
+ *          emits even when unreferenced), then the entry body and each
+ *          collected helper body, mirroring the legacy scan order.
+ */
+
+static int GlslIRCollectUniforms(GlslLowerContext *context,
+                                 const CgIRFunction *entry)
+{
+    GlslFunction *function;
+
+    if (!GlslCollectUniformList(context, Cg->theHAL->uniformParam) ||
+        !GlslCollectUniformList(context, Cg->theHAL->uniformGlobal))
+    {
+        return 0;
+    }
+    if (!GlslIRCollectUniformsInStmt(context, entry->body)) return 0;
+    for (function = context->module->functions; function != NULL;
+         function = function->next)
+    {
+        const CgIRFunction *irFunction;
+
+        irFunction = GlslIRFindIRFunction(context->source,
+                                          function->identity);
+        if (irFunction == NULL)
+            continue;
+        if (!GlslIRCollectUniformsInStmt(context, irFunction->body))
+            return 0;
+    }
+    return 1;
+} // GlslIRCollectUniforms
+
+/*
+ * GlslIREnsureEntryLocals() - Register every entry-local declaration
+ *          type ahead of structure sorting; helper types were already
+ *          ensured during call collection.
+ */
+
+static int GlslIREnsureEntryLocals(GlslLowerContext *context,
+                                   const CgIRFunction *entry)
+{
+    const CgIRStmt *stmt;
+    const CgIRDecl *decl;
+
+    /* Entry formals first: structure types used only through
+     * parameters must exist before structure sorting. */
+    for (decl = entry->parameters; decl != NULL; decl = decl->next) {
+        if (!GlslIREnsureTypeAt(context, decl->type, &decl->loc))
+            return 0;
+    }
+    if (entry->body == NULL || entry->body->kind != CGIR_STMT_BLOCK)
+        return 1;
+    for (stmt = entry->body->u.block; stmt != NULL; stmt = stmt->next) {
+        if (stmt->kind != CGIR_STMT_DECL)
+            break;
+        decl = stmt->u.decl;
+        {
+            const char *localName = GetAtomString(atable, decl->name);
+
+            if (localName != NULL && localName[0] == '$')
+                continue;
+        }
+        if (!GlslIRSamplerPlacementCheck(context, decl))
+            return 0;
+        if (!GlslIREnsureTypeAt(context, decl->type, &decl->loc))
+            return 0;
+    }
+    return 1;
+} // GlslIREnsureEntryLocals
+
+/*
+ * GlslLowerCgIR() - Lower one verified Cg IR module into the GLSL
+ *      module.  Returns nonzero when lowering succeeded; failures
+ *      record exactly one profile diagnostic through the module error
+ *          fields for the HAL hooks to translate.
+ */
+
+int GlslLowerCgIR(GlslModule *module, const GlslProfileDesc *profile,
+                  const CgIRModule *source)
+{
+    GlslLowerContext context;
+    GlslFunction *function;
+    GlslType voidType;
+    const char *functionName;
+
+    if (module == NULL || profile == NULL || source == NULL ||
+        source->entry == NULL ||
+        (profile->stage != GLSL_STAGE_VERTEX &&
+         profile->stage != GLSL_STAGE_FRAGMENT) ||
+        module->stage != profile->stage)
+    {
+        if (module != NULL)
+            module->errors++;
+        return 0;
+    }
+    memset(&context, 0, sizeof(context));
+    context.module = module;
+    context.profile = profile;
+    context.source = source;
+    context.statementLoc = source->entry->loc;
+
+    /* Phase order mirrors the legacy pipeline so the first failure in
+     * any program surfaces from the same layer. */
+
+    if (!GlslIRValidateEntryInterfaces(&context, source->entry))
+        return GlslLowerError(&context);
+    if (!GlslIRCollectCallsInStmt(&context, source->entry->body))
+        return GlslLowerError(&context);
+    if (!GlslIRCollectUniforms(&context, source->entry))
+        return GlslLowerError(&context);
+    if (!GlslIREnsureEntryLocals(&context, source->entry))
+        return GlslLowerError(&context);
+    if (!GlslSortStructs(&context))
+        return GlslLowerError(&context);
+    if (!GlslAssignHelperNames(&context))
+        return GlslLowerError(&context);
+    if (!GlslCollectDefaults(&context))
+        return GlslLowerError(&context);
+
+    /* Forward prototypes: a call to a helper that sorts after its
+     * caller needs a declaration. */
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        const CgIRFunction *irFunction;
+
+        irFunction = GlslIRFindIRFunction(source, function->identity);
+        if (irFunction != NULL)
+            GlslIRMarkForwardCallsInStmt(&context, function,
+                                         irFunction->body);
+    }
+
+    /* Helper bodies, in module order. */
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        const CgIRFunction *irFunction;
+
+        irFunction = GlslIRFindIRFunction(source, function->identity);
+        context.function = function;
+        if (irFunction == NULL)
+            return GlslLowerError(&context);
+        context.statementLoc = irFunction->loc;
+        if (!GlslIRLowerFunctionBody(&context, irFunction))
+            return GlslLowerError(&context);
+    }
+
+    functionName = GlslAllocateSymbolNameForSource(&context,
+        source->entry->symbol, "main", &source->entry->loc);
+    if (functionName == NULL)
+        return GlslLowerError(&context);
+    voidType = GlslNumericType(GLSL_BASE_VOID, 0);
+    function = GlslNewFunction(module, voidType, functionName);
+    if (function == NULL)
+        return GlslLowerError(&context);
+    function->identity = source->entry->symbol;
+    function->isEntry = 1;
+    GlslSetLoc(&function->loc, &source->entry->loc);
+    context.function = function;
+    module->entry = function;
+    GlslAppendFunction(&module->functions, function);
+    if (!GlslIRLowerFunctionBody(&context, source->entry))
+        return GlslLowerError(&context);
+    GlslPrependMatrixHelpers(&context);
+    GlslPrependMatrixSelectorHelpers(&context);
+    if (!GlslValidateUniformLimit(&context) ||
+        !GlslAllocateTextureUnits(&context) ||
+        !GlslValidateInterfaceLimits(&context))
+    {
+        return GlslLowerError(&context);
+    }
+    return module->errors == 0;
+} // GlslLowerCgIR
+
