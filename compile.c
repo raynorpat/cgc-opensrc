@@ -61,6 +61,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cg_ir.h"
 #include "cg_reach.h"
 #include "cg_ir_lower.h"
+#include "language.h"
 
 /*
  * lIRPoolAlloc() - Cg IR nodes live in the compilation's global-scope
@@ -77,17 +78,17 @@ static void *lIRPoolAlloc(void *arg, size_t size)
  *          checking, compute the reachable set, lower the typed tree,
  *          and verify the module.  On verification failure exactly one
  *          controlled internal diagnostic reports the verifier's reason
- *          at the failing node's location and compilation stops; legacy
- *          generation stays active after successful verification until
- *          Task 17 adds HAL hooks.
+ *          at the failing node's location and compilation stops.  When
+ *          lowering and verification succeed, "moduleOut" holds the
+ *          verified module for the profile's IR hooks.
  *
  * Returns nonzero when the program lowered AND verified.
  */
 
-static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program)
+static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
+                             CgIRModule *moduleOut)
 {
     CgReachGraph reach;
-    CgIRModule module;
     CgIRLowerContext context;
     int OK;
 
@@ -96,14 +97,14 @@ static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program)
         InternalError(loc, ERROR_S_CG_IR_INVARIANT, "reachability build");
         return 0;
     }
-    CgIRInitModule(&module, lIRPoolAlloc, fScope->pool);
-    context.module = &module;
+    CgIRInitModule(moduleOut, lIRPoolAlloc, fScope->pool);
+    context.module = moduleOut;
     context.reach = &reach;
     memset(&context.verifyDiagnostic, 0,
            sizeof(context.verifyDiagnostic));
     OK = CgIRLowerProgram(&context, fScope, program);
     if (OK) {
-        OK = CgIRVerifyModule(&module, &context.verifyDiagnostic);
+        OK = CgIRVerifyModule(moduleOut, &context.verifyDiagnostic);
         if (!OK) {
             InternalError(&context.verifyDiagnostic.loc,
                           ERROR_S_CG_IR_INVARIANT,
@@ -2829,6 +2830,9 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
     Symbol *program;
     Scope *lScope;
     stmt *lStmt;
+    CgIRModule irModule;
+    SourceLoc irLoc;
+    int useIR;
 
     if (GetErrorCount() == 0) {
         if (fScope->programs) {
@@ -2840,74 +2844,103 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                 goto done;
 
             // Cg 2.0: lower the reachable program to Cg IR and verify
-            // it before any legacy transformation runs.  Failure stops
+            // it before any generation runs.  Failure stops
             // compilation with one internal diagnostic.
 
-            if (!lLowerAndVerifyIR(loc, fScope, program))
+            if (!lLowerAndVerifyIR(loc, fScope, program, &irModule))
                 goto done;
 
-            // Convert to Basic Blocks Format goes here...
+            // A profile carrying both IR hooks takes over emission for
+            // Cg 2.0 sources; -version 1.1 keeps the historical tree
+            // pipeline below.
 
-            // Inline appropriate function calls...
+            useIR = (Cg->options.languageVersion == CG_LANGUAGE_2_0 &&
+                     theHAL->ValidateIR && theHAL->GenerateIR);
 
-            lScope = program->details.fun.locals;
-            lStmt = program->details.fun.statements;
-            lStmt = ConcatStmts(fScope->initStmts, lStmt);
-            if (GetErrorCount() == 0) {
-                lStmt = ExpandInlineFunctionCalls(lScope, lStmt, NULL);
-                PostApplyToExpressions(CheckForHiddenVaryingReferences, lStmt, NULL, 0);
-                if (Cg->options.DumpParseTree || Cg->options.DumpNodeTree) {
-                    program->details.fun.statements = lStmt;
-                    printf("=======================================================================\n");
-                    printf("After inlining functions:\n");
-                    printf("=======================================================================\n");
-                    PrintSymbolTree(program->details.fun.locals->symbols);
-                    if (Cg->options.DumpParseTree)
+            if (!useIR) {
+
+                // Convert to Basic Blocks Format goes here...
+
+                // Inline appropriate function calls...
+
+                lScope = program->details.fun.locals;
+                lStmt = program->details.fun.statements;
+                lStmt = ConcatStmts(fScope->initStmts, lStmt);
+                if (GetErrorCount() == 0) {
+                    lStmt = ExpandInlineFunctionCalls(lScope, lStmt, NULL);
+                    PostApplyToExpressions(CheckForHiddenVaryingReferences, lStmt, NULL, 0);
+                    if (Cg->options.DumpParseTree || Cg->options.DumpNodeTree) {
+                        program->details.fun.statements = lStmt;
+                        printf("=======================================================================\n");
+                        printf("After inlining functions:\n");
+                        printf("=======================================================================\n");
+                        PrintSymbolTree(program->details.fun.locals->symbols);
+                        if (Cg->options.DumpParseTree)
+                            PrintFunction(program);
+                        if (Cg->options.DumpNodeTree)
+                            BPrintFunction(program);
+                        printf("=======================================================================\n");
+                    }
+
+                    CheckConnectorUsageMain(program, lStmt);
+                    lStmt = ConvertDebugCalls(loc, lScope, lStmt, Cg->options.DebugMode);
+                    PostApplyToExpressions(ExpandIncDecExpr, lStmt, NULL, 0);
+                    PostApplyToExpressions(ExpandCompoundAssignmentExpr, lStmt, NULL, 0);
+                    lStmt = PostApplyToStatements(FlattenCommasStmt, lStmt, NULL, 0);
+                    lStmt = PostApplyToStatements(RemoveEmptyStatementsStmt, lStmt, NULL, 0);
+                    lStmt = PostApplyToStatements(FlattenChainedAssignmentsStmt, lStmt, NULL, 0);
+                    PostApplyToExpressions(ConvertNamedConstantsExpr, lStmt, NULL, 0);
+                    if (theHAL->GetCapsBit(CAPS_DECONSTRUCT_MATRICES))
+                        lStmt = DeconstructMatrices(lScope, lStmt);
+                    lStmt = FlattenStructAssignments(lScope, lStmt);
+                    if (!theHAL->GetCapsBit(CAPS_DONT_FLATTEN_IF_STATEMENTS))
+                        lStmt = FlattenIfStatements(lScope, lStmt);
+
+                    // Optimizations:
+
+                    PostApplyToExpressions(ConstantFoldNode, lStmt, NULL, 0);
+
+                    // Lots more optimization stuff goes here...
+
+                    if (Cg->options.DumpFinalTree) {
+                        program->details.fun.statements = lStmt;
+                        printf("=======================================================================\n");
+                        printf("Final program:\n");
+                        printf("=======================================================================\n");
+                        PrintSymbolTree(program->details.fun.locals->symbols);
                         PrintFunction(program);
-                    if (Cg->options.DumpNodeTree)
-                        BPrintFunction(program);
-                    printf("=======================================================================\n");
+                        if (Cg->options.DumpNodeTree)
+                            BPrintFunction(program);
+                        printf("=======================================================================\n");
+                    }
                 }
 
-                CheckConnectorUsageMain(program, lStmt);
-                lStmt = ConvertDebugCalls(loc, lScope, lStmt, Cg->options.DebugMode);
-                PostApplyToExpressions(ExpandIncDecExpr, lStmt, NULL, 0);
-                PostApplyToExpressions(ExpandCompoundAssignmentExpr, lStmt, NULL, 0);
-                lStmt = PostApplyToStatements(FlattenCommasStmt, lStmt, NULL, 0);
-                lStmt = PostApplyToStatements(RemoveEmptyStatementsStmt, lStmt, NULL, 0);
-                lStmt = PostApplyToStatements(FlattenChainedAssignmentsStmt, lStmt, NULL, 0);
-                PostApplyToExpressions(ConvertNamedConstantsExpr, lStmt, NULL, 0);
-                if (theHAL->GetCapsBit(CAPS_DECONSTRUCT_MATRICES))
-                    lStmt = DeconstructMatrices(lScope, lStmt);
-                lStmt = FlattenStructAssignments(lScope, lStmt);
-                if (!theHAL->GetCapsBit(CAPS_DONT_FLATTEN_IF_STATEMENTS))
-                    lStmt = FlattenIfStatements(lScope, lStmt);
-
-                // Optimizations:
-
-                PostApplyToExpressions(ConstantFoldNode, lStmt, NULL, 0);
-
-                // Lots more optimization stuff goes here...
-
-                if (Cg->options.DumpFinalTree) {
-                    program->details.fun.statements = lStmt;
-                    printf("=======================================================================\n");
-                    printf("Final program:\n");
-                    printf("=======================================================================\n");
-                    PrintSymbolTree(program->details.fun.locals->symbols);
-                    PrintFunction(program);
-                    if (Cg->options.DumpNodeTree)
-                        BPrintFunction(program);
-                    printf("=======================================================================\n");
+                program->details.fun.statements = lStmt;
+                if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
+                    OutputBindings(Cg->options.outfd, theHAL, program);
+                if (GetErrorCount() == 0) {
+                    if (!Cg->options.NoCodeGen)
+                        theHAL->GenerateCode(loc, fScope, program);
                 }
-            }
 
-            program->details.fun.statements = lStmt;
-            if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
-                OutputBindings(Cg->options.outfd, theHAL, program);
-            if (GetErrorCount() == 0) {
-                if (!Cg->options.NoCodeGen)
-                    theHAL->GenerateCode(loc, fScope, program);
+            } else {
+
+                // Cg 2.0 IR emission: the interface description still
+                // goes out first, then the profile validates and
+                // prints the verified module all-or-nothing.
+
+                if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
+                    OutputBindings(Cg->options.outfd, theHAL, program);
+
+                irLoc = *loc;
+                if (!theHAL->ValidateIR(&irLoc, &irModule)) {
+                    InternalError(loc, ERROR_S_CG_IR_INVARIANT,
+                                  "profile validation of Cg IR");
+                } else if (!Cg->options.NoCodeGen &&
+                           !theHAL->GenerateIR(&irLoc, &irModule)) {
+                    InternalError(loc, ERROR_S_CG_IR_INVARIANT,
+                                  "profile IR generation");
+                }
             }
 
             if (Cg->options.ErrorMode)

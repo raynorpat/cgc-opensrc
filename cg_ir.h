@@ -70,6 +70,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __CG_IR_H 1
 
 #include <stddef.h>
+#include <stdio.h>
 
 #include "cg_stdlib.h"
 
@@ -194,7 +195,11 @@ typedef struct CgIRExpr_Rec CgIRExpr;
 typedef struct CgIRStmt_Rec CgIRStmt;
 typedef struct CgIRDecl_Rec CgIRDecl;
 typedef struct CgIRFunction_Rec CgIRFunction;
-typedef struct CgIRModule_Rec CgIRModule;
+
+/*
+ * CgIRModule is forward-declared by hal.h (reached through slglobals.h)
+ * so the HAL IR hooks can name it; this header defines the struct.
+ */
 
 /*
  * CgIRDecl - one declared object: global uniform/varying, formal
@@ -617,5 +622,25 @@ int CgIRVerifyModule(const CgIRModule *module,
  */
 
 const char *CgIRVerifyReasonName(CgIRVerifyReason reason);
+
+///////////////////////// Normalized module printing ////////////////////
+
+/*
+ * CgIRPrintModule() - Print the whole verified module to "out" in the
+ *          deterministic normalized form: declarations and functions in
+ *          module order, two-space indentation, decimal numerics,
+ *          canonical CgScalarKindName type spellings, explicit
+ *          packed/unpacked and sized/unsized array notation, stable
+ *          intrinsic spellings, source names, binding semantics, and
+ *          selected call identities.  The module is verified BEFORE the
+ *          first byte is written; on verification failure, allocation
+ *          failure inside the printer, or a stream error the output is
+ *          withheld entirely (the text is buffered and flushed once) and
+ *          zero is returned.  Never prints pointer values, allocator
+ *          addresses, or traversal-dependent hash order.  Returns
+ *          nonzero when the complete normalized text was written.
+ */
+
+int CgIRPrintModule(FILE *out, const CgIRModule *module);
 
 #endif // !defined(__CG_IR_H)

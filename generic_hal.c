@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "generic_hal.h"
+#include "cg_ir.h"
 
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -71,6 +72,8 @@ static int BindVaryingSemantic_generic(SourceLoc *loc, Symbol *fSymb,
                                        int IsOutVal);
 static int PrintCodeHeader_generic(FILE *out);
 static int GenerateCode_generic(SourceLoc *loc, Scope *fScope, Symbol *program);
+static int ValidateIR_generic(SourceLoc *loc, const CgIRModule *module);
+static int GenerateIR_generic(SourceLoc *loc, const CgIRModule *module);
 // Static data
 #define FLT TYPE_BASE_FLOAT
 
@@ -176,6 +179,10 @@ static int InitHAL_generic(slHAL *fHAL)
     fHAL->BindVaryingSemantic = BindVaryingSemantic_generic;
     fHAL->PrintCodeHeader = PrintCodeHeader_generic;
     fHAL->GenerateCode = GenerateCode_generic;
+    /* Generic is the complete Cg 2.0 neutral backend: it accepts every
+     * verified module and emits the normalized IR text. */
+    fHAL->ValidateIR = ValidateIR_generic;
+    fHAL->GenerateIR = GenerateIR_generic;
 
     /* Initialize data. */
     fHAL->vendor = VENDOR_STRING_GENERIC;
@@ -458,6 +465,30 @@ static int GenerateCode_generic(SourceLoc *loc, Scope *fScope, Symbol *program)
     PrintFunctions(fScope->symbols);
     return 1;
 } // GenerateCode_generic
+
+/*
+ * ValidateIR_generic() - The neutral profile accepts every module the
+ * verifier admitted; there is nothing profile-specific left to check.
+ */
+
+static int ValidateIR_generic(SourceLoc *loc, const CgIRModule *module)
+{
+    (void) loc;
+    (void) module;
+    return 1;
+} // ValidateIR_generic
+
+/*
+ * GenerateIR_generic() - Emit the normalized Cg IR text of the verified
+ * module to the compiler's output stream.  CgIRPrintModule verifies
+ * again before its first byte and writes all-or-nothing.
+ */
+
+static int GenerateIR_generic(SourceLoc *loc, const CgIRModule *module)
+{
+    (void) loc;
+    return CgIRPrintModule(Cg->options.outfd, module);
+} // GenerateIR_generic
 
 ///////////////////////////////////////////////////////////////////////////////
 //////////////////////// End of generic_hal.c /////////////////////////////////

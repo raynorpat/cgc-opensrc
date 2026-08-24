@@ -121,6 +121,14 @@ enum SemanticProperties {
     SEM_EXCLUSIVE = 32, SEM_REQUIRED = 64
 };
 
+/*
+ * Backend-neutral Cg IR module (defined in cg_ir.h).  Declared here so
+ * the IR hooks below can name it; only verified modules ever reach a
+ * profile through them.
+ */
+
+typedef struct CgIRModule_Rec CgIRModule;
+
 typedef struct SemanticsDescriptor_Rec {
     const char *sname;
     int base;
@@ -167,6 +175,14 @@ struct slHAL_Rec {
                         Binding *fBind, int IsOutVal);
     int (*PrintCodeHeader)(FILE *out);
     int (*GenerateCode)(SourceLoc *loc, Scope *fScope, Symbol *program);
+
+    // Cg 2.0 IR hooks: invoked with a verified module only when the
+    // language version is 2.0.  Profiles leave them NULL unless they
+    // intentionally accept every verified module; the compiler keeps
+    // the legacy tree path whenever either hook is missing.
+
+    int (*ValidateIR)(SourceLoc *loc, const CgIRModule *module);
+    int (*GenerateIR)(SourceLoc *loc, const CgIRModule *module);
 
     // Profile specific data members:
 

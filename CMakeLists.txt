@@ -17,6 +17,7 @@ add_executable(cgc
     cgcmain.c
     cg_ir.c
     cg_ir_lower.c
+    cg_ir_print.c
     cg_ir_verify.c
     cg_numeric.c
     cg_overload.c

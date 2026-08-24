@@ -286,6 +286,21 @@ add_cg20_success(cg20_overload_defaults tests/cg20/overloads/defaults.cg)
 # inside an uncalled helper and must still generate code under glslv.
 
 add_cg20_success(cg20_reachable tests/cg20/ir/reachable.cg)
+
+# Compiler-level normalized golden (Task 17): under the default Cg 2.0
+# language the generic profile emits the verified module as normalized
+# Cg IR; reachable.cg pins its complete normalized output byte-for-byte.
+
+add_test(
+    NAME cg20_ir_normalized
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/ir/reachable.cg
+        -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/cg20/ir/normalized.expected
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_ir_normalized.txt"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake
+)
 if(GLSLANG_VALIDATOR)
     set(cg20_unreachable_validator "-DVALIDATOR=${GLSLANG_VALIDATOR}")
 else()
@@ -569,6 +584,7 @@ add_executable(cg_ir_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/cg_ir.c
     ${PROJECT_SOURCE_DIR}/cg_ir_lower.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_print.c
     ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_reach.c
@@ -617,6 +633,11 @@ add_generic_regression(vertexlight vertexlight.cg
 # opcode was renamed FUN_INTRINSIC_OP, so the node dump for the one
 # intrinsic call in reflection.cg now prints "intrinsic" instead of
 # "builtin".  No other output content changed.
+# These regressions run with explicit -version 1.1 (see check_generic.cmake):
+# their hashes pin the historical generic tree dump, byte-identical between
+# default-language and 1.1 compiles for these legacy inputs, while Cg 2.0
+# emission switched to the normalized IR printer ("Emit normalized Cg IR
+# from generic").
 add_generic_regression(vertexlight4 vertexlight4.cg
     8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg

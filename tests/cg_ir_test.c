@@ -2181,7 +2181,536 @@ int main(int argc, char **argv)
         }
     }
 
+    /////////////////// Scenario 8: normalized printing golden /////////////
+
+    /*
+     * One uniform, one struct instance read through a member
+     * selection, one interface object dispatched by method identity,
+     * one helper reached by its resolved callee, one intrinsic, an if
+     * with both arms, and a loop carrying a break.  CgIRPrintModule
+     * must refuse an unverified module without writing a byte, and
+     * otherwise emit the literal golden text below byte-for-byte.
+     */
+
+    {
+        static const char *lGoldenText =
+            "uniform float4 tint : COLOR;\n"
+            "uniform struct Material surface;\n"
+            "uniform interface Evaluator obj;\n"
+            "\n"
+            "float4 main(varying float4 position : POSITION)\n"
+            "{\n"
+            "  float4 acc = float4(0.000000);\n"
+            "  int steps = 0;\n"
+            "  acc = tint;\n"
+            "  surface.gloss = 0.500000;\n"
+            "  acc = (acc + obj.eval(acc));\n"
+            "  if (true)\n"
+            "  {\n"
+            "    steps = (steps + 1);\n"
+            "  }\n"
+            "  else\n"
+            "  {\n"
+            "    acc = (-acc);\n"
+            "  }\n"
+            "  while (true)\n"
+            "  {\n"
+            "    steps = (steps + 1);\n"
+            "    break;\n"
+            "  }\n"
+            "  acc = float4(dot(acc.xy, acc.xy), 0.000000, 0.000000, "
+                                                            "1.000000);\n"
+            "  scale(acc.x);\n"
+            "  return acc;\n"
+            "}\n"
+            "\n"
+            "float scale(float s)\n"
+            "{\n"
+            "  return s * 0.500000;\n"
+            "}\n";
+        Type goldMatType;
+        Type goldIfaceType;
+        Type goldEvalFnType;
+        Scope goldMatScope;
+        TypeList goldEvalParams;
+        TypeList goldDotFirst;
+        TypeList goldDotLast;
+        CgIntrinsicSignature goldDotSignature;
+        CgIRVerifyDiagnostic goldDiag;
+        Symbol *goldTintSymb;
+        Symbol *goldAlbedoSymb;
+        Symbol *goldGlossSymb;
+        Symbol *goldSurfaceSymb;
+        Symbol *goldObjSymb;
+        Symbol *goldEvalSymb;
+        Symbol *goldReceiverSymb;
+        Symbol *goldVSymb;
+        Symbol *goldScaleSymb;
+        Symbol *goldSSymb;
+        Symbol *goldAccSymb;
+        Symbol *goldStepsSymb;
+        CgNumericValue goldIntOne;
+        CgIRModule goldModule;
+        CgIRModule goldBadModule;
+        CgIRFunction *goldMainFn;
+        CgIRFunction *goldScaleFn;
+        CgIRFunction *goldBadFn;
+        CgIRDecl *goldTintDecl;
+        CgIRDecl *goldSurfaceDecl;
+        CgIRDecl *goldObjDecl;
+        CgIRDecl *goldPosDecl;
+        CgIRDecl *goldSDecl;
+        CgIRDecl *goldAccDecl;
+        CgIRDecl *goldStepsDecl;
+        CgIRExpr *goldTmp;
+        CgIRExpr *goldTarget;
+        CgIRExpr *goldValue;
+        CgIRExpr *goldArgs;
+        CgIRExpr *goldDotCall;
+        CgIRStmt *goldList;
+        CgIRStmt *goldStmt;
+        CgIRStmt *goldThenBlock;
+        CgIRStmt *goldElseBlock;
+        CgIRStmt *goldLoopBody;
+        FILE *goldFile;
+        char *goldText;
+        long goldLength;
+        size_t goldRead;
+
+        /* Local types: a two-member struct, an interface whose method
+         * returns float4, and a dot(float, float) catalog signature --
+         * all hand-built like Scenario 5's fixtures. */
+        memset(&goldMatType, 0, sizeof(goldMatType));
+        goldMatType.properties = TYPE_CATEGORY_STRUCT;
+        goldMatType.str.tag = LookUpAddString(atable, "Material");
+        memset(&goldMatScope, 0, sizeof(goldMatScope));
+        goldAlbedoSymb = lMakeSymbol(VARIABLE_S, "albedo", float4Type);
+        goldGlossSymb = lMakeSymbol(VARIABLE_S, "gloss", floatType);
+        assert(goldAlbedoSymb != NULL && goldGlossSymb != NULL);
+        goldAlbedoSymb->next = goldGlossSymb;
+        goldGlossSymb->next = NULL;
+        goldMatScope.params = goldAlbedoSymb;
+        goldMatType.str.members = &goldMatScope;
+
+        memset(&goldIfaceType, 0, sizeof(goldIfaceType));
+        goldIfaceType.properties = TYPE_CATEGORY_INTERFACE;
+        goldIfaceType.iface.tag = LookUpAddString(atable, "Evaluator");
+
+        memset(&goldEvalFnType, 0, sizeof(goldEvalFnType));
+        goldEvalFnType.properties = TYPE_CATEGORY_FUNCTION;
+        goldEvalFnType.fun.rettype = float4Type;
+        goldEvalParams.next = NULL;
+        goldEvalParams.type = &goldIfaceType;
+        goldEvalFnType.fun.paramtypes = &goldEvalParams;
+        goldEvalSymb = lMakeSymbol(FUNCTION_S, "eval", &goldEvalFnType);
+        assert(goldEvalSymb != NULL);
+        goldEvalSymb->details.fun.isMethod = 1;
+        goldEvalSymb->details.fun.ownerType = &goldIfaceType;
+        goldReceiverSymb = lMakeSymbol(VARIABLE_S, "$this",
+                                       &goldIfaceType);
+        goldVSymb = lMakeSymbol(VARIABLE_S, "v", float4Type);
+        assert(goldReceiverSymb != NULL && goldVSymb != NULL);
+        goldReceiverSymb->next = goldVSymb;
+        goldVSymb->next = NULL;
+        goldEvalSymb->details.fun.params = goldReceiverSymb;
+
+        goldTintSymb = lMakeSymbol(VARIABLE_S, "tint", float4Type);
+        goldSurfaceSymb = lMakeSymbol(VARIABLE_S, "surface", &goldMatType);
+        goldObjSymb = lMakeSymbol(VARIABLE_S, "obj", &goldIfaceType);
+        goldScaleSymb = lMakeSymbol(FUNCTION_S, "scale", floatType);
+        goldSSymb = lMakeSymbol(VARIABLE_S, "s", floatType);
+        goldAccSymb = lMakeSymbol(VARIABLE_S, "acc", float4Type);
+        goldStepsSymb = lMakeSymbol(VARIABLE_S, "steps", intType);
+        assert(goldTintSymb != NULL && goldSurfaceSymb != NULL);
+        assert(goldObjSymb != NULL && goldScaleSymb != NULL);
+        assert(goldSSymb != NULL && goldAccSymb != NULL);
+        assert(goldStepsSymb != NULL);
+
+        memset(&goldIntOne, 0, sizeof(goldIntOne));
+        goldIntOne.kind = CG_SCALAR_INT;
+        goldIntOne.value.i = 1;
+
+        /* dot(float2, float2) -> float local signature. */
+        memset(&goldDiag, 0, sizeof(goldDiag));
+        goldDotLast.next = NULL;
+        goldDotLast.type = float2Type;
+        goldDotFirst.next = &goldDotLast;
+        goldDotFirst.type = float2Type;
+        goldDotSignature.intrinsic = CG_INTRINSIC_DOT;
+        goldDotSignature.name = "dot";
+        goldDotSignature.result = floatType;
+        goldDotSignature.parameters = &goldDotFirst;
+        goldDotSignature.flags = CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE;
+
+        CgIRInitModule(&goldModule, TestAlloc, NULL);
+        goldModule.profile = &genericIdentity;
+
+        /* Globals in source order: a bound uniform, a struct instance,
+         * and an interface object. */
+        goldTintDecl = CgIRNewDecl(&goldModule, goldTintSymb,
+                                   goldTintSymb->name, float4Type,
+                                   CGIR_STORAGE_UNIFORM,
+                                   CGIR_DOMAIN_UNIFORM,
+                                   LookUpAddString(atable, "COLOR"), NULL,
+                                   &paramLoc);
+        goldSurfaceDecl = CgIRNewDecl(&goldModule, goldSurfaceSymb,
+                                      goldSurfaceSymb->name, &goldMatType,
+                                      CGIR_STORAGE_UNIFORM,
+                                      CGIR_DOMAIN_UNIFORM, 0, NULL,
+                                      &paramLoc);
+        goldObjDecl = CgIRNewDecl(&goldModule, goldObjSymb,
+                                  goldObjSymb->name, &goldIfaceType,
+                                  CGIR_STORAGE_UNIFORM,
+                                  CGIR_DOMAIN_UNIFORM, 0, NULL, &paramLoc);
+        assert(goldTintDecl != NULL && goldSurfaceDecl != NULL);
+        assert(goldObjDecl != NULL);
+        CgIRAppendDecl(&goldModule.globals, goldTintDecl);
+        CgIRAppendDecl(&goldModule.globals, goldSurfaceDecl);
+        CgIRAppendDecl(&goldModule.globals, goldObjDecl);
+
+        /* Entry first, then the helper -- production lowering order. */
+        goldMainFn = CgIRNewFunction(&goldModule, mainSymb, float4Type,
+                                     &fnBLoc);
+        goldScaleFn = CgIRNewFunction(&goldModule, goldScaleSymb,
+                                      floatType, &fnALoc);
+        assert(goldMainFn != NULL && goldScaleFn != NULL);
+        goldPosDecl = CgIRNewDecl(&goldModule, positionSymb,
+                                  positionSymb->name, float4Type,
+                                  CGIR_STORAGE_NONE, CGIR_DOMAIN_VARYING,
+                                  LookUpAddString(atable, "POSITION"),
+                                  NULL, &paramLoc);
+        goldSDecl = CgIRNewDecl(&goldModule, goldSSymb, goldSSymb->name,
+                                floatType, CGIR_STORAGE_NONE,
+                                CGIR_DOMAIN_NONE, 0, NULL, &paramLoc);
+        goldAccDecl = CgIRNewDecl(&goldModule, goldAccSymb,
+                                  goldAccSymb->name, float4Type,
+                                  CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE,
+                                  0, NULL, &paramLoc);
+        goldStepsDecl = CgIRNewDecl(&goldModule, goldStepsSymb,
+                                    goldStepsSymb->name, intType,
+                                    CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE,
+                                    0, NULL, &paramLoc);
+        assert(goldPosDecl != NULL && goldSDecl != NULL);
+        assert(goldAccDecl != NULL && goldStepsDecl != NULL);
+        CgIRAppendDecl(&goldMainFn->parameters, goldPosDecl);
+        CgIRAppendDecl(&goldScaleFn->parameters, goldSDecl);
+
+        /* float4 acc = float4(0.0); */
+        goldTmp = CgIRNewConstant(&goldModule, floatType, &constLoc,
+                                  &vZero);
+        assert(goldTmp != NULL);
+        goldAccDecl->initializer = CgIRNewConstruct(&goldModule,
+                                                    float4Type, &ctorLoc,
+                                                    goldTmp);
+        assert(goldAccDecl->initializer != NULL);
+        goldStmt = CgIRNewDeclStmt(&goldModule, &blockLoc, goldAccDecl);
+        assert(goldStmt != NULL);
+        goldList = NULL;
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* int steps = 0; */
+        goldTmp = CgIRNewConstant(&goldModule, intType, &constLoc,
+                                  &vIntZero);
+        assert(goldTmp != NULL);
+        goldStepsDecl->initializer = goldTmp;
+        goldStmt = CgIRNewDeclStmt(&goldModule, &blockLoc, goldStepsDecl);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* acc = tint; */
+        goldTarget = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                   goldAccSymb);
+        goldValue = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                  goldTintSymb);
+        assert(goldTarget != NULL && goldValue != NULL);
+        goldTarget->isLvalue = 1;
+        goldValue->isLvalue = 1;
+        goldTarget = CgIRNewAssign(&goldModule, float4Type, &blockLoc,
+                                   CGIR_OP_ASSIGN, goldTarget, goldValue);
+        assert(goldTarget != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldTarget);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* surface.gloss = 0.5; */
+        goldValue = CgIRNewSymbol(&goldModule, &goldMatType, &constLoc,
+                                  goldSurfaceSymb);
+        assert(goldValue != NULL);
+        goldValue->isLvalue = 1;
+        goldTarget = CgIRNewMember(&goldModule, floatType, &ctorLoc,
+                                   goldValue, goldGlossSymb);
+        assert(goldTarget != NULL);
+        goldTarget->isLvalue = 1;
+        goldTmp = CgIRNewConstant(&goldModule, floatType, &constLoc,
+                                  &vHalf);
+        assert(goldTmp != NULL);
+        goldValue = CgIRNewAssign(&goldModule, floatType, &ctorLoc,
+                                  CGIR_OP_ASSIGN, goldTarget, goldTmp);
+        assert(goldValue != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldValue);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* acc = acc + obj.eval(acc); */
+        goldValue = CgIRNewSymbol(&goldModule, &goldIfaceType, &constLoc,
+                                  goldObjSymb);
+        goldTmp = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                goldAccSymb);
+        assert(goldValue != NULL && goldTmp != NULL);
+        goldValue->isLvalue = 1;
+        goldTmp->isLvalue = 1;
+        goldArgs = NULL;
+        CgIRAppendExpr(&goldArgs, goldTmp);
+        goldValue = CgIRNewInterfaceCall(&goldModule, float4Type,
+                                         &ctorLoc, goldEvalSymb,
+                                         goldValue, goldArgs);
+        assert(goldValue != NULL);
+        goldTmp = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                goldAccSymb);
+        assert(goldTmp != NULL);
+        goldTmp->isLvalue = 1;
+        goldValue = CgIRNewBinary(&goldModule, float4Type, &ctorLoc,
+                                  CGIR_OP_ADD, goldTmp, goldValue);
+        assert(goldValue != NULL);
+        goldTarget = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                   goldAccSymb);
+        assert(goldTarget != NULL);
+        goldTarget->isLvalue = 1;
+        goldTarget = CgIRNewAssign(&goldModule, float4Type, &blockLoc,
+                                   CGIR_OP_ASSIGN, goldTarget, goldValue);
+        assert(goldTarget != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldTarget);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* if (true) { steps = steps + 1; } else { acc = -acc; } */
+        goldThenBlock = CgIRNewBlockStmt(&goldModule, &blockLoc);
+        goldElseBlock = CgIRNewBlockStmt(&goldModule, &blockLoc);
+        assert(goldThenBlock != NULL && goldElseBlock != NULL);
+        goldTarget = CgIRNewSymbol(&goldModule, intType, &constLoc,
+                                   goldStepsSymb);
+        goldTmp = CgIRNewSymbol(&goldModule, intType, &constLoc,
+                                goldStepsSymb);
+        goldValue = CgIRNewConstant(&goldModule, intType, &constLoc,
+                                    &goldIntOne);
+        assert(goldTarget != NULL && goldTmp != NULL && goldValue != NULL);
+        goldTarget->isLvalue = 1;
+        goldTmp->isLvalue = 1;
+        goldValue = CgIRNewBinary(&goldModule, intType, &ctorLoc,
+                                  CGIR_OP_ADD, goldTmp, goldValue);
+        assert(goldValue != NULL);
+        goldValue = CgIRNewAssign(&goldModule, intType, &ctorLoc,
+                                  CGIR_OP_ASSIGN, goldTarget, goldValue);
+        assert(goldValue != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldValue);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldThenBlock->u.block, goldStmt);
+        goldTarget = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                   goldAccSymb);
+        goldTmp = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                goldAccSymb);
+        assert(goldTarget != NULL && goldTmp != NULL);
+        goldTarget->isLvalue = 1;
+        goldTmp->isLvalue = 1;
+        goldValue = CgIRNewUnary(&goldModule, float4Type, &ctorLoc,
+                                 CGIR_OP_NEGATE, goldTmp);
+        assert(goldValue != NULL);
+        goldValue = CgIRNewAssign(&goldModule, float4Type, &ctorLoc,
+                                  CGIR_OP_ASSIGN, goldTarget, goldValue);
+        assert(goldValue != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldValue);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldElseBlock->u.block, goldStmt);
+        goldTmp = CgIRNewConstant(&goldModule, boolType, &constLoc,
+                                  &vTrue);
+        assert(goldTmp != NULL);
+        goldStmt = CgIRNewIfStmt(&goldModule, &retLoc, goldTmp,
+                                 goldThenBlock, goldElseBlock);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* while (true) { steps = steps + 1; break; } */
+        goldLoopBody = CgIRNewBlockStmt(&goldModule, &blockLoc);
+        assert(goldLoopBody != NULL);
+        goldTarget = CgIRNewSymbol(&goldModule, intType, &constLoc,
+                                   goldStepsSymb);
+        goldTmp = CgIRNewSymbol(&goldModule, intType, &constLoc,
+                                goldStepsSymb);
+        goldValue = CgIRNewConstant(&goldModule, intType, &constLoc,
+                                    &goldIntOne);
+        assert(goldTarget != NULL && goldTmp != NULL && goldValue != NULL);
+        goldTarget->isLvalue = 1;
+        goldTmp->isLvalue = 1;
+        goldValue = CgIRNewBinary(&goldModule, intType, &ctorLoc,
+                                  CGIR_OP_ADD, goldTmp, goldValue);
+        assert(goldValue != NULL);
+        goldValue = CgIRNewAssign(&goldModule, intType, &ctorLoc,
+                                  CGIR_OP_ASSIGN, goldTarget, goldValue);
+        assert(goldValue != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldValue);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldLoopBody->u.block, goldStmt);
+        goldStmt = CgIRNewBreakStmt(&goldModule, &retLoc);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldLoopBody->u.block, goldStmt);
+        goldTmp = CgIRNewConstant(&goldModule, boolType, &constLoc,
+                                  &vTrue);
+        assert(goldTmp != NULL);
+        goldStmt = CgIRNewWhileStmt(&goldModule, &fnALoc, goldTmp,
+                                    goldLoopBody);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* acc = float4(dot(acc.xy, acc.xy), 0.0, 0.0, 1.0); */
+        goldValue = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                  goldAccSymb);
+        goldTarget = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                   goldAccSymb);
+        assert(goldValue != NULL && goldTarget != NULL);
+        goldValue->isLvalue = 1;
+        goldTarget->isLvalue = 1;
+        goldValue = CgIRNewSwizzle(&goldModule, float2Type, &ctorLoc,
+                                   goldValue, 0x4, 2);
+        goldTarget = CgIRNewSwizzle(&goldModule, float2Type, &ctorLoc,
+                                    goldTarget, 0x4, 2);
+        assert(goldValue != NULL && goldTarget != NULL);
+        goldArgs = NULL;
+        CgIRAppendExpr(&goldArgs, goldValue);
+        CgIRAppendExpr(&goldArgs, goldTarget);
+        goldDotCall = CgIRNewIntrinsicCall(&goldModule, floatType,
+                                           &fnALoc, CG_INTRINSIC_DOT,
+                                           &goldDotSignature, goldArgs);
+        assert(goldDotCall != NULL);
+        goldArgs = NULL;
+        CgIRAppendExpr(&goldArgs, goldDotCall);
+        goldTmp = CgIRNewConstant(&goldModule, floatType, &constLoc,
+                                  &vZero);
+        assert(goldTmp != NULL);
+        CgIRAppendExpr(&goldArgs, goldTmp);
+        goldTmp = CgIRNewConstant(&goldModule, floatType, &constLoc,
+                                  &vZero);
+        assert(goldTmp != NULL);
+        CgIRAppendExpr(&goldArgs, goldTmp);
+        goldTmp = CgIRNewConstant(&goldModule, floatType, &constLoc,
+                                  &vOne);
+        assert(goldTmp != NULL);
+        CgIRAppendExpr(&goldArgs, goldTmp);
+        goldValue = CgIRNewConstruct(&goldModule, float4Type, &ctorLoc,
+                                     goldArgs);
+        assert(goldValue != NULL);
+        goldTarget = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                   goldAccSymb);
+        assert(goldTarget != NULL);
+        goldTarget->isLvalue = 1;
+        goldTarget = CgIRNewAssign(&goldModule, float4Type, &blockLoc,
+                                   CGIR_OP_ASSIGN, goldTarget, goldValue);
+        assert(goldTarget != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldTarget);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* scale(acc.x); */
+        goldValue = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                  goldAccSymb);
+        assert(goldValue != NULL);
+        goldValue->isLvalue = 1;
+        goldValue = CgIRNewSwizzle(&goldModule, floatType, &ctorLoc,
+                                   goldValue, 0x0, 1);
+        assert(goldValue != NULL);
+        goldArgs = NULL;
+        CgIRAppendExpr(&goldArgs, goldValue);
+        goldValue = CgIRNewCall(&goldModule, floatType, &retLoc,
+                                goldScaleSymb, goldArgs);
+        assert(goldValue != NULL);
+        goldStmt = CgIRNewExprStmt(&goldModule, &retLoc, goldValue);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        /* return acc; */
+        goldValue = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                  goldAccSymb);
+        assert(goldValue != NULL);
+        goldValue->isLvalue = 1;
+        goldStmt = CgIRNewReturnStmt(&goldModule, &retLoc, goldValue);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldList, goldStmt);
+
+        goldStmt = CgIRNewBlockStmt(&goldModule, &blockLoc);
+        assert(goldStmt != NULL);
+        CgIRAppendStmt(&goldStmt->u.block, goldList);
+        goldMainFn->body = goldStmt;
+
+        /* float scale(float s) { return s * 0.5; } */
+        goldTarget = CgIRNewSymbol(&goldModule, floatType, &constLoc,
+                                   goldSSymb);
+        goldTmp = CgIRNewConstant(&goldModule, floatType, &constLoc,
+                                  &vHalf);
+        assert(goldTarget != NULL && goldTmp != NULL);
+        goldTarget->isLvalue = 1;
+        goldValue = CgIRNewBinary(&goldModule, floatType, &ctorLoc,
+                                  CGIR_OP_MULTIPLY, goldTarget, goldTmp);
+        assert(goldValue != NULL);
+        goldStmt = CgIRNewReturnStmt(&goldModule, &retLoc, goldValue);
+        assert(goldStmt != NULL);
+        goldThenBlock = CgIRNewBlockStmt(&goldModule, &blockLoc);
+        assert(goldThenBlock != NULL);
+        CgIRAppendStmt(&goldThenBlock->u.block, goldStmt);
+        goldScaleFn->body = goldThenBlock;
+
+        goldMainFn->isEntry = 1;
+        goldModule.entry = goldMainFn;
+        CgIRAppendFunction(&goldModule.functions, goldMainFn);
+        CgIRAppendFunction(&goldModule.functions, goldScaleFn);
+        if (! CgIRVerifyModule(&goldModule, &goldDiag)) {
+            fprintf(stderr, "golden module rejected: %s at file %u line %d\n",
+                    CgIRVerifyReasonName(goldDiag.reason),
+                    (unsigned) goldDiag.loc.file, goldDiag.loc.line);
+        }
+        assert(CgIRVerifyModule(&goldModule, NULL));
+
+        /* Refusal: an unverified module writes nothing at all.  One
+         * defined function without entry selection fails OWNER
+         * verification before any text is produced. */
+        CgIRInitModule(&goldBadModule, TestAlloc, NULL);
+        goldBadFn = CgIRNewFunction(&goldBadModule, shadeSymb,
+                                    float4Type, &fnALoc);
+        assert(goldBadFn != NULL);
+        CgIRAppendFunction(&goldBadModule.functions, goldBadFn);
+        assert(!CgIRVerifyModule(&goldBadModule, NULL));
+
+        goldFile = tmpfile();
+        assert(goldFile != NULL);
+        assert(!CgIRPrintModule(goldFile, &goldBadModule));
+        assert(fflush(goldFile) == 0);
+        assert(ftell(goldFile) == 0);
+
+        /* The verified module emits exactly the golden bytes. */
+        assert(CgIRPrintModule(goldFile, &goldModule));
+        assert(fflush(goldFile) == 0);
+        assert(fseek(goldFile, 0, SEEK_END) == 0);
+        goldLength = ftell(goldFile);
+        rewind(goldFile);
+        goldText = (char *) malloc((size_t) goldLength + 1);
+        assert(goldText != NULL);
+        goldRead = fread(goldText, 1, (size_t) goldLength, goldFile);
+        assert(goldRead == (size_t) goldLength);
+        goldText[goldLength] = '\0';
+        if (goldLength != (long) strlen(lGoldenText) ||
+            strcmp(goldText, lGoldenText) != 0)
+        {
+            fprintf(stderr,
+                    "--- normalized print mismatch (%ld vs %zu bytes) ---\n"
+                    "%s"
+                    "-----------------------------------------------------\n",
+                    goldLength, strlen(lGoldenText), goldText);
+        }
+        assert(goldLength == (long) strlen(lGoldenText));
+        assert(strcmp(goldText, lGoldenText) == 0);
+        fclose(goldFile);
+    }
+
     FreeSymbolTable(Cg);
     FreeAtomTable(atable);
     return 0;
 }
+

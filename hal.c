@@ -237,6 +237,11 @@ static void InitHAL_HAL(slHAL *fHAL)
     fHAL->PrintCodeHeader = PrintCodeHeader_HAL;
     fHAL->GenerateCode = GenerateCode_HAL;
 
+    // IR hooks: no profile support until a profile opts in.
+
+    fHAL->ValidateIR = NULL;
+    fHAL->GenerateIR = NULL;
+
     // Initialize default data members:
 
     // Defined when profile is registered:
