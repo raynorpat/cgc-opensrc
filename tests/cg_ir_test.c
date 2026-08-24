@@ -59,6 +59,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cg_stdlib.h"
 #include "cg_ir.h"
 #include "cg_reach.h"
+#include "cg_ir_lower.h"
 
 CgStruct *Cg;
 Scope *CurrentScope;
@@ -328,6 +329,45 @@ static Symbol *lReachFunction(const char *name, int fSourceOrdinal,
     }
     return symb;
 } // lReachFunction
+
+/*
+ * lGroupSelectorNode() - A `_m` group selector over "fObject"; the
+ *          legacy packing carries the selected components in MASK16
+ *          nibbles (row<<2|col each) with their count in T2.
+ */
+
+static expr *lGroupSelectorNode(expr *fObject, int fMask16, int fCount,
+                                Type *fType)
+{
+    unary *node;
+
+    node = (unary *) calloc(1, sizeof(unary));
+    assert(node != NULL);
+    node->kind = UNARY_N;
+    node->op = SWIZMAT_Z_OP;
+    node->type = fType;
+    node->subop = SUBOP_ZM(fMask16, fCount, 0, 0, 0);
+    node->arg = fObject;
+    return (expr *) node;
+}
+
+/*
+ * lAssignNode() - One plain assignment expression.
+ */
+
+static expr *lAssignNode(expr *fLeft, expr *fRight, Type *fType)
+{
+    binary *node;
+
+    node = (binary *) calloc(1, sizeof(binary));
+    assert(node != NULL);
+    node->kind = BINARY_N;
+    node->op = ASSIGN_OP;
+    node->type = fType;
+    node->left = fLeft;
+    node->right = fRight;
+    return (expr *) node;
+}
 
 int main(int argc, char **argv)
 {
@@ -1884,6 +1924,262 @@ int main(int argc, char **argv)
     assert(reachEdge != NULL && reachEdge->from == cycXSymb &&
            reachEdge->to == cycYSymb);
     CgReachDestroy(&cycleGraph);
+
+    /////////////////// Scenario 7: group-write value temps ////////////////
+
+    /*
+     * `m._m00_m11 = f()` fans out into one scalar store per component.
+     * A side-effecting VALUE must move through its own synthesized
+     * $cglmprN temporary exactly like a side-effecting OBJECT, so no
+     * store references an effecting subtree; a pure value keeps today's
+     * sharing.  Both lowered modules must verify clean.
+     */
+
+    {
+        Type *mat2Type;
+        Symbol *lowerMainSymb;
+        Symbol *gmSymb;
+        Symbol *geSymb;
+        Scope *fnScope;
+        expr *groupWrite;
+        CgReachGraph reach;
+        CgIRModule module;
+        CgIRLowerContext context;
+        CgIRFunction *entry;
+        CgIRStmt *s0, *s1, *s2, *s3, *s4, *s5, *s6;
+        CgIRDecl *tempDecl;
+        CgIRExpr *tempRef;
+        CgIRExpr *storeValue;
+        CgIRExpr *targets[2];
+        int coords[2][2];
+        int ii;
+
+        mat2Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 2, 2);
+        assert(mat2Type != UndefinedType);
+
+        lowerMainSymb = lMakeSymbol(FUNCTION_S, "lowerMain", VoidType);
+        assert(lowerMainSymb != NULL);
+
+        /* The function's local scope mirrors parser.y: a pushed scope
+         * whose funindex claims the body's locals. */
+        PushScope(NewScope());
+        CurrentScope->funindex = ++NextFunctionIndex;
+        fnScope = CurrentScope;
+        gmSymb = AddSymbol(&fnALoc, fnScope,
+                           LookUpAddString(atable, "gm"), mat2Type,
+                           VARIABLE_S);
+        geSymb = AddSymbol(&fnALoc, fnScope,
+                           LookUpAddString(atable, "ge"), floatType,
+                           VARIABLE_S);
+        assert(gmSymb != NULL && geSymb != NULL);
+        PopScope();
+        lowerMainSymb->details.fun.locals = fnScope;
+
+        /* m._m00_m11 = ge; with ge marked side-effecting: mask16 packs
+         * (row<<2|col) per nibble -- 0x00 | (0x05 << 4) -- over two
+         * selected components. */
+        groupWrite = lAssignNode(
+            lGroupSelectorNode(lReachSymbNode(gmSymb), 0x50, 2,
+                               float2Type),
+            lReachSymbNode(geSymb), floatType);
+        assert(groupWrite != NULL);
+        groupWrite->bin.right->common.HasSideEffects = 1;
+        lowerMainSymb->details.fun.statements =
+            lReachBlockStmtNode(lReachExprStmtNode(groupWrite));
+
+        memset(&reach, 0, sizeof(reach));
+        assert(CgReachBuild(lowerMainSymb, &reach));
+        CgIRInitModule(&module, PlainAlloc, NULL);
+        context.module = &module;
+        context.reach = &reach;
+        memset(&context.verifyDiagnostic, 0,
+               sizeof(context.verifyDiagnostic));
+        assert(CgIRLowerProgram(&context, GlobalScope, lowerMainSymb));
+
+        entry = module.entry;
+        assert(entry != NULL && entry->symbol == lowerMainSymb);
+
+        /* Statement shape: two source-local DECLs, then the function's
+         * BLOCK_STMT as one nested IR block holding the temporary's
+         * DECL, its one effecting move, and two stores. */
+        s0 = entry->body->u.block;
+        assert(s0 != NULL && s0->kind == CGIR_STMT_DECL);
+        s1 = s0->next;
+        assert(s1 != NULL && s1->kind == CGIR_STMT_DECL);
+        s2 = s1->next;
+        assert(s2 != NULL && s2->kind == CGIR_STMT_BLOCK);
+        assert(s2->next == NULL);
+        s3 = s2->u.block;
+        assert(s3 != NULL && s3->kind == CGIR_STMT_DECL);
+        tempDecl = s3->u.decl;
+        assert(tempDecl != NULL && tempDecl->symbol != NULL);
+        assert(strncmp(GetAtomString(atable, tempDecl->symbol->name),
+                       "$cglmpr", 7) == 0);
+        s4 = s3->next;
+        assert(s4 != NULL && s4->kind == CGIR_STMT_EXPR);
+        s5 = s4->next;
+        assert(s5 != NULL && s5->kind == CGIR_STMT_EXPR);
+        assert(s5->next != NULL &&
+               s5->next->kind == CGIR_STMT_EXPR);
+        assert(s5->next->next == NULL);
+
+        /* The move evaluates the effecting value exactly once into the
+         * temporary. */
+        assert(s4->u.expression->kind == CGIR_EXPR_ASSIGN);
+        tempRef = s4->u.expression->u.assign.target;
+        assert(tempRef != NULL && tempRef->kind == CGIR_EXPR_SYMBOL);
+        assert(tempRef->u.symbol == tempDecl->symbol);
+        assert(tempRef->isLvalue);
+        assert(tempRef->sideEffects == 0);
+        storeValue = s4->u.expression->u.assign.value;
+        assert(storeValue->kind == CGIR_EXPR_SYMBOL);
+        assert(storeValue->u.symbol == geSymb);
+        assert(storeValue->sideEffects == 1);
+
+        /* Both stores read the same effect-free temporary. */
+        s6 = s5->next;
+        assert(s5->u.expression->kind == CGIR_EXPR_ASSIGN);
+        assert(s6->u.expression->kind == CGIR_EXPR_ASSIGN);
+        assert(s5->u.expression->u.assign.value ==
+               s6->u.expression->u.assign.value);
+        storeValue = s5->u.expression->u.assign.value;
+        assert(storeValue->kind == CGIR_EXPR_SYMBOL);
+        assert(storeValue->u.symbol == tempDecl->symbol);
+        assert(storeValue->sideEffects == 0);
+
+        /* Store components in mask order: m[0][0], then m[1][1]. */
+        targets[0] = s5->u.expression->u.assign.target;
+        targets[1] = s6->u.expression->u.assign.target;
+        coords[0][0] = 0;
+        coords[0][1] = 0;
+        coords[1][0] = 1;
+        coords[1][1] = 1;
+        for (ii = 0; ii < 2; ii++) {
+            CgIRExpr *outer = targets[ii];
+            CgIRExpr *inner;
+
+            assert(outer != NULL && outer->kind == CGIR_EXPR_INDEX);
+            assert(outer->isLvalue);
+            inner = outer->u.index.object;
+            assert(inner != NULL && inner->kind == CGIR_EXPR_INDEX);
+            assert(inner->u.index.object->kind == CGIR_EXPR_SYMBOL);
+            assert(inner->u.index.object->u.symbol == gmSymb);
+            assert(inner->u.index.index->kind == CGIR_EXPR_CONSTANT);
+            assert(inner->u.index.index->u.constant.value.i ==
+                   coords[ii][0]);
+            assert(outer->u.index.index->kind == CGIR_EXPR_CONSTANT);
+            assert(outer->u.index.index->u.constant.value.i ==
+                   coords[ii][1]);
+        }
+
+        /* Visibility authority: the temporary declares among locals. */
+        {
+            CgIRDecl *decl;
+            int found = 0;
+
+            for (decl = entry->locals; decl != NULL; decl = decl->next) {
+                if (decl->symbol == tempDecl->symbol)
+                    found = 1;
+            }
+            assert(found);
+        }
+        lVerifyAccept(&module);
+        CgReachDestroy(&reach);
+
+        /* Control: a PURE value keeps today's shape -- no temporary
+         * appears and both stores share one effect-free subtree. */
+        {
+            Symbol *pureMainSymb;
+            Symbol *gpSymb;
+            Symbol *gzSymb;
+            Scope *pureScope;
+            expr *pureWrite;
+            stmt *pureBody;
+            CgReachGraph pureReach;
+            CgIRModule pureModule;
+            CgIRLowerContext pureContext;
+            CgIRFunction *pureEntry;
+            CgIRStmt *p0, *p1, *p2, *p3;
+            CgIRDecl *decl;
+            int localCount = 0;
+
+            pureMainSymb = lMakeSymbol(FUNCTION_S, "lowerPure", VoidType);
+            assert(pureMainSymb != NULL);
+            PushScope(NewScope());
+            CurrentScope->funindex = ++NextFunctionIndex;
+            pureScope = CurrentScope;
+            gpSymb = AddSymbol(&fnALoc, pureScope,
+                               LookUpAddString(atable, "gp"), mat2Type,
+                               VARIABLE_S);
+            gzSymb = AddSymbol(&fnALoc, pureScope,
+                               LookUpAddString(atable, "gz"), floatType,
+                               VARIABLE_S);
+            assert(gpSymb != NULL && gzSymb != NULL);
+            PopScope();
+            pureMainSymb->details.fun.locals = pureScope;
+
+            pureWrite = lAssignNode(
+                lGroupSelectorNode(lReachSymbNode(gpSymb), 0x50, 2,
+                                   float2Type),
+                lReachSymbNode(gzSymb), floatType);
+            assert(pureWrite != NULL);
+            pureBody = lReachBlockStmtNode(
+                lReachExprStmtNode(pureWrite));
+            pureMainSymb->details.fun.statements = pureBody;
+
+            memset(&pureReach, 0, sizeof(pureReach));
+            assert(CgReachBuild(pureMainSymb, &pureReach));
+            CgIRInitModule(&pureModule, PlainAlloc, NULL);
+            pureContext.module = &pureModule;
+            pureContext.reach = &pureReach;
+            memset(&pureContext.verifyDiagnostic, 0,
+                   sizeof(pureContext.verifyDiagnostic));
+            assert(CgIRLowerProgram(&pureContext, GlobalScope,
+                                    pureMainSymb));
+
+            pureEntry = pureModule.entry;
+            assert(pureEntry != NULL &&
+                   pureEntry->symbol == pureMainSymb);
+
+            /* Exactly the source locals plus the body block, whose
+             * inner list holds just the two stores: nothing
+             * synthesized. */
+            p0 = pureEntry->body->u.block;
+            assert(p0 != NULL && p0->kind == CGIR_STMT_DECL);
+            p1 = p0->next;
+            assert(p1 != NULL && p1->kind == CGIR_STMT_DECL);
+            p2 = p1->next;
+            assert(p2 != NULL && p2->kind == CGIR_STMT_BLOCK);
+            assert(p2->next == NULL);
+            p3 = p2->u.block;
+            assert(p3 != NULL && p3->kind == CGIR_STMT_EXPR);
+            assert(p3->next != NULL &&
+                   p3->next->kind == CGIR_STMT_EXPR);
+            assert(p3->next->next == NULL);
+
+            p0 = p3;
+            p1 = p3->next;
+            assert(p0->u.expression->kind == CGIR_EXPR_ASSIGN);
+            assert(p1->u.expression->kind == CGIR_EXPR_ASSIGN);
+            assert(p0->u.expression->u.assign.value ==
+                   p1->u.expression->u.assign.value);
+            storeValue = p0->u.expression->u.assign.value;
+            assert(storeValue->kind == CGIR_EXPR_SYMBOL);
+            assert(storeValue->u.symbol == gzSymb);
+            assert(storeValue->sideEffects == 0);
+
+            for (decl = pureEntry->locals; decl != NULL;
+                 decl = decl->next)
+            {
+                localCount++;
+                assert(strncmp(GetAtomString(atable, decl->symbol->name),
+                               "$cglmpr", 7) != 0);
+            }
+            assert(localCount == 2);
+            lVerifyAccept(&pureModule);
+            CgReachDestroy(&pureReach);
+        }
+    }
 
     FreeSymbolTable(Cg);
     FreeAtomTable(atable);

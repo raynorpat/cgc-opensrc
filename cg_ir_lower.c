@@ -944,10 +944,12 @@ static Symbol *lNewTemp(CgIRLower *L, Type *fType)
  * lTryMatrixGroupWrite() - `m._mI0_J0_mI1_J1 = value` fans out into one
  *          explicit scalar store per selected component.  The object and
  *          the value lower exactly once; pure IR subtrees are shared by
- *          the stores, and a side-effecting object first moves into a
- *          synthesized temporary.  Returns 1 when the statement was
- *          handled, 0 to fall through (including every non-group-write
- *          shape), -1 on lowering failure.
+ *          the stores, while a side-effecting object or value first
+ *          moves into its own synthesized temporary so every store reads
+ *          an effect-free node instead of sharing one effecting subtree.
+ *          Returns 1 when the statement was handled, 0 to fall through
+ *          (including every non-group-write shape), -1 on lowering
+ *          failure.
  */
 
 static int lTryMatrixGroupWrite(CgIRLower *L, expr *fExpr, CgIRStmt **list)
@@ -1020,6 +1022,45 @@ static int lTryMatrixGroupWrite(CgIRLower *L, expr *fExpr, CgIRStmt **list)
     value = lLowerExpr(L, fExpr->bin.right);
     if (value == NULL)
         return -1;
+    if (fExpr->bin.right->common.HasSideEffects &&
+        L->funScope != NULL)
+    {
+        /* Evaluate the effecting value exactly once into a synthesized
+         * temporary; every store then reads the temporary instead of
+         * sharing one effecting subtree. */
+        Symbol *temp;
+
+        temp = lNewTemp(L, fExpr->bin.right->common.type);
+        if (temp == NULL)
+            return -1;
+        {
+            CgIRDecl *tempDecl;
+            CgIRExpr *tempRef;
+
+            tempDecl = lNewDecl(L, temp, temp->type, CGIR_DOMAIN_NONE,
+                                NULL);
+            if (tempDecl != NULL) {
+                CgIRAppendDecl(&L->irFunction->locals, tempDecl);
+                stmt = CgIRNewDeclStmt(L->module, &L->loc, tempDecl);
+                if (stmt != NULL)
+                    CgIRAppendStmt(list, stmt);
+            }
+            tempRef = CgIRNewSymbol(L->module, value->type, &L->loc,
+                                    temp);
+            if (tempRef == NULL)
+                return -1;
+            tempRef->isLvalue = 1;
+            assign = CgIRNewAssign(L->module, value->type, &L->loc,
+                                   CGIR_OP_ASSIGN, tempRef, value);
+            if (assign == NULL)
+                return -1;
+            stmt = CgIRNewExprStmt(L->module, &L->loc, assign);
+            if (stmt == NULL)
+                return -1;
+            CgIRAppendStmt(list, stmt);
+            value = tempRef;
+        }
+    }
     mask16 = SUBOP_GET_MASK16(selector->un.subop);
     for (ii = 0; ii < count; ii++) {
         row = ((mask16 >> (ii * 4)) >> 2) & 3;

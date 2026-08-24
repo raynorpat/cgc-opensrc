@@ -568,6 +568,7 @@ add_test(
 add_executable(cg_ir_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_lower.c
     ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_reach.c
