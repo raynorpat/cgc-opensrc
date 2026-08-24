@@ -16,6 +16,7 @@ add_executable(cgc
     binding.c
     cgcmain.c
     cg_numeric.c
+    cg_overload.c
     cg_types.c
     cgstruct.c
     check.c

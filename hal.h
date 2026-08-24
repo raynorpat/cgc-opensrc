@@ -47,6 +47,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if !defined(__HAL_H)
 #define __HAL_H 1
 
+#include "cg_overload.h"    // CgProfileIdentity for slHAL/slProfile
+
 // Typedefs for things defined here in "hal.h":
 
 typedef struct slHAL_Rec slHAL;
@@ -89,6 +91,7 @@ struct slProfile_Rec {
     int (*InitHAL)(slHAL *);
     const char *name;
     int id;
+    CgProfileIdentity profileIdentity;  // Selector surface registered for this profile
 };
 
 // Hal version of connector register description:
@@ -174,6 +177,8 @@ struct slHAL_Rec {
     int pid;
     int entryName;
 
+    CgProfileIdentity profileIdentity;  // Selector surface of this compilation's profile
+
     SemanticsDescriptor *semantics;
     int numSemantics;
 
@@ -210,6 +215,8 @@ struct slHAL_Rec {
 };
 
 slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id);
+void SetProfileIdentity(const char *name, CgProfileStage stage,
+                        const char *wildcardName, int wildcardSpecificity);
 slProfile *EnumerateProfiles(int index);
 
 int InitHAL(const char *profileName, const char *entryName);

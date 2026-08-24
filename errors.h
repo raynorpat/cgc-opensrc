@@ -183,6 +183,16 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_SSSSD_INTERFACE_METHOD_SIGNATURE 1157, "implementation of interface method \"%s\" in struct \"%s\" does not match interface method declared at %s(%d)"
 #define ERROR_S_TAG_IS_NOT_AN_INTERFACE     1158, "tag \"%s\" is not an interface"
 
+// Cg 2.0 default arguments and profile-qualified overloads
+
+#define ERROR_S_DEFAULT_AFTER_OPTIONAL      1160, "default argument for \"%s\" follows a parameter without one"
+#define ERROR_S_DEFAULT_PARAM_QUALIFIER     1161, "default arguments are only allowed for in parameters \"%s\""
+#define ERROR___DEFAULT_NOT_CONSTANT        1162, "default argument must be a compile-time constant \"%s\""
+#define ERROR___DEFAULT_NOT_CONVERTIBLE     1163, "default argument cannot be converted to the parameter type of \"%s\""
+#define ERROR_S_DEFAULT_REDECLARATION       1164, "redeclaration of \"%s\" cannot change an existing default argument"
+#define ERROR_S_UNKNOWN_PROFILE             1165, "\"%s\" does not name a known profile or profile wildcard"
+#define ERROR_S_PROFILE_SPECIFIER_MISPLACED 1166, "profile specifier \"%s\" must qualify a function declaration"
+
 #define ERROR___QSTN_SCALAR_3RD_OPND_EXPECTED   1201, "expected scalar third operand to \"? :\""
 #define ERROR___QSTN_VECTOR_3RD_OPND_EXPECTED   1202, "expected vector third operand to \"? :\""
 #define ERROR___QSTN_VECTOR_23_OPNDS_EXPECTED   1203, "expected vector second and third operands to \"? :\""

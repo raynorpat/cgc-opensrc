@@ -148,6 +148,10 @@ static ConnectorDescriptor connectors_generic[] = {
 int RegisterProfiles_generic(void)
 {
     RegisterProfile(InitHAL_generic, PROFILE_GENERIC_NAME, PROFILE_GENERIC_ID);
+    /* The generic profile is stage-neutral: only open-profile
+     * declarations answer to it. */
+    SetProfileIdentity(PROFILE_GENERIC_NAME, CG_PROFILE_STAGE_NEUTRAL,
+                       NULL, 0);
     return 1;
 } // RegisterProfiles_generic
 

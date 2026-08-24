@@ -164,6 +164,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 %type <sc_ident> identifier
 %type <sc_ident> member_identifier
+%type <sc_ident> profile_specifier
 %type <sc_ident> scope_identifier
 %type <sc_ident> semantics_identifier
 %type <sc_ident> struct_identifier
@@ -270,6 +271,21 @@ compilation_unit:         external_declaration
 external_declaration:     declaration
                               { $$ = GlobalInitStatements(CurrentScope, $1); }
                         | function_definition
+                              { $$ = 0; }
+                        | profile_specifier function_definition
+                              { $$ = 0; }
+                        | profile_specifier declaration
+                              { $$ = GlobalInitStatements(CurrentScope, $2); ClearPendingProfileSpecifier(); }
+;
+
+/* A profile specifier names either an exact profile or a registered
+ * wildcard before a function return type.  Names shadowed by a typedef
+ * reach the parser as TYPEIDENT_SY and therefore keep their ordinary
+ * type interpretation; only bare identifiers get here, and the action
+ * rejects identifiers that no profile answers to. */
+
+profile_specifier:        identifier
+                              { $$ = $1; SetPendingProfileSpecifier(Cg->tokenLoc, $1); }
 ;
 
 declaration:              declaration_specifiers ';'

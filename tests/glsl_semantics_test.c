@@ -935,6 +935,15 @@ slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id)
     return NULL;
 }
 
+void SetProfileIdentity(const char *name, CgProfileStage stage,
+                        const char *wildcardName, int wildcardSpecificity)
+{
+    (void) name;
+    (void) stage;
+    (void) wildcardName;
+    (void) wildcardSpecificity;
+}
+
 ConnectorDescriptor *LookupConnectorHAL(ConnectorDescriptor *connectors,
                                         int cid, int count)
 {

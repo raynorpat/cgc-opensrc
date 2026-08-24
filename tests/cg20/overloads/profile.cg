@@ -1,0 +1,56 @@
+// Profile-qualified overload resolution (Task 12).
+//
+// One name, five qualifications: open, vertex wildcard "vs", fragment
+// wildcard "ps", exact glslv, exact glslf.  Compiling for a profile
+// selects its exact overload when present; otherwise the matching
+// stage wildcard; otherwise the open overload.  Each body returns a
+// distinct marker constant so the tests observe which candidate won.
+
+float4 tint(void)
+{
+    return float4(0.625, 0.5, 0.5, 1.0);    // open
+}
+
+vs float4 tint(void)
+{
+    return float4(0.125, 0.5, 0.5, 1.0);    // vertex wildcard
+}
+
+ps float4 tint(void)
+{
+    return float4(0.375, 0.5, 0.5, 1.0);    // fragment wildcard
+}
+
+glslv float4 tint(void)
+{
+    return float4(0.25, 0.5, 0.5, 1.0);     // exact glslv
+}
+
+glslf float4 tint(void)
+{
+    return float4(0.875, 0.5, 0.5, 1.0);    // exact glslf
+}
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut mainV(float4 position : ATTRIB0)
+{
+    VertexOut output;
+
+    output.position = position * tint();
+    return output;
+}
+
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut mainF(float2 texcoord : TEXCOORD0)
+{
+    FragmentOut output;
+
+    output.color = tint() + float4(texcoord.x, texcoord.y, 0.0, 0.0);
+    return output;
+}

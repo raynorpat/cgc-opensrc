@@ -1,0 +1,20 @@
+// Two candidates bind the half actual at the same conversion tier --
+// half -> float widens within the floating family, half -> int crosses
+// classes -- so neither outranks the other and the call is ambiguous.
+
+float probe(float x)
+{
+    return x;
+}
+
+float probe(int x)
+{
+    return float(x);
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    half h = 0.5h;
+
+    return float4(probe(h), 0.0, 0.0, 1.0);
+}

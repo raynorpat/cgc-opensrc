@@ -554,6 +554,8 @@ Type *ResolveScalarTypeSpecifier(SourceLoc *loc, int token, int isUnsigned);
 
 /********************************** Parser Semantic Rules: ***********************************/
 
+void SetPendingProfileSpecifier(SourceLoc *loc, int ident);
+void ClearPendingProfileSpecifier(void);
 expr *Initializer(SourceLoc *loc, expr *fExpr);
 expr *InitializerList(SourceLoc *loc, expr *list, expr *fExpr);
 expr *ArgumentList(SourceLoc *loc, expr *flist, expr *fExpr);

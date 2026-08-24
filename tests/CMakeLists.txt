@@ -279,6 +279,56 @@ add_test(
 )
 add_cg20_success(cg20_interface_conformance tests/cg20/interfaces/conformance.cg)
 add_cg20_success(cg20_interface_dispatch tests/cg20/interfaces/dispatch.cg)
+add_cg20_success(cg20_overload_defaults tests/cg20/overloads/defaults.cg)
+
+# Profile-qualified overload resolution: each stage must select its own
+# exact overload and pass glslang validation on the generated program.
+function(add_cg20_profile_selection name profile stage entry marker)
+    if(GLSLANG_VALIDATOR)
+        set(cg20_profile_validator "-DVALIDATOR=${GLSLANG_VALIDATOR}")
+    else()
+        set(cg20_profile_validator "")
+    endif()
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSTAGE=${stage}
+            -DENTRY=${entry}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/overloads/profile.cg
+            "-DCONFIG=$<CONFIG>"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
+            "-DMESSAGE=${marker}"
+            ${cg20_profile_validator}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake
+    )
+endfunction()
+add_cg20_profile_selection(cg20_profile_overload_vertex glslv vert mainV
+    "0\\.25, *0\\.5, *0\\.5, *1\\.0")
+add_cg20_profile_selection(cg20_profile_overload_fragment glslf frag mainF
+    "0\\.875, *0\\.5, *0\\.5, *1\\.0")
+
+add_test(
+    NAME cg20_default_after_optional
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/default_after_optional.cg
+        -DCODE=1160
+        -DMESSAGE=default.argument.for
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+add_test(
+    NAME cg20_ambiguous_overload
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/ambiguous_overload.cg
+        -DCODE=1101
+        -DMESSAGE=ambiguous.overloaded.function.reference
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
 add_test(
     NAME cg20_interface_data_member
     COMMAND ${CMAKE_COMMAND}
@@ -401,6 +451,28 @@ set_target_properties(cg_types_unit PROPERTIES
 add_test(
     NAME cg_types_unit
     COMMAND cg_types_unit
+)
+
+add_executable(cg_overload_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_overload.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    cg_overload_test.c
+)
+target_include_directories(cg_overload_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+set_target_properties(cg_overload_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_overload_unit
+    COMMAND cg_overload_unit
 )
 
 add_generic_regression(position position.cg

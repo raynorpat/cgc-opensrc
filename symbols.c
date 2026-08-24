@@ -462,6 +462,11 @@ Symbol *NewSymbol(SourceLoc *loc, Scope *fScope, int name, Type *fType, symbolki
     pch = (char *) &lSymb->details;
     for (ii = 0; ii < sizeof(lSymb->details); ii++)
         *pch++ = 0;
+    /* Unqualified function declarations carry the open profile
+     * selector until a profile specifier qualifies them. */
+    if (kind == FUNCTION_S) {
+        lSymb->details.fun.profileSelector.isOpen = 1;
+    }
     return lSymb;
 } // NewSymbol
 

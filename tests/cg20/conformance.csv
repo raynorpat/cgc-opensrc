@@ -24,7 +24,11 @@ INTERFACE-METHODS,valid-generic,cg20_interface_conformance,Struct and interface 
 INTERFACE-DATA-DIAG,invalid-language,cg20_interface_data_member,Struct and interface types
 INTERFACE-MISSING-METHOD-DIAG,invalid-language,cg20_interface_missing_method,Struct and interface types
 INTERFACE-BAD-SIGNATURE-DIAG,invalid-language,cg20_interface_bad_signature,Struct and interface types
-OVERLOAD-PROFILE,valid-generic,cg20_profile_overload,Function overloading
+OVERLOAD-PROFILE,valid-generic,cg20_profile_overload_vertex,Function overloading
+OVERLOAD-PROFILE-FRAGMENT,valid-generic,cg20_profile_overload_fragment,Function overloading
+OVERLOAD-DEFAULTS,valid-generic,cg20_overload_defaults,Function overloading
+OVERLOAD-DEFAULT-ORDER-DIAG,invalid-language,cg20_default_after_optional,Function overloading
+OVERLOAD-AMBIGUOUS-DIAG,invalid-language,cg20_ambiguous_overload,Function overloading
 STDLIB-INTRINSICS,valid-generic,cg20_stdlib_coverage,Cg Standard Library Functions
 PROFILE-UNREACHABLE,backend-reject,cg20_unreachable_profile_feature,Profiles
 CGFX-TECHNIQUE,out-of-scope,cg20_manifest,CgFX exclusion

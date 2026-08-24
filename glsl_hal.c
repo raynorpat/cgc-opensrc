@@ -813,5 +813,13 @@ int RegisterProfiles_glsl(void)
 {
     RegisterProfile(InitHAL_glslv, PROFILE_GLSLV_NAME, PROFILE_GLSLV_ID);
     RegisterProfile(InitHAL_glslf, PROFILE_GLSLF_NAME, PROFILE_GLSLF_ID);
+    /* glslv answers to its exact name and to the vertex wildcard "vs";
+     * glslf to its exact name and the fragment wildcard "ps".  The
+     * wildcard specificity integer orders wildcard candidates against
+     * each other; exact names always outrank wildcards. */
+    SetProfileIdentity(PROFILE_GLSLV_NAME, CG_PROFILE_STAGE_VERTEX,
+                       "vs", 10);
+    SetProfileIdentity(PROFILE_GLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT,
+                       "ps", 10);
     return 1;
 }

@@ -247,19 +247,22 @@ union Type_Rec {
 
 // Symbol table is a simple binary tree.
 
+#include "cg_overload.h"    // CgProfileSelector for FunSymbol
+
 struct FunSymbol_Rec {
     Scope *locals;
     Symbol *params;
     union stmt_rec *statements;
     union stmt_rec *entryOutputAssignments;
     Symbol *overload;   // List of overloaded versions of this function
-    int flags;          // Used when resolving overloaded reference
+    int flags;          // Unused since Cg 2.0: resolution is non-mutating (cg_overload.h)
     short group;        // Built-in function group
     short index;        // Built-in function index
     char HasOutParams;
     int semantics;      // Return value semantic recorded on declaration, 0 if none
     Type *ownerType;    // Owning struct or interface for methods, NULL otherwise
     int isMethod;       // > 0 when declared inside an interface or struct body
+    CgProfileSelector profileSelector;  // Profile qualification; open when unqualified
 };
 
 typedef struct VarSymbol_Rec {

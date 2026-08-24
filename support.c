@@ -1404,10 +1404,11 @@ decl *Param_Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fE
                           GetAtomString(atable, fDecl->name));
         }
         if (fExpr) {
-            if (GetDomain(lType) != TYPE_DOMAIN_UNIFORM) {
-                SemanticError(loc, ERROR_S_NON_UNIFORM_PARAM_INIT,
-                              GetAtomString(atable, fDecl->name));
-            }
+            /* Domain/qualifier/constant rules for parameter defaults
+             * are enforced with full function context by
+             * lValidateParameterDefaults() once the formal list is
+             * complete; here the initializer is only shaped and
+             * recorded on the declarator. */
             /* An empty-bracket array parameter sizes its top-level
              * dimension from the initializer list exactly like a local
              * declaration; the count lives in the declaration-local
@@ -1627,6 +1628,287 @@ static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,
     }
 } // lCheckSamplerDeclaration
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////// Profile specifiers and parameter defaults: ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * A <profile_specifier> is parsed before a function's return type.  The
+ * grammar action records it here and the next top-level function
+ * declarator consumes it; a specifier followed by anything other than a
+ * function declaration is rejected where the declarator is processed.
+ */
+
+static CgProfileSelector lPendingProfileSelector;
+static int lHavePendingProfileSpecifier;
+
+/*
+ * SetPendingProfileSpecifier() - Validate an identifier appearing in
+ *         profile-specifier position.  It must name either a registered
+ *         profile (EnumerateProfiles) or a wildcard atom some profile
+ *         registered through SetProfileIdentity.  Typedef shadowing
+ *         needs no handling here: shadowed names reach the parser as
+ *         TYPEIDENT_SY and never enter this rule.
+ */
+
+void SetPendingProfileSpecifier(SourceLoc *loc, int ident)
+{
+    slProfile *lProfile;
+    int ii;
+
+    lHavePendingProfileSpecifier = 0;
+    for (ii = 0; (lProfile = EnumerateProfiles(ii)) != NULL; ii++) {
+        if (!strcmp(lProfile->name, GetAtomString(atable, ident))) {
+            /* Exact profile name: highest selector specificity. */
+            lPendingProfileSelector.name = ident;
+            lPendingProfileSelector.specificity =
+                CG_PROFILE_EXACT_SPECIFICITY;
+            lPendingProfileSelector.isOpen = 0;
+            lHavePendingProfileSpecifier = 1;
+            return;
+        }
+    }
+    for (ii = 0; (lProfile = EnumerateProfiles(ii)) != NULL; ii++) {
+        const CgProfileIdentity *identity = &lProfile->profileIdentity;
+        int jj;
+
+        for (jj = 0; jj < identity->wildcardCount; jj++) {
+            if (identity->wildcards[jj] == ident) {
+                lPendingProfileSelector.name = ident;
+                lPendingProfileSelector.specificity =
+                    identity->specificity ? identity->specificity[jj] : 0;
+                lPendingProfileSelector.isOpen = 0;
+                lHavePendingProfileSpecifier = 1;
+                return;
+            }
+        }
+    }
+    SemanticError(loc, ERROR_S_UNKNOWN_PROFILE,
+                  GetAtomString(atable, ident));
+} // SetPendingProfileSpecifier
+
+/*
+ * ClearPendingProfileSpecifier() - Drop any unconsumed specifier so it
+ *         cannot leak into a later declaration.
+ */
+
+void ClearPendingProfileSpecifier(void)
+{
+    lHavePendingProfileSpecifier = 0;
+} // ClearPendingProfileSpecifier
+
+/*
+ * lAttachPendingProfileSpecifier() - Give a freshly declared function
+ *         symbol whatever specifier is pending.
+ */
+
+static void lAttachPendingProfileSpecifier(Symbol *fSymb)
+{
+    if (lHavePendingProfileSpecifier && fSymb && IsFunction(fSymb)) {
+        fSymb->details.fun.profileSelector = lPendingProfileSelector;
+        lHavePendingProfileSpecifier = 0;
+    }
+} // lAttachPendingProfileSpecifier
+
+/*
+ * lRejectPendingProfileSpecifier() - A specifier was followed by a
+ *         non-function declaration.
+ */
+
+static void lRejectPendingProfileSpecifier(SourceLoc *loc)
+{
+    if (lHavePendingProfileSpecifier) {
+        SemanticError(loc, ERROR_S_PROFILE_SPECIFIER_MISPLACED,
+                      GetAtomString(atable, lPendingProfileSelector.name));
+        lHavePendingProfileSpecifier = 0;
+    }
+} // lRejectPendingProfileSpecifier
+
+/*
+ * lIsEntryFunctionName() - Top-level entry parameters become program
+ *         interface values, so their defaults follow the uniform rules
+ *         rather than the helper ones.
+ */
+
+static int lIsEntryFunctionName(int name)
+{
+    return name == Cg->theHAL->entryName;
+} // lIsEntryFunctionName
+
+/*
+ * lIsConstantInit() - TRUE when every element of an initializer-list
+ *         node folds to a constant.  Parameter initializers arrive
+ *         wrapped by Initializer() in EXPR_LIST_OP nodes whose members
+ *         chain through bin.right.
+ */
+
+static int lIsConstantInit(expr *fInit)
+{
+    expr *element;
+
+    if (!fInit || fInit->common.kind != BINARY_N ||
+        fInit->bin.op != EXPR_LIST_OP)
+    {
+        return 0;
+    }
+    for (element = fInit; element; element = element->bin.right) {
+        expr *value;
+
+        if (element->common.kind != BINARY_N ||
+            element->bin.op != EXPR_LIST_OP)
+        {
+            break;
+        }
+        value = element->bin.left;
+        if (!value) {
+            return 0;
+        }
+        if (value->common.kind == BINARY_N &&
+            value->bin.op == EXPR_LIST_OP)
+        {
+            /* Nested brace lists were validated elementwise when the
+             * declarator recorded them. */
+            continue;
+        }
+        if (FoldConstants(value)->common.kind != CONST_N) {
+            return 0;
+        }
+    }
+    return 1;
+} // lIsConstantInit
+
+/*
+ * lValidateParameterDefaults() - Enforce the Cg 2.0 default-argument
+ *         rules over one function's ordered formals:
+ *
+ *           - helper calls fill unsupplied trailing arguments from
+ *             defaults, so a default may only appear after parameters
+ *             that always receive values;
+ *           - a top-level (entry) default requires a uniform parameter,
+ *             and entry uniforms are program-interface values rather
+ *             than call arguments, so positionality does not apply;
+ *           - a helper default requires a plain in parameter;
+ *           - every default is a compile-time constant convertible to
+ *             the parameter type, stored converted.
+ *
+ *         Invalid defaults are dropped from the formal so later passes
+ *         see only well-formed calls.
+ */
+
+static void lValidateParameterDefaults(SourceLoc *loc, Symbol *funSymb)
+{
+    Symbol *formal;
+    int IsEntry;
+
+    if (!funSymb || !IsFunction(funSymb)) {
+        return;
+    }
+    IsEntry = lIsEntryFunctionName(funSymb->name);
+    for (formal = funSymb->details.fun.params; formal;
+         formal = formal->next)
+    {
+        expr *init = formal->details.var.init;
+        Type *formalType = formal->type;
+
+        if (IsEntry) {
+            /* Entry formals become program inputs: a default is just
+             * the uniform's binding value and stands on its own. */
+            if (init && GetDomain(formalType) != TYPE_DOMAIN_UNIFORM) {
+                SemanticError(&formal->loc, ERROR_S_NON_UNIFORM_PARAM_INIT,
+                              GetAtomString(atable, formal->name));
+                formal->details.var.init = NULL;
+            }
+            continue;
+        }
+        if (!init) {
+            continue;
+        }
+        /* Defaults are legal only as a trailing run: every parameter
+         * after a defaulted one must carry a default too. */
+        {
+            Symbol *scan;
+
+            for (scan = formal->next; scan; scan = scan->next) {
+                if (!scan->details.var.init) {
+                    SemanticError(&formal->loc,
+                                  ERROR_S_DEFAULT_AFTER_OPTIONAL,
+                                  GetAtomString(atable, formal->name));
+                    formal->details.var.init = NULL;
+                    break;
+                }
+            }
+            if (!formal->details.var.init) {
+                continue;
+            }
+        }
+        {
+            int quals = GetQualifiers(formalType);
+
+            if (quals & TYPE_QUALIFIER_OUT) {
+                SemanticError(&formal->loc, ERROR_S_DEFAULT_PARAM_QUALIFIER,
+                              GetAtomString(atable, formal->name));
+                formal->details.var.init = NULL;
+                continue;
+            }
+            if (!lIsConstantInit(init)) {
+                SemanticError(&formal->loc, ERROR___DEFAULT_NOT_CONSTANT,
+                              GetAtomString(atable, formal->name));
+                formal->details.var.init = NULL;
+                continue;
+            }
+            /* Single-value defaults are re-expressed at the parameter's
+             * own type inside the same EXPR_LIST wrapper; multi-element
+             * brace lists were converted elementwise when recorded. */
+            if (init->bin.left && !init->bin.right &&
+                init->bin.left->common.type &&
+                !IsSameUnqualifiedType(formalType,
+                                       init->bin.left->common.type))
+            {
+                expr *converted = NULL;
+                expr *value = FoldConstants(init->bin.left);
+
+                if (!ConvertType(loc, value, formalType,
+                                 value->common.type, &converted, 0, 0, 0))
+                {
+                    SemanticError(&formal->loc,
+                                  ERROR___DEFAULT_NOT_CONVERTIBLE,
+                                  GetAtomString(atable, formal->name));
+                    formal->details.var.init = NULL;
+                    continue;
+                }
+                init->bin.left = converted;
+            }
+        }
+    }
+} // lValidateParameterDefaults
+
+/*
+ * lPreserveParameterDefaults() - A redeclaration that matches an older
+ *         one by signature cannot change an existing default: carry the
+ *         original default forward when the redeclaration omits it and
+ *         reject any attempt to re-specify one.
+ */
+
+static void lPreserveParameterDefaults(SourceLoc *loc, Symbol *fOldFun,
+                                       Symbol *fNewParams, int atom)
+{
+    Symbol *oldFormal, *newFormal;
+
+    for (oldFormal = fOldFun->details.fun.params, newFormal = fNewParams;
+         oldFormal && newFormal;
+         oldFormal = oldFormal->next, newFormal = newFormal->next)
+    {
+        if (oldFormal->details.var.init && newFormal->details.var.init) {
+            SemanticError(loc, ERROR_S_DEFAULT_REDECLARATION,
+                          GetAtomString(atable, atom));
+            return;
+        }
+        if (oldFormal->details.var.init) {
+            newFormal->details.var.init = oldFormal->details.var.init;
+        }
+    }
+} // lPreserveParameterDefaults
+
 /*
  * Declarator() - Process a declarator.
  *
@@ -1656,6 +1938,9 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                 SemanticError(&fDecl->loc, ERROR_S_VOID_TYPE_INVALID,
                               GetAtomString(atable, fDecl->name));
             }
+            if (GetCategory(&fDecl->type.type) != TYPE_CATEGORY_FUNCTION) {
+                lRejectPendingProfileSpecifier(&fDecl->loc);
+            }
             if (fDecl->type.type.properties & TYPE_MISC_TYPEDEF) {
                 lSymb = DefineTypedef(loc, CurrentScope, fDecl->name, lType);
                 if (semantics)
@@ -1673,6 +1958,8 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     lScope = NewScope();
                     params = AddFormalParamDecls(lScope, fDecl->params);
                     lSymb = DeclareFunc(&fDecl->loc, CurrentScope, NULL, fDecl->name, lType, lScope, params);
+                    lAttachPendingProfileSpecifier(lSymb);
+                    lValidateParameterDefaults(&fDecl->loc, lSymb);
                     if (semantics)
                         lSymb->details.fun.semantics = semantics;
                 } else {
@@ -1743,10 +2030,13 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                 lScope = NewScope();
                 params = AddFormalParamDecls(lScope, fDecl->params);
                 lSymb = DeclareFunc(&fDecl->loc, CurrentScope, lSymb, fDecl->name, lType, lScope, params);
+                lAttachPendingProfileSpecifier(lSymb);
+                lValidateParameterDefaults(&fDecl->loc, lSymb);
                 lSymb->storageClass = fDecl->type.storageClass;
                 if (semantics)
                     lSymb->details.fun.semantics = semantics;
             } else {
+                lRejectPendingProfileSpecifier(&fDecl->loc);
                 if (!IsTypeBase(&fDecl->type.type, TYPE_BASE_UNDEFINED_TYPE)) {
                     SemanticError(&fDecl->loc, ERROR_S_NAME_ALREADY_DEFINED,
                                   GetAtomString(atable, fDecl->name));
@@ -2279,6 +2569,7 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                     Scope *locals, Symbol *params)
 {
     int DiffParamTypes, DiffParamQualifiers, DiffParamCount, DiffReturnType;
+    int DiffProfileSelector;
     TypeList *oldArgType, *newArgType;
     Symbol *lSymb;
     int index, group, OK;
@@ -2297,6 +2588,7 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                     return fSymb;
                 }
                 DiffParamTypes = DiffParamQualifiers = DiffParamCount = DiffReturnType = 0;
+                DiffProfileSelector = 0;
                 if (!IsSameUnqualifiedType(lSymb->type->fun.rettype, fType->fun.rettype))
                     DiffReturnType = 1;
                 oldArgType = lSymb->type->fun.paramtypes;
@@ -2325,12 +2617,24 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                         OK = 0;
                         break;
                     }
-                    break; // Found the matching function
+                    /* Profile qualifications distinguish same-signature
+                     * overloads: a declaration naming a different
+                     * profile than an existing candidate declares a new
+                     * one rather than redefining it. */
+                    if (lHavePendingProfileSpecifier &&
+                        (lSymb->details.fun.profileSelector.isOpen ||
+                         lSymb->details.fun.profileSelector.name !=
+                             lPendingProfileSelector.name))
+                    {
+                        DiffProfileSelector = 1;
+                    }
+                    if (!DiffProfileSelector)
+                        break; // Found the matching function
                 }
                 lSymb = lSymb->details.fun.overload;
             }
             if (OK) {
-                if (DiffParamCount || DiffParamTypes) {
+                if (DiffParamCount || DiffParamTypes || DiffProfileSelector) {
                     lSymb = NewSymbol(loc, fScope, atom, fType, FUNCTION_S);
                     lSymb->details.fun.params = params;
                     lSymb->details.fun.locals = locals;
@@ -2345,6 +2649,11 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                     if (!(lSymb->properties & SYMB_IS_DEFINED)) {
                         // Overwrite previous definitions if this function is not yet defined.
                         // Prototype parameter names are ignored.
+                        /* A matching redeclaration may not change an
+                         * existing default argument; omitted defaults
+                         * carry forward unchanged. */
+                        lPreserveParameterDefaults(loc, lSymb,
+                                                   params, atom);
                         lSymb->details.fun.params = params;
                         lSymb->details.fun.locals = locals;
                     } else {
@@ -3735,135 +4044,116 @@ expr *NewIndexOperator(SourceLoc *loc, expr *fExpr, expr *ixexpr)
 } // NewIndexOperator
 
 /*
- * lResolveOverloadedFunction() - Resolve an overloaded function call.
- *
+ * lChainHasDefaults() - TRUE when any overload in the chain declares a
+ *         parameter default, so even a lone candidate must go through
+ *         resolution to have its defaults appended.
  */
 
-Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb, expr *actuals)
+static int lChainHasDefaults(Symbol *fSymb)
 {
-    const int NO_MATCH = 0;
-    const int EXACT_MATCH = 1;
-    const int VALID_MATCH = 2;
-    int paramno, numexact, numvalid, ii;
-    Symbol *lSymb, *lExact, *lValid;
-    TypeList *lFormals;
+    Symbol *formal;
 
-    lSymb = fSymb;
-    while (lSymb) {
-        lSymb->details.fun.flags = EXACT_MATCH;
-        lSymb = lSymb->details.fun.overload;
+    for (; fSymb; fSymb = fSymb->details.fun.overload) {
+        for (formal = fSymb->details.fun.params; formal;
+             formal = formal->next)
+        {
+            if (formal->details.var.init) {
+                return 1;
+            }
+        }
     }
-    paramno = 0;
-    while (actuals) {
-        numexact = numvalid = 0;
-        lExact = lValid = fSymb;
+    return 0;
+} // lChainHasDefaults
+
+/*
+ * lAppendDefaultArguments() - Clone the converted defaults of the last
+ *         "count" formals onto the call's actual list so every later
+ *         pass sees an ordinary, complete call.
+ */
+
+static expr *lAppendDefaultArguments(SourceLoc *loc, Symbol *fSymb,
+                                     expr *actuals, int count)
+{
+    Symbol *formal;
+    int total = 0;
+    int skip;
+
+    if (count <= 0) {
+        return actuals;
+    }
+    for (formal = fSymb->details.fun.params; formal; formal = formal->next) {
+        total++;
+    }
+    skip = total - count;
+    for (formal = fSymb->details.fun.params; formal && skip < total;
+         formal = formal->next)
+    {
+        if (skip > 0) {
+            skip--;
+            continue;
+        }
+        if (formal->details.var.init) {
+            expr *stored = formal->details.var.init;
+            expr *value = stored;
+
+            /* Stored defaults keep the initializer EXPR_LIST wrapper;
+             * argument lists carry the bare value expression. */
+            if (value->common.kind == BINARY_N &&
+                value->bin.op == EXPR_LIST_OP && !value->bin.right)
+            {
+                value = value->bin.left;
+            }
+            actuals = ArgumentList(loc, actuals, DupExpr(value));
+        }
+    }
+    return actuals;
+} // lAppendDefaultArguments
+
+/*
+ * lResolveOverloadedFunction() - Resolve an overloaded function call
+ *         through CgResolveOverload.  All candidate state and ranking
+ *         live inside the non-mutating resolver; this wrapper only
+ *         reports failures like the legacy path did and clones stored
+ *         default arguments into complete calls (*fActuals is updated
+ *         when defaults are appended).
+ */
+
+static Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb,
+                                          expr **fActuals)
+{
+    CgOverloadResult lResult;
+    Symbol *lSymb;
+    int numvalid = 0;
+
+    if (!CgResolveOverload(&Cg->theHAL->profileIdentity, fSymb, *fActuals,
+                           &lResult))
+    {
+        if (lResult.ambiguous) {
+            SemanticError(loc, ERROR_S_AMBIGUOUS_FUN_REFERENCE,
+                          GetAtomString(atable, fSymb->name));
+        } else {
+            SemanticError(loc, ERROR_S_NO_COMPAT_OVERLOADED_FUN,
+                          GetAtomString(atable, fSymb->name));
+        }
+#if 1 // Detailed error messages - requires printing of types
         lSymb = fSymb;
         while (lSymb) {
-            if (lSymb->details.fun.flags) {
-                lFormals = lSymb->type->fun.paramtypes;
-                for (ii = 0; ii < paramno; ii++) {
-                    if (lFormals) {
-                        lFormals = lFormals->next;
-                    } else {
-                        // Ran out of formals -- kick it out.
-                        lSymb->details.fun.flags = NO_MATCH;
-                    }
-                }
-                if (lFormals) {
-                    if (IsSameUnqualifiedType(lFormals->type, actuals->common.type)) {
-                        lSymb->details.fun.flags = EXACT_MATCH;
-                        lExact = lSymb;
-                        numexact++;
-                    } else {
-                        /* Shape-introducing conversions stay out of overload
-                         * probing: the legacy numvalid==1 early return would
-                         * let a scalar<->aggregate conversion hijack selection.
-                         * Ranked argument conversion lands in Task 12. */
-                        if (ConvertType(NULL, NULL, lFormals->type, actuals->common.type,
-                                        NULL, 0, 0, 0)) {
-                            lSymb->details.fun.flags = VALID_MATCH;
-                            lValid = lSymb;
-                            numvalid++;
-                        } else {
-                            lSymb->details.fun.flags = NO_MATCH;
-                        }
-                    }
-                } else {
-                    lSymb->details.fun.flags = NO_MATCH;
-                }
-            }
-            lSymb = lSymb->details.fun.overload;
-        }
-        if (numexact == 1)
-            return lExact;
-        if (numvalid == 1)
-            return lValid;
-        if (numexact > 0) {
-            if (numvalid > 0) {
-                // Disqualify non-exact matches:
-                lSymb = fSymb;
-                while (lSymb) {
-                    if (lSymb->details.fun.flags == VALID_MATCH)
-                        lSymb->details.fun.flags = NO_MATCH;
-                    lSymb = lSymb->details.fun.overload;
-                }
-            }
-        } else {
-            if (numvalid == 0) {
-                // Nothing matches.
-                break;
-            }
-        }
-        actuals = actuals->bin.right;
-        paramno++;
-    }
-    // If multiple matches still present check number of args:
-    if (numexact > 0 || numvalid > 0) {
-        numvalid = 0;
-        lSymb = lValid = fSymb;
-        while (lSymb) {
-            if (lSymb->details.fun.flags) {
-                lFormals = lSymb->type->fun.paramtypes;
-                for (ii = 0; ii < paramno; ii++) {
-                    if (lFormals) {
-                        lFormals = lFormals->next;
-                    } else {
-                        // Ran out of formals -- shouldn't happen.
-                        assert(0);
-                    }
-                }
-                if (lFormals) {
-                    lSymb->details.fun.flags = NO_MATCH;
-                } else {
-                    numvalid++;
-                    lValid = lSymb;
-                }
-            }
-            lSymb = lSymb->details.fun.overload;
-        }
-        if (numvalid == 1)
-            return lValid;
-    }
-    if (numvalid > 0) {
-        SemanticError(loc, ERROR_S_AMBIGUOUS_FUN_REFERENCE, GetAtomString(atable, fSymb->name));
-    } else {
-        SemanticError(loc, ERROR_S_NO_COMPAT_OVERLOADED_FUN, GetAtomString(atable, fSymb->name));
-    }
-#if 1 // Detailed error messages - requires printing of types
-    lSymb = fSymb;
-    numvalid = 0;
-    while (lSymb) {
-        if (lSymb->details.fun.flags) {
             printf("    #%d: ", ++numvalid);
             PrintType(lSymb->type->fun.rettype, 0);
             printf(" %s", GetAtomString(atable, lSymb->name));
             PrintType(lSymb->type, 0);
             printf("\n");
+            lSymb = lSymb->details.fun.overload;
         }
-        lSymb = lSymb->details.fun.overload;
-    }
 #endif
-    return fSymb;
+        return fSymb;
+    }
+    lSymb = lResult.symbol;
+    if (lResult.usedDefaults > 0) {
+        *fActuals = lAppendDefaultArguments(loc, lSymb, *fActuals,
+                                            lResult.usedDefaults);
+    }
+    return lSymb;
 } // lResolveOverloadedFunction
 
 /*
@@ -3964,8 +4254,15 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
         if (funExpr->common.kind == SYMB_N) {
             lSymb = funExpr->sym.symbol;
             if (lSymb->kind == FUNCTION_S) {
-                if (lSymb->details.fun.overload) {
-                    lSymb = lResolveOverloadedFunction(loc, lSymb, actuals);
+                /* Resolve whenever there is a real overload set or any
+                 * candidate declares parameter defaults; lone
+                 * default-free functions keep the direct binding path
+                 * and its diagnostics. */
+                if (lSymb->details.fun.overload ||
+                    lChainHasDefaults(lSymb))
+                {
+                    lSymb = lResolveOverloadedFunction(loc, lSymb,
+                                                       &actuals);
                     funExpr->sym.symbol = lSymb;
                     funType = funExpr->common.type = lSymb->type;
                 }
@@ -4017,10 +4314,15 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                         SemanticError(loc, ERROR_D_OUT_PARAM_NOT_LVALUE, paramno);
                     }
                 }
-                /* Argument binding keeps the legacy exact-shape rules: no
-                 * scalar<->aggregate conversions here, or the resolver's
-                 * numvalid==1 early return could hijack overload selection.
-                 * Ranked argument conversion lands in Task 12. */
+                /* Boundary ruling (Task 7, revisited by Task 12):
+                 * argument binding keeps the exact-shape rules -- no
+                 * scalar<->aggregate shape conversions here.  The
+                 * ranked resolver in cg_overload.c applies the same
+                 * exclusion to its candidates (lIsShapeConversion), so
+                 * probing and binding agree; admitting replication
+                 * candidates would surface new ambiguities across
+                 * heavily overloaded names while single-candidate
+                 * calls still reject them at binding time. */
             } else if (ConvertType(loc, lActuals->bin.left, formalType, actualType, &lExpr, 0, 0, 0)) {
                 lActuals->bin.left = lExpr;
                 SUBOP_SET_MASK(lActuals->bin.subop, inout);

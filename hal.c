@@ -46,6 +46,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // hal.c
 //
 
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -106,6 +107,48 @@ slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id)
 } // RegisterProfile
 
 /*
+ * SetProfileIdentity() - Record the overload-resolution selector
+ *         surface of a registered profile: its pipeline stage and the
+ *         single wildcard atom it expands from (NULL for none).
+ *         Wildcard atoms are interned immediately so profile
+ *         specifiers can be validated while parsing source targeted at
+ *         any registered profile.  Specificity of wildcard selectors
+ *         comes from "wildcardSpecificity"; exact names always outrank
+ *         wildcards via CG_PROFILE_EXACT_SPECIFICITY.
+ *
+ */
+
+void SetProfileIdentity(const char *name, CgProfileStage stage,
+                        const char *wildcardName, int wildcardSpecificity)
+{
+    slProfile *lProfile;
+    int *wildcards = NULL;
+    int *specificity = NULL;
+
+    lProfile = Cg->allProfiles;
+    while (lProfile && strcmp(lProfile->name, name))
+        lProfile = lProfile->next;
+    if (!lProfile) {
+        lProfile = RegisterProfile(NULL, name, 0);
+    }
+    if (wildcardName) {
+        wildcards = (int *) malloc(sizeof(int));
+        specificity = (int *) malloc(sizeof(int));
+        assert(wildcards && specificity);
+        wildcards[0] = AddAtom(atable, wildcardName);
+        specificity[0] = wildcardSpecificity;
+        lProfile->profileIdentity.wildcards = wildcards;
+        lProfile->profileIdentity.specificity = specificity;
+        lProfile->profileIdentity.wildcardCount = 1;
+    } else {
+        lProfile->profileIdentity.wildcards = NULL;
+        lProfile->profileIdentity.specificity = NULL;
+        lProfile->profileIdentity.wildcardCount = 0;
+    }
+    lProfile->profileIdentity.stage = stage;
+} // SetProfileIdentity
+
+/*
  * EnumerateProfiles()
  *
  */
@@ -143,6 +186,11 @@ int InitHAL(const char *profileName, const char *entryName)
         if (!strcmp(profileName, lProfile->name)) {
             Cg->theHAL->InitHAL = lProfile->InitHAL;
             Cg->theHAL->pid = lProfile->id;
+            /* The compiling profile answers to its own exact name;
+             * stage and wildcards come from the registration-time
+             * identity. */
+            Cg->theHAL->profileIdentity = lProfile->profileIdentity;
+            Cg->theHAL->profileIdentity.exactName = Cg->theHAL->profileName;
             result = Cg->theHAL->InitHAL(Cg->theHAL);
             return result;
         }

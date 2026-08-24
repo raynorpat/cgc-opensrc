@@ -1,0 +1,8 @@
+// A default may only appear after parameters that always receive
+// values.  "gain" has one, so the following "lift" without a default
+// is rejected (default argument follows a parameter without one).
+
+float3 broken(float3 base, float gain = 0.5, float lift)
+{
+    return base * gain + lift;
+}
