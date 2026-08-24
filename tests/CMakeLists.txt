@@ -543,6 +543,7 @@ add_test(
 add_executable(cg_ir_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
@@ -561,6 +562,13 @@ set_target_properties(cg_ir_unit PROPERTIES
 add_test(
     NAME cg_ir_unit
     COMMAND cg_ir_unit
+)
+
+add_test(
+    NAME cg_ir_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:cg_ir_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
 )
 
 add_generic_regression(position position.cg

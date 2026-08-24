@@ -202,7 +202,43 @@ static Symbol *lMakeSymbol(symbolkind kind, const char *name, Type *fType)
     return lSymb;
 } // lMakeSymbol
 
-int main(void)
+///////////////////////////////// Verification /////////////////////////////////
+
+/*
+ * lVerifyAccept() - "module" must verify: the diagnostic comes back
+ *          zeroed (reason OK, no node, empty location) even when the
+ *          caller hands in garbage, and a NULL diagnostic pointer is
+ *          tolerated.
+ */
+
+static void lVerifyAccept(CgIRModule *module)
+{
+    CgIRVerifyDiagnostic diagnostic;
+
+    memset(&diagnostic, 0xa5, sizeof(diagnostic));
+    assert(CgIRVerifyModule(module, &diagnostic));
+    assert(diagnostic.reason == CGIR_VERIFY_OK);
+    assert(diagnostic.loc.file == 0 && diagnostic.loc.line == 0);
+    assert(diagnostic.node == NULL);
+    assert(CgIRVerifyModule(module, NULL));
+} // lVerifyAccept
+
+/*
+ * lVerifyReject() - "module" must fail verification reporting exactly
+ *          "reason" about a concrete failing node.
+ */
+
+static void lVerifyReject(CgIRModule *module, CgIRVerifyReason reason)
+{
+    CgIRVerifyDiagnostic diagnostic;
+
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    assert(!CgIRVerifyModule(module, &diagnostic));
+    assert(diagnostic.reason == reason);
+    assert(diagnostic.node != NULL);
+} // lVerifyReject
+
+int main(int argc, char **argv)
 {
     CgStruct cg;
     slHAL hal;
@@ -291,6 +327,68 @@ int main(void)
     CgIRExpr *budgetC0;
     CgIRExpr *budgetC1;
     CgIRExpr *stickyExpr;
+
+    /* Scenario 5: module verification fixtures. */
+    CgIRModule rejectModule;
+    CgIRModule verifyModule;
+    CgIRVerifyDiagnostic verifyDiagnostic;
+    Type ifaceAType;
+    Type ifaceBType;
+    Type qualifiedOutFloat4;
+    TypeList dotFFFirst;
+    TypeList dotFFLast;
+    CgIntrinsicSignature dotFFSignature;
+    Type *sampler2DType;
+    Symbol *helperSymb;
+    Symbol *outFormalSymb;
+    Symbol *inFormalSymb;
+    Symbol *texSymb;
+    Symbol *tmpSymb;
+    Symbol *objSymb;
+    Symbol *evalSymb;
+    Symbol *otherEvalSymb;
+    CgIRFunction *rFn;
+    CgIRFunction *rCalleeFn;
+    CgIRFunction *vHelperFn;
+    CgIRFunction *vMainFn;
+    CgIRDecl *rDecl;
+    CgIRDecl *vInFormal;
+    CgIRDecl *vOutFormal;
+    CgIRDecl *vPosFormal;
+    CgIRDecl *vTexDecl;
+    CgIRDecl *vObjDecl;
+    CgIRDecl *vTmpDecl;
+    CgIRExpr *rArgs;
+    CgIRExpr *rLeft;
+    CgIRExpr *rRight;
+    CgIRExpr *rTarget;
+    CgIRExpr *rValue;
+    CgIRExpr *vInit;
+    CgIRExpr *vObjRef;
+    CgIRExpr *vTmpRef;
+    CgIRStmt *rBody;
+    CgIRStmt *rInner;
+    CgIRStmt *rStmt;
+
+    /*
+     * Assertion seam: check_assertions_active.cmake runs this unit with
+     * --verify-assertions-active and requires the sentinel below.  The
+     * spelling is the checker's fixed contract shared with glsl_ir_unit;
+     * this translation unit is built with active assertions (#undef
+     * NDEBUG above), while cg_ir_verify.c keeps NDEBUG in Release so a
+     * rejected module returns its diagnostic instead of aborting.
+     */
+
+    if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
+        int assertionsActive;
+
+        assertionsActive = 0;
+        assert((assertionsActive = 1) != 0);
+        if (!assertionsActive)
+            return 2;
+        puts("glsl-ir-assertions-active");
+        return 0;
+    }
 
     memset(&cg, 0, sizeof(cg));
     memset(&hal, 0, sizeof(hal));
@@ -797,6 +895,594 @@ int main(void)
     assert(allocationBudget == -1);
     assert(budgetFn->next == NULL);
     assert(budgetModule.functions == NULL);
+
+    /* A failed module can never verify: its graph is incomplete by
+     * construction. */
+    memset(&verifyDiagnostic, 0, sizeof(verifyDiagnostic));
+    assert(!CgIRVerifyModule(&failModule, &verifyDiagnostic));
+    assert(verifyDiagnostic.reason == CGIR_VERIFY_OWNER);
+    assert(verifyDiagnostic.node == &failModule);
+
+    /////////////////// Scenario 5: module verification //////////////////
+
+    /*
+     * Verifier contract: one well-formed module verifies with a zeroed
+     * diagnostic; each malformed module below is rejected reporting its
+     * stable internal reason enum (never user-facing text) about the
+     * concrete failing node; verification stops at the first invariant.
+     */
+
+    /* Local interfaces: opaque identities whose category bits are their
+     * whole story here; method symbols carry their owning interface. */
+    memset(&ifaceAType, 0, sizeof(ifaceAType));
+    ifaceAType.properties = TYPE_CATEGORY_INTERFACE;
+    memset(&ifaceBType, 0, sizeof(ifaceBType));
+    ifaceBType.properties = TYPE_CATEGORY_INTERFACE;
+
+    evalSymb = lMakeSymbol(FUNCTION_S, "eval", floatType);
+    evalSymb->details.fun.isMethod = 1;
+    evalSymb->details.fun.ownerType = &ifaceAType;
+    otherEvalSymb = lMakeSymbol(FUNCTION_S, "eval", floatType);
+    otherEvalSymb->details.fun.isMethod = 1;
+    otherEvalSymb->details.fun.ownerType = &ifaceBType;
+
+    sampler2DType = GetSamplerType(CG_SAMPLER_2D);
+    assert(sampler2DType != NULL && sampler2DType != UndefinedType);
+
+    helperSymb = lMakeSymbol(FUNCTION_S, "scale", VoidType);
+    outFormalSymb = lMakeSymbol(VARIABLE_S, "written", float4Type);
+    inFormalSymb = lMakeSymbol(VARIABLE_S, "read", float4Type);
+    texSymb = lMakeSymbol(VARIABLE_S, "tex", sampler2DType);
+    tmpSymb = lMakeSymbol(VARIABLE_S, "tmp", float4Type);
+    objSymb = lMakeSymbol(VARIABLE_S, "obj", &ifaceAType);
+
+    /* Parameter direction rides type qualifier bits on a qualified
+     * copy: mutating the interned canonical float4 is forbidden. */
+    qualifiedOutFloat4 = *float4Type;
+    qualifiedOutFloat4.properties |= TYPE_QUALIFIER_OUT;
+
+    /* dot(float, float) -> float local signature with parameters. */
+    dotFFLast.next = NULL;
+    dotFFLast.type = floatType;
+    dotFFFirst.next = &dotFFLast;
+    dotFFFirst.type = floatType;
+    dotFFSignature.intrinsic = CG_INTRINSIC_DOT;
+    dotFFSignature.name = "dot";
+    dotFFSignature.result = floatType;
+    dotFFSignature.parameters = &dotFFFirst;
+    dotFFSignature.flags = CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE;
+
+    /* Positive module: every verifiable construct in one valid program,
+     * including a bare discard synthesized by convention (all-zero
+     * location, clear flag).  Lvalue and write-target flags are set by
+     * hand: builders leave them clear by design. */
+
+    CgIRInitModule(&verifyModule, TestAlloc, NULL);
+    verifyModule.profile = &genericIdentity;
+
+    vTexDecl = CgIRNewDecl(&verifyModule, texSymb, texSymb->name,
+                           sampler2DType, CGIR_STORAGE_UNIFORM,
+                           CGIR_DOMAIN_UNIFORM, 0, NULL, &paramLoc);
+    vObjDecl = CgIRNewDecl(&verifyModule, objSymb, objSymb->name,
+                           &ifaceAType, CGIR_STORAGE_UNIFORM,
+                           CGIR_DOMAIN_UNIFORM, 0, NULL, &paramLoc);
+    assert(vTexDecl != NULL && vObjDecl != NULL);
+    CgIRAppendDecl(&verifyModule.globals, vTexDecl);
+    CgIRAppendDecl(&verifyModule.globals, vObjDecl);
+
+    vHelperFn = CgIRNewFunction(&verifyModule, helperSymb, VoidType,
+                                &fnALoc);
+    vMainFn = CgIRNewFunction(&verifyModule, mainSymb, float4Type, &fnBLoc);
+    assert(vHelperFn != NULL && vMainFn != NULL);
+
+    vOutFormal = CgIRNewDecl(&verifyModule, outFormalSymb,
+                             outFormalSymb->name, &qualifiedOutFloat4,
+                             CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0, NULL,
+                             &paramLoc);
+    vInFormal = CgIRNewDecl(&verifyModule, inFormalSymb,
+                            inFormalSymb->name, float4Type,
+                            CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0, NULL,
+                            &paramLoc);
+    vPosFormal = CgIRNewDecl(&verifyModule, positionSymb,
+                             positionSymb->name, float4Type,
+                             CGIR_STORAGE_NONE, CGIR_DOMAIN_VARYING, 0,
+                             NULL, &paramLoc);
+    assert(vOutFormal != NULL && vInFormal != NULL && vPosFormal != NULL);
+    CgIRAppendDecl(&vHelperFn->parameters, vOutFormal);
+    CgIRAppendDecl(&vHelperFn->parameters, vInFormal);
+    CgIRAppendDecl(&vMainFn->parameters, vPosFormal);
+
+    /* Helper body: assigns the out formal from the in formal. */
+    rTarget = CgIRNewSymbol(&verifyModule, float4Type, &constLoc,
+                            outFormalSymb);
+    assert(rTarget != NULL);
+    rTarget->isLvalue = 1;
+    rValue = CgIRNewSymbol(&verifyModule, float4Type, &constLoc,
+                           inFormalSymb);
+    assert(rValue != NULL);
+    rValue->isLvalue = 1;
+    rValue = CgIRNewAssign(&verifyModule, float4Type, &ctorLoc,
+                           CGIR_OP_ASSIGN, rTarget, rValue);
+    assert(rValue != NULL);
+    rStmt = CgIRNewExprStmt(&verifyModule, &retLoc, rValue);
+    rBody = CgIRNewBlockStmt(&verifyModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    vHelperFn->body = rBody;
+
+    /* Entry local: float4 tmp initialized by scalar replication. */
+    vTmpDecl = CgIRNewDecl(&verifyModule, tmpSymb, tmpSymb->name,
+                           float4Type, CGIR_STORAGE_CONST,
+                           CGIR_DOMAIN_NONE, 0, NULL, &paramLoc);
+    rLeft = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vHalf);
+    vInit = CgIRNewConstruct(&verifyModule, float4Type, &ctorLoc, rLeft);
+    assert(vTmpDecl != NULL && rLeft != NULL && vInit != NULL);
+    vTmpDecl->initializer = vInit;
+
+    vTmpRef = CgIRNewSymbol(&verifyModule, float4Type, &constLoc, tmpSymb);
+    assert(vTmpRef != NULL);
+    vTmpRef->isLvalue = 1;
+
+    bodyList = NULL;
+
+    /* 1. Declaration statement registers the local's visibility. */
+    declStmt = CgIRNewDeclStmt(&verifyModule, &blockLoc, vTmpDecl);
+    assert(declStmt != NULL);
+    CgIRAppendStmt(&bodyList, declStmt);
+
+    /* 2. Unique-component write mask through a swizzled lvalue (.xy). */
+    rTarget = CgIRNewSwizzle(&verifyModule, float2Type, &ctorLoc, vTmpRef,
+                             0x4, 2);
+    assert(rTarget != NULL);
+    rTarget->isLvalue = 1;
+    rLeft = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vOne);
+    assert(rLeft != NULL && rRight != NULL);
+    rArgs = NULL;
+    CgIRAppendExpr(&rArgs, rLeft);
+    CgIRAppendExpr(&rArgs, rRight);
+    rValue = CgIRNewConstruct(&verifyModule, float2Type, &ctorLoc, rArgs);
+    assert(rValue != NULL);
+    assignExpr = CgIRNewAssign(&verifyModule, float2Type, &blockLoc,
+                               CGIR_OP_ASSIGN, rTarget, rValue);
+    assert(assignExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, assignExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 3. Scalar arithmetic under the usual conversions. */
+    rLeft = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vOne);
+    assert(rLeft != NULL && rRight != NULL);
+    binaryExpr = CgIRNewBinary(&verifyModule, floatType, &ctorLoc,
+                               CGIR_OP_ADD, rLeft, rRight);
+    assert(binaryExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, binaryExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 4. Unary negate plus an lvalue increment. */
+    rLeft = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vHalf);
+    assert(rLeft != NULL);
+    unaryExpr = CgIRNewUnary(&verifyModule, floatType, &paramLoc,
+                             CGIR_OP_NEGATE, rLeft);
+    assert(unaryExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, unaryExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+    rValue = CgIRNewUnary(&verifyModule, float4Type, &ctorLoc,
+                          CGIR_OP_POST_INCREMENT, vTmpRef);
+    assert(rValue != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, rValue);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 5. Swizzle read, indexing, and length. */
+    swizExpr = CgIRNewSwizzle(&verifyModule, float2Type, &ctorLoc, vTmpRef,
+                              0x8, 2);
+    idxConst = CgIRNewConstant(&verifyModule, intType, &constLoc,
+                               &vIntZero);
+    assert(swizExpr != NULL && idxConst != NULL);
+    indexExpr = CgIRNewIndex(&verifyModule, floatType, &retLoc, swizExpr,
+                             idxConst);
+    assert(indexExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, indexExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+    lenExpr = CgIRNewLength(&verifyModule, intType, &fnALoc, vTmpRef);
+    assert(lenExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, lenExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 6. Conditional between compatible branches. */
+    boolConst = CgIRNewConstant(&verifyModule, boolType, &constLoc, &vTrue);
+    rLeft = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vHalf);
+    assert(boolConst != NULL && rLeft != NULL && rRight != NULL);
+    condExpr = CgIRNewConditional(&verifyModule, floatType, &retLoc,
+                                  boolConst, rLeft, rRight);
+    assert(condExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, condExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 7. Explicit cast. */
+    rLeft = CgIRNewConstant(&verifyModule, intType, &constLoc, &vIntZero);
+    assert(rLeft != NULL);
+    castExpr = CgIRNewCast(&verifyModule, floatType, &fnBLoc, rLeft);
+    assert(castExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, castExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 8. Intrinsic call matching its catalog-form signature. */
+    rLeft = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vHalf);
+    assert(rLeft != NULL && rRight != NULL);
+    dotArgs = NULL;
+    CgIRAppendExpr(&dotArgs, rLeft);
+    CgIRAppendExpr(&dotArgs, rRight);
+    intrinsicExpr = CgIRNewIntrinsicCall(&verifyModule, floatType, &fnALoc,
+                                         CG_INTRINSIC_DOT, &dotFFSignature,
+                                         dotArgs);
+    assert(intrinsicExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, intrinsicExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 9. Interface dispatch through a conforming receiver. */
+    vObjRef = CgIRNewSymbol(&verifyModule, &ifaceAType, &constLoc, objSymb);
+    assert(vObjRef != NULL);
+    interfaceExpr = CgIRNewInterfaceCall(&verifyModule, floatType,
+                                         &paramLoc, evalSymb, vObjRef, NULL);
+    assert(interfaceExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, interfaceExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 10. User call honoring arity and parameter directions. */
+    rLeft = CgIRNewSymbol(&verifyModule, float4Type, &constLoc, tmpSymb);
+    rRight = CgIRNewSymbol(&verifyModule, float4Type, &constLoc, tmpSymb);
+    assert(rLeft != NULL && rRight != NULL);
+    rLeft->isLvalue = 1;
+    rRight->isLvalue = 1;
+    callArgs = NULL;
+    CgIRAppendExpr(&callArgs, rLeft);
+    CgIRAppendExpr(&callArgs, rRight);
+    callExpr = CgIRNewCall(&verifyModule, VoidType, &fnALoc, helperSymb,
+                           callArgs);
+    assert(callExpr != NULL);
+    exprStmt = CgIRNewExprStmt(&verifyModule, &retLoc, callExpr);
+    assert(exprStmt != NULL);
+    CgIRAppendStmt(&bodyList, exprStmt);
+
+    /* 11. Loop-carried break and continue inside an if. */
+    breakStmt = CgIRNewBreakStmt(&verifyModule, &ctorLoc);
+    continueStmt = CgIRNewContinueStmt(&verifyModule, &retLoc);
+    assert(breakStmt != NULL && continueStmt != NULL);
+    rInner = CgIRNewBlockStmt(&verifyModule, &blockLoc);
+    rBody = CgIRNewBlockStmt(&verifyModule, &blockLoc);
+    assert(rInner != NULL && rBody != NULL);
+    CgIRAppendStmt(&rInner->u.block, breakStmt);
+    CgIRAppendStmt(&rBody->u.block, continueStmt);
+    ifStmt = CgIRNewIfStmt(&verifyModule, &retLoc, boolConst, rInner,
+                           rBody);
+    assert(ifStmt != NULL);
+    rInner = CgIRNewBlockStmt(&verifyModule, &blockLoc);
+    assert(rInner != NULL);
+    CgIRAppendStmt(&rInner->u.block, ifStmt);
+    whileStmt = CgIRNewWhileStmt(&verifyModule, &fnALoc, boolConst, rInner);
+    assert(whileStmt != NULL);
+    CgIRAppendStmt(&bodyList, whileStmt);
+
+    /* 12. Bare discard: conventional synthesis (zero location, clear
+     * flag) and no predicate. */
+    discardStmt = CgIRNewDiscardStmt(&verifyModule, NULL, NULL);
+    assert(discardStmt != NULL);
+    CgIRAppendStmt(&bodyList, discardStmt);
+
+    /* 13. Return of the advertised result type. */
+    rLeft = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vOne);
+    rTarget = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vZero);
+    rValue = CgIRNewConstant(&verifyModule, floatType, &constLoc, &vOne);
+    assert(rLeft != NULL && rRight != NULL);
+    assert(rTarget != NULL && rValue != NULL);
+    rArgs = NULL;
+    CgIRAppendExpr(&rArgs, rLeft);
+    CgIRAppendExpr(&rArgs, rRight);
+    CgIRAppendExpr(&rArgs, rTarget);
+    CgIRAppendExpr(&rArgs, rValue);
+    retStmt = CgIRNewReturnStmt(&verifyModule, &retLoc,
+                                CgIRNewConstruct(&verifyModule, float4Type,
+                                                 &ctorLoc, rArgs));
+    assert(retStmt != NULL && retStmt->u.returnExpr != NULL);
+    CgIRAppendStmt(&bodyList, retStmt);
+
+    bodyBlock = CgIRNewBlockStmt(&verifyModule, &blockLoc);
+    assert(bodyBlock != NULL);
+    CgIRAppendStmt(&bodyBlock->u.block, bodyList);
+    vMainFn->body = bodyBlock;
+
+    vMainFn->isEntry = 1;
+    verifyModule.entry = vMainFn;
+    CgIRAppendFunction(&verifyModule.functions, vHelperFn);
+    CgIRAppendFunction(&verifyModule.functions, vMainFn);
+
+    lVerifyAccept(&verifyModule);
+
+    /*
+     * Rejected modules.  Each case isolates exactly one invariant so
+     * the reported reason is unambiguous; verification stops at the
+     * first failure.
+     */
+
+    /* R1: binary result type disagrees with its operands - the builder
+     * accepts any caller-supplied result type, so float + float typed
+     * as float2 reaches the verifier unchanged. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vOne);
+    assert(rLeft != NULL && rRight != NULL);
+    rValue = CgIRNewBinary(&rejectModule, float2Type, &ctorLoc,
+                           CGIR_OP_ADD, rLeft, rRight);
+    assert(rValue != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, rValue);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    memset(&verifyDiagnostic, 0, sizeof(verifyDiagnostic));
+    assert(!CgIRVerifyModule(&rejectModule, &verifyDiagnostic));
+    assert(verifyDiagnostic.reason == CGIR_VERIFY_TYPE);
+    assert(verifyDiagnostic.node == rValue);
+    assert(verifyDiagnostic.loc.file == ctorLoc.file);
+    assert(verifyDiagnostic.loc.line == ctorLoc.line);
+
+    /* R2: assignment to a non-lvalue - builders leave the lvalue flag
+     * clear, so an unadorned symbol reference is the non-lvalue. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rDecl = CgIRNewDecl(&rejectModule, tmpSymb, tmpSymb->name, float4Type,
+                        CGIR_STORAGE_UNIFORM, CGIR_DOMAIN_UNIFORM, 0, NULL,
+                        &paramLoc);
+    assert(rDecl != NULL);
+    CgIRAppendDecl(&rejectModule.globals, rDecl);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rTarget = CgIRNewSymbol(&rejectModule, float4Type, &constLoc, tmpSymb);
+    rValue = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
+    assert(rTarget != NULL && rValue != NULL);
+    assignExpr = CgIRNewAssign(&rejectModule, float4Type, &blockLoc,
+                               CGIR_OP_ASSIGN, rTarget, rValue);
+    assert(assignExpr != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, assignExpr);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_LVALUE);
+
+    /* R3: wrong-arity call - the callee declares one formal, the call
+     * site passes two arguments. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rCalleeFn = CgIRNewFunction(&rejectModule, shadeSymb, floatType,
+                                &fnALoc);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnBLoc);
+    assert(rCalleeFn != NULL && rFn != NULL);
+    rDecl = CgIRNewDecl(&rejectModule, inFormalSymb, inFormalSymb->name,
+                        float4Type, CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0,
+                        NULL, &paramLoc);
+    assert(rDecl != NULL);
+    CgIRAppendDecl(&rCalleeFn->parameters, rDecl);
+    rCalleeFn->body = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rCalleeFn->body != NULL);
+    rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vOne);
+    assert(rLeft != NULL && rRight != NULL);
+    callArgs = NULL;
+    CgIRAppendExpr(&callArgs, rLeft);
+    CgIRAppendExpr(&callArgs, rRight);
+    callExpr = CgIRNewCall(&rejectModule, floatType, &ctorLoc, shadeSymb,
+                           callArgs);
+    assert(callExpr != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, callExpr);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rCalleeFn);
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_CALL);
+
+    /* R4a: intrinsic arity disagrees with the signature's parameter
+     * list (one argument against dot(float, float)). */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
+    assert(rLeft != NULL);
+    dotArgs = NULL;
+    CgIRAppendExpr(&dotArgs, rLeft);
+    intrinsicExpr = CgIRNewIntrinsicCall(&rejectModule, floatType, &fnALoc,
+                                         CG_INTRINSIC_DOT, &dotFFSignature,
+                                         dotArgs);
+    assert(intrinsicExpr != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, intrinsicExpr);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_INTRINSIC);
+
+    /* R4b: intrinsic identity disagrees with its signature.  Builders
+     * assert identity agreement, so this state is only reachable by
+     * overwriting the opcode after construction. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
+    rRight = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vOne);
+    assert(rLeft != NULL && rRight != NULL);
+    dotArgs = NULL;
+    CgIRAppendExpr(&dotArgs, rLeft);
+    CgIRAppendExpr(&dotArgs, rRight);
+    intrinsicExpr = CgIRNewIntrinsicCall(&rejectModule, floatType, &fnALoc,
+                                         CG_INTRINSIC_DOT, &dotFFSignature,
+                                         dotArgs);
+    assert(intrinsicExpr != NULL);
+    intrinsicExpr->u.intrinsicCall.intrinsic = CG_INTRINSIC_LENGTH;
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, intrinsicExpr);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_INTRINSIC);
+
+    /* R5: return value cannot convert to the function result - a
+     * sampler never converts to float4. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rDecl = CgIRNewDecl(&rejectModule, texSymb, texSymb->name,
+                        sampler2DType, CGIR_STORAGE_UNIFORM,
+                        CGIR_DOMAIN_UNIFORM, 0, NULL, &paramLoc);
+    assert(rDecl != NULL);
+    CgIRAppendDecl(&rejectModule.globals, rDecl);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rValue = CgIRNewSymbol(&rejectModule, sampler2DType, &constLoc, texSymb);
+    assert(rValue != NULL);
+    retStmt = CgIRNewReturnStmt(&rejectModule, &retLoc, rValue);
+    assert(retStmt != NULL);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, retStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    memset(&verifyDiagnostic, 0, sizeof(verifyDiagnostic));
+    assert(!CgIRVerifyModule(&rejectModule, &verifyDiagnostic));
+    assert(verifyDiagnostic.reason == CGIR_VERIFY_TYPE);
+    assert(verifyDiagnostic.node == retStmt);
+
+    /* R6: break outside any loop. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    breakStmt = CgIRNewBreakStmt(&rejectModule, &ctorLoc);
+    assert(breakStmt != NULL);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, breakStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_CONTROL);
+
+    /* R7: discard carrying a non-Boolean predicate. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
+    assert(rLeft != NULL);
+    discardStmt = CgIRNewDiscardStmt(&rejectModule, &ctorLoc, rLeft);
+    assert(discardStmt != NULL);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, discardStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_OPERAND);
+
+    /* R8: interface call whose receiver has the wrong interface - the
+     * method implements ifaceB while the receiver is an ifaceA. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rDecl = CgIRNewDecl(&rejectModule, objSymb, objSymb->name, &ifaceAType,
+                        CGIR_STORAGE_UNIFORM, CGIR_DOMAIN_UNIFORM, 0, NULL,
+                        &paramLoc);
+    assert(rDecl != NULL);
+    CgIRAppendDecl(&rejectModule.globals, rDecl);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rValue = CgIRNewSymbol(&rejectModule, &ifaceAType, &constLoc, objSymb);
+    assert(rValue != NULL);
+    interfaceExpr = CgIRNewInterfaceCall(&rejectModule, floatType,
+                                         &paramLoc, otherEvalSymb, rValue,
+                                         NULL);
+    assert(interfaceExpr != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, interfaceExpr);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rStmt != NULL && rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_INTERFACE);
+
+    /* R9: user-derived node with an empty source location.  The
+     * documented convention makes all-zero location + clear flag
+     * conventionally synthesized, which verifies; setting the
+     * synthesized flag over an empty location claims provenance the
+     * encoding cannot honor.  Builders never set the flag, so the test
+     * writes it directly. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rValue = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
+    assert(rValue != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, NULL, rValue);
+    assert(rStmt != NULL);
+    rStmt->synthesized = 1;
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    memset(&verifyDiagnostic, 0, sizeof(verifyDiagnostic));
+    assert(!CgIRVerifyModule(&rejectModule, &verifyDiagnostic));
+    assert(verifyDiagnostic.reason == CGIR_VERIFY_LOCATION);
+    assert(verifyDiagnostic.node == rStmt);
+
+    /* Twin of R9: the same statement with the flag left clear stays
+     * conventionally synthesized and must verify. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
+    assert(rFn != NULL);
+    rValue = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
+    assert(rValue != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, NULL, rValue);
+    assert(rStmt != NULL);
+    assert(rStmt->synthesized == 0);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyAccept(&rejectModule);
 
     FreeSymbolTable(Cg);
     FreeAtomTable(atable);

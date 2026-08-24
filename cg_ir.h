@@ -531,4 +531,91 @@ CgIRStmt *CgIRNewContinueStmt(CgIRModule *module, const SourceLoc *loc);
 CgIRStmt *CgIRNewDiscardStmt(CgIRModule *module, const SourceLoc *loc,
                              CgIRExpr *condition);
 
+////////////////////////// Module verification /////////////////////////
+
+/*
+ * Stable internal classification of the first invariant a module
+ * violates.  Tests and callers match on these values, never on
+ * user-facing text:
+ *
+ *   OK        - the module verified; diagnostics are zeroed.
+ *   TYPE      - canonical or compatible result types disagree (binary
+ *               and unary result shapes, casts, returns, assignments,
+ *               constructors, element and component types).
+ *   OWNER     - declaration ownership is broken: unresolved symbols,
+ *               duplicate declarations, incomplete functions, entry
+ *               selection, failed allocation.
+ *   OPERAND   - operand counts, presence, or role types are wrong
+ *               (conditions, predicates, swizzle masks, constructor
+ *               data, member lookup).
+ *   LVALUE    - an assignment target, update operand, or out actual is
+ *               not an lvalue, or a write mask repeats components.
+ *   CALL      - ordinary calls: arity, argument conversions, parameter
+ *               directions, resolved callee identity or result type.
+ *   INTRINSIC - intrinsic opcode/signature disagreement, argument
+ *               mismatch against the signature, or result mismatch.
+ *   CONTROL   - break or continue outside any enclosing loop.
+ *   INTERFACE - interface dispatch: receiver interface, method owner,
+ *               method arguments, or method result type.
+ *   LOCATION  - a node claims provenance its location cannot honor: a
+ *               set synthesized flag over an all-zero location.
+ */
+
+typedef enum CgIRVerifyReason_Rec {
+    CGIR_VERIFY_OK = 0,
+    CGIR_VERIFY_TYPE,
+    CGIR_VERIFY_OWNER,
+    CGIR_VERIFY_OPERAND,
+    CGIR_VERIFY_LVALUE,
+    CGIR_VERIFY_CALL,
+    CGIR_VERIFY_INTRINSIC,
+    CGIR_VERIFY_CONTROL,
+    CGIR_VERIFY_INTERFACE,
+    CGIR_VERIFY_LOCATION
+} CgIRVerifyReason;
+
+/*
+ * One controlled internal diagnostic describing the first invariant
+ * failure.  "loc" repeats the failing node's own source location (all
+ * zeroes for synthesized nodes); "node" points at the failing CgIRExpr,
+ * CgIRStmt, CgIRDecl, CgIRFunction, or the module itself for a failed
+ * allocation.
+ */
+
+typedef struct CgIRVerifyDiagnostic_Rec {
+    CgIRVerifyReason reason;
+    SourceLoc loc;
+    const void *node;
+} CgIRVerifyDiagnostic;
+
+/*
+ * CgIRVerifyModule() - Verify every IR invariant before profile
+ *          validation: canonical types, declaration ownership and
+ *          symbol visibility, operand counts and types, lvalues and
+ *          unique write-mask components, call arity/directions/
+ *          signatures, intrinsic identity/signature agreement, return
+ *          compatibility, control placement, interface compatibility,
+ *          and required source locations.  Returns nonzero when the
+ *          module verifies; returns zero at the FIRST invariant failure
+ *          and fills "diagnostic" (when non-NULL) so release builds get
+ *          one controlled internal diagnostic.  Verifying a module with
+ *          a sticky allocation failure reports CGIR_VERIFY_OWNER about
+ *          the module itself.
+ *
+ * Visibility authority: module globals, function parameters, and DECL
+ * statements.  A function's "locals" list is emission metadata checked
+ * for shape only; symbols become visible through their declarations.
+ */
+
+int CgIRVerifyModule(const CgIRModule *module,
+                     CgIRVerifyDiagnostic *diagnostic);
+
+/*
+ * CgIRVerifyReasonName() - Stable lowercase spelling of a verify
+ *          reason for internal diagnostics ("<invalid>" for values
+ *          outside the enum).
+ */
+
+const char *CgIRVerifyReasonName(CgIRVerifyReason reason);
+
 #endif // !defined(__CG_IR_H)
