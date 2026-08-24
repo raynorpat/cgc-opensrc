@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Status: Design approved in dialogue; written review pending
+Status: Approved
 
 ## Purpose
 
@@ -352,6 +352,7 @@ Add shared IR enums conceptually equivalent to:
 ```c
 typedef enum CgIRStage_Rec {
     CGIR_STAGE_UNKNOWN = 0,
+    CGIR_STAGE_NEUTRAL,
     CGIR_STAGE_VERTEX,
     CGIR_STAGE_GEOMETRY,
     CGIR_STAGE_FRAGMENT
@@ -371,6 +372,11 @@ typedef enum CgIRGeometryOutput_Rec {
     CGIR_GEOMETRY_OUTPUT_TRIANGLE_STRIP
 } CgIRGeometryOutput;
 ```
+
+`CGIR_STAGE_NEUTRAL` is the resolved stage used by `generic` for a selected
+non-geometry program whose source has no target stage identity. It preserves
+the existing normalized generic output. `CGIR_STAGE_UNKNOWN` is construction
+state only and is verifier-invalid after entry resolution.
 
 A geometry module owns one record conceptually equivalent to:
 
@@ -552,6 +558,9 @@ currently defined flat shadow values into their GLSL output variables. This
 replay is required because GLSL geometry outputs become undefined after a
 vertex is emitted. Control flow preserves ordinary Cg assignment semantics:
 only a path that executes `flatAttrib` updates the corresponding shadow state.
+Each shadow has a private defined flag initialized false, so replay is guarded
+on paths that have not yet executed the matching `flatAttrib`; private module
+state keeps the same behavior when geometry operations occur in helpers.
 
 The GLSL target IR represents emit and restart as explicit side-effect nodes.
 It also records flat-shadow declarations and the replay set attached to each
@@ -588,9 +597,9 @@ Extend the shared GLSL target IR with:
   `GlslModule`.
 - Arrayed geometry inputs and built-in interface identities.
 - Explicit emit and restart statements.
-- Flat-shadow locals and per-emit replay metadata.
+- Private flat-shadow state, defined flags, and per-emit replay metadata.
 
-`GlslLowerProgram` continues the base plan's migration to verified Cg IR and
+`GlslLowerCgIR` continues the base plan's migration to verified Cg IR and
 accepts the selected `CgIRModule` as its source. It first validates the chosen
 profile's focused capability set, then performs stage-aware lowering. A
 standalone GLSL IR verifier rejects stage/profile mismatches, missing or
