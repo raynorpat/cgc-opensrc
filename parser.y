@@ -397,6 +397,8 @@ type_qualifier:           CONST_SY
 
 type_domain:              UNIFORM_SY
                               { $$ = TYPE_DOMAIN_UNIFORM; }
+                        | VARYING_SY
+                              { $$ = TYPE_DOMAIN_VARYING; }
 ;
 
 /*******************/

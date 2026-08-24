@@ -127,6 +127,7 @@ static const struct {
     TYPEIDENT_SY,   "<type-ident>",
     UNIFORM_SY,     "uniform",
     UNSIGNED_SY,    "unsigned",
+    VARYING_SY,     "varying",
     VOID_SY,        "void",
     WHILE_SY,       "while",
 };

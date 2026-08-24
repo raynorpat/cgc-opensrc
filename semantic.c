@@ -45,6 +45,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -154,6 +155,103 @@ static void lNewUniformSemantic(int gname, Symbol *fSymb, int semantics)
 } // lNewUniformSemantic
 
 /*
+ * CanonicalSemanticAtom() - Return the case-canonical atom for a binding
+ *         semantic name.  Semantic identity is compared through this atom
+ *         so that e.g. "COLOR0" and "color0" denote one connector slot,
+ *         while diagnostics and normalized output retain the source
+ *         spelling of whichever declaration is being reported.
+ */
+
+static int CanonicalSemanticAtom(int semantic)
+{
+    const char *source = GetAtomString(atable, semantic);
+    char text[MAX_SYMBOL_NAME_LEN + 1];
+    int index;
+
+    if (!source)
+        return 0;
+    for (index = 0; source[index] && index < MAX_SYMBOL_NAME_LEN; ++index)
+        text[index] = (char) toupper((unsigned char) source[index]);
+    text[index] = '\0';
+    return LookUpAddString(atable, text);
+} // CanonicalSemanticAtom
+
+/*
+ * Program outputs join one per-compilation map keyed by the canonical
+ * semantic atom.  The first declaration seen is recorded; a later
+ * declaration with the same canonical atom aliases an output connector
+ * and is rejected by lCheckOutputSemantic().
+ *
+ */
+
+typedef struct OutputSemanticRec {
+    int canonical;
+    Symbol *symb;
+    struct OutputSemanticRec *next;
+} OutputSemantic;
+
+static OutputSemantic *lOutputSemantics;
+
+/*
+ * lCheckOutputSemantic() - Record "fSymb" under its output semantic, or
+ *         reject it when the canonical atom was already bound: reports
+ *         ERROR_SSSD_PROGRAM_OUTPUT_ALIAS at the second declaration with
+ *         the first declaration's location as the note.  Returns 1 when
+ *         the binding conflicts.
+ */
+
+static int lCheckOutputSemantic(Symbol *fSymb, int semantics)
+{
+    OutputSemantic *lOutput;
+    Symbol *lFirst;
+    int canonical;
+
+    if (!semantics)
+        return 0;
+    canonical = CanonicalSemanticAtom(semantics);
+    for (lFirst = NULL, lOutput = lOutputSemantics; lOutput;
+         lOutput = lOutput->next)
+    {
+        if (lOutput->canonical == canonical) {
+            lFirst = lOutput->symb;
+            break;
+        }
+    }
+    if (lFirst) {
+        SemanticError(&fSymb->loc, ERROR_SSSD_PROGRAM_OUTPUT_ALIAS,
+                      GetAtomString(atable, semantics),
+                      GetAtomString(atable, lFirst->name),
+                      GetAtomString(atable, lFirst->loc.file),
+                      lFirst->loc.line);
+        return 1;
+    }
+    lOutput = (OutputSemantic *) malloc(sizeof(OutputSemantic));
+    lOutput->canonical = canonical;
+    lOutput->symb = fSymb;
+    lOutput->next = lOutputSemantics;
+    lOutputSemantics = lOutput;
+    return 0;
+} // lCheckOutputSemantic
+
+/*
+ * EffectiveProgramDomain() - The program domain a symbol participates in:
+ *         an explicit domain qualifier wins; otherwise a top-level entry
+ *         parameter defaults to varying and everything else (globals and
+ *         helper parameters, whose domain qualifiers and binding semantics
+ *         the language ignores) defaults to uniform.  Function parameter
+ *         directions (in/out/inout) are orthogonal and unaffected.
+ */
+
+static int EffectiveProgramDomain(const Symbol *symbol, int isTopLevelParam)
+{
+    int domain = GetDomain(symbol->type);
+
+    if (domain != TYPE_DOMAIN_UNKNOWN)
+        return domain;
+    return isTopLevelParam ? TYPE_DOMAIN_VARYING : TYPE_DOMAIN_UNIFORM;
+} // EffectiveProgramDomain
+
+/*
  * lBindUniformVariable() - Bind a uniform variable to $uniform connector.  Record semantics
  *         value if present.
  */
@@ -222,12 +320,52 @@ static int lBindUniformVariable(Symbol *fSymb, int gname, int IsParameter)
 } // lBindUniformVariable
 
 /*
+ * lResolveGlobalVaryingDirection() - A varying-domain global has no
+ *         out qualifier, so its connector direction is inferred from the
+ *         semantic: input first, then output.  HAL errors pass through;
+ *         a semantic that binds in neither direction reports unknown
+ *         semantics here.  Returns 1 with *fIsOutVal set on success.
+ */
+
+static int lResolveGlobalVaryingDirection(Symbol *fSymb, Binding *lBind,
+                                          int *fIsOutVal)
+{
+    SourceLoc *loc = &fSymb->loc;
+    int lname = fSymb->details.var.semantics;
+    int errorsBefore = GetErrorCount();
+
+    if (Cg->theHAL->BindVaryingSemantic(loc, fSymb, lname, lBind, 0)) {
+        *fIsOutVal = 0;
+        return 1;
+    }
+    if (GetErrorCount() != errorsBefore)
+        return 0;
+    /* Reset the probe binding before retrying in the output direction. */
+    lBind->none.properties = 0;
+    lBind->none.gname = 0;
+    lBind->none.lname = 0;
+    lBind->none.base = 0;
+    lBind->none.size = 0;
+    lBind->none.kind = BK_NONE;
+    if (Cg->theHAL->BindVaryingSemantic(loc, fSymb, lname, lBind, 1)) {
+        *fIsOutVal = 1;
+        return 1;
+    }
+    if (GetErrorCount() == errorsBefore) {
+        SemanticError(loc, ERROR_S_UNKNOWN_SEMANTICS,
+                      GetAtomString(atable, fSymb->name));
+    }
+    return 0;
+} // lResolveGlobalVaryingDirection
+
+/*
  * lBindVaryingVariable() - Bind a variable to $vin, $vout, or $uniform connector.
  *
  */
 
-static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int IsStructMember,
-                                    int structSemantics)
+static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal,
+                                    int IsStructMember, int structSemantics,
+                                    int IsGlobal)
 {
     int category, domain, qualifiers;
     Symbol *lSymb, *mSymb;
@@ -254,6 +392,16 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int 
                                 GetAtomString(atable, fSymb->name));
             }
             lname = fSymb->details.var.semantics;
+            if (IsGlobal &&
+                !lResolveGlobalVaryingDirection(fSymb, lBind, &IsOutVal))
+            {
+                return NULL;
+            }
+            /* Case-canonical identity: reject the second use of an
+             * output semantic before profile binding sees either
+             * spelling of the name. */
+            if (IsOutVal && lCheckOutputSemantic(fSymb, lname))
+                return NULL;
             errorsBefore = GetErrorCount();
             if (Cg->theHAL->BindVaryingSemantic(&fSymb->loc, fSymb, lname, lBind, IsOutVal)) {
                 if (lBind->none.properties & BIND_INPUT) {
@@ -410,6 +558,89 @@ static Type *lSynthesizeEntryReturnConnector(SourceLoc *loc, Scope *fScope,
 } // lSynthesizeEntryReturnConnector
 
 /*
+ * lBindGlobalVarying() - Bind one explicit varying-domain global into the
+ *         program interface: reading it copies its connector member in
+ *         before main's body and writing it copies out with the other
+ *         entry outputs.
+ */
+
+static void lBindGlobalVarying(Symbol *lGlobal, Symbol *program,
+                               Symbol *vinVar, Symbol *voutVar,
+                               StmtList *instmts, StmtList *outstmts)
+{
+    Symbol *lBound;
+    Binding *lBind;
+    expr *lExpr, *rExpr, *vExpr;
+    stmt *lStmt;
+    int len, rlen;
+
+    lBound = lBindVaryingVariable(lGlobal, 0, 0, 0, 0, 1);
+    if (! lBound)
+        return;
+    lBind = lBound->details.var.bind;
+    if (!lBind || (lBind->none.properties & BIND_HIDDEN))
+        return;
+    lExpr = GenSymb(lGlobal);
+    if (IsScalar(lGlobal->type) || IsVector(lGlobal->type, &len)) {
+        if (lBind->none.properties & BIND_INPUT) {
+            // Assign $vin member to bound global:
+            vExpr = (expr *) NewSymbNode(VARIABLE_OP, vinVar);
+            rExpr = GenMemberReference(vExpr, lBound);
+            if (IsVector(lBound->type, &rlen))
+                rExpr = GenConvertVectorLength(rExpr, GetBase(lBound->type), rlen, len);
+            lStmt = NewSimpleAssignmentStmt(&program->loc, lExpr, rExpr, 0);
+            AppendStatements(instmts, lStmt);
+        } else {
+            // Assign bound global to $vout member:
+            vExpr = (expr *) NewSymbNode(VARIABLE_OP, voutVar);
+            rExpr = GenMemberReference(vExpr, lBound);
+            if (IsVector(lBound->type, &rlen))
+                lExpr = GenConvertVectorLength(lExpr, GetBase(lGlobal->type), len, rlen);
+            lStmt = NewSimpleAssignmentStmt(&program->loc, rExpr, lExpr, 0);
+            AppendStatements(outstmts, lStmt);
+        }
+    } else {
+        FatalError("Parameter of unsupported type");
+        // xxx
+    }
+} // lBindGlobalVarying
+
+/*
+ * lBindGlobalVaryingTree() - Walk the global scope's symbol tree binding
+ *         every explicit varying-domain scalar or array global.  Other
+ *         globals keep their existing treatment: default-domain globals
+ *         stay on the lazy uniform path (CheckForGlobalUniformReferences),
+ *         and helper parameters never reach binding semantics at all.
+ */
+
+static void lBindGlobalVaryingTree(Symbol *lSymb, Symbol *vinVar,
+                                   Symbol *voutVar, Symbol *program,
+                                   StmtList *instmts, StmtList *outstmts)
+{
+    int category;
+
+    if (! lSymb)
+        return;
+    lBindGlobalVaryingTree(lSymb->left, vinVar, voutVar, program,
+                           instmts, outstmts);
+    if (lSymb != vinVar && lSymb != voutVar &&
+        lSymb->kind == VARIABLE_S &&
+        lSymb->storageClass != SC_STATIC)
+    {
+        category = GetCategory(lSymb->type);
+        if ((category == TYPE_CATEGORY_SCALAR ||
+             category == TYPE_CATEGORY_ARRAY) &&
+            EffectiveProgramDomain(lSymb, 0) == TYPE_DOMAIN_VARYING)
+        {
+            lBindGlobalVarying(lSymb, program, vinVar, voutVar,
+                               instmts, outstmts);
+        }
+    }
+    lBindGlobalVaryingTree(lSymb->right, vinVar, voutVar, program,
+                           instmts, outstmts);
+} // lBindGlobalVaryingTree
+
+/*
  * BuildSemanticStructs() - Build the three global semantic type structure,  Check main for
  *         type errors in its arguments.
  */
@@ -426,9 +657,13 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
     Type *lType, *rettype;
     StmtList instmts, outstmts;
     Binding *lBind;
-    int IsOutParam;
+    int IsOutParam, entryDomain;
     float lVal[4];
     stmt *lStmt;
+
+    // One program interface per compilation: reset the output map.
+
+    lOutputSemantics = NULL;
 
     // Define pseudo type structs for semantics:
 
@@ -455,6 +690,12 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
     instmts.first = instmts.last = NULL;
     outstmts.first = outstmts.last = NULL;
 
+    // Bind explicit varying-domain globals into the program interface
+    // ahead of the parameters; see lBindGlobalVaryingTree().
+
+    lBindGlobalVaryingTree(fScope->symbols, vinVar, voutVar, program,
+                           &instmts, &outstmts);
+
     // Walk list of formals creating semantic struct members for all parameters:
 
     formal = program->details.fun.params;
@@ -478,7 +719,8 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
         if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT)
             SemanticError(&formal->loc, ERROR_S_MAIN_PARAMS_CANT_BE_INOUT,
                           GetAtomString(atable, formal->name));
-        if (domain == TYPE_DOMAIN_UNIFORM) {
+        entryDomain = EffectiveProgramDomain(formal, 1);
+        if (entryDomain == TYPE_DOMAIN_UNIFORM) {
             if (qualifiers & TYPE_QUALIFIER_OUT) {
                 SemanticError(&formal->loc, ERROR_S_UNIFORM_ARG_CANT_BE_OUT,
                               GetAtomString(atable, formal->name));
@@ -514,7 +756,8 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
             switch (category) {
             case TYPE_CATEGORY_SCALAR:
             case TYPE_CATEGORY_ARRAY:
-                lSymb = lBindVaryingVariable(formal, program->name, IsOutParam, 0, 0);
+                lSymb = lBindVaryingVariable(formal, program->name, IsOutParam, 0,
+                                             0, 0);
                 if (lSymb) {
                     lBind = lSymb->details.var.bind;
                     if (lBind && !(lBind->none.properties & BIND_HIDDEN)) {
@@ -551,7 +794,7 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
                 member = lScope->symbols;
                 while (member) {
                     lSymb = lBindVaryingVariable(member, lType->str.tag, IsOutParam, 1,
-                                                 lType->str.semantics);
+                                                 lType->str.semantics, 0);
                     if (lSymb) {
                         lBind = lSymb->details.var.bind;
                         if (lBind && !(lBind->none.properties & BIND_HIDDEN)) {
@@ -612,7 +855,7 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
             member = lScope->symbols;
             while (member) {
                 lSymb = lBindVaryingVariable(member, rettype->str.tag, 1, 1,
-                                             rettype->str.semantics);
+                                             rettype->str.semantics, 0);
                 member = member->next;
             }
         }

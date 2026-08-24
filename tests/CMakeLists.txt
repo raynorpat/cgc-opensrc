@@ -247,6 +247,37 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
 )
 add_test(
+    NAME cg20_default_domains
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/profile/default_domains.cg
+        "-DMESSAGE=//semantic globalTint.*//var float4 globalTint.*-1 : 1.*//var float4 position : [$]vin[.]POSITION"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake
+)
+add_cg20_success(cg20_input_alias tests/cg20/profile/input_alias.cg)
+add_cg20_success(cg20_global_varying tests/cg20/profile/global_varying.cg)
+add_test(
+    NAME cg20_output_alias
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/output_alias.cg
+        -DCODE=5122
+        -DMESSAGE=outputs.conflict.at.semantic
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+add_test(
+    NAME cg20_semantic_case_collision
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/semantic_case_collision.cg
+        -DCODE=5122
+        -DMESSAGE=outputs.conflict.at.semantic
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+add_test(
     NAME cg20_manifest
     COMMAND ${CMAKE_COMMAND}
         -DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/cg20/conformance.csv
@@ -897,9 +928,13 @@ add_glsl_profile_failure(glslv_duplicate_exact_input_same glslv
 add_glsl_profile_failure(glslv_duplicate_exact_input_type glslv
     tests/glsl/diagnostics/vp_duplicate_exact_input_type.cg 6204 6
     "interface.conflicts")
+# Exact-duplicate outputs moved from the GLSL interface-conflict check to
+# the language-level output-alias rule ("Enforce Cg program interface
+# semantics"): same canonical semantic, so the second declaration is
+# rejected before any profile lowering.
 add_glsl_profile_failure(glslv_duplicate_exact_output glslv
-    tests/glsl/diagnostics/vp_duplicate_exact_output.cg 6204 4
-    "interface.conflicts")
+    tests/glsl/diagnostics/vp_duplicate_exact_output.cg 5122 4
+    "outputs.conflict.at.semantic")
 add_glsl_profile_failure(glslf_duplicate_exact_input_same glslf
     tests/glsl/diagnostics/fp_duplicate_exact_input_same.cg 6204 6
     "interface.conflicts")
@@ -907,8 +942,8 @@ add_glsl_profile_failure(glslf_duplicate_exact_input_type glslf
     tests/glsl/diagnostics/fp_duplicate_exact_input_type.cg 6204 6
     "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_exact_output glslf
-    tests/glsl/diagnostics/fp_duplicate_exact_output.cg 6204 3
-    "interface.conflicts")
+    tests/glsl/diagnostics/fp_duplicate_exact_output.cg 5122 3
+    "outputs.conflict.at.semantic")
 add_glsl_failure(glslv_constant_remainder
     tests/glsl/diagnostics/vp_constant_remainder.cg 6 remainder)
 add_glsl_failure(glslv_constant_shift_left

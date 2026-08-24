@@ -1,0 +1,11 @@
+// default_domains.cg - Cg 2.0 default program domains.  A non-static
+// global declared without a domain joins the uniform interface; a
+// top-level parameter declared without a domain is a varying connector
+// input.  The generic listing must show globalTint in the uniform
+// semantic table and position copied in through $vin.POSITION.
+float4 globalTint;
+
+float4 main(float4 position : POSITION) : COLOR0
+{
+    return position * globalTint;
+}

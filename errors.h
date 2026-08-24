@@ -266,6 +266,10 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_NO_TEXUNITS_AVAILABLE       5120, "no texture units left to bind to \"%s\""
 #define ERROR_S_PROGRAM_RETURN_NEEDS_SEMANTIC 5121, "program \"%s\" must declare a semantic on its return value"
 
+// Cg 2.0 program interface rules
+
+#define ERROR_SSSD_PROGRAM_OUTPUT_ALIAS     5122, "program outputs conflict at semantic \"%s\"; \"%s\" declared at %s(%d)"
+
 #define ERROR_S_INVALID_INTERNAL_FUNCTION   5201, "invalid internal function declaration for \"%s\""
 
 // Profile specific features not yet implemented

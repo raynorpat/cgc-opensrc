@@ -14,6 +14,11 @@ SAMPLER-RECT,valid-generic,cg20_sampler_rect,Samplers
 SAMPLER-ASSIGN-DIAG,invalid-language,cg20_sampler_assignment,Samplers
 SAMPLER-PARAM-DIAG,invalid-language,cg20_sampler_incompatible,Samplers
 SAMPLER-GLOBAL-DIAG,invalid-language,cg20_sampler_varying_global,Samplers
+LANG-DOMAINS,valid-generic,cg20_default_domains,Program interface domains
+LANG-INPUT-ALIAS,valid-generic,cg20_input_alias,Program interface aliases
+LANG-GLOBAL-VARYING,valid-generic,cg20_global_varying,Program interface domains
+INTERFACE-OUTPUT-ALIAS,invalid-language,cg20_output_alias,Program interface aliases
+INTERFACE-CASE-COLLISION,invalid-language,cg20_semantic_case_collision,Program interface aliases
 INTERFACE-CONFORMANCE,valid-generic,cg20_interface_dispatch,Struct and interface types
 OVERLOAD-PROFILE,valid-generic,cg20_profile_overload,Function overloading
 STDLIB-INTRINSICS,valid-generic,cg20_stdlib_coverage,Cg Standard Library Functions
