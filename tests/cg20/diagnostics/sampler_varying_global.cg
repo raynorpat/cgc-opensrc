@@ -1,0 +1,10 @@
+// sampler_varying_global.cg - a non-uniform-domain sampler at global scope
+// is rejected: samplers must be global uniforms or function parameters.
+// An unqualified global sampler carries no uniform domain and used to be
+// silently bound as a uniform by default-semantics binding.
+sampler2D surface;
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position;
+}

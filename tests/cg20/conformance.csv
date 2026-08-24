@@ -13,6 +13,7 @@ SAMPLER-FAMILY,valid-generic,cg20_sampler_base_compat,Samplers
 SAMPLER-RECT,valid-generic,cg20_sampler_rect,Samplers
 SAMPLER-ASSIGN-DIAG,invalid-language,cg20_sampler_assignment,Samplers
 SAMPLER-PARAM-DIAG,invalid-language,cg20_sampler_incompatible,Samplers
+SAMPLER-GLOBAL-DIAG,invalid-language,cg20_sampler_varying_global,Samplers
 INTERFACE-CONFORMANCE,valid-generic,cg20_interface_dispatch,Struct and interface types
 OVERLOAD-PROFILE,valid-generic,cg20_profile_overload,Function overloading
 STDLIB-INTRINSICS,valid-generic,cg20_stdlib_coverage,Cg Standard Library Functions

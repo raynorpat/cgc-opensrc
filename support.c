@@ -1549,8 +1549,10 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
  * formal parameters (handled by the caller) and as global uniform
  * variables.  Function locals, static globals, and structure members are
  * rejected, as are arrays and other aggregates with sampler elements.
- * GLSL 1.10 profiles keep enforcing their own sampler rules during
- * lowering, so these language checks stay silent there.
+ * Global declarations must carry uniform domain; varying or unqualified
+ * globals would otherwise be silently bound as uniforms.  GLSL 1.10
+ * profiles keep enforcing their own sampler rules during lowering, so
+ * these language checks stay silent there.
  */
 
 static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,
@@ -1569,6 +1571,13 @@ static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,
     }
     if (fScope->IsStructScope || fScope->level > 1 || IsStatic)
     {
+        SemanticError(loc, ERROR_S_SAMPLER_DECLARATION,
+                      GetAtomString(atable, name));
+    }
+    else if (GetDomain(fType) != TYPE_DOMAIN_UNIFORM)
+    {
+        /* The remaining case is a file-scope declaration; it is only a
+         * legal sampler home when declared "uniform". */
         SemanticError(loc, ERROR_S_SAMPLER_DECLARATION,
                       GetAtomString(atable, name));
     }
