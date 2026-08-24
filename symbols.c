@@ -252,6 +252,32 @@ int InitSymbolTable(CgStruct *Cg)
                                       standardTypeNames[declarationKinds[ii]]);
     }
 
+    // Canonical sampler typedefs are language types in every profile;
+    // profile backends adapt them to their texture-object bases.
+
+    {
+        static const struct {
+            const char *name;
+            CgSamplerKind kind;
+        } samplerSpellings[] = {
+            { "sampler",     CG_SAMPLER_BASE },
+            { "sampler1D",   CG_SAMPLER_1D },
+            { "sampler2D",   CG_SAMPLER_2D },
+            { "sampler3D",   CG_SAMPLER_3D },
+            { "samplerCUBE", CG_SAMPLER_CUBE },
+            { "samplerRECT", CG_SAMPLER_RECT }
+        };
+        for (ii = 0; ii < (int) (sizeof(samplerSpellings) /
+                                 sizeof(samplerSpellings[0])); ii++)
+        {
+            int atom = LookUpAddString(atable, samplerSpellings[ii].name);
+            AddSymbol(&dummyLoc, CurrentScope, atom,
+                      GetSamplerType(samplerSpellings[ii].kind), TYPEDEF_S);
+            SetScalarTypeName(CgSamplerLegacyBase(samplerSpellings[ii].kind),
+                              atom, GetSamplerType(samplerSpellings[ii].kind));
+        }
+    }
+
     FalseSymb = AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "false"), BooleanType, CONSTANT_S);
     TrueSymb = AddSymbol(&dummyLoc, CurrentScope, LookUpAddString(atable, "true"), BooleanType, CONSTANT_S);
     FalseSymb->details.con.value = 0;
@@ -308,6 +334,7 @@ int FreeSymbolTable(CgStruct *Cg)
         lScope = nScope;
     }
     FreeCgStandardTypes();
+    FreeCgSamplerTypes();
     return 1;
 } // FreeSymbolTable
 
@@ -830,6 +857,10 @@ int IsSameUnqualifiedType(const Type *aType, const Type *bType)
             switch (aType->properties & TYPE_CATEGORY_MASK) {
             case TYPE_CATEGORY_SCALAR:
                 return 1;
+            case TYPE_CATEGORY_SAMPLER:
+                // Sampler identity is the interned kind; qualifiers are
+                // the only legal variation between two instances.
+                return IsSampler(aType, NULL) && IsSampler(bType, NULL);
             case TYPE_CATEGORY_ARRAY:
                 // Packedness is part of the type at every nesting layer,
                 // and the numels comparison is sentinel-aware: two unsized

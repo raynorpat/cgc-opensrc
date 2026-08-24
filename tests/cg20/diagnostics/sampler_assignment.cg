@@ -1,0 +1,11 @@
+// sampler_assignment.cg - samplers may only be copied through parameter
+// passing; assigning one sampler variable to another is a language error.
+
+uniform sampler2D first;
+uniform sampler2D second;
+
+float4 main(uniform float4 tint) : COLOR0
+{
+    first = second;
+    return tint;
+}

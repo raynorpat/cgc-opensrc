@@ -9,6 +9,10 @@ ARRAY-UNSIZED,valid-generic,cg20_unsized_array,Unsized Arrays
 ARRAY-NESTED,valid-generic,cg20_arrays_nested_struct,Nested arrays and structs
 ARRAY-LENGTH,valid-generic,cg20_array_length,Array length queries
 ARRAY-INIT-DIAG,invalid-language,cg20_unsized_initializer,Unsized array initializers
+SAMPLER-FAMILY,valid-generic,cg20_sampler_base_compat,Samplers
+SAMPLER-RECT,valid-generic,cg20_sampler_rect,Samplers
+SAMPLER-ASSIGN-DIAG,invalid-language,cg20_sampler_assignment,Samplers
+SAMPLER-PARAM-DIAG,invalid-language,cg20_sampler_incompatible,Samplers
 INTERFACE-CONFORMANCE,valid-generic,cg20_interface_dispatch,Struct and interface types
 OVERLOAD-PROFILE,valid-generic,cg20_profile_overload,Function overloading
 STDLIB-INTRINSICS,valid-generic,cg20_stdlib_coverage,Cg Standard Library Functions

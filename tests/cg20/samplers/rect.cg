@@ -1,0 +1,12 @@
+// rect.cg - samplerRECT is a valid language type and flows through an
+// ordinary in-parameter helper under the generic profile.
+
+float4 shadeRect(in samplerRECT image, float4 fallback)
+{
+    return fallback;
+}
+
+float4 main(uniform samplerRECT image) : COLOR0
+{
+    return shadeRect(image, float4(0.25, 0.5, 0.0, 1.0));
+}

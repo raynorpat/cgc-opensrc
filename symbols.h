@@ -78,6 +78,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TYPE_CATEGORY_FUNCTION      0x00000030
 #define TYPE_CATEGORY_STRUCT        0x00000040
 #define TYPE_CATEGORY_CONNECTOR     0x00000050
+#define TYPE_CATEGORY_SAMPLER       0x00000060
 
 #define TYPE_DOMAIN_MASK            0x00000f00
 #define TYPE_DOMAIN_SHIFT           8
@@ -136,6 +137,7 @@ typedef struct TypeScalar_Rec TypeScalar;
 typedef struct TypeArray_Rec TypeArray;
 typedef struct TypeStruct_Rec TypeStruct;
 typedef struct TypeFunction_Rec TypeFunction;
+typedef struct TypeSampler_Rec TypeSampler;
 
 typedef struct SymbolList_Rec {
     struct SymbolList_Rec *next;
@@ -213,6 +215,13 @@ struct TypeFunction_Rec {
     TypeList *paramtypes;
 };
 
+struct TypeSampler_Rec {
+    int properties;
+    int size;
+    CgScalarKind scalarKind;
+    CgSamplerKind samplerKind;
+};
+
 union Type_Rec {
     int properties;
     TypeCommon co;
@@ -220,6 +229,7 @@ union Type_Rec {
     TypeArray arr;
     TypeStruct str;
     TypeFunction fun;
+    TypeSampler samp;
 };
 
 // Symbol table is a simple binary tree.

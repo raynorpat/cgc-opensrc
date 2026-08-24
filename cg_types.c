@@ -774,3 +774,121 @@ void FreeCgStandardTypes(void)
 {
     memset(standardTypes, 0, sizeof(standardTypes));
 } // FreeCgStandardTypes
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// Sampler Type Registry: ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * CgSamplerLegacyBase() - The four-bit texture-object base that backs a
+ *                         canonical sampler kind inside backend validation
+ *                         and lowering.  The first four values deliberately
+ *                         equal the GLSL profiles' historical user bases
+ *                         (TYPE_BASE_GLSL_SAMPLER1D..CUBE in glsl_hal.h) so
+ *                         backend base decoding keeps working unchanged;
+ *                         samplerRECT and the deprecated base kind occupy
+ *                         the next free user slots.
+ */
+
+int CgSamplerLegacyBase(CgSamplerKind kind)
+{
+    switch (kind) {
+    case CG_SAMPLER_1D:
+        return TYPE_BASE_FIRST_USER + 0;
+    case CG_SAMPLER_2D:
+        return TYPE_BASE_FIRST_USER + 1;
+    case CG_SAMPLER_3D:
+        return TYPE_BASE_FIRST_USER + 2;
+    case CG_SAMPLER_CUBE:
+        return TYPE_BASE_FIRST_USER + 3;
+    case CG_SAMPLER_RECT:
+        return TYPE_BASE_FIRST_USER + 4;
+    case CG_SAMPLER_BASE:
+        return TYPE_BASE_FIRST_USER + 5;
+    default:
+        return TYPE_BASE_NO_TYPE;
+    }
+} // CgSamplerLegacyBase
+
+static Type *samplerTypes[CG_SAMPLER_COUNT];
+
+/*
+ * IsSampler() - TRUE if "type" is a canonical sampler type; its family
+ *               member is reported through "kind" when non-NULL.
+ *
+ */
+
+int IsSampler(const Type *type, CgSamplerKind *kind)
+{
+    CgSamplerKind sampled;
+
+    if (!type || GetCategory(type) != TYPE_CATEGORY_SAMPLER) {
+        return 0;
+    }
+    sampled = type->samp.samplerKind;
+    if (sampled < CG_SAMPLER_BASE || sampled >= CG_SAMPLER_COUNT) {
+        return 0;
+    }
+    if (kind) {
+        *kind = sampled;
+    }
+    return 1;
+} // IsSampler
+
+/*
+ * GetSamplerType() - Return the interned canonical sampler type for
+ *                    "kind", creating it on first use.  Invalid kinds map
+ *                    to UndefinedType, like unsupported standard shapes.
+ *
+ */
+
+Type *GetSamplerType(CgSamplerKind kind)
+{
+    Type *type;
+
+    if (kind < CG_SAMPLER_BASE || kind >= CG_SAMPLER_COUNT) {
+        return UndefinedType;
+    }
+    if (!samplerTypes[kind]) {
+        type = NewType(TYPE_CATEGORY_SAMPLER | CgSamplerLegacyBase(kind), 1);
+        SetScalarKind(type, CG_SCALAR_NONE);
+        type->samp.samplerKind = kind;
+        samplerTypes[kind] = type;
+    }
+    return samplerTypes[kind];
+} // GetSamplerType
+
+/*
+ * CgSamplerCompatible() - TRUE when an actual sampler of "actualKind" may
+ *                         bind to a formal of "formalKind": any specific
+ *                         kind binds to the deprecated base sampler, and
+ *                         only identical kinds bind to each other.  A base
+ *                         sampler value never binds to a specific formal,
+ *                         which keeps the deprecated spelling from
+ *                         masquerading as a concrete kind.
+ *
+ */
+
+int CgSamplerCompatible(CgSamplerKind formalKind, CgSamplerKind actualKind)
+{
+    if (formalKind < CG_SAMPLER_BASE || formalKind >= CG_SAMPLER_COUNT ||
+        actualKind < CG_SAMPLER_BASE || actualKind >= CG_SAMPLER_COUNT)
+    {
+        return 0;
+    }
+    if (formalKind == CG_SAMPLER_BASE) {
+        return 1;
+    }
+    return formalKind == actualKind;
+} // CgSamplerCompatible
+
+/*
+ * FreeCgSamplerTypes() - Reset the interned sampler-type registry.  The
+ *                        interned Type structs stay allocated; only the
+ *                        registry entries are cleared.
+ */
+
+void FreeCgSamplerTypes(void)
+{
+    memset(samplerTypes, 0, sizeof(samplerTypes));
+} // FreeCgSamplerTypes

@@ -180,6 +180,29 @@ add_cg20_success(cg20_conversions_aggregate
 add_cg20_success(cg20_unsized_array tests/cg20/arrays/unsized.cg)
 add_cg20_success(cg20_arrays_nested_struct tests/cg20/arrays/nested_struct.cg)
 add_cg20_success(cg20_array_length tests/cg20/arrays/length.cg)
+add_cg20_success(cg20_sampler_base_compat
+    tests/cg20/samplers/compatible_base.cg)
+add_cg20_success(cg20_sampler_rect tests/cg20/samplers/rect.cg)
+add_test(
+    NAME cg20_sampler_assignment
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/sampler_assignment.cg
+        -DCODE=1150
+        -DMESSAGE=sampler.values
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+add_test(
+    NAME cg20_sampler_incompatible
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/sampler_incompatible.cg
+        -DCODE=1102
+        -DMESSAGE=incompatible.type.for.parameter
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
 add_test(
     NAME cg20_invalid_conversion
     COMMAND ${CMAKE_COMMAND}
@@ -317,8 +340,13 @@ add_generic_regression(vertexlight vertexlight.cg
 # atoms shift dynamic atom IDs, which reorders top-level declarations in
 # generic output.  Content is unchanged (verified equal modulo declaration
 # order against pre-change builds).
+# Hash updated by "Model Cg 2.0 sampler types": interning the six sampler
+# type-name atoms during symbol-table initialization shifts dynamic atom
+# IDs, which reorders top-level declarations in generic output.  Content
+# is unchanged (verified byte-equal modulo declaration order against the
+# pre-change build).
 add_generic_regression(vertexlight4 vertexlight4.cg
-    5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
+    8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
 add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg

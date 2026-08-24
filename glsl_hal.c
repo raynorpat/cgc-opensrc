@@ -549,6 +549,29 @@ static int GlslResolvedType(Type *source, GlslType *target)
 
     if (source == NULL || target == NULL)
         return 0;
+    if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
+        /* Adapter: canonical language samplers map onto the GLSL
+         * texture-object bases; kinds with no GLSL 1.10 spelling do not
+         * resolve and are rejected by the caller. */
+        switch (source->samp.samplerKind) {
+        case CG_SAMPLER_1D:
+            base = GLSL_BASE_SAMPLER1D;
+            break;
+        case CG_SAMPLER_2D:
+            base = GLSL_BASE_SAMPLER2D;
+            break;
+        case CG_SAMPLER_3D:
+            base = GLSL_BASE_SAMPLER3D;
+            break;
+        case CG_SAMPLER_CUBE:
+            base = GLSL_BASE_SAMPLERCUBE;
+            break;
+        default:
+            return 0;
+        }
+        *target = GlslNumericType(base, 1);
+        return 1;
+    }
     if (IsMatrix(source, &cols, &rows)) {
         if (GetBase(source) != TYPE_BASE_FLOAT &&
             GetBase(source) != TYPE_BASE_CFLOAT) return 0;

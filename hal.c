@@ -392,6 +392,7 @@ static int GetSizeof_HAL(Type *fType)
         case TYPE_CATEGORY_SCALAR:
         case TYPE_CATEGORY_STRUCT:
         case TYPE_CATEGORY_CONNECTOR:
+        case TYPE_CATEGORY_SAMPLER:
             size = fType->co.size;
             break;
         case TYPE_CATEGORY_ARRAY:
@@ -433,7 +434,9 @@ static int GetAlignment_HAL(Type *fType)
     int category, alignment;
 
     if (fType) {
-        if (Cg->theHAL->IsTexobjBase(GetBase(fType))) {
+        if (Cg->theHAL->IsTexobjBase(GetBase(fType)) ||
+            GetCategory(fType) == TYPE_CATEGORY_SAMPLER)
+        {
             alignment = 4;
         } else {
             category = GetCategory(fType);

@@ -52,6 +52,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "glsl_hal.h"
 
 dtype CurrentDeclTypeSpecs = { 0, };
 
@@ -679,6 +680,12 @@ return_stmt *NewReturnStmt(SourceLoc *loc, Scope *fScope, expr *fExpr)
         while (fScope->level > 2)
             fScope = fScope->next;
         fScope->HasReturnStmt = 1;
+        if (!CgLegacySamplerChecks() &&
+            ((fExpr && IsSampler(fExpr->common.type, NULL)) ||
+             IsSampler(fScope->returnType, NULL)))
+        {
+            SemanticError(loc, ERROR___SAMPLER_RETURN);
+        }
         if (fScope->returnType) {
             if (fScope->returnType == VoidType) {
                 if (fExpr) {
@@ -1237,6 +1244,7 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
     case TYPE_CATEGORY_NONE:
         return 0;
     case TYPE_CATEGORY_SCALAR:
+    case TYPE_CATEGORY_SAMPLER:
         if (dExpr->common.kind == BINARY_N && dExpr->bin.op == EXPR_LIST_OP) {
             if (!dExpr->bin.left) {
                 /* "{}" parses as an empty initializer list. */
@@ -1495,6 +1503,7 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                         SemanticError(loc, ERROR___INVALID_INITIALIZATION);
                         break;
                     case TYPE_CATEGORY_SCALAR:
+                    case TYPE_CATEGORY_SAMPLER:
                         assert(fExpr->common.kind == BINARY_N && fExpr->bin.op == EXPR_LIST_OP);
                         if (DontAssign) {
                             lSymb->details.var.init = fExpr;
@@ -1533,6 +1542,37 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
     }
     return lStmt;
 } // Init_Declarator
+
+/*
+ * lCheckSamplerDeclaration() - Enforce the Cg 2.0 sampler placement rules
+ * where a variable declarator introduces a name: samplers live only as
+ * formal parameters (handled by the caller) and as global uniform
+ * variables.  Function locals, static globals, and structure members are
+ * rejected, as are arrays and other aggregates with sampler elements.
+ * GLSL 1.10 profiles keep enforcing their own sampler rules during
+ * lowering, so these language checks stay silent there.
+ */
+
+static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,
+                                     int name, Type *fType, int IsStatic)
+{
+    Type *element;
+
+    if (CgLegacySamplerChecks())
+        return;
+    if (!IsSampler(fType, NULL)) {
+        element = fType;
+        while (element && IsArray(element))
+            element = element->arr.eltype;
+        if (!element || !IsSampler(element, NULL))
+            return;
+    }
+    if (fScope->IsStructScope || fScope->level > 1 || IsStatic)
+    {
+        SemanticError(loc, ERROR_S_SAMPLER_DECLARATION,
+                      GetAtomString(atable, name));
+    }
+} // lCheckSamplerDeclaration
 
 /*
  * Declarator() - Process a declarator.
@@ -1602,6 +1642,9 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                         SemanticError(&fDecl->loc, ERROR_S_UNSIZED_ARRAY,
                                       GetAtomString(atable, fDecl->name));
                     }
+                    lCheckSamplerDeclaration(&fDecl->loc, CurrentScope,
+                                             fDecl->name, lType,
+                                             fDecl->type.storageClass == SC_STATIC);
                     if (IsCategory(lType, TYPE_CATEGORY_ARRAY) && !IsPacked(lType)) {
                         if (!Cg->theHAL->GetCapsBit(CAPS_INDEXED_ARRAYS)) {
                             // XYZZY - This test needs to be moved to later to support multiple profiles
@@ -1728,6 +1771,7 @@ decl *Array_Declarator(SourceLoc *loc, decl *fDecl, int size, int Empty)
         SemanticError(loc, ERROR___ARRAY_OF_VOID);
     switch (GetCategory(&lDtype->type)) {
     case TYPE_CATEGORY_SCALAR:
+    case TYPE_CATEGORY_SAMPLER:
         lType = lDtype->basetype;
         SetTypeCategory(loc, 0, lDtype, TYPE_CATEGORY_ARRAY, 1);
         lDtype->type.arr.eltype = lType;
@@ -1790,6 +1834,18 @@ Symbol *AddFormalParamDecls(Scope *fScope, decl *params)
             if (IsCategory(lType, TYPE_CATEGORY_ARRAY) && !IsPacked(lType)) {
                 if (!Cg->theHAL->GetCapsBit(CAPS_INDEXED_ARRAYS)) {
                     SemanticError(&params->loc, ERROR_S_UNPACKED_ARRAY,
+                                  GetAtomString(atable, params->name));
+                }
+            }
+            /* Sampler formals must be plain samplers: aggregates of
+             * samplers have no language meaning in any profile. */
+            if (!CgLegacySamplerChecks()) {
+                Type *element = lType;
+                while (element && IsArray(element))
+                    element = element->arr.eltype;
+                if (IsArray(lType) && element && IsSampler(element, NULL))
+                {
+                    SemanticError(&params->loc, ERROR_S_SAMPLER_DECLARATION,
                                   GetAtomString(atable, params->name));
                 }
             }
@@ -2148,6 +2204,20 @@ int IsConst(const expr *fExpr)
 } // IsConst
 
 /*
+ * CgLegacySamplerChecks() - TRUE when the active target is a GLSL 1.10
+ * profile that still enforces its own sampler rules during lowering.
+ * The Cg 2.0 language sampler restrictions stay silent for those targets
+ * so every existing profile diagnostic keeps coming from the layer that
+ * has always produced it; Task 19 migrates the checks.
+ */
+
+int CgLegacySamplerChecks(void)
+{
+    return Cg->theHAL->pid == PROFILE_GLSLV_ID ||
+           Cg->theHAL->pid == PROFILE_GLSLF_ID;
+} // CgLegacySamplerChecks
+
+/*
  * IsArrayIndex() - Is this expression an array index expression?
  *
  */
@@ -2248,9 +2318,10 @@ int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
     ToPacked = (toType->properties & TYPE_MISC_PACKED) != 0;
     FromPacked = (fromType->properties & TYPE_MISC_PACKED) != 0;
     if (Explicit && IsSameUnqualifiedType(toType, fromType) &&
-        Cg->theHAL->IsTexobjBase(GetBase(toType)))
+        IsSampler(toType, NULL))
     {
-        /* Texture objects cannot be cast, not even to their own type. */
+        /* Samplers are opaque: they cannot be cast, not even to their
+         * own type. */
         return 0;
     }
     if (IsSameUnqualifiedType(toType, fromType) &&
@@ -2500,7 +2571,7 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
     lop = fop;
     MustBeBoolean = fop == BNOT_OP ? 1 : 0;
     lType = eltype = fExpr->common.type;
-    if (IsScalar(lType)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
         subop = 0;
     } else if (IsVector(lType, &len)) {
         eltype = lType->arr.eltype;
@@ -2578,8 +2649,8 @@ expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *re
     CanSmear = fop == MUL_OP || fop == DIV_OP || fop == ADD_OP || fop == SUB_OP ? 1 : 0;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    if (IsScalar(lType)) {
-        if (IsScalar(rtype)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             subop = 0;
         } else if (IsVector(rtype, &rlen)) {
             if (CanSmear) {
@@ -2596,7 +2667,7 @@ expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *re
         }
     } else if (IsVector(lType, &llen)) {
         leltype = lType->arr.eltype;
-        if (IsScalar(rtype)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             if (CanSmear) {
                 lop = fop + OFFSET_VS_OP;
                 subop = SUBOP_VS(llen, 0);
@@ -2674,8 +2745,8 @@ expr *NewBinaryBooleanOperator(SourceLoc *loc, int fop, int name, expr *lExpr, e
     lop = fop;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    if (IsScalar(lType)) {
-        if (IsScalar(rtype)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             subop = SUBOP__(TYPE_BASE_BOOLEAN);
         } else {
             SemanticError(loc, ERROR_S_INVALID_OPERANDS, GetAtomString(atable, name));
@@ -2745,8 +2816,8 @@ expr *NewBinaryComparisonOperator(SourceLoc *loc, int fop, int name, expr *lExpr
     lop = fop;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    if (IsScalar(lType)) {
-        if (IsScalar(rtype)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             subop = 0;
         } else if (IsVector(rtype, &rlen)) {
             reltype = rtype->arr.eltype;
@@ -2954,9 +3025,16 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
             category = GetCategory(lType);
             if ((category == TYPE_CATEGORY_SCALAR ||
                  category == TYPE_CATEGORY_ARRAY ||
-                 category == TYPE_CATEGORY_STRUCT) &&
+                 category == TYPE_CATEGORY_STRUCT ||
+                 category == TYPE_CATEGORY_SAMPLER) &&
                 !IsVoid(lType))
             {
+                if (category == TYPE_CATEGORY_SAMPLER && !CgLegacySamplerChecks())
+                {
+                    /* Conditional selection would copy a sampler value. */
+                    SemanticError(loc, ERROR___SAMPLER_CONDITIONAL);
+                    HasError = 1;
+                }
                 result = NewTriopSubNode(lop, 0, bexpr, lExpr, rexpr);
                 result->type = lType;
             } else {
@@ -3097,7 +3175,7 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
 
     if (fType) {
         rType = fType;
-        if (IsScalar(fType)) {
+        if (IsScalar(fType) || IsSampler(fType, NULL)) {
             /* A scalar type applied to one scalar argument is a cast,
              * not a length-one vector construction: */
             if (fExpr && fExpr->common.kind == BINARY_N &&
@@ -3476,6 +3554,7 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
     TypeList *lFormals;
     expr *lExpr, *lActuals;
     Symbol *lSymb;
+    CgSamplerKind formalKind, actualKind;
     int paramno, inout;
     int lop, lsubop = FUN_CALL_OP;
 
@@ -3512,6 +3591,15 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                 inout |= 1;
             if (formalType->properties & TYPE_QUALIFIER_OUT) {
                 inout |= 2;
+                if (!CgLegacySamplerChecks() && IsSampler(formalType, NULL)) {
+                    /* Samplers are read-only interface values: only in
+                     * parameter passing copies them. */
+                    lExpr = lActuals->bin.left;
+                    SemanticError(loc, ERROR_S_SAMPLER_OUT_PARAM,
+                        lExpr && lExpr->common.kind == SYMB_N &&
+                        lExpr->sym.op == VARIABLE_OP && lExpr->sym.symbol ?
+                        GetAtomString(atable, lExpr->sym.symbol->name) : "");
+                }
                 lExpr = lActuals->bin.left;
                 if (lExpr) {
                     if (lExpr->common.IsLValue) {
@@ -3536,6 +3624,14 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                  * Ranked argument conversion lands in Task 12. */
             } else if (ConvertType(loc, lActuals->bin.left, formalType, actualType, &lExpr, 0, 0, 0)) {
                 lActuals->bin.left = lExpr;
+                SUBOP_SET_MASK(lActuals->bin.subop, inout);
+            } else if (IsSampler(formalType, &formalKind) &&
+                       IsSampler(actualType, &actualKind) &&
+                       CgSamplerCompatible(formalKind, actualKind))
+            {
+                /* Any specific sampler binds directly to a deprecated
+                 * base-sampler formal; incompatible specific kinds fall
+                 * through to the error below. */
                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
             } else {
                 SemanticError(loc, ERROR_D_INCOMPATIBLE_PARAMETER, paramno);
@@ -3585,6 +3681,13 @@ expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
     //if ((vqualifiers & TYPE_QUALIFIER_CONST) && !InInit)
     if (fVar->common.IsConst && !InInit)
         SemanticError(loc, ERROR___ASSIGN_TO_CONST_VALUE);
+    if (!CgLegacySamplerChecks() &&
+        (IsSampler(vType, NULL) || IsSampler(eType, NULL)))
+    {
+        /* Samplers are opaque language types: they may only be copied
+         * through parameter passing, never assigned or initialized. */
+        SemanticError(loc, ERROR___SAMPLER_ASSIGNMENT);
+    }
     if (vdomain == TYPE_DOMAIN_UNIFORM && edomain == TYPE_DOMAIN_VARYING)
         SemanticError(loc, ERROR___ASSIGN_VARYING_TO_UNIFORM);
     if (IsArray(vType) && IsUnsizedArray(vType) && IsArray(eType)) {

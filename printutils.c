@@ -510,6 +510,7 @@ void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
             strcat(name, "<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
+        case TYPE_CATEGORY_SAMPLER:
             strcat(name, lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
@@ -581,6 +582,7 @@ void FormatTypeStringRT(char *name, int size, char *name2, int size2, Type *fTyp
             strcat(name, "<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
+        case TYPE_CATEGORY_SAMPLER:
             strcat(name, lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
@@ -664,6 +666,7 @@ void PrintType(Type *fType, int level)
             printf("<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
+        case TYPE_CATEGORY_SAMPLER:
             base = GetBase(fType);
             printf("%s", lTypeNameString(fType, base));
             break;

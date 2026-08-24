@@ -1,0 +1,12 @@
+// sampler_incompatible.cg - specific sampler kinds are distinct types;
+// passing a sampler2D where a sampler3D is required is rejected.
+
+float4 sampleVolume(sampler3D volume, float4 fallback)
+{
+    return fallback;
+}
+
+float4 main(uniform sampler2D surface) : COLOR0
+{
+    return sampleVolume(surface, float4(0.25, 0.5, 0.0, 1.0));
+}

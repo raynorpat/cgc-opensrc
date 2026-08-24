@@ -395,6 +395,33 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
         *target = GlslNumericType(GLSL_BASE_VOID, 0);
         return 1;
     }
+    if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
+        /* Adapter: canonical language samplers keep the historical
+         * texture-object bases, so the GLSL type mapping below is
+         * unchanged; kinds without a GLSL 1.10 spelling are rejected
+         * through the normal unsupported-type path. */
+        switch (source->samp.samplerKind) {
+        case CG_SAMPLER_1D:
+            *target = GlslNumericType(GLSL_BASE_SAMPLER1D, 1);
+            return 1;
+        case CG_SAMPLER_2D:
+            *target = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+            return 1;
+        case CG_SAMPLER_3D:
+            *target = GlslNumericType(GLSL_BASE_SAMPLER3D, 1);
+            return 1;
+        case CG_SAMPLER_CUBE:
+            *target = GlslNumericType(GLSL_BASE_SAMPLERCUBE, 1);
+            return 1;
+        default:
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                    source->samp.samplerKind ==
+                                        CG_SAMPLER_RECT ? "samplerRECT" :
+                                                          "sampler",
+                                    loc);
+            return 0;
+        }
+    }
     if (IsMatrix(source, &cols, &rows)) {
         if (base != TYPE_BASE_FLOAT && base != TYPE_BASE_CFLOAT) {
             GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
@@ -618,6 +645,24 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
     if (IsMatrix(type, NULL, NULL) || IsVector(type, NULL) ||
         GetCategory(type) == TYPE_CATEGORY_SCALAR)
         return 1;
+    if (GetCategory(type) == TYPE_CATEGORY_SAMPLER) {
+        /* Adapter: canonical language samplers validate through their
+         * family kind; GLSL 1.10 has no spelling for samplerRECT or the
+         * deprecated base sampler. */
+        switch (type->samp.samplerKind) {
+        case CG_SAMPLER_1D:
+        case CG_SAMPLER_2D:
+        case CG_SAMPLER_3D:
+        case CG_SAMPLER_CUBE:
+            return 1;
+        default:
+            GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                                  type->samp.samplerKind ==
+                                      CG_SAMPLER_RECT ? "samplerRECT" :
+                                                        "sampler");
+            return 0;
+        }
+    }
     if (GetCategory(type) == TYPE_CATEGORY_ARRAY)
         return type->arr.numels > 0 &&
                GlslEnsureType(context, type->arr.eltype);
@@ -811,7 +856,8 @@ static int GlslCollectUniformSymbol(GlslLowerContext *context,
     if (GlslFindUniformBinding(context->module, symbol) != NULL)
         return 1;
     if (Cg->theHAL->IsTexobjBase(GetBase(symbol->type)) &&
-        GetCategory(symbol->type) != TYPE_CATEGORY_SCALAR)
+        GetCategory(symbol->type) != TYPE_CATEGORY_SCALAR &&
+        GetCategory(symbol->type) != TYPE_CATEGORY_SAMPLER)
     {
         context->statementLoc = symbol->loc;
         GlslRecordFailureKind(context, GLSL_ERROR_SAMPLER,
@@ -3084,7 +3130,8 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
         symbol == NULL || symbol->kind != VARIABLE_S ||
         symbol->type == NULL ||
         GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM ||
-        GetCategory(symbol->type) != TYPE_CATEGORY_SCALAR ||
+        (GetCategory(symbol->type) != TYPE_CATEGORY_SCALAR &&
+         GetCategory(symbol->type) != TYPE_CATEGORY_SAMPLER) ||
         GetBase(symbol->type) != sourceBase ||
         binding == NULL || binding->storage != GLSL_STORAGE_SAMPLER ||
         binding->declaration != decl || binding->name == NULL ||

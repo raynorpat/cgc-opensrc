@@ -173,6 +173,7 @@ static int lBindUniformVariable(Symbol *fSymb, int gname, int IsParameter)
     case TYPE_CATEGORY_SCALAR:
     case TYPE_CATEGORY_ARRAY:
     case TYPE_CATEGORY_STRUCT:
+    case TYPE_CATEGORY_SAMPLER:
         lNewUniformSemantic(gname, fSymb, fSymb->details.var.semantics);
         if (IsParameter) {
             lList = &Cg->theHAL->uniformParam;
@@ -242,6 +243,7 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal, int 
     switch (category) {
     case TYPE_CATEGORY_SCALAR:
     case TYPE_CATEGORY_ARRAY:
+    case TYPE_CATEGORY_SAMPLER:
         lScope = NULL;
         lname = 0;
         lBind = /* theHAL-> */ NewBinding(gname, fSymb->name);
@@ -460,6 +462,19 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
         category = GetCategory(formal->type);
         domain = GetDomain(formal->type);
         qualifiers = GetQualifiers(formal->type);
+        if (!CgLegacySamplerChecks() && IsSampler(formal->type, NULL)) {
+            /* Samplers enter a program only through its uniform
+             * interface; varying-domain sampler parameters have no
+             * binding semantics at the language level. */
+            if (domain != TYPE_DOMAIN_UNIFORM ||
+                (qualifiers & (TYPE_QUALIFIER_OUT | TYPE_QUALIFIER_INOUT)))
+            {
+                SemanticError(&formal->loc, ERROR_S_ILLEGAL_PARAM_TO_MAIN,
+                              GetAtomString(atable, formal->name));
+                formal = formal->next;
+                continue;
+            }
+        }
         if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT)
             SemanticError(&formal->loc, ERROR_S_MAIN_PARAMS_CANT_BE_INOUT,
                           GetAtomString(atable, formal->name));
@@ -472,6 +487,7 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
             case TYPE_CATEGORY_SCALAR:
             case TYPE_CATEGORY_ARRAY:
             case TYPE_CATEGORY_STRUCT:
+            case TYPE_CATEGORY_SAMPLER:
                 if (lBindUniformVariable(formal, program->name, 1) && formal->details.var.init) {
                     formal->details.var.init = FoldConstants(formal->details.var.init);
                     if (Cg->theHAL->GetCapsBit(
@@ -629,6 +645,7 @@ void BindDefaultSemantic(Symbol *lSymb, int category, int gname)
     case TYPE_CATEGORY_SCALAR:
     case TYPE_CATEGORY_ARRAY:
     case TYPE_CATEGORY_STRUCT:
+    case TYPE_CATEGORY_SAMPLER:
         gname = 0;
         if (lBindUniformVariable(lSymb, gname, 0) && lSymb->details.var.init) {
             lSymb->details.var.init = FoldConstants(lSymb->details.var.init);

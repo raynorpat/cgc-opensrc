@@ -93,6 +93,30 @@ int InitCgStandardTypes(void);
 void FreeCgStandardTypes(void);
 
 /*
+ * Sampler identity.  Samplers are first-class language types with their
+ * own category (TYPE_CATEGORY_SAMPLER in symbols.h); the kind records
+ * which member of the family a type names.  CG_SAMPLER_BASE is the
+ * deprecated kind-generic "sampler" spelling, accepted only where any
+ * specific sampler may flow.
+ */
+
+typedef enum CgSamplerKind_Rec {
+    CG_SAMPLER_BASE = 0,
+    CG_SAMPLER_1D,
+    CG_SAMPLER_2D,
+    CG_SAMPLER_3D,
+    CG_SAMPLER_CUBE,
+    CG_SAMPLER_RECT,
+    CG_SAMPLER_COUNT
+} CgSamplerKind;
+
+int IsSampler(const Type *type, CgSamplerKind *kind);
+Type *GetSamplerType(CgSamplerKind kind);
+int CgSamplerCompatible(CgSamplerKind formalKind, CgSamplerKind actualKind);
+int CgSamplerLegacyBase(CgSamplerKind kind);
+void FreeCgSamplerTypes(void);
+
+/*
  * Normative conversion classification.  Ranks are ordered so that better
  * conversions compare greater: EXACT needs no cast, DYNAMIC is reserved for
  * interface types, PROMOTION adapts a compile-time constant, IMPLICIT is a
