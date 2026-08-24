@@ -208,6 +208,30 @@ static int lComponentCount(const Type *type)
 } // lComponentCount
 
 /*
+ * lAggregateComponents() - Leaf-component geometry including first-
+ *          class arrays: an aggregate initializer's leaves must fill
+ *          exactly this many slots.  Unsized or broken nesting yields
+ *          zero so the construct is rejected.
+ */
+
+static int lAggregateComponents(const Type *type)
+{
+    int len, len2;
+
+    if (IsScalar(type) || IsVector(type, &len) ||
+        IsMatrix(type, &len, &len2))
+    {
+        return lComponentCount(type);
+    }
+    if (GetCategory(type) == TYPE_CATEGORY_ARRAY) {
+        if (type->arr.numels <= 0 || type->arr.numels == CG_ARRAY_UNSIZED)
+            return 0;
+        return type->arr.numels * lAggregateComponents(type->arr.eltype);
+    }
+    return 0;
+} // lAggregateComponents
+
+/*
  * lShapesCompatible() - Componentwise binary compatibility: scalars
  *          mix with anything, everything else needs equal geometry.
  */
@@ -352,6 +376,27 @@ static int lDeclareSymbol(CgIRVerifyContext *ctx, Symbol *symbol,
 } // lDeclareSymbol
 
 ////////////////////////////// Expression rules ///////////////////////////////
+
+/*
+ * lFindMemberInTree() - Connector member scopes built by
+ *          BuildSemanticStructs carry their data members only in the
+ *          name-lookup tree, so the ordered params chain alone is not
+ *          enough to resolve a selection.
+ */
+
+static Symbol *lFindMemberInTree(const Symbol *root, const Symbol *member)
+{
+    Symbol *found;
+
+    if (root == NULL)
+        return NULL;
+    if (root->name == member->name && !IsFunction(root))
+        return (Symbol *) root;
+    found = lFindMemberInTree(root->left, member);
+    if (found != NULL)
+        return found;
+    return lFindMemberInTree(root->right, member);
+} // lFindMemberInTree
 
 static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr);
 
@@ -630,7 +675,8 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
             return 0;
         objectType = expr->u.member.object->type;
         member = expr->u.member.member;
-        if (GetCategory(objectType) != TYPE_CATEGORY_STRUCT ||
+        if ((GetCategory(objectType) != TYPE_CATEGORY_STRUCT &&
+             GetCategory(objectType) != TYPE_CATEGORY_CONNECTOR) ||
             objectType->str.members == NULL)
         {
             return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
@@ -647,6 +693,9 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
                 break;
             }
         }
+        if (found == NULL)
+            found = lFindMemberInTree(objectType->str.members->symbols,
+                                      member);
         if (found == NULL)
             return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
         if (!IsSameUnqualifiedType(expr->type, found->type))
@@ -730,7 +779,7 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
         }
         break;
     case CGIR_EXPR_CONSTRUCT:
-        components = lComponentCount(expr->type);
+        components = lAggregateComponents(expr->type);
         if (components <= 0 || !lKnownKind(GetScalarKind(expr->type)))
             return CgIRFail(ctx, CGIR_VERIFY_TYPE, expr->loc, expr);
         argumentCount = 0;
@@ -742,7 +791,7 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
                 return 0;
             if (!lKnownKind(GetScalarKind(cursor->type)))
                 return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
-            len = lComponentCount(cursor->type);
+            len = lAggregateComponents(cursor->type);
             if (len <= 0)
                 return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
             if (IsScalar(cursor->type))
@@ -750,6 +799,7 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
             components -= len;
             argumentCount++;
         }
+        /* Exact leaf fill, or the single-scalar replication form. */
         if (!(components == 0 || (argumentCount == 1 && singleScalar)))
             return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
         break;

@@ -58,6 +58,62 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "glsl_hal.h"
 #include "cg_stdlib.h"
+#include "cg_ir.h"
+#include "cg_reach.h"
+#include "cg_ir_lower.h"
+
+/*
+ * lIRPoolAlloc() - Cg IR nodes live in the compilation's global-scope
+ *          memory pool: zero-filled, released with the symbol table.
+ */
+
+static void *lIRPoolAlloc(void *arg, size_t size)
+{
+    return mem_Calloc((MemoryPool *) arg, size, 1);
+} // lIRPoolAlloc
+
+/*
+ * lLowerAndVerifyIR() - Cg 2.0 seam: after entry selection and language
+ *          checking, compute the reachable set, lower the typed tree,
+ *          and verify the module.  On verification failure exactly one
+ *          controlled internal diagnostic reports the verifier's reason
+ *          at the failing node's location and compilation stops; legacy
+ *          generation stays active after successful verification until
+ *          Task 17 adds HAL hooks.
+ *
+ * Returns nonzero when the program lowered AND verified.
+ */
+
+static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program)
+{
+    CgReachGraph reach;
+    CgIRModule module;
+    CgIRLowerContext context;
+    int OK;
+
+    memset(&reach, 0, sizeof(reach));
+    if (!CgReachBuild(program, &reach)) {
+        InternalError(loc, ERROR_S_CG_IR_INVARIANT, "reachability build");
+        return 0;
+    }
+    CgIRInitModule(&module, lIRPoolAlloc, fScope->pool);
+    context.module = &module;
+    context.reach = &reach;
+    memset(&context.verifyDiagnostic, 0,
+           sizeof(context.verifyDiagnostic));
+    OK = CgIRLowerProgram(&context, fScope, program);
+    if (OK) {
+        OK = CgIRVerifyModule(&module, &context.verifyDiagnostic);
+        if (!OK) {
+            InternalError(&context.verifyDiagnostic.loc,
+                          ERROR_S_CG_IR_INVARIANT,
+                          CgIRVerifyReasonName(
+                              context.verifyDiagnostic.reason));
+        }
+    }
+    CgReachDestroy(&reach);
+    return OK;
+} // lLowerAndVerifyIR
 
 /*
  * OpenOutputFile()
@@ -740,6 +796,7 @@ expr *GenConvertVectorLength(expr *fExpr, int base, int len, int newlen)
     expr *lExpr;
 
     if (newlen != len) {
+        mask = 0;
         for (ii = 0; ii < newlen; ii++) {
             if (ii < len) {
                 mask |= ii << (ii*2);
@@ -2780,6 +2837,13 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
             BuildSemanticStructs(loc, fScope, program);
             CheckFunctionDefinitions(loc, fScope, program);
             if (GetErrorCount() != 0)
+                goto done;
+
+            // Cg 2.0: lower the reachable program to Cg IR and verify
+            // it before any legacy transformation runs.  Failure stops
+            // compilation with one internal diagnostic.
+
+            if (!lLowerAndVerifyIR(loc, fScope, program))
                 goto done;
 
             // Convert to Basic Blocks Format goes here...

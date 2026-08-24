@@ -281,6 +281,31 @@ add_cg20_success(cg20_interface_conformance tests/cg20/interfaces/conformance.cg
 add_cg20_success(cg20_interface_dispatch tests/cg20/interfaces/dispatch.cg)
 add_cg20_success(cg20_overload_defaults tests/cg20/overloads/defaults.cg)
 
+# Cg 2.0 reachability fixtures (Task 16): reachable.cg compiles through
+# generic; unreachable_profile_feature keeps a glslv-rejected operation
+# inside an uncalled helper and must still generate code under glslv.
+
+add_cg20_success(cg20_reachable tests/cg20/ir/reachable.cg)
+if(GLSLANG_VALIDATOR)
+    set(cg20_unreachable_validator "-DVALIDATOR=${GLSLANG_VALIDATOR}")
+else()
+    set(cg20_unreachable_validator "")
+endif()
+add_test(
+    NAME cg20_unreachable_profile_feature
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSTAGE=vert
+        -DENTRY=main
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/ir/unreachable_profile_feature.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_unreachable_profile_feature.glsl"
+        "-DMESSAGE=#version 110"
+        ${cg20_unreachable_validator}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake
+)
+
 # Cg 2.0 standard-library fixtures (Task 13): the numeric and texture
 # families compile through generic only; predefined_outputs exercises
 # the fragment-family helper structures under glslf and rejects them
@@ -545,6 +570,7 @@ add_executable(cg_ir_unit
     ${PROJECT_SOURCE_DIR}/cg_ir.c
     ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_reach.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
     ${PROJECT_SOURCE_DIR}/memory.c

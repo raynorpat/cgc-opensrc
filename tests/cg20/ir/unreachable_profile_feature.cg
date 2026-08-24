@@ -1,0 +1,14 @@
+// The only use of a profile-rejected operation sits inside a helper no
+// reachable code calls: bitwise and is rejected by the glslv lowering,
+// but generation walks only reachable functions, so the program must
+// still compile cleanly under glslv.
+
+int4 glslvRejected(int4 a, int4 b)
+{
+    return a & b;
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position;
+}

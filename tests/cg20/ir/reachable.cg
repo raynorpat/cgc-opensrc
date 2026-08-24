@@ -1,0 +1,28 @@
+// Reachability fixture: main -> helperA -> helperB, one referenced
+// uniform, one unreferenced helper, and one unreferenced global.  The
+// reach graph must admit exactly main, helperA, helperB, and g_tint;
+// the unused declarations lower nowhere but must not break compilation.
+
+float4 g_tint : COLOR0 = float4(0.25, 0.5, 0.75, 1.0);
+
+float4 g_unused = float4(1.0, 0.0, 0.0, 1.0);
+
+float4 helperB(float4 v)
+{
+    return v * 0.5;
+}
+
+float4 helperA(float4 v)
+{
+    return helperB(v) + g_tint;
+}
+
+float4 unusedHelper(float4 v)
+{
+    return v.zxyw;
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return helperA(position);
+}

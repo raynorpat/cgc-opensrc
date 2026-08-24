@@ -175,6 +175,69 @@ int main(void)
                    GetStandardTypeKind(CG_SCALAR_FLOAT, 0, 0))) == CG_SCALAR_FLOAT);
     }
 
+    /* First-class arrays: an identical aggregate converts exactly
+     * without a cast; differing elements keep needing the explicit
+     * form even at equal lengths. */
+    {
+        Type ints;
+        Type intsAgain;
+        Type floats;
+        Type unsized;
+
+        InitType(&ints);
+        ints.properties = TYPE_BASE_INT | TYPE_CATEGORY_ARRAY;
+        ints.arr.eltype = GetStandardTypeKind(CG_SCALAR_INT, 0, 0);
+        ints.arr.numels = 4;
+        ints.arr.scalarKind = CG_SCALAR_INT;
+        intsAgain = ints;
+        InitType(&floats);
+        floats.properties = TYPE_BASE_FLOAT | TYPE_CATEGORY_ARRAY;
+        floats.arr.eltype = GetStandardTypeKind(CG_SCALAR_FLOAT, 0, 0);
+        floats.arr.numels = 4;
+        floats.arr.scalarKind = CG_SCALAR_FLOAT;
+
+        assert(CgClassifyConversion(&ints, &ints, 0) ==
+               CG_CONVERSION_EXACT);
+        assert(CgClassifyConversion(&ints, &intsAgain, 0) ==
+               CG_CONVERSION_EXACT);
+        assert(CgClassifyConversion(&floats, &ints, 0) ==
+               CG_CONVERSION_NONE);
+        assert(CgClassifyConversion(&floats, &ints, 1) !=
+               CG_CONVERSION_NONE);
+
+        /* A concrete array binds exactly to an unsized array of the
+         * same element shape; the runtime length travels with the
+         * value. */
+        InitType(&unsized);
+        unsized.properties = ints.properties;
+        unsized.arr.eltype = ints.arr.eltype;
+        unsized.arr.numels = CG_ARRAY_UNSIZED;
+        unsized.arr.scalarKind = CG_SCALAR_INT;
+        assert(CgClassifyConversion(&ints, &unsized, 0) ==
+               CG_CONVERSION_EXACT);
+        assert(CgClassifyConversion(&intsAgain, &unsized, 0) ==
+               CG_CONVERSION_EXACT);
+        assert(CgClassifyConversion(&floats, &unsized, 0) ==
+               CG_CONVERSION_NONE);
+
+        /* Opaque samplers convert only within their own identity or
+         * through the compatible base-sampler binding. */
+        {
+            Type *samp2D = GetSamplerType(CG_SAMPLER_2D);
+            Type *sampBase = GetSamplerType(CG_SAMPLER_BASE);
+            Type *sampCube = GetSamplerType(CG_SAMPLER_CUBE);
+
+            assert(samp2D != NULL && sampBase != NULL &&
+                   sampCube != NULL);
+            assert(CgClassifyConversion(samp2D, samp2D, 0) ==
+                   CG_CONVERSION_EXACT);
+            assert(CgClassifyConversion(samp2D, sampBase, 0) ==
+                   CG_CONVERSION_EXACT);
+            assert(CgClassifyConversion(samp2D, sampCube, 0) ==
+                   CG_CONVERSION_NONE);
+        }
+    }
+
     {
         CgNumericValue input;
         CgNumericValue output;

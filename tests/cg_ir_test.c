@@ -58,6 +58,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "cg_stdlib.h"
 #include "cg_ir.h"
+#include "cg_reach.h"
 
 CgStruct *Cg;
 Scope *CurrentScope;
@@ -238,6 +239,96 @@ static void lVerifyReject(CgIRModule *module, CgIRVerifyReason reason)
     assert(diagnostic.node != NULL);
 } // lVerifyReject
 
+///////////////////////////////// Reach graph //////////////////////////////////
+
+/*
+ * Hand-built frontend nodes: cg_ir_unit does not link the parser's node
+ * constructors, so the reach scenario shapes minimal expr/stmt trees
+ * straight from support.h's unions.  Only the fields CgReachBuild reads
+ * (kind, op, left/right, symbol, statements) are populated.
+ */
+
+static expr *lReachSymbNode(Symbol *fSymb)
+{
+    symb *node;
+
+    node = (symb *) calloc(1, sizeof(symb));
+    assert(node != NULL);
+    node->kind = SYMB_N;
+    node->op = VARIABLE_OP;
+    node->type = fSymb->type;
+    node->symbol = fSymb;
+    return (expr *) node;
+}
+
+static expr *lReachArgNode(expr *fActual, expr *fRest)
+{
+    binary *node;
+
+    node = (binary *) calloc(1, sizeof(binary));
+    assert(node != NULL);
+    node->kind = BINARY_N;
+    node->op = FUN_ARG_OP;
+    node->left = fActual;
+    node->right = fRest;
+    return (expr *) node;
+}
+
+static expr *lReachCallNode(Symbol *fCallee, expr *fArgs)
+{
+    binary *node;
+
+    node = (binary *) calloc(1, sizeof(binary));
+    assert(node != NULL);
+    node->kind = BINARY_N;
+    node->op = FUN_CALL_OP;
+    node->left = lReachSymbNode(fCallee);
+    node->right = fArgs;
+    return (expr *) node;
+}
+
+static stmt *lReachExprStmtNode(expr *fExp)
+{
+    expr_stmt *node;
+
+    node = (expr_stmt *) calloc(1, sizeof(expr_stmt));
+    assert(node != NULL);
+    node->kind = EXPR_STMT;
+    node->exp = fExp;
+    return (stmt *) node;
+}
+
+static stmt *lReachBlockStmtNode(stmt *fBody)
+{
+    block_stmt *node;
+
+    node = (block_stmt *) calloc(1, sizeof(block_stmt));
+    assert(node != NULL);
+    node->kind = BLOCK_STMT;
+    node->body = fBody;
+    return (stmt *) node;
+}
+
+/*
+ * lReachFunction() - A defined function symbol whose body is one call
+ *          statement; "fSourceOrdinal" fixes the deterministic visit
+ *          order.
+ */
+
+static Symbol *lReachFunction(const char *name, int fSourceOrdinal,
+                              expr *call)
+{
+    Symbol *symb;
+
+    symb = lMakeSymbol(FUNCTION_S, name, VoidType);
+    symb->sourceOrdinal = fSourceOrdinal;
+    if (call != NULL) {
+        symb->details.fun.statements =
+            lReachBlockStmtNode(lReachExprStmtNode(call));
+    }
+    return symb;
+} // lReachFunction
+
 int main(int argc, char **argv)
 {
     CgStruct cg;
@@ -376,6 +467,27 @@ int main(int argc, char **argv)
     Symbol *prodReceiverSymb;
     Symbol *prodXFormalSymb;
 
+    /* Verifier extension fixtures: connector members and first-class
+     * array constructors. */
+    Type connType;
+    Scope connScope;
+    Type array3Type;
+    Symbol *connMemberSymb;
+    Symbol *connVarSymb;
+
+    /* Scenario 6: reachability graph fixtures. */
+    Symbol *reachMainSymb;
+    Symbol *reachASymb;
+    Symbol *reachBSymb;
+    Symbol *reachUnusedSymb;
+    Symbol *reachTintSymb;
+    Symbol *reachSpareSymb;
+    Symbol *cycXSymb;
+    Symbol *cycYSymb;
+    CgReachGraph reachGraph;
+    CgReachGraph cycleGraph;
+    const CgReachEdge *reachEdge;
+
     /*
      * Assertion seam: check_assertions_active.cmake runs this unit with
      * --verify-assertions-active and requires the sentinel below.  The
@@ -405,6 +517,8 @@ int main(int argc, char **argv)
 
     assert(InitAtomTable(atable, 0));
     assert(InitSymbolTable(Cg));
+    assert(StartGlobalScope(Cg));
+    assert(GlobalScope != NULL);
 
     floatType = GetStandardTypeKind(CG_SCALAR_FLOAT, 0, 0);
     float2Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 2, 0);
@@ -1490,6 +1604,104 @@ int main(int argc, char **argv)
     CgIRAppendFunction(&rejectModule.functions, rFn);
     lVerifyAccept(&rejectModule);
 
+    /* Connector aggregates are struct-shaped for member access: $vout
+     * and friends carry TYPE_CATEGORY_CONNECTOR, and lowering emits
+     * member selections on them.  One data member, one selection into
+     * an assignment target. */
+    memset(&connType, 0, sizeof(connType));
+    connType.properties = TYPE_CATEGORY_CONNECTOR;
+    memset(&connScope, 0, sizeof(connScope));
+    connMemberSymb = lMakeSymbol(VARIABLE_S, "connmember", floatType);
+    connScope.params = connMemberSymb;
+    connType.str.members = &connScope;
+    connVarSymb = lMakeSymbol(VARIABLE_S, "$conn", &connType);
+
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rDecl = CgIRNewDecl(&rejectModule, connVarSymb, connVarSymb->name,
+                        &connType, CGIR_STORAGE_NONE, CGIR_DOMAIN_UNIFORM,
+                        0, NULL, &paramLoc);
+    assert(rDecl != NULL);
+    CgIRAppendDecl(&rejectModule.globals, rDecl);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, VoidType, &fnALoc);
+    assert(rFn != NULL);
+    rLeft = CgIRNewSymbol(&rejectModule, &connType, &constLoc, connVarSymb);
+    assert(rLeft != NULL);
+    rLeft->isLvalue = 1;
+    rValue = CgIRNewMember(&rejectModule, floatType, &constLoc, rLeft,
+                           connMemberSymb);
+    assert(rValue != NULL);
+    rValue->isLvalue = 1;
+    rTarget = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
+    assert(rTarget != NULL);
+    rValue = CgIRNewAssign(&rejectModule, floatType, &ctorLoc,
+                           CGIR_OP_ASSIGN, rValue, rTarget);
+    assert(rValue != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, rValue);
+    assert(rStmt != NULL);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyAccept(&rejectModule);
+
+    /* Constructors cover first-class arrays too: an exact element fill
+     * verifies, and so does scalar replication; a short fill stays an
+     * operand failure. */
+    memset(&array3Type, 0, sizeof(array3Type));
+    array3Type.properties = TYPE_BASE_FLOAT | TYPE_CATEGORY_ARRAY;
+    array3Type.arr.eltype = floatType;
+    array3Type.arr.numels = 3;
+    array3Type.arr.scalarKind = CG_SCALAR_FLOAT;
+
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, VoidType, &fnALoc);
+    assert(rFn != NULL);
+    rArgs = NULL;
+    CgIRAppendExpr(&rArgs, CgIRNewConstant(&rejectModule, floatType,
+                                           &constLoc, &vZero));
+    CgIRAppendExpr(&rArgs, CgIRNewConstant(&rejectModule, floatType,
+                                           &constLoc, &vHalf));
+    CgIRAppendExpr(&rArgs, CgIRNewConstant(&rejectModule, floatType,
+                                           &constLoc, &vOne));
+    assert(rArgs != NULL && rArgs->next != NULL && rArgs->next->next != NULL);
+    rValue = CgIRNewConstruct(&rejectModule, &array3Type, &ctorLoc, rArgs);
+    assert(rValue != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, rValue);
+    assert(rStmt != NULL);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyAccept(&rejectModule);
+
+    /* Short fill: two scalars cannot build a three-element array. */
+    CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    rFn = CgIRNewFunction(&rejectModule, mainSymb, VoidType, &fnALoc);
+    assert(rFn != NULL);
+    rArgs = NULL;
+    CgIRAppendExpr(&rArgs, CgIRNewConstant(&rejectModule, floatType,
+                                           &constLoc, &vZero));
+    CgIRAppendExpr(&rArgs, CgIRNewConstant(&rejectModule, floatType,
+                                           &constLoc, &vOne));
+    rValue = CgIRNewConstruct(&rejectModule, &array3Type, &ctorLoc, rArgs);
+    assert(rValue != NULL);
+    rStmt = CgIRNewExprStmt(&rejectModule, &retLoc, rValue);
+    assert(rStmt != NULL);
+    rBody = CgIRNewBlockStmt(&rejectModule, &blockLoc);
+    assert(rBody != NULL);
+    CgIRAppendStmt(&rBody->u.block, rStmt);
+    rFn->body = rBody;
+    rFn->isEntry = 1;
+    rejectModule.entry = rFn;
+    CgIRAppendFunction(&rejectModule.functions, rFn);
+    lVerifyReject(&rejectModule, CGIR_VERIFY_OPERAND);
+
     /*
      * Production-shaped method symbol: FUNCTION-typed with the result
      * in fun.rettype and the implicit receiver prepended to
@@ -1552,6 +1764,126 @@ int main(int argc, char **argv)
     assert(!CgIRVerifyModule(&rejectModule, &verifyDiagnostic));
     assert(verifyDiagnostic.reason == CGIR_VERIFY_INTERFACE);
     assert(verifyDiagnostic.node == interfaceExpr);
+
+    /////////////////// Scenario 6: reachability graph //////////////////
+
+    /*
+     * The same shape as tests/cg20/ir/reachable.cg: main calls helperA
+     * passing the referenced uniform g_tint, helperA calls helperB, and
+     * one helper plus one global are never referenced.  Discovery adds
+     * the entry first and then visits in sourceOrdinal order; each
+     * node's witness is its first parent edge.
+     */
+
+    reachMainSymb = lReachFunction("reachMain", 30, NULL);
+    reachASymb = lReachFunction("reachHelperA", 31, NULL);
+    reachBSymb = lReachFunction("reachHelperB", 32,
+                                lReachBlockStmtNode(lReachExprStmtNode(NULL)));
+    reachUnusedSymb = lReachFunction("reachUnused", 33, NULL);
+    /* Globals must live in the real global scope for reachability to
+     * recognize them; AddSymbol inserts into its reversed-atom tree. */
+    reachTintSymb = AddSymbol(&fnALoc, GlobalScope,
+                              LookUpAddString(atable, "reachTint"),
+                              float4Type, VARIABLE_S);
+    reachSpareSymb = AddSymbol(&fnALoc, GlobalScope,
+                               LookUpAddString(atable, "reachSpare"),
+                               float4Type, VARIABLE_S);
+    assert(reachMainSymb != NULL && reachASymb != NULL && reachBSymb != NULL);
+    assert(reachUnusedSymb != NULL);
+    assert(reachTintSymb != NULL && reachSpareSymb != NULL);
+    reachTintSymb->sourceOrdinal = 20;
+    reachSpareSymb->sourceOrdinal = 21;
+
+    /* main(reachTint): helperA(g_tint) -- the call's argument reads the
+     * uniform, so both helperA and the uniform hang off main. */
+    {
+        expr *call;
+        expr *args;
+
+        args = lReachArgNode(lReachSymbNode(reachTintSymb), NULL);
+        call = lReachCallNode(reachASymb, args);
+        reachMainSymb->details.fun.statements =
+            lReachBlockStmtNode(lReachExprStmtNode(call));
+    }
+    /* helperA: helperB(g_tint) -- the deepest call also reads it. */
+    {
+        expr *call;
+        expr *args;
+
+        args = lReachArgNode(lReachSymbNode(reachTintSymb), NULL);
+        call = lReachCallNode(reachBSymb, args);
+        reachASymb->details.fun.statements =
+            lReachBlockStmtNode(lReachExprStmtNode(call));
+    }
+
+    memset(&reachGraph, 0xa5, sizeof(reachGraph));
+    assert(CgReachBuild(NULL, &reachGraph) == 0);
+
+    memset(&reachGraph, 0, sizeof(reachGraph));
+    assert(CgReachBuild(reachMainSymb, &reachGraph));
+
+    /* Exactly the reachable set: entry, two callees, one uniform. */
+    assert(CgReachContainsSymbol(&reachGraph, reachMainSymb));
+    assert(CgReachContainsSymbol(&reachGraph, reachASymb));
+    assert(CgReachContainsSymbol(&reachGraph, reachBSymb));
+    assert(CgReachContainsSymbol(&reachGraph, reachTintSymb));
+    assert(!CgReachContainsSymbol(&reachGraph, reachUnusedSymb));
+    assert(!CgReachContainsSymbol(&reachGraph, reachSpareSymb));
+    assert(!CgReachContainsSymbol(&reachGraph, shadeSymb));
+
+    /* Entry first; nodes appear in discovery order.  Expanding main
+     * discovers helperA then the uniform; the next expansion picks the
+     * pending symbol with the smallest sourceOrdinal (the uniform,
+     * 20, before helperA, 31), whose turn adds helperB. */
+    assert(reachGraph.nodeCount == 4);
+    assert(reachGraph.nodes[0].symbol == reachMainSymb);
+    assert(reachGraph.nodes[1].symbol == reachASymb);
+    assert(reachGraph.nodes[2].symbol == reachTintSymb);
+    assert(reachGraph.nodes[3].symbol == reachBSymb);
+
+    /* Witnesses: the entry has no parent; everything else records its
+     * FIRST discoverer as the parent edge. */
+    reachEdge = CgReachWitness(&reachGraph, reachMainSymb);
+    assert(reachEdge != NULL && reachEdge->from == NULL &&
+           reachEdge->to == reachMainSymb);
+    reachEdge = CgReachWitness(&reachGraph, reachASymb);
+    assert(reachEdge != NULL && reachEdge->from == reachMainSymb &&
+           reachEdge->to == reachASymb);
+    reachEdge = CgReachWitness(&reachGraph, reachBSymb);
+    assert(reachEdge != NULL && reachEdge->from == reachASymb &&
+           reachEdge->to == reachBSymb);
+    reachEdge = CgReachWitness(&reachGraph, reachTintSymb);
+    assert(reachEdge != NULL && reachEdge->from == reachMainSymb &&
+           reachEdge->to == reachTintSymb);
+    assert(CgReachWitness(&reachGraph, reachUnusedSymb) == NULL);
+    assert(CgReachWitness(&reachGraph, NULL) == NULL);
+
+    CgReachDestroy(&reachGraph);
+
+    /* Recursive cycles terminate without infinite traversal; recursion
+     * stays a later profile decision, so both frames stay in the set. */
+    cycXSymb = lReachFunction("cycleX", 40, NULL);
+    cycYSymb = lReachFunction("cycleY", 41, NULL);
+    assert(cycXSymb != NULL && cycYSymb != NULL);
+    cycXSymb->details.fun.statements = lReachBlockStmtNode(
+        lReachExprStmtNode(lReachCallNode(cycYSymb, NULL)));
+    cycYSymb->details.fun.statements = lReachBlockStmtNode(
+        lReachExprStmtNode(lReachCallNode(cycXSymb, NULL)));
+
+    memset(&cycleGraph, 0, sizeof(cycleGraph));
+    assert(CgReachBuild(cycXSymb, &cycleGraph));
+    assert(CgReachContainsSymbol(&cycleGraph, cycXSymb));
+    assert(CgReachContainsSymbol(&cycleGraph, cycYSymb));
+    assert(cycleGraph.nodeCount == 2);
+    assert(cycleGraph.nodes[0].symbol == cycXSymb);
+    assert(cycleGraph.nodes[1].symbol == cycYSymb);
+    reachEdge = CgReachWitness(&cycleGraph, cycXSymb);
+    assert(reachEdge != NULL && reachEdge->from == NULL &&
+           reachEdge->to == cycXSymb);
+    reachEdge = CgReachWitness(&cycleGraph, cycYSymb);
+    assert(reachEdge != NULL && reachEdge->from == cycXSymb &&
+           reachEdge->to == cycYSymb);
+    CgReachDestroy(&cycleGraph);
 
     FreeSymbolTable(Cg);
     FreeAtomTable(atable);

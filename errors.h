@@ -345,6 +345,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR___NO_MATRIX_DECONSTRUCTION    9009, "matrix deconstruction not supported"
 #define ERROR___NO_UNSIZED_AGGREGATE_COPY   9010, "unsized array aggregate copy not supported"
 #define ERROR_S_CG_IR_INVARIANT             9011, "Cg IR invariant violated: %s"
+#define ERROR_S_CG_IR_UNLOWERABLE           9012, "Cg IR cannot represent construct: %s"
 
 // Misc. notices
 

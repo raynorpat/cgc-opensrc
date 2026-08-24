@@ -373,6 +373,21 @@ static CgConversionRank lClassifyArrayConversion(const Type *from,
             return CG_CONVERSION_NONE;
         }
     } else {
+        if (IsUnsizedArray(to) && IsPacked(to) == IsPacked(from) &&
+            IsSameUnqualifiedType(to->arr.eltype, from->arr.eltype))
+        {
+            /* A concrete array binds identically to an unsized array
+             * with the same element shape: the runtime length travels
+             * with the value, so this is exact-shape compatibility. */
+            return CG_CONVERSION_EXACT;
+        }
+        if (from->arr.numels == to->arr.numels &&
+            IsSameUnqualifiedType(from->arr.eltype, to->arr.eltype))
+        {
+            /* Identical aggregate shapes convert exactly; no cast is
+             * needed to recognize a type as itself. */
+            return CG_CONVERSION_EXACT;
+        }
         if (from->arr.numels != to->arr.numels || !explicitCast) {
             /* Unpacked arrays convert element-wise only through a cast. */
             return CG_CONVERSION_NONE;
@@ -580,6 +595,21 @@ CgConversionRank CgClassifyConversion(const Type *from, const Type *to,
         case TYPE_CATEGORY_INTERFACE:
             /* Interface identity is the declared type itself. */
             return from == to ? CG_CONVERSION_EXACT : CG_CONVERSION_NONE;
+        case TYPE_CATEGORY_SAMPLER: {
+            /* Samplers are opaque: the same object converts exactly,
+             * and a specific kind binds to the deprecated base sampler
+             * when the family rules say they are compatible. */
+            CgSamplerKind fromKind, toKind;
+
+            if (from == to)
+                return CG_CONVERSION_EXACT;
+            if (IsSampler(from, &fromKind) && IsSampler(to, &toKind) &&
+                CgSamplerCompatible(toKind, fromKind))
+            {
+                return CG_CONVERSION_EXACT;
+            }
+            return CG_CONVERSION_NONE;
+        }
         default:
             return CG_CONVERSION_NONE;
         }
