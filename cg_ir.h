@@ -254,6 +254,12 @@ struct CgIRExpr_Rec {
     int synthesized;
     int isLvalue;
     int sideEffects;
+    /* Set by the Task 16 matrix `_m` selector lowering on every index
+     * chain it synthesizes.  Explicit source indexing builds the same
+     * INDEX(INDEX(base,row),column) shape without this mark, so GLSL
+     * lowering can keep the two print forms apart (selectors transpose,
+     * explicit chains print as written) instead of guessing by shape. */
+    int selectorRead;
     CgIRExpr *next;
     union {
         CgNumericValue constant;

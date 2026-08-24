@@ -1099,6 +1099,17 @@ add_glsl_fixture(glslv_matrix_selectors_once glslv
     tests/glsl/expressions/vp_matrix_selectors_once.cg
     tests/glsl/expressions/vp_matrix_selectors_once.expected)
 
+# Explicit elementwise matrix stores (fix round 1): mixed-coordinate
+# adjacent stores lower independently with their own coordinates, and a
+# sixteen-store fill passes the four-component producer group cap.
+add_glsl_fixture(glslv_matrix_element_stores glslv
+    tests/glsl/expressions/vp_matrix_element_stores.cg
+    tests/glsl/expressions/vp_matrix_element_stores.expected)
+
+add_glsl_fixture(glslf_matrix_element_stores glslf
+    tests/glsl/expressions/fp_matrix_element_stores.cg
+    tests/glsl/expressions/fp_matrix_element_stores.expected)
+
 add_glsl_fixture(glslv_aggregate_defaults glslv
     tests/glsl/uniforms/vp_aggregate_defaults.cg
     tests/glsl/uniforms/vp_aggregate_defaults.expected)

@@ -327,6 +327,8 @@ static CgIRExpr *lLowerMatrixSelector(CgIRLower *L, expr *fExpr)
                               rowVec, component);
         if (result != NULL && fExpr->common.IsLValue)
             result->isLvalue = 1;
+        if (result != NULL)
+            result->selectorRead = 1;
         return result;
     }
     /* Component groups read explicitly even when the frontend marked
@@ -354,6 +356,7 @@ static CgIRExpr *lLowerMatrixSelector(CgIRLower *L, expr *fExpr)
                                  &L->loc, rowVec, component);
         if (component == NULL)
             return NULL;
+        component->selectorRead = 1;
         lAppendExpr(&result->u.construct.arguments, component);
     }
     return result;
@@ -1095,6 +1098,7 @@ static int lTryMatrixGroupWrite(CgIRLower *L, expr *fExpr, CgIRStmt **list)
         if (target == NULL)
             return -1;
         target->isLvalue = 1;
+        target->selectorRead = 1;
         assign = CgIRNewAssign(L->module, target->type, &L->loc,
                                CGIR_OP_ASSIGN, target, value);
         if (assign == NULL)

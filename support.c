@@ -1599,9 +1599,9 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
  * variables.  Function locals, static globals, and structure members are
  * rejected, as are arrays and other aggregates with sampler elements.
  * Global declarations must carry uniform domain; varying or unqualified
- * globals would otherwise be silently bound as uniforms.  GLSL 1.10
- * profiles keep enforcing their own sampler rules during lowering, so
- * these language checks stay silent there.
+ * globals would otherwise be silently bound as uniforms.  Since the
+ * GLSL-only sampler pid-gate was retired these rules apply uniformly to
+ * every profile, GLSL profiles included.
  */
 
 static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,

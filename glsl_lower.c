@@ -6808,11 +6808,16 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
         target->u.member.name = decl->name;
         return target;
     case CGIR_EXPR_INDEX:
-        /* A two-level constant-index chain over a matrix is a Task 16
-         * selector component (_mRC): legacy printed those transposed
-         * (GLSL m[col][row]).  Explicit source indexing never appears
-         * in supported GLSL programs today. */
-        if (expr->u.index.object != NULL &&
+        /* A two-level constant-index chain over a square matrix that
+         * the Task 16 producer marked as a selector component (_mRC)
+         * prints transposed (GLSL m[col][row]).  Genuinely explicit
+         * source indexing builds the identical shape without the mark;
+         * it takes the generic path below and prints as written, so
+         * silent transposition of an explicit chain is impossible (the
+         * marker is the single-producer invariant -- every chain the
+         * `_m` lowering synthesizes carries it, nothing else may). */
+        if (expr->selectorRead &&
+            expr->u.index.object != NULL &&
             expr->u.index.object->kind == CGIR_EXPR_INDEX &&
             expr->u.index.object->u.index.object != NULL &&
             expr->u.index.index != NULL &&
@@ -6938,7 +6943,12 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
             return operand;
         /* Legacy ConstantFoldNode folded casts of scalar constants into
          * the converted literal — in MAIN only (helpers kept their raw
-         * casts); reproduce that scope. */
+         * casts); reproduce that scope.  Fold-coverage asymmetry: this
+         * is the ONLY cast fold.  Vector/matrix constant construction
+         * and constant comparisons stay unfolded on the IR path even
+         * though legacy folded them ahead of printing -- no pinned
+         * golden observes those forms, so they are left raw until one
+         * does (see the arithmetic-fold note in CGIR_EXPR_BINARY). */
         if (context->function != NULL && context->function->isEntry &&
             expr->u.cast.operand != NULL &&
             expr->u.cast.operand->kind == CGIR_EXPR_CONSTANT)
@@ -7086,9 +7096,18 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
             expr->u.binary.right->kind == CGIR_EXPR_CONSTANT &&
             IsScalar(expr->type))
         {
-            /* Legacy ConstantFoldNode folded scalar constant arithmetic
-             * ahead of lowering (division by zero yielding the infinity
-             * that the non-finite rejection pins); reproduce here. */
+            /* Fold-coverage asymmetry vs legacy ConstantFoldNode (it
+             * ran on the frontend tree ahead of printing): this is the
+             * ONLY arithmetic fold reproduced.  What folds: scalar
+             * (+,-,*,/) over two constants, entry function only
+             * (division by zero yields the infinity that non-finite
+             * rejection pins).  What intentionally stays UNFOLDED:
+             * vector/matrix constant arithmetic (emitted as literal
+             * operator expressions) and every constant comparison --
+             * scalar or the lessThan family above -- because no pinned
+             * golden output observes those forms; folding them is left
+             * until a golden demands it.  Helpers never fold, matching
+             * legacy's MAIN-only scope. */
             CgNumericValue folded;
             CgNumericOp numop = op == GLSL_OP_ADD ? CG_NUMERIC_ADD :
                                 op == GLSL_OP_SUBTRACT ? CG_NUMERIC_SUB :
@@ -7238,7 +7257,10 @@ static GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
  *          into their single-evaluation arguments) or the plain
  *          per-component fan-out between two simple variables.
  *          Returns 1 with *nextOut past the consumed run, 0 when the
- *          head is not a group write, and -1 on lowering failure.
+ *          head is not a group write (including plain user store runs
+ *          that only resemble one -- over-long fills or mixed
+ *          coordinates -- which lower as independent statements), and
+ *          -1 on lowering failure.
  */
 
 static int GlslIRTryGroupWrite(GlslLowerContext *context,
@@ -7316,8 +7338,17 @@ static int GlslIRTryGroupWrite(GlslLowerContext *context,
             !GlslIRMatrixStoreShape(storeLoop->u.expression, &base,
                                      &value, &row, &column))
             break;
-        if (storeCount >= 4)
+        if (storeCount >= 4) {
+            /* Frontend `_m` selector groups pack at most four
+             * components, so a fifth consecutive store cannot extend a
+             * producer run.  An over-long run of plain user stores is
+             * an elementwise fill: fall back to independent statements
+             * for the whole head.  With consumed "$" temporaries the
+             * shape is a genuine producer violation and stays loud. */
+            if (objectTemp == NULL && valueTemp == NULL)
+                return 0;
             return -1;
+        }
         if (storeCount == 0)
             storeBase = base;
         else if (base != storeBase)
@@ -7427,6 +7458,19 @@ static int GlslIRTryGroupWrite(GlslLowerContext *context,
                     return 0;
                 }
                 rightRowSel = value->u.index.object;
+                /* The value's own coordinates must match the store's:
+                 * emission would otherwise mirror the left coordinates
+                 * onto the right side and silently move the wrong
+                 * element.  Mixed-coordinate runs are plain user
+                 * stores, not a producer shape -- fall back so every
+                 * statement lowers independently. */
+                if ((int) rightRowSel->u.index.index->u.constant.value.i !=
+                        row ||
+                    (int) value->u.index.index->u.constant.value.i !=
+                        column)
+                {
+                    return 0;
+                }
                 if (rightBase == NULL)
                     rightBase = rightRowSel->u.index.object;
                 else if (rightBase != rightRowSel->u.index.object)
@@ -7478,6 +7522,9 @@ static int GlslIRTryGroupWrite(GlslLowerContext *context,
                     rightRow = ((rightMask >> (i * 4)) >> 2) & 3;
                     rightColumn = (rightMask >> (i * 4)) & 3;
                 } else {
+                    /* Distinct-value runs validated every value's own
+                     * coordinates against the store's above, so these
+                     * are the value's real coordinates, not a mirror. */
                     rightRow = rows[i];
                     rightColumn = columns[i];
                 }
@@ -7545,7 +7592,6 @@ static int GlslIRLowerStatement(GlslLowerContext *context,
     GlslStmt *target;
     GlslExpr *condition;
     GlslType boolType;
-    GlslType conditionType;
 
     if (source == NULL)
         return 1;
@@ -7716,7 +7762,6 @@ static int GlslIRLowerStatement(GlslLowerContext *context,
                 reduction->u.call.arguments = condition;
                 condition = reduction;
             }
-            (void) conditionType;
             target->u.ifStmt.condition = condition;
             GlslSetLoc(&discard->loc, &source->loc);
             target->u.ifStmt.trueBranch = discard;
