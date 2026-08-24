@@ -1792,11 +1792,15 @@ static void AssignAggregate(StmtList *fStatements, Type *fType,
         }
         break;
     case TYPE_CATEGORY_ARRAY:
-        /* A dynamically sized array carries its length at runtime, so it
-         * cannot be element-expanded here; such copies only exist in
-         * programs that reach a backend supporting them wholesale. */
-        if (fType->arr.numels == CG_ARRAY_UNSIZED)
+        /* Unsized arrays are unreachable here today: struct members are
+         * always sized and FlattenStructAssignments() only dispatches
+         * struct-typed assignments. Should that ever change, fail loudly
+         * instead of silently dropping the aggregate copy. */
+        if (fType->arr.numels == CG_ARRAY_UNSIZED) {
+            InternalError(Cg->pLastSourceLoc,
+                          ERROR___NO_UNSIZED_AGGREGATE_COPY);
             break;
+        }
         lType = fType->arr.eltype;
         for (index = 0; index < fType->arr.numels; index++) {
             lExpr = NewIndexOperator(Cg->pLastSourceLoc,
