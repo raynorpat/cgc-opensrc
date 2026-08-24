@@ -79,8 +79,34 @@ int CgScalarIsIntegral(CgScalarKind kind);
 int CgScalarIsUnsigned(CgScalarKind kind);
 int CgScalarIsFloating(CgScalarKind kind);
 const char *CgScalarKindName(CgScalarKind kind);
+int CgScalarLegacyBase(CgScalarKind kind);
 Type *GetStandardTypeKind(CgScalarKind kind, int rows, int columns);
 int InitCgStandardTypes(void);
 void FreeCgStandardTypes(void);
+
+/*
+ * Normative conversion classification.  Ranks are ordered so that better
+ * conversions compare greater: EXACT needs no cast, DYNAMIC is reserved for
+ * interface types, PROMOTION adapts a compile-time constant, IMPLICIT is a
+ * silent value-preserving conversion, IMPLICIT_WARN is lossy when implicit,
+ * EXPLICIT is only available through a cast, and NONE is not a conversion.
+ */
+
+typedef enum CgConversionRank_Rec {
+    CG_CONVERSION_NONE = 0,
+    CG_CONVERSION_EXPLICIT,
+    CG_CONVERSION_IMPLICIT_WARN,
+    CG_CONVERSION_IMPLICIT,
+    CG_CONVERSION_PROMOTION,
+    CG_CONVERSION_DYNAMIC,
+    CG_CONVERSION_EXACT
+} CgConversionRank;
+
+CgConversionRank CgClassifyConversion(const Type *from, const Type *to,
+                                      int explicitCast);
+CgConversionRank CgClassifyScalarConversion(CgScalarKind from,
+                                            CgScalarKind to,
+                                            int explicitCast);
+Type *CgUsualArithmeticType(const Type *left, const Type *right);
 
 #endif

@@ -67,11 +67,7 @@ static int IsNumericBase_HAL(int fBase);
 static int IsIntegralBase_HAL(int fBase);
 static int IsTexobjBase_HAL(int fBase);
 static int IsValidRuntimeBase_HAL(int fBase);
-static int IsValidScalarCast_HAL(int toBase, int fromBase, int Explicit);
 static int IsValidOperator_HAL(SourceLoc *loc, int name, int op, int suobp);
-static int GetBinOpBase_HAL(int lop, int lbase, int rbase, int llen, int rlen);
-static int ConvertConstant_HAL(const scalar_constant *fval, int fbase, int tbase,
-                    expr **fexpr);
 static int BindUniformUnbound_HAL(SourceLoc *loc, Symbol *fSymb, Binding *lBind);
 static int BindUniformPragma_HAL(SourceLoc *loc, Symbol *fSymb, Binding *lBind,
                     const Binding *fBind);
@@ -184,10 +180,7 @@ static void InitHAL_HAL(slHAL *fHAL)
     fHAL->IsTexobjBase = IsTexobjBase_HAL;
     fHAL->IsIntegralBase = IsIntegralBase_HAL;
     fHAL->IsValidRuntimeBase = IsValidRuntimeBase_HAL;
-    fHAL->IsValidScalarCast = IsValidScalarCast_HAL;
     fHAL->IsValidOperator = IsValidOperator_HAL;
-    fHAL->GetBinOpBase = GetBinOpBase_HAL;
-    fHAL->ConvertConstant = ConvertConstant_HAL;
     fHAL->BindUniformUnbound = BindUniformUnbound_HAL;
     fHAL->BindUniformPragma = BindUniformPragma_HAL;
     fHAL->BindVaryingSemantic = BindVaryingSemantic_HAL;
@@ -522,43 +515,6 @@ static int CheckInternalFunction_HAL(Symbol *fSymb, int *group)
 } // CheckInternalFunction_HAL
 
 /*
- * IsValidScalarCast_HAL() - Is it valid to typecast a scalar from fromBase to toBase?.
- *
- */
-
-static int IsValidScalarCast_HAL(int toBase, int fromBase, int Explicit)
-{
-    int answer;
-
-    switch (toBase) {
-    case TYPE_BASE_BOOLEAN:
-    case TYPE_BASE_FLOAT:
-    case TYPE_BASE_INT:
-        switch (fromBase) {
-        case TYPE_BASE_CFLOAT:
-        case TYPE_BASE_CINT:
-        case TYPE_BASE_FLOAT:
-        case TYPE_BASE_INT:
-            answer = 1;
-            break;
-        case TYPE_BASE_BOOLEAN:
-            answer = (toBase == TYPE_BASE_BOOLEAN) || Explicit;
-            break;
-        default:
-            answer = 0;
-            break;
-        }
-        break;
-    case TYPE_BASE_CFLOAT:
-    case TYPE_BASE_CINT:
-    default:
-        answer = 0;
-        break;
-    }
-    return answer;
-} // IsValidScalarCast_HAL
-
-/*
  * IsValidOperator_HAL() - Is this operator supported in this profile?  Print an error is not.
  *
  */
@@ -645,105 +601,6 @@ static int IsValidRuntimeBase_HAL(int fBase)
     }
     return answer;
 } // IsIntegralBase_HAL
-
-/*
- * GetBinOpBase_HAL() - Return the base type for this binary operation.
- *
- */
-
-static int GetBinOpBase_HAL(int lop, int lbase, int rbase, int llen, int rlen)
-{
-    int result;
-
-    switch (lop) {
-    case VECTOR_V_OP:
-    case MUL_OP:
-    case DIV_OP:
-    case MOD_OP:
-    case ADD_OP:
-    case SUB_OP:
-    case SHL_OP:
-    case SHR_OP:
-    case LT_OP:
-    case GT_OP:
-    case LE_OP:
-    case GE_OP:
-    case EQ_OP:
-    case NE_OP:
-    case AND_OP:
-    case XOR_OP:
-    case OR_OP:
-    case COND_OP:
-        if (lbase == rbase) {
-            result = lbase;
-        } else if (lbase == TYPE_BASE_FLOAT || rbase == TYPE_BASE_FLOAT) {
-            result = TYPE_BASE_FLOAT;
-        } else if (lbase == TYPE_BASE_CFLOAT || rbase == TYPE_BASE_CFLOAT) {
-            if (lbase == TYPE_BASE_INT || rbase == TYPE_BASE_INT) {
-                result = TYPE_BASE_FLOAT;
-            } else {
-                result = TYPE_BASE_CFLOAT;
-            }
-        } else {
-            result = TYPE_BASE_INT;
-        }
-        break;
-    default:
-        result = TYPE_BASE_NO_TYPE;
-        break;
-    };
-    return result;
-} // GetBinOpBase_HAL
-
-/*
- * ConvertConstant()_HAL - Convert a numeric scalar constant from one base type to another.
- *
- */
-
-static int ConvertConstant_HAL(const scalar_constant *fval, int fbase, int tbase, expr **fexpr)
-{
-    expr *lexpr = NULL;
-
-    switch (fbase) {
-    case TYPE_BASE_CFLOAT:
-    case TYPE_BASE_FLOAT:
-        switch (tbase) {
-        case TYPE_BASE_CFLOAT:
-        case TYPE_BASE_FLOAT:
-            lexpr = (expr *) NewFConstNode(FCONST_OP, fval->value.f, tbase);
-            *fexpr = lexpr;
-            break;
-        case TYPE_BASE_CINT:
-        case TYPE_BASE_INT:
-            lexpr = (expr *) NewIConstNode(ICONST_OP, (int) fval->value.f, tbase);
-            *fexpr = lexpr;
-            break;
-        default:
-            return 0;
-        }
-        break;
-    case TYPE_BASE_CINT:
-    case TYPE_BASE_INT:
-        switch (tbase) {
-        case TYPE_BASE_CFLOAT:
-        case TYPE_BASE_FLOAT:
-            lexpr = (expr *) NewFConstNode(FCONST_OP, (float) fval->value.i, tbase);
-            *fexpr = lexpr;
-            break;
-        case TYPE_BASE_CINT:
-        case TYPE_BASE_INT:
-            lexpr = (expr *) NewIConstNode(ICONST_OP, (int) fval->value.i, tbase);
-            *fexpr = lexpr;
-            break;
-        default:
-            return 0;
-        }
-        break;
-    default:
-        return 0;
-    }
-    return 1;
-} // ConvertConstant_HAL
 
 /*
  * BindUniformUnbound_HAL() - Bind an unbound variable to a free uniform resource.

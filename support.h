@@ -106,6 +106,8 @@ typedef enum subopkind {
     PICK( CAST_CS_OP,   "cast",    '(', UNARY_N, SUB_CS ), \
     PICK( CAST_CV_OP,   "castv",   '(', UNARY_N, SUB_CV ), \
     PICK( CAST_CM_OP,   "castm",   '(', UNARY_N, SUB_CM ), \
+    PICK( CAST_SHAPE_OP, "castshape", '(', UNARY_N, SUB_NONE ), \
+    PICK( CAST_STRUCT_OP, "caststruct", '(', UNARY_N, SUB_NONE ), \
     PICK( NEG_OP,       "neg",     '-', UNARY_N, SUB_S  ), \
     PICK( NEG_V_OP,     "negv",    '-', UNARY_N, SUB_V  ), \
     PICK( POS_OP,       "pos",     '+', UNARY_N, SUB_S  ), \
@@ -382,6 +384,7 @@ typedef struct unary_rec {
     opcode op;
     int subop;
     expr *arg;
+    Type *targetType;   // Canonical cast target; NULL for non-cast nodes
 } unary;
 
 typedef struct binary_rec {
@@ -580,11 +583,14 @@ expr *BasicVariable(SourceLoc *loc, int name);
 int IsLValue(const expr *fExpr);
 int IsConst(const expr *fExpr);
 int IsArrayIndex(const expr *fExpr);
-int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int IgnorePacked,
-                int Explicit);
-expr *CastScalarVectorMatrix(expr *fExpr, int fbase, int tbase, int len, int len2);
-int ConvertNumericOperands(int baseop, expr **lexpr, expr **rexpr, int lbase, int rbase,
-                           int llen, int rlen, int llen2, int rlen2);
+int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
+                expr **result, int IgnorePacked, int Explicit,
+                int AllowShapeConversions);
+expr *CastScalarVectorMatrix(expr *fExpr, CgScalarKind fkind, CgScalarKind tkind,
+                             int len, int len2);
+Type *ConvertNumericOperands(int baseop, expr **lexpr, expr **rexpr,
+                             Type *lType, Type *rType,
+                             int llen, int rlen, int llen2, int rlen2);
 expr *CheckBooleanExpr(SourceLoc *loc, expr *fExpr, int AllowVector);
 
 expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int IntegralOnly);

@@ -293,6 +293,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WARNING_S_FORWARD_SEMANTICS_IGNORED 7007, "\"%s\" semantics in forward declaration ignored"
 #define WARNING_S_SEMANTICS_AND_BINDING     7008, "non-uniform variable has both semantics and binding \"%s\""
 #define WARNING_S_CANT_BIND_UNIFORM_VAR     7009, "cannot locate default uniform binding for \"%s\""
+#define WARNING___IMPLICIT_CONVERSION       7010, "implicit conversion may lose information"
 
 // CPP wornings
 #define WARNING___CPP_MACRO_REDEFINED       7101, "Macro %s redefined"

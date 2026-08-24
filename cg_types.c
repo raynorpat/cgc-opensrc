@@ -183,6 +183,483 @@ const char *CgScalarKindName(CgScalarKind kind)
     }
 } // CgScalarKindName
 
+/*
+ * CgScalarLegacyBase() - Return the legacy four-bit base that backs a
+ *                        canonical scalar kind, or TYPE_BASE_NO_TYPE for
+ *                        kinds with no legacy representation.
+ *
+ */
+
+int CgScalarLegacyBase(CgScalarKind kind)
+{
+    switch (kind) {
+    case CG_SCALAR_CFLOAT:
+        return TYPE_BASE_CFLOAT;
+    case CG_SCALAR_CINT:
+        return TYPE_BASE_CINT;
+    case CG_SCALAR_BOOL:
+        return TYPE_BASE_BOOLEAN;
+    case CG_SCALAR_CHAR:
+    case CG_SCALAR_UCHAR:
+    case CG_SCALAR_SHORT:
+    case CG_SCALAR_USHORT:
+    case CG_SCALAR_INT:
+    case CG_SCALAR_UINT:
+    case CG_SCALAR_LONG:
+    case CG_SCALAR_ULONG:
+        return TYPE_BASE_INT;
+    case CG_SCALAR_FIXED:
+    case CG_SCALAR_HALF:
+    case CG_SCALAR_FLOAT:
+    case CG_SCALAR_DOUBLE:
+        return TYPE_BASE_FLOAT;
+    default:
+        return TYPE_BASE_NO_TYPE;
+    }
+} // CgScalarLegacyBase
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// Normative Conversion Matrix: /////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * lValidConversionKind() - TRUE if a kind names a real scalar identity.
+ *                          Kinds the canonical table does not model (NONE,
+ *                          UNDEFINED) never convert; this covers void,
+ *                          undefined types, and profile extension bases such
+ *                          as samplers without consulting the HAL.
+ */
+
+static int lValidConversionKind(CgScalarKind kind)
+{
+    return kind > CG_SCALAR_UNDEFINED && kind < CG_SCALAR_COUNT;
+} // lValidConversionKind
+
+/*
+ * lNumericRank() - Capacity of a scalar within its class: integral widths
+ *                  and floating precision both order 1 (narrowest) to 4.
+ *
+ */
+
+static int lNumericRank(CgScalarKind kind)
+{
+    switch (kind) {
+    case CG_SCALAR_CHAR:
+    case CG_SCALAR_UCHAR:
+    case CG_SCALAR_FIXED:
+        return 1;
+    case CG_SCALAR_SHORT:
+    case CG_SCALAR_USHORT:
+    case CG_SCALAR_HALF:
+        return 2;
+    case CG_SCALAR_INT:
+    case CG_SCALAR_UINT:
+    case CG_SCALAR_FLOAT:
+        return 3;
+    case CG_SCALAR_LONG:
+    case CG_SCALAR_ULONG:
+    case CG_SCALAR_DOUBLE:
+        return 4;
+    default:
+        return 0;
+    }
+} // lNumericRank
+
+/*
+ * lMapExplicitRank() - An explicit cast downgrades a warning-ranked implicit
+ *                      conversion to a plain explicit one; every other rank
+ *                      is returned unchanged so promotions and exact matches
+ *                      keep their stronger classification under casts too.
+ *
+ */
+
+static CgConversionRank lMapExplicitRank(CgConversionRank rank, int explicitCast)
+{
+    if (explicitCast && rank == CG_CONVERSION_IMPLICIT_WARN) {
+        return CG_CONVERSION_EXPLICIT;
+    }
+    return rank;
+} // lMapExplicitRank
+
+/*
+ * CgClassifyScalarConversion() - Rank a conversion between two scalar kinds
+ *                                following the specification's ordered rules:
+ *
+ *   1. Unknown identities convert to nothing.
+ *   2. A kind converts to itself exactly.
+ *   3. Compile-time cint/cfloat constants promote to any numeric target.
+ *   4. Boolean interconverts implicitly with every numeric kind.
+ *   5. Within a class, narrowing loses information: warned when implicit,
+ *      plain explicit under a cast; widening and equal-width conversions
+ *      (including signed/unsigned pairs) are silent implicits.
+ *   6. Across classes (integral vs floating family) conversions are silent
+ *      implicits.
+ *
+ */
+
+CgConversionRank CgClassifyScalarConversion(CgScalarKind from,
+                                            CgScalarKind to,
+                                            int explicitCast)
+{
+    if (!lValidConversionKind(from) || !lValidConversionKind(to)) {
+        return CG_CONVERSION_NONE;
+    }
+    if (from == to) {
+        return CG_CONVERSION_EXACT;
+    }
+    if (from == CG_SCALAR_CINT || from == CG_SCALAR_CFLOAT) {
+        return CG_CONVERSION_PROMOTION;
+    }
+    if (to == CG_SCALAR_CINT || to == CG_SCALAR_CFLOAT) {
+        /* No surface syntax names these targets; treat them as their
+         * runtime equivalents for the remaining rules. */
+        to = to == CG_SCALAR_CINT ? CG_SCALAR_INT : CG_SCALAR_FLOAT;
+        if (to == from) {
+            return CG_CONVERSION_IMPLICIT;
+        }
+    }
+    if (from == CG_SCALAR_BOOL || to == CG_SCALAR_BOOL) {
+        return CG_CONVERSION_IMPLICIT;
+    }
+    if ((CgScalarIsIntegral(from) && CgScalarIsIntegral(to)) ||
+        (CgScalarIsFloating(from) && CgScalarIsFloating(to)))
+    {
+        if (lNumericRank(to) >= lNumericRank(from)) {
+            return CG_CONVERSION_IMPLICIT;
+        }
+        return lMapExplicitRank(CG_CONVERSION_IMPLICIT_WARN, explicitCast);
+    }
+    return CG_CONVERSION_IMPLICIT;
+} // CgClassifyScalarConversion
+
+/*
+ * lClassifyArrayConversion() - Rank array-shape conversions:
+ *
+ *   - vector -> same-length vector: silent element conversion;
+ *   - vector -> shorter vector: prefix element selection under a cast;
+ *   - matrix -> same-dims matrix: silent element conversion;
+ *   - matrix -> smaller matrix: upper-left submatrix selection under a cast;
+ *   - vector <-> matrix: reshape under a cast when element counts match;
+ *   - conversions touching an unpacked dimension: equal element counts,
+ *     available only through an explicit cast.
+ *
+ */
+
+static CgConversionRank lClassifyArrayConversion(const Type *from,
+                                                 const Type *to, int explicitCast)
+{
+    int flen = 0, tlen = 0, fcols = 0, frows = 0, tcols = 0, trows = 0;
+    int fromVector = IsVector(from, &flen);
+    int toVector = IsVector(to, &tlen);
+    int fromMatrix = IsMatrix(from, &fcols, &frows);
+    int toMatrix = IsMatrix(to, &tcols, &trows);
+    CgConversionRank rank;
+
+    if (fromVector && toVector) {
+        if (tlen > flen || (tlen != flen && !explicitCast)) {
+            return CG_CONVERSION_NONE;
+        }
+    } else if (fromMatrix && toMatrix) {
+        if (trows > frows || tcols > fcols ||
+            ((trows != frows || tcols != fcols) && !explicitCast))
+        {
+            return CG_CONVERSION_NONE;
+        }
+    } else if ((fromVector || fromMatrix) && (toVector || toMatrix)) {
+        int fromCount = fromVector ? flen : frows * fcols;
+        int toCount = toVector ? tlen : trows * tcols;
+
+        if (fromCount != toCount || !explicitCast) {
+            return CG_CONVERSION_NONE;
+        }
+    } else {
+        if (from->arr.numels != to->arr.numels || !explicitCast) {
+            /* Unpacked arrays convert element-wise only through a cast. */
+            return CG_CONVERSION_NONE;
+        }
+    }
+    rank = CgClassifyConversion(from->arr.eltype, to->arr.eltype, explicitCast);
+    if (rank == CG_CONVERSION_NONE) {
+        return CG_CONVERSION_NONE;
+    }
+    return rank;
+} // lClassifyArrayConversion
+
+/*
+ * lClassifyScalarToArray() - Scalar replication fills every element of a
+ *                            vector or matrix target with the scalar's
+ *                            element classification.
+ *
+ */
+
+static CgConversionRank lClassifyScalarToArray(const Type *from,
+                                               const Type *to, int explicitCast)
+{
+    if (!IsVector(to, NULL) && !IsMatrix(to, NULL, NULL)) {
+        return CG_CONVERSION_NONE;
+    }
+    return CgClassifyScalarConversion(GetScalarKind(from),
+                                      GetScalarKind(to->arr.eltype),
+                                      explicitCast);
+} // lClassifyScalarToArray
+
+/*
+ * lClassifyArrayToScalar() - Vector or matrix to scalar reads the first
+ *                            element; dropping the remaining components is
+ *                            warned about when it happens implicitly.
+ *
+ */
+
+static CgConversionRank lClassifyArrayToScalar(const Type *from,
+                                               const Type *to, int explicitCast)
+{
+    CgConversionRank rank;
+
+    if (!IsVector(from, NULL) && !IsMatrix(from, NULL, NULL)) {
+        return CG_CONVERSION_NONE;
+    }
+    rank = CgClassifyScalarConversion(GetScalarKind(from->arr.eltype),
+                                      GetScalarKind(to), explicitCast);
+    if (rank == CG_CONVERSION_NONE) {
+        return CG_CONVERSION_NONE;
+    }
+    return explicitCast ? CG_CONVERSION_EXPLICIT : CG_CONVERSION_IMPLICIT_WARN;
+} // lClassifyArrayToScalar
+
+/*
+ * lStructMembers() - Return the member symbol list of a struct type.
+ *
+ */
+
+static Symbol *lStructMembers(const Type *structType)
+{
+    if (!structType->str.members) {
+        return NULL;
+    }
+    return structType->str.members->symbols;
+} // lStructMembers
+
+/*
+ * lClassifyStructConversion() - Structure casts are explicit-only and take
+ *                               three forms: pairwise member conversion with
+ *                               equal member counts, extraction of the first
+ *                               member's value, and wrapping a value into a
+ *                               one-member structure.  An identical structure
+ *                               type converts exactly in any context.
+ *
+ */
+
+static CgConversionRank lClassifyStructConversion(const Type *from,
+                                                  const Type *to,
+                                                  int explicitCast)
+{
+    Symbol *fmember, *tmember;
+
+    if (IsSameUnqualifiedType(from, to)) {
+        return CG_CONVERSION_EXACT;
+    }
+    if (!explicitCast) {
+        return CG_CONVERSION_NONE;
+    }
+    fmember = lStructMembers(from);
+    tmember = lStructMembers(to);
+    while (fmember && tmember) {
+        if (CgClassifyConversion(fmember->type, tmember->type, 1) ==
+            CG_CONVERSION_NONE)
+        {
+            return CG_CONVERSION_NONE;
+        }
+        fmember = fmember->next;
+        tmember = tmember->next;
+    }
+    if (fmember || tmember) {
+        return CG_CONVERSION_NONE;
+    }
+    return CG_CONVERSION_EXPLICIT;
+} // lClassifyStructConversion
+
+/*
+ * lClassifyStructFrom() - Explicit cast of a structure to another category:
+ *                         the value of its first member converts to the
+ *                         target type.
+ *
+ */
+
+static CgConversionRank lClassifyStructFrom(const Type *from,
+                                            const Type *to, int explicitCast)
+{
+    Symbol *first;
+
+    if (!explicitCast) {
+        return CG_CONVERSION_NONE;
+    }
+    first = lStructMembers(from);
+    if (!first) {
+        return CG_CONVERSION_NONE;
+    }
+    return CgClassifyConversion(first->type, to, 1);
+} // lClassifyStructFrom
+
+/*
+ * lClassifyStructTo() - Explicit cast into a structure: only one-member
+ *                       structures can be formed, from a value convertible
+ *                       to that member's type.
+ *
+ */
+
+static CgConversionRank lClassifyStructTo(const Type *from,
+                                          const Type *to, int explicitCast)
+{
+    Symbol *first;
+
+    if (!explicitCast) {
+        return CG_CONVERSION_NONE;
+    }
+    first = lStructMembers(to);
+    if (!first || first->next) {
+        return CG_CONVERSION_NONE;
+    }
+    return CgClassifyConversion(from, first->type, 1);
+} // lClassifyStructTo
+
+/*
+ * CgClassifyConversion() - Rank converting a value of "from" to "to",
+ *                          consulting only language-level type information.
+ *
+ */
+
+CgConversionRank CgClassifyConversion(const Type *from, const Type *to,
+                                      int explicitCast)
+{
+    int fromCategory, toCategory;
+
+    if (!from || !to) {
+        return CG_CONVERSION_NONE;
+    }
+    fromCategory = GetCategory(from);
+    toCategory = GetCategory(to);
+    if (fromCategory == toCategory) {
+        switch (fromCategory) {
+        case TYPE_CATEGORY_SCALAR:
+            return CgClassifyScalarConversion(GetScalarKind(from),
+                                              GetScalarKind(to), explicitCast);
+        case TYPE_CATEGORY_ARRAY:
+            return lClassifyArrayConversion(from, to, explicitCast);
+        case TYPE_CATEGORY_STRUCT:
+            return lClassifyStructConversion(from, to, explicitCast);
+        default:
+            return CG_CONVERSION_NONE;
+        }
+    }
+    switch (fromCategory) {
+    case TYPE_CATEGORY_STRUCT:
+        return lClassifyStructFrom(from, to, explicitCast);
+    case TYPE_CATEGORY_ARRAY:
+        if (toCategory == TYPE_CATEGORY_SCALAR) {
+            return lClassifyArrayToScalar(from, to, explicitCast);
+        }
+        return CG_CONVERSION_NONE;
+    case TYPE_CATEGORY_SCALAR:
+        if (toCategory == TYPE_CATEGORY_ARRAY) {
+            return lClassifyScalarToArray(from, to, explicitCast);
+        }
+        if (toCategory == TYPE_CATEGORY_STRUCT) {
+            return lClassifyStructTo(from, to, explicitCast);
+        }
+        return CG_CONVERSION_NONE;
+    default:
+        return CG_CONVERSION_NONE;
+    }
+} // CgClassifyConversion
+
+/*
+ * lResolveCompileTimeKind() - The concrete kind a compile-time constant
+ *                             adopts when the other operand carries it.
+ *
+ */
+
+static CgScalarKind lResolveCompileTimeKind(CgScalarKind constant,
+                                            CgScalarKind other)
+{
+    if (constant == CG_SCALAR_CINT && CgScalarIsIntegral(other)) {
+        return other;
+    }
+    if (CgScalarIsFloating(other)) {
+        return other;
+    }
+    return constant == CG_SCALAR_CINT ? CG_SCALAR_INT : CG_SCALAR_FLOAT;
+} // lResolveCompileTimeKind
+
+/*
+ * lUsualArithmeticKind() - The result kind of an arithmetic operation on two
+ *                          numeric operand kinds, following the usual
+ *                          arithmetic conversions: compile-time kinds adapt
+ *                          to their partners, floating precision dominates
+ *                          integral width (double > float > half > fixed),
+ *                          wider integrals beat narrower ones, and
+ *                          unsigned wins at equal width.
+ *
+ */
+
+static CgScalarKind lUsualArithmeticKind(CgScalarKind left, CgScalarKind right)
+{
+    if (!lValidConversionKind(left) || !lValidConversionKind(right)) {
+        return CG_SCALAR_NONE;
+    }
+    if (left == CG_SCALAR_BOOL || right == CG_SCALAR_BOOL) {
+        return CG_SCALAR_NONE;
+    }
+    if (CgScalarIsCompileTime(left)) {
+        if (CgScalarIsCompileTime(right)) {
+            if (left == right) {
+                return left;
+            }
+            return CG_SCALAR_CFLOAT;
+        }
+        left = lResolveCompileTimeKind(left, right);
+    } else if (CgScalarIsCompileTime(right)) {
+        right = lResolveCompileTimeKind(right, left);
+    } else if ((!CgScalarIsIntegral(left) && !CgScalarIsFloating(left)) ||
+               (!CgScalarIsIntegral(right) && !CgScalarIsFloating(right)))
+    {
+        return CG_SCALAR_NONE;
+    }
+    if (CgScalarIsFloating(left) && CgScalarIsFloating(right)) {
+        return lNumericRank(left) >= lNumericRank(right) ? left : right;
+    }
+    if (CgScalarIsFloating(left)) {
+        return left;
+    }
+    if (CgScalarIsFloating(right)) {
+        return right;
+    }
+    if (lNumericRank(left) != lNumericRank(right)) {
+        return lNumericRank(left) > lNumericRank(right) ? left : right;
+    }
+    if (CgScalarIsUnsigned(right)) {
+        return right;
+    }
+    return left;
+} // lUsualArithmeticKind
+
+/*
+ * CgUsualArithmeticType() - The interned scalar type arithmetic on "left"
+ *                           and "right" produces, or NULL when either operand
+ *                           is not numeric.
+ *
+ */
+
+Type *CgUsualArithmeticType(const Type *left, const Type *right)
+{
+    CgScalarKind kind = lUsualArithmeticKind(GetScalarKind(left),
+                                             GetScalarKind(right));
+
+    if (!lValidConversionKind(kind)) {
+        return NULL;
+    }
+    return GetStandardTypeKind(kind, 0, 0);
+} // CgUsualArithmeticType
+
 ///////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////// Standard Type Interning: ///////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////

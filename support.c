@@ -296,6 +296,7 @@ unary *NewUnopNode(opcode op, expr *arg)
     pun->op = op;
     pun->subop = 0;
     pun->arg = arg;
+    pun->targetType = NULL;
     pun->tempptr[0] = 0;
     return pun;
 } // NewUnopNode
@@ -321,6 +322,7 @@ unary *NewUnopSubNode(opcode op, int subop, expr *arg)
     pun->op = op;
     pun->subop = subop;
     pun->arg = arg;
+    pun->targetType = NULL;
     pun->tempptr[0] = 0;
     return pun;
 } // NewUnopSubNode
@@ -683,7 +685,7 @@ return_stmt *NewReturnStmt(SourceLoc *loc, Scope *fScope, expr *fExpr)
                     SemanticError(loc, ERROR___VOID_FUN_RETURNS_VALUE);
                 }
             } else if (fScope->returnType != UndefinedType) {
-                if (ConvertType(fExpr, fScope->returnType, fExpr->common.type, &lExpr, 0, 0)) {
+                if (ConvertType(loc, fExpr, fScope->returnType, fExpr->common.type, &lExpr, 0, 0, 1)) {
                     fExpr = lExpr;
                 } else {
                     SemanticError(loc, ERROR___RETURN_EXPR_INCOMPAT);
@@ -1238,7 +1240,7 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
         if (dExpr->common.kind == BINARY_N && dExpr->bin.op == EXPR_LIST_OP) {
             lExpr = FoldConstants(dExpr->bin.left);
             if (lExpr->common.kind == CONST_N) {
-                if (ConvertType(lExpr, vType, lExpr->co.type, &tExpr, 1, 0)) {
+                if (ConvertType(loc, lExpr, vType, lExpr->co.type, &tExpr, 1, 0, 1)) {
                     dExpr->bin.left = tExpr;
                     return 1;
                 } else {
@@ -1306,7 +1308,7 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                     return 1;
                 }
             } else {
-                if (ConvertType(lExpr, vType, lExpr->common.type, &tExpr, 0, 0)) {
+                if (ConvertType(loc, lExpr, vType, lExpr->common.type, &tExpr, 0, 0, 1)) {
                     dExpr->bin.left = tExpr;
                     return 1;
                 } else {
@@ -2063,47 +2065,95 @@ int IsArrayIndex(const expr *fExpr)
 } // IsArrayIndex
 
 /*
- * lIsBaseCastValid() - Is it O.K. to cast the base type fromBase to toBase?
+ * lIsNumericKind() - TRUE if a canonical scalar kind participates in
+ *                    arithmetic (integral or floating family, including the
+ *                    compile-time kinds).
  *
  */
 
-static int lIsBaseCastValid(int toBase, int fromBase, int Explicit)
+static int lIsNumericKind(CgScalarKind kind)
 {
-    if (toBase == TYPE_BASE_NO_TYPE || fromBase == TYPE_BASE_NO_TYPE)
-        return 0;
-    if (toBase == TYPE_BASE_VOID || fromBase == TYPE_BASE_VOID)
-        return 0;
-    if (toBase == fromBase)
-        return 1;
-    if (Cg->theHAL->IsValidScalarCast(toBase, fromBase, Explicit)) {
-        return 1;
-    } else {
-        return 0;
+    return CgScalarIsIntegral(kind) || CgScalarIsFloating(kind);
+} // lIsNumericKind
+
+/*
+ * lCastTargetType() - The canonical unqualified form of a cast target for
+ *                     scalar, vector, and matrix results so expression nodes
+ *                     carry interned types whose scalar kinds survive kinds
+ *                     above the four-bit legacy bases; other categories use
+ *                     the target type verbatim.
+ *
+ */
+
+static Type *lCastTargetType(Type *toType)
+{
+    switch (GetCategory(toType)) {
+    case TYPE_CATEGORY_SCALAR:
+        return GetStandardTypeKind(GetScalarKind(toType), 0, 0);
+    case TYPE_CATEGORY_ARRAY:
+        if (IsVector(toType, NULL)) {
+            return GetStandardTypeKind(GetScalarKind(toType),
+                                       toType->arr.numels, 0);
+        }
+        if (IsMatrix(toType, NULL, NULL)) {
+            return GetStandardTypeKind(GetScalarKind(toType),
+                                       toType->arr.numels,
+                                       toType->arr.eltype->arr.numels);
+        }
+        break;
+    default:
+        break;
     }
-} // lIsBaseCastValid
+    return toType;
+} // lCastTargetType
+
+/*
+ * lNewShapeCast() - Build a typed shape-conversion node.  The target type
+ *                   rides in the node's targetType field; no four-bit subop
+ *                   encoding is involved.
+ *
+ */
+
+static expr *lNewShapeCast(opcode op, expr *fExpr, Type *toType)
+{
+    unary *unnode = NewUnopSubNode(op, 0, fExpr);
+
+    unnode->type = toType;
+    unnode->targetType = toType;
+    return (expr *) unnode;
+} // lNewShapeCast
 
 /*
  * ConvertType() - Type cast fExpr from fromType to toType if needed.  Ignore qualifiers.
  *
  * If "result" is NULL just check validity of cast; don't allocate cast operator node.
  *
+ * AllowShapeConversions gates the conversions that introduce or collapse
+ * aggregate structure (scalar replication and first-element extraction):
+ * typed contexts such as assignments, initializers, returns, and casts
+ * enable them, while overload-resolution probing and argument binding pass
+ * 0 so function selection keeps its exact-shape rules until ranked
+ * conversion landing replaces it.
+ *
  */
 
-int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int IgnorePacked, int Explicit)
+int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
+                expr **result, int IgnorePacked, int Explicit,
+                int AllowShapeConversions)
 {
-    int fcategory, tcategory;
-    int fbase, tbase;
-    Type *feltype, *teltype;
+    CgConversionRank rank;
     unary *unnode;
+    Type *targetType;
     int ToPacked, FromPacked;
 
+    if (!toType || !fromType)
+        return 0;
     ToPacked = (toType->properties & TYPE_MISC_PACKED) != 0;
     FromPacked = (fromType->properties & TYPE_MISC_PACKED) != 0;
     if (Explicit && IsSameUnqualifiedType(toType, fromType) &&
-        Cg->theHAL->IsTexobjBase(GetBase(toType)) &&
-        !Cg->theHAL->IsValidScalarCast(GetBase(toType),
-                                       GetBase(fromType), Explicit))
+        Cg->theHAL->IsTexobjBase(GetBase(toType)))
     {
+        /* Texture objects cannot be cast, not even to their own type. */
         return 0;
     }
     if (IsSameUnqualifiedType(toType, fromType) &&
@@ -2112,59 +2162,88 @@ int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int Ig
         if (result)
             *result = fExpr;
         return 1;
-    } else {
-        fcategory = GetCategory(fromType);
-        tcategory = GetCategory(toType);
-        if (fcategory == tcategory) {
-            switch (fcategory) {
-            case TYPE_CATEGORY_SCALAR:
-                fbase = GetBase(fromType);
-                tbase = GetBase(toType);
-                if (lIsBaseCastValid(tbase, fbase, Explicit)) {
-                    if (result) {
-                        unnode = NewUnopSubNode(CAST_CS_OP, SUBOP_CS(tbase, fbase), fExpr);
-                        unnode->type = GetStandardType(tbase, 0, 0);
-                        unnode->HasSideEffects = fExpr->common.HasSideEffects;
-                        *result = (expr *) unnode;
-                    }
-                    return 1;
-                } else {
-                    return 0;
-                }
-                break;
-            case TYPE_CATEGORY_ARRAY:
-                if (toType->arr.numels != fromType->arr.numels)
-                    return 0;
-                if (toType->arr.numels > 4)
-                    return 0;
-                if (!IgnorePacked && (ToPacked != FromPacked))
-                    return 0;
-                feltype = fromType->arr.eltype;
-                teltype = toType->arr.eltype;
-                fcategory = GetCategory(feltype);
-                tcategory = GetCategory(teltype);
-                if (tcategory != TYPE_CATEGORY_SCALAR || fcategory != TYPE_CATEGORY_SCALAR)
-                    return 0;
-                fbase = GetBase(feltype);
-                tbase = GetBase(teltype);
-                if (lIsBaseCastValid(tbase, fbase, Explicit)) {
-                    if (result) {
-                        unnode = NewUnopSubNode(CAST_CV_OP, SUBOP_CV(tbase, toType->arr.numels, fbase), fExpr);
-                        unnode->type = GetStandardType(tbase, toType->arr.numels, 0);
-                        unnode->HasSideEffects = fExpr->common.HasSideEffects;
-                        *result = (expr *) unnode;
-                    }
-                    return 1;
-                } else {
-                    return 0;
-                }
-                break;
-            default:
-                return 0;
-            }
-        } else {
+    }
+    if (!AllowShapeConversions &&
+        ((GetCategory(fromType) == TYPE_CATEGORY_SCALAR &&
+          GetCategory(toType) == TYPE_CATEGORY_ARRAY) ||
+         (GetCategory(fromType) == TYPE_CATEGORY_ARRAY &&
+          GetCategory(toType) == TYPE_CATEGORY_SCALAR)))
+    {
+        return 0;
+    }
+    rank = CgClassifyConversion(fromType, toType, Explicit);
+    if (rank == CG_CONVERSION_NONE)
+        return 0;
+    if (GetCategory(fromType) == TYPE_CATEGORY_ARRAY &&
+        GetCategory(toType) == TYPE_CATEGORY_ARRAY &&
+        !IgnorePacked && ToPacked != FromPacked)
+    {
+        /* Array-to-array conversions must agree on packedness. */
+        return 0;
+    }
+    if (!result)
+        return 1;
+    if (rank == CG_CONVERSION_IMPLICIT_WARN)
+        SemanticWarning(loc, WARNING___IMPLICIT_CONVERSION);
+    targetType = lCastTargetType(toType);
+    switch (GetCategory(fromType)) {
+    case TYPE_CATEGORY_SCALAR:
+        switch (GetCategory(toType)) {
+        case TYPE_CATEGORY_SCALAR:
+            unnode = NewUnopSubNode(CAST_CS_OP,
+                                    SUBOP_CS(CgScalarLegacyBase(GetScalarKind(toType)),
+                                             CgScalarLegacyBase(GetScalarKind(fromType))),
+                                    fExpr);
+            unnode->type = targetType;
+            unnode->targetType = targetType;
+            unnode->HasSideEffects = fExpr->common.HasSideEffects;
+            *result = (expr *) unnode;
+            return 1;
+        case TYPE_CATEGORY_ARRAY:
+            /* Scalar replication fills every element of the target. */
+            *result = lNewShapeCast(CAST_SHAPE_OP, fExpr, targetType);
+            return 1;
+        default:
             return 0;
         }
+        break;
+    case TYPE_CATEGORY_ARRAY:
+        switch (GetCategory(toType)) {
+        case TYPE_CATEGORY_SCALAR:
+            /* First-element extraction. */
+            *result = lNewShapeCast(CAST_SHAPE_OP, fExpr, targetType);
+            return 1;
+        case TYPE_CATEGORY_ARRAY:
+            if (fromType->arr.numels == toType->arr.numels &&
+                IsScalar(fromType->arr.eltype) && IsScalar(toType->arr.eltype))
+            {
+                /* Same-size element conversion keeps its legacy node. */
+                unnode = NewUnopSubNode(CAST_CV_OP,
+                                        SUBOP_CV(CgScalarLegacyBase(GetScalarKind(toType->arr.eltype)),
+                                                 toType->arr.numels,
+                                                 CgScalarLegacyBase(GetScalarKind(fromType->arr.eltype))),
+                                        fExpr);
+                unnode->type = targetType;
+                unnode->targetType = targetType;
+                unnode->HasSideEffects = fExpr->common.HasSideEffects;
+                *result = (expr *) unnode;
+            } else {
+                *result = lNewShapeCast(CAST_SHAPE_OP, fExpr, targetType);
+            }
+            return 1;
+        default:
+            return 0;
+        }
+        break;
+    case TYPE_CATEGORY_STRUCT:
+        *result = lNewShapeCast(CAST_STRUCT_OP, fExpr, targetType);
+        return 1;
+    default:
+        if (GetCategory(toType) == TYPE_CATEGORY_STRUCT) {
+            *result = lNewShapeCast(CAST_STRUCT_OP, fExpr, targetType);
+            return 1;
+        }
+        return 0;
     }
 } // ConvertType
 
@@ -2177,47 +2256,70 @@ int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int Ig
  *
  * len = 1 means "float f[1]" not "float f"
  *
+ * The node type comes from the interned canonical registry so kinds above
+ * the four-bit legacy bases survive on expression nodes; the subop keeps
+ * the legacy bases purely as lowering information.
+ *
  */
 
-expr *CastScalarVectorMatrix(expr *fExpr, int fbase, int tbase, int len, int len2)
+expr *CastScalarVectorMatrix(expr *fExpr, CgScalarKind fkind, CgScalarKind tkind,
+                             int len, int len2)
 {
-    int op, subop;
-    expr *lExpr;
+    opcode op;
+    int subop;
+    unary *unnode;
+    Type *tType;
 
     if (len == 0) {
         op = CAST_CS_OP;
-        subop = SUBOP_CS(tbase, fbase);
+        subop = SUBOP_CS(CgScalarLegacyBase(tkind), CgScalarLegacyBase(fkind));
+        tType = GetStandardTypeKind(tkind, 0, 0);
     } else if (len2 == 0) {
         op = CAST_CV_OP;
-        subop = SUBOP_CV(tbase, len, fbase);
+        subop = SUBOP_CV(CgScalarLegacyBase(tkind), len, CgScalarLegacyBase(fkind));
+        tType = GetStandardTypeKind(tkind, len, 0);
     } else {
         op = CAST_CM_OP;
-        subop = SUBOP_CM(len2, tbase, len, fbase);
+        subop = SUBOP_CM(len2, CgScalarLegacyBase(tkind), len, CgScalarLegacyBase(fkind));
+        /* Same layout as GetStandardType(tbase, len, len2): [len2] of [len]. */
+        tType = GetStandardTypeKind(tkind, len2, len);
     }
-    lExpr = (expr *) NewUnopSubNode(op, subop, fExpr);
-    lExpr->common.type = GetStandardType(tbase, len, len2);
-    return lExpr;
+    unnode = NewUnopSubNode(op, subop, fExpr);
+    unnode->type = tType;
+    unnode->targetType = tType;
+    return (expr *) unnode;
 } // CastScalarVectorMatrix
 
 /*
  * ConvertNumericOperands() - Convert two scalar, vector, or matrix expressions to the same type
  *         for use in an expression.  Number of dimensions and lengths may differ.
  *
- * Returns: base type of resulting values.
+ * The common result kind is the language-level usual arithmetic conversion
+ * of the two operand element kinds.
+ *
+ * Returns: canonical scalar type of the resulting values, NULL if the
+ *          operands are not both numeric.
  *
  */
 
-int ConvertNumericOperands(int baseop, expr **lExpr, expr **rexpr, int lbase, int rbase,
-                           int llen, int rlen, int llen2, int rlen2)
+Type *ConvertNumericOperands(int baseop, expr **lexpr, expr **rexpr,
+                             Type *lType, Type *rType,
+                             int llen, int rlen, int llen2, int rlen2)
 {
-    int nbase;
+    Type *nType;
+    CgScalarKind lkind, rkind, nkind;
 
-    nbase = Cg->theHAL->GetBinOpBase(baseop, lbase, rbase, llen, rlen);
-    if (nbase != lbase)
-        *lExpr = CastScalarVectorMatrix(*lExpr, lbase, nbase, llen, llen2);
-    if (nbase != rbase)
-        *rexpr = CastScalarVectorMatrix(*rexpr, rbase, nbase, rlen, rlen2);
-    return nbase;
+    nType = CgUsualArithmeticType(lType, rType);
+    if (!nType)
+        return NULL;
+    lkind = GetScalarKind(lType);
+    rkind = GetScalarKind(rType);
+    nkind = GetScalarKind(nType);
+    if (nkind != lkind)
+        *lexpr = CastScalarVectorMatrix(*lexpr, lkind, nkind, llen, llen2);
+    if (nkind != rkind)
+        *rexpr = CastScalarVectorMatrix(*rexpr, rkind, nkind, rlen, rlen2);
+    return nType;
 } // ConvertNumericOperands
 
 /*
@@ -2277,7 +2379,7 @@ expr *CheckBooleanExpr(SourceLoc *loc, expr *fExpr, int AllowVector)
 expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int IntegralOnly)
 {
     int lop, subop = 0, HasError = 0, len = 0;
-    int lbase;
+    CgScalarKind lkind;
     Type *lType, *eltype;
     unary *result = NULL;
     int MustBeBoolean, OK = 0;
@@ -2299,18 +2401,18 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
         if (len > 4) {
             SemanticError(loc, ERROR_S_VECTOR_OPERAND_GR_4, GetAtomString(atable, name));
         } else {
-            lbase = GetBase(lType);
-            SUBOP_SET_T(subop, lbase);
+            lkind = GetScalarKind(eltype);
+            SUBOP_SET_T(subop, CgScalarLegacyBase(lkind));
             if (MustBeBoolean) {
-                if (lbase == TYPE_BASE_BOOLEAN) {
+                if (lkind == CG_SCALAR_BOOL) {
                     OK = 1;
                 } else {
                     SemanticError(loc, ERROR___BOOL_EXPR_EXPECTED);
                 }
             } else {
-                if (Cg->theHAL->IsNumericBase(lbase)) {
+                if (lIsNumericKind(lkind)) {
                     if (IntegralOnly) {
-                        if (Cg->theHAL->IsIntegralBase(lbase)) {
+                        if (CgScalarIsIntegral(lkind)) {
                             OK = 1;
                         } else {
                             SemanticError(loc, ERROR_S_OPERANDS_NOT_INTEGRAL, GetAtomString(atable, name));
@@ -2324,7 +2426,7 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
             }
             if (OK) {
                 result = NewUnopSubNode(lop, subop, fExpr);
-                result->type = GetStandardType(lbase, len, 0);
+                result->type = GetStandardTypeKind(lkind, len, 0);
             }
         }
     }
@@ -2354,8 +2456,8 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
 expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *rexpr, int IntegralOnly)
 {
     int lop, subop = 0, HasError = 0, llen = 0, rlen = 0, nlen;
-    int lbase, rbase, nbase;
-    Type *lType, *rtype, *leltype, *reltype;
+    CgScalarKind nkind;
+    Type *lType, *rtype, *leltype, *reltype, *nType;
     binary *result = NULL;
     int CanSmear;
 
@@ -2411,15 +2513,17 @@ expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *re
         if (llen > 4 || rlen > 4) {
             SemanticError(loc, ERROR_S_VECTOR_OPERAND_GR_4, GetAtomString(atable, name));
         } else {
-            lbase = GetBase(lType);
-            rbase = GetBase(rtype);
-            if (Cg->theHAL->IsNumericBase(lbase) && Cg->theHAL->IsNumericBase(rbase)) {
-                nbase = ConvertNumericOperands(fop, &lExpr, &rexpr, lbase, rbase, llen, rlen, 0, 0);
-                SUBOP_SET_T(subop, nbase);
+            if (lIsNumericKind(GetScalarKind(leltype)) &&
+                lIsNumericKind(GetScalarKind(reltype)))
+            {
+                nType = ConvertNumericOperands(fop, &lExpr, &rexpr, leltype, reltype,
+                                               llen, rlen, 0, 0);
+                nkind = GetScalarKind(nType);
+                SUBOP_SET_T(subop, CgScalarLegacyBase(nkind));
                 nlen = llen > rlen ? llen : rlen;
                 result = NewBinopSubNode(lop, subop, lExpr, rexpr);
-                result->type = GetStandardType(nbase, nlen, 0);
-                if (IntegralOnly && !Cg->theHAL->IsIntegralBase(nbase)) {
+                result->type = GetStandardTypeKind(nkind, nlen, 0);
+                if (IntegralOnly && !CgScalarIsIntegral(nkind)) {
                     SemanticError(loc, ERROR_S_OPERANDS_NOT_INTEGRAL, GetAtomString(atable, name));
                 }
             } else {
@@ -2522,8 +2626,7 @@ expr *NewBinaryBooleanOperator(SourceLoc *loc, int fop, int name, expr *lExpr, e
 expr *NewBinaryComparisonOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *rexpr)
 {
     int lop, subop = 0, HasError = 0, llen = 0, rlen = 0, nlen = 0;
-    int lbase, rbase, nbase;
-    Type *lType, *rtype, *leltype, *reltype;
+    Type *lType, *rtype, *leltype, *reltype, *nType;
     binary *result = NULL;
 
     lop = fop;
@@ -2566,15 +2669,17 @@ expr *NewBinaryComparisonOperator(SourceLoc *loc, int fop, int name, expr *lExpr
         if (nlen > 4) {
             SemanticError(loc, ERROR_S_VECTOR_OPERAND_GR_4, GetAtomString(atable, name));
         } else {
-            lbase = GetBase(lType);
-            rbase = GetBase(rtype);
-            if (Cg->theHAL->IsNumericBase(lbase) && Cg->theHAL->IsNumericBase(rbase)) {
-                nbase = ConvertNumericOperands(fop, &lExpr, &rexpr, lbase, rbase, llen, rlen, 0, 0);
-                SUBOP_SET_T(subop, nbase);
+            if (lIsNumericKind(GetScalarKind(lType)) &&
+                lIsNumericKind(GetScalarKind(rtype)))
+            {
+                nType = ConvertNumericOperands(fop, &lExpr, &rexpr, lType, rtype,
+                                               llen, rlen, 0, 0);
+                SUBOP_SET_T(subop, CgScalarLegacyBase(GetScalarKind(nType)));
                 nlen = llen > rlen ? llen : rlen;
                 result = NewBinopSubNode(lop, subop, lExpr, rexpr);
                 result->type = GetStandardType(TYPE_BASE_BOOLEAN, nlen, 0);
-            } else if (lbase == TYPE_BASE_BOOLEAN && rbase == TYPE_BASE_BOOLEAN) {
+            } else if (GetScalarKind(lType) == CG_SCALAR_BOOL &&
+                       GetScalarKind(rtype) == CG_SCALAR_BOOL) {
                 subop = SUBOP_V(nlen, TYPE_BASE_BOOLEAN);
                 result = NewBinopSubNode(lop, subop, lExpr, rexpr);
                 result->type = GetStandardType(TYPE_BASE_BOOLEAN, nlen, 0);
@@ -2608,8 +2713,9 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
 {
     int lop, subop, blen = 0, llen = 0, rlen = 0, nlen = 0;
     int HasError = 0, LIsNumeric, LIsBoolean, LIsSimple;
-    int lbase, rbase, nbase, category;
-    Type *btype, *lType, *rtype, *beltype, *leltype, *reltype;
+    int category;
+    CgScalarKind lkind, rkind, nkind;
+    Type *btype, *lType, *rtype, *beltype, *leltype, *reltype, *nType;
     Type *resulttype = UndefinedType;
     trinary *result = NULL;
 
@@ -2620,10 +2726,10 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
     btype = beltype = bexpr->common.type;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    lbase = GetBase(leltype);
-    rbase = GetBase(reltype);
-    LIsNumeric = Cg->theHAL->IsNumericBase(lbase) & Cg->theHAL->IsNumericBase(rbase);
-    LIsBoolean = (lbase == TYPE_BASE_BOOLEAN) & (rbase == TYPE_BASE_BOOLEAN);
+    lkind = GetScalarKind(leltype);
+    rkind = GetScalarKind(reltype);
+    LIsNumeric = lIsNumericKind(lkind) & lIsNumericKind(rkind);
+    LIsBoolean = (lkind == CG_SCALAR_BOOL) & (rkind == CG_SCALAR_BOOL);
     LIsSimple = LIsNumeric | LIsBoolean;
     if (LIsSimple) {
 
@@ -2647,8 +2753,8 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
                 leltype = lType->arr.eltype;
                 if (IsVector(rtype, &rlen)) {
                     reltype = rtype->arr.eltype;
-                    lbase = GetBase(leltype);
-                    rbase = GetBase(reltype);
+                    lkind = GetScalarKind(leltype);
+                    rkind = GetScalarKind(reltype);
                     lop = COND_SV_OP;
                     subop = SUBOP_SV(llen, 0);
                 } else {
@@ -2670,8 +2776,8 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
                 subop = SUBOP_SV(llen, 0);
                 leltype = lType->arr.eltype;
                 reltype = rtype->arr.eltype;
-                lbase = GetBase(leltype);
-                rbase = GetBase(reltype);
+                lkind = GetScalarKind(leltype);
+                rkind = GetScalarKind(reltype);
             } else {
                 SemanticError(loc, ERROR___QSTN_VECTOR_23_OPNDS_EXPECTED);
                 HasError = 1;
@@ -2703,14 +2809,33 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
             SemanticError(loc, ERROR_S_OPERANDS_HAVE_SIDE_EFFECTS, "?:");
         }
         if (LIsSimple) {
-            nbase = ConvertNumericOperands(COND_OP, &lExpr, &rexpr, lbase, rbase, llen, rlen, 0, 0);
-            if (llen == rlen && (blen == 0 || blen == llen)) {
-                SUBOP_SET_T(subop, nbase);
-                result = NewTriopSubNode(lop, subop, bexpr, lExpr, rexpr);
-                result->type = GetStandardType(nbase, llen, 0);
+            if (LIsBoolean) {
+                nType = GetStandardTypeKind(CG_SCALAR_BOOL, 0, 0);
+                if (llen == rlen && (blen == 0 || blen == llen)) {
+                    SUBOP_SET_T(subop, TYPE_BASE_BOOLEAN);
+                    result = NewTriopSubNode(lop, subop, bexpr, lExpr, rexpr);
+                    result->type = GetStandardType(TYPE_BASE_BOOLEAN, llen, 0);
+                } else {
+                    SemanticError(loc, ERROR_S_VECTOR_OPERANDS_DIFF_LEN, "\"? :\"");
+                    HasError = 1;
+                }
             } else {
-                SemanticError(loc, ERROR_S_VECTOR_OPERANDS_DIFF_LEN, "\"? :\"");
-                HasError = 1;
+                nType = ConvertNumericOperands(COND_OP, &lExpr, &rexpr, leltype, reltype,
+                                               llen, rlen, 0, 0);
+                if (!nType) {
+                    SemanticError(loc, ERROR___QSTN_23_OPNDS_INVALID);
+                    HasError = 1;
+                } else {
+                    nkind = GetScalarKind(nType);
+                    if (llen == rlen && (blen == 0 || blen == llen)) {
+                        SUBOP_SET_T(subop, CgScalarLegacyBase(nkind));
+                        result = NewTriopSubNode(lop, subop, bexpr, lExpr, rexpr);
+                        result->type = GetStandardTypeKind(nkind, llen, 0);
+                    } else {
+                        SemanticError(loc, ERROR_S_VECTOR_OPERANDS_DIFF_LEN, "\"? :\"");
+                        HasError = 1;
+                    }
+                }
             }
         } else {
             category = GetCategory(lType);
@@ -2849,9 +2974,10 @@ expr *NewMatrixSwizzleOperator(SourceLoc *loc, expr *fExpr, int ident)
 
 expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
 {
-    int len = 0, HasError = 0, size = 0, lbase, nbase, lNumeric, nNumeric, vlen, vlen2;
+    int len = 0, HasError = 0, size = 0, lNumeric, nNumeric, vlen, vlen2;
     int IsMatrixConstructor = 0;
     int MatrixRowSize = 0;
+    CgScalarKind lkind, nkind = CG_SCALAR_NONE;
     unary *result = NULL;
     expr *lExpr;
     Type *lType, *rType;
@@ -2865,9 +2991,8 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
                 fExpr->bin.op == EXPR_LIST_OP &&
                 fExpr->bin.right == NULL)
             {
-                lbase = GetBase(fExpr->bin.left->common.type);
-                if ((Cg->theHAL->IsNumericBase(lbase) ||
-                     lbase == TYPE_BASE_BOOLEAN) &&
+                lkind = GetScalarKind(fExpr->bin.left->common.type);
+                if ((lIsNumericKind(lkind) || lkind == CG_SCALAR_BOOL) &&
                     IsScalar(fExpr->bin.left->common.type))
                 {
                     return NewCastOperator(loc, fExpr->bin.left, rType);
@@ -2893,9 +3018,9 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
     while (lExpr) {
         vlen = 0;
         lType = lExpr->common.type;
-        lbase = GetBase(lType);
-        lNumeric = Cg->theHAL->IsNumericBase(lbase);
-        if (!lNumeric && lbase != TYPE_BASE_BOOLEAN) {
+        lkind = GetScalarKind(lType);
+        lNumeric = lIsNumericKind(lkind);
+        if (!lNumeric && lkind != CG_SCALAR_BOOL) {
             SemanticError(loc, ERROR___VECTOR_CONSTR_NOT_NUM_BOOL);
             HasError = 1;
             break;
@@ -2919,12 +3044,14 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
             }
         }
         if (len == 0) {
-            nbase = lbase;
+            nkind = lkind;
             nNumeric = lNumeric;
         } else if (IsMatrixConstructor || len + vlen <= 4) {
             if (lNumeric == nNumeric) {
                 if (nNumeric) {
-                    nbase = Cg->theHAL->GetBinOpBase(VECTOR_V_OP, nbase, lbase, 0, 0);
+                    nkind = GetScalarKind(CgUsualArithmeticType(
+                        GetStandardTypeKind(nkind, 0, 0),
+                        GetStandardTypeKind(lkind, 0, 0)));
                 }
             } else {
                 SemanticError(loc, ERROR___MIXED_NUM_NONNUM_VECT_CNSTR);
@@ -2952,20 +3079,20 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
         lExpr = fExpr;
         while (lExpr) {
             lType = lExpr->common.type;
-            lbase = GetBase(lType);
-            if (lbase != nbase) {
+            lkind = GetScalarKind(lType);
+            if (lkind != nkind) {
                 vlen = 0;
                 IsVector(lType, &vlen);
                 lExpr->bin.left = CastScalarVectorMatrix(
-                    lExpr->bin.left, lbase, nbase, vlen, 0);
+                    lExpr->bin.left, lkind, nkind, vlen, 0);
             }
             lExpr = lExpr->bin.right;
         }
         /* VECTOR_V_OP has no room for a 16-component matrix length. */
         result = NewUnopSubNode(VECTOR_V_OP,
-            SUBOP_V(IsMatrixConstructor ? 0 : len, nbase), fExpr);
+            SUBOP_V(IsMatrixConstructor ? 0 : len, CgScalarLegacyBase(nkind)), fExpr);
         result->type = IsMatrixConstructor ? rType :
-            GetStandardType(nbase, len, 0);
+            GetStandardTypeKind(nkind, len, 0);
     }
     if (!result) {
         result = NewUnopSubNode(VECTOR_V_OP, 0, fExpr);
@@ -2983,7 +3110,7 @@ expr *NewCastOperator(SourceLoc *loc, expr *fExpr, Type *toType)
 {
     expr *lExpr;
 
-    if (ConvertType(fExpr, toType, fExpr->common.type, &lExpr, 0, 1)) {
+    if (ConvertType(loc, fExpr, toType, fExpr->common.type, &lExpr, 0, 1, 1)) {
         lExpr->common.type = toType;
         return lExpr;
     } else {
@@ -3091,7 +3218,12 @@ Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb, expr *actuals)
                         lExact = lSymb;
                         numexact++;
                     } else {
-                        if (ConvertType(NULL, lFormals->type, actuals->common.type, NULL, 0, 0)) {
+                        /* Shape-introducing conversions stay out of overload
+                         * probing: the legacy numvalid==1 early return would
+                         * let a scalar<->aggregate conversion hijack selection.
+                         * Ranked argument conversion lands in Task 12. */
+                        if (ConvertType(NULL, NULL, lFormals->type, actuals->common.type,
+                                        NULL, 0, 0, 0)) {
                             lSymb->details.fun.flags = VALID_MATCH;
                             lValid = lSymb;
                             numvalid++;
@@ -3244,7 +3376,11 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                         SemanticError(loc, ERROR_D_OUT_PARAM_NOT_LVALUE, paramno);
                     }
                 }
-            } else if (ConvertType(lActuals->bin.left, formalType, actualType, &lExpr, 0, 0)) {
+                /* Argument binding keeps the legacy exact-shape rules: no
+                 * scalar<->aggregate conversions here, or the resolver's
+                 * numvalid==1 early return could hijack overload selection.
+                 * Ranked argument conversion lands in Task 12. */
+            } else if (ConvertType(loc, lActuals->bin.left, formalType, actualType, &lExpr, 0, 0, 0)) {
                 lActuals->bin.left = lExpr;
                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
             } else {
@@ -3297,7 +3433,7 @@ expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
         SemanticError(loc, ERROR___ASSIGN_TO_CONST_VALUE);
     if (vdomain == TYPE_DOMAIN_UNIFORM && edomain == TYPE_DOMAIN_VARYING)
         SemanticError(loc, ERROR___ASSIGN_VARYING_TO_UNIFORM);
-    if (ConvertType(fExpr, vType, eType, &lExpr, InInit, 0)) {
+    if (ConvertType(loc, fExpr, vType, eType, &lExpr, InInit, 0, 1)) {
         fExpr = lExpr;
     } else {
         if (vType != UndefinedType && eType != UndefinedType)

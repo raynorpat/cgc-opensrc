@@ -95,6 +95,21 @@ static int TestGetSizeof(Type *fType)
     }
 }
 
+typedef struct ConversionCase_Rec {
+    CgScalarKind from;
+    CgScalarKind to;
+    CgConversionRank implicitRank;
+    CgConversionRank explicitRank;
+} ConversionCase;
+
+static const ConversionCase cases[] = {
+    { CG_SCALAR_CINT, CG_SCALAR_HALF, CG_CONVERSION_PROMOTION, CG_CONVERSION_PROMOTION },
+    { CG_SCALAR_INT, CG_SCALAR_FLOAT, CG_CONVERSION_IMPLICIT, CG_CONVERSION_IMPLICIT },
+    { CG_SCALAR_DOUBLE, CG_SCALAR_HALF, CG_CONVERSION_IMPLICIT_WARN, CG_CONVERSION_EXPLICIT },
+    { CG_SCALAR_BOOL, CG_SCALAR_FLOAT, CG_CONVERSION_IMPLICIT, CG_CONVERSION_IMPLICIT },
+    { CG_SCALAR_FLOAT, CG_SCALAR_BOOL, CG_CONVERSION_IMPLICIT, CG_CONVERSION_IMPLICIT }
+};
+
 int main(void)
 {
     CgStruct cg;
@@ -125,6 +140,40 @@ int main(void)
     assert(IsMatrix(GetStandardTypeKind(CG_SCALAR_DOUBLE, 4, 4), NULL, NULL));
     assert(GetStandardTypeKind(CG_SCALAR_FLOAT, 4, 4) ==
            GetStandardTypeKind(CG_SCALAR_FLOAT, 4, 4));
+
+    {
+        size_t ii;
+
+        for (ii = 0; ii < sizeof(cases) / sizeof(cases[0]); ii++) {
+            assert(CgClassifyScalarConversion(cases[ii].from, cases[ii].to, 0) ==
+                   cases[ii].implicitRank);
+            assert(CgClassifyScalarConversion(cases[ii].from, cases[ii].to, 1) ==
+                   cases[ii].explicitRank);
+        }
+        assert(CgClassifyScalarConversion(CG_SCALAR_NONE, CG_SCALAR_FLOAT, 0) ==
+               CG_CONVERSION_NONE);
+        assert(CgClassifyScalarConversion(CG_SCALAR_INT, CG_SCALAR_INT, 0) ==
+               CG_CONVERSION_EXACT);
+
+        assert(GetScalarKind(CgUsualArithmeticType(
+                   GetStandardTypeKind(CG_SCALAR_CINT, 0, 0),
+                   GetStandardTypeKind(CG_SCALAR_HALF, 0, 0))) == CG_SCALAR_HALF);
+        assert(GetScalarKind(CgUsualArithmeticType(
+                   GetStandardTypeKind(CG_SCALAR_CFLOAT, 0, 0),
+                   GetStandardTypeKind(CG_SCALAR_FIXED, 0, 0))) == CG_SCALAR_FIXED);
+        assert(GetScalarKind(CgUsualArithmeticType(
+                   GetStandardTypeKind(CG_SCALAR_INT, 0, 0),
+                   GetStandardTypeKind(CG_SCALAR_UINT, 0, 0))) == CG_SCALAR_UINT);
+        assert(GetScalarKind(CgUsualArithmeticType(
+                   GetStandardTypeKind(CG_SCALAR_SHORT, 0, 0),
+                   GetStandardTypeKind(CG_SCALAR_USHORT, 0, 0))) == CG_SCALAR_USHORT);
+        assert(GetScalarKind(CgUsualArithmeticType(
+                   GetStandardTypeKind(CG_SCALAR_LONG, 0, 0),
+                   GetStandardTypeKind(CG_SCALAR_ULONG, 0, 0))) == CG_SCALAR_ULONG);
+        assert(GetScalarKind(CgUsualArithmeticType(
+                   GetStandardTypeKind(CG_SCALAR_INT, 0, 0),
+                   GetStandardTypeKind(CG_SCALAR_FLOAT, 0, 0))) == CG_SCALAR_FLOAT);
+    }
 
     {
         CgNumericValue input;

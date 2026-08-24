@@ -1,0 +1,10 @@
+// sampler2D values must not convert to numeric types.  The rejection comes
+// from the language's own conversion rules (C1033 "cast not allowed"), not
+// from a profile capability check, so the fixture compiles under a GLSL
+// profile but must report a conversion diagnostic.
+
+float4 main(float2 coord : TEXCOORD0, uniform sampler2D image)
+{
+    (float)image;
+    return float4(coord.x, 0.0, 0.0, 1.0);
+}

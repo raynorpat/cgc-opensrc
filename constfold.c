@@ -270,7 +270,13 @@ expr *ConstantFoldNode(expr *fexpr, void *_arg1, int arg2)
         case CAST_CS_OP:
         case CAST_CV_OP:
             target = SUBOP_GET_T2(fexpr->un.subop);
-            tkind = FoldKindOf(CG_SCALAR_UNDEFINED, target);
+            /* Prefer the canonical target kind: legacy four-bit bases
+             * cannot name kinds above 15, e.g. double or half. */
+            tkind = CG_SCALAR_NONE;
+            if (fexpr->un.targetType)
+                tkind = GetScalarKind(fexpr->un.targetType);
+            if (!lValidFoldKind(tkind))
+                tkind = FoldKindOf(CG_SCALAR_UNDEFINED, target);
             DB (printf("fold CAST[%d:%d->%d]", len, base, target);
                 DumpConstList(fexpr->un.arg, base);
                 printf(" -> ");)

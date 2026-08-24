@@ -152,10 +152,7 @@ struct slHAL_Rec {
     int (*IsIntegralBase)(int fBase);
     int (*IsTexobjBase)(int fBase);
     int (*IsValidRuntimeBase)(int fBase);
-    int (*IsValidScalarCast)(int toBase, int fromBase, int Explicit);
     int (*IsValidOperator)(SourceLoc *loc, int name, int op, int subop);
-    int (*GetBinOpBase)(int lop, int lbase, int rbase, int llen, int rlen);
-    int (*ConvertConstant)(const scalar_constant *fval, int fbase, int tbase, expr **fexpr);
     int (*BindUniformUnbound)(SourceLoc *loc, Symbol *fSymb, Binding *lBind);
     int (*BindUniformPragma)(SourceLoc *loc, Symbol *fSymb, Binding *lBind,
                         const Binding *fBind);

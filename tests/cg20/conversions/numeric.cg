@@ -1,0 +1,39 @@
+// Cg 2.0 numeric conversion coverage:
+//   - compile-time constants promote to any numeric target,
+//   - signed/unsigned equal-width pairs promote to the unsigned kind,
+//   - scalars replicate (smear) into vectors and matrices,
+//   - vectors narrow to shorter vectors under an explicit cast,
+//   - matrices select the upper-left submatrix under an explicit cast.
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    // Compile-time constant promotion.
+    half h = 2;
+    float f = 7;
+    fixed fx = 0.5;
+
+    // Signed/unsigned equal-width arithmetic.
+    int i = 3;
+    unsigned int ui = 8;
+    unsigned int usum = i + ui;
+    short s = 5;
+    unsigned short usv = 9;
+    unsigned short ussum = s + usv;
+
+    // Scalar replication.
+    float3 smeared = 1.0;
+    float2x3 smearedm = 0.5;
+
+    // Vector narrowing.
+    float4 wide = float4(1, 2, 3, 4);
+    float2 narrowed = (float2)wide;
+
+    // Matrix selection.
+    float3x3 big = 1.0;
+    float2x2 corner = (float2x2)big;
+
+    return position +
+           float4(h + f + fx, ussum * 0.0 + ussum * 0.0,
+                  smeared.x + smearedm[0][0] + narrowed.x + corner[0][0],
+                  narrowed.y + corner[1][1]) * 0.0;
+}

@@ -174,6 +174,19 @@ endfunction()
 add_cg20_success(cg20_smoke tests/cg20/profile/smoke.cg)
 add_cg20_success(cg20_scalar_types tests/cg20/types/scalars.cg)
 add_cg20_success(cg20_literal_suffixes tests/cg20/literals/suffixes.cg)
+add_cg20_success(cg20_conversions_numeric tests/cg20/conversions/numeric.cg)
+add_cg20_success(cg20_conversions_aggregate
+    tests/cg20/conversions/aggregate_casts.cg)
+add_test(
+    NAME cg20_invalid_conversion
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslf
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/invalid_conversion.cg
+        -DCODE=1033
+        -DMESSAGE=cast.not.allowed
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
 add_test(
     NAME cg20_reserved_word
     COMMAND ${CMAKE_COMMAND}

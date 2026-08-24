@@ -1,0 +1,44 @@
+// Cg 2.0 aggregate conversion coverage:
+//   - explicit pairwise casts between structs with equally many
+//     member-convertible members,
+//   - explicit casts between equal-size arrays whose element types convert.
+
+struct PairSource
+{
+    float amount;
+    int label;
+};
+
+struct PairTarget
+{
+    half amount;
+    unsigned int label;
+};
+
+typedef float SourceRow[4];
+typedef int TargetRow[4];
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    PairSource src;
+    PairTarget dst;
+    SourceRow row;
+    TargetRow counts;
+
+    src.amount = 1.0;
+    src.label = 2;
+
+    // Pairwise struct cast: every member pair converts explicitly.
+    dst = (PairTarget)src;
+
+    // Equal-size array element conversion.
+    row[0] = 1.0;
+    row[1] = 2.0;
+    row[2] = 3.0;
+    row[3] = 4.0;
+    counts = (TargetRow)row;
+
+    return position +
+           float4(dst.amount + counts[0], dst.label * 0.0,
+                  counts[1] * 0.0, counts[3] * 0.0) * 0.0;
+}

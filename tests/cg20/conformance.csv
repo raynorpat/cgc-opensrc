@@ -2,7 +2,9 @@ id,classification,test,source
 LANG-DEFAULT,valid-generic,cg20_default_mode,Language policy
 LANG-LEGACY,valid-generic,cg20_legacy_mode,Language policy
 TYPE-SCALARS,valid-generic,cg20_scalar_types,Types
-TYPE-CONVERSIONS,valid-generic,cg20_conversion_matrix,Type conversions
+TYPE-CONVERSIONS,valid-generic,cg20_conversions_numeric,Type conversions
+CONV-AGGREGATES,valid-generic,cg20_conversions_aggregate,Type conversions
+CONV-SAMPLER-INVALID,invalid-language,cg20_invalid_conversion,Type conversions
 ARRAY-UNSIZED,valid-generic,cg20_unsized_array,Unsized Arrays
 INTERFACE-CONFORMANCE,valid-generic,cg20_interface_dispatch,Struct and interface types
 OVERLOAD-PROFILE,valid-generic,cg20_profile_overload,Function overloading
