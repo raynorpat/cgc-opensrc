@@ -1,0 +1,14 @@
+// Dynamic-array assignment keeps exactly one diagnostic when the
+// element shapes disagree: the intercept reports the incompatible
+// assignment and returns without letting the ordinary conversion path
+// report the same error a second time.
+
+float3 g_src[2];
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    float dynamic[];
+
+    dynamic = g_src;
+    return position;
+}

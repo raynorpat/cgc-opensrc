@@ -170,6 +170,8 @@ static void GlslRecordFailure(GlslLowerContext *context, const char *reason)
     if (context->module->errorKind == GLSL_ERROR_NONE)
         context->module->errorKind = GLSL_ERROR_UNSUPPORTED_OPERATION;
     context->module->errorReason = reason;
+    context->module->errorSymbol =
+        context->function != NULL ? context->function->identity : NULL;
 }
 
 static void GlslRecordFailureKind(GlslLowerContext *context,

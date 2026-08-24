@@ -40,6 +40,7 @@ add_executable(cgc
     inline.c
     language.c
     memory.c
+    output.c
     parser.c
     printutils.c
     scanner.c

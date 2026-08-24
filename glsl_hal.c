@@ -756,6 +756,7 @@ static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
                 break;
             }
         }
+        ReportProfileCallPath(module.errorSymbol);
         return 0;
     }
     errorCount = GetErrorCount();

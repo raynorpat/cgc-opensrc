@@ -1053,3 +1053,12 @@ void SemanticError(SourceLoc *loc, int number, const char *message, ...)
     semanticErrorCount++;
     lastSemanticError = number;
 }
+
+// Unit seam: the real implementation lives in compile.c; generation
+// tests here run without compilation control, so the call-path layer
+// is a no-op.
+
+void ReportProfileCallPath(const void *failingSymbol)
+{
+    (void) failingSymbol;
+}

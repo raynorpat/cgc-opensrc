@@ -38,4 +38,8 @@ STDLIB-PREDEFINED-OUTPUTS,valid-generic,cg20_intrinsic_predefined_outputs_glslf,
 STDLIB-HELPER-REJECT,invalid-language,cg20_intrinsic_predefined_outputs_reject_glslv,Cg Standard Library Functions
 STDLIB-HELPER-REJECT-GENERIC,invalid-language,cg20_intrinsic_predefined_outputs_reject_generic,Cg Standard Library Functions
 PROFILE-UNREACHABLE,backend-reject,cg20_unreachable_profile_feature,Profiles
+DIAG-OUTPUT-PRESERVE,invalid-language,cg20_output_preserved_on_failure,Diagnostics layering
+DIAG-POISON-RETURN,invalid-language,cg20_poison_return_single_diagnostic,Diagnostics layering
+DIAG-DYNARRAY-SINGLE,invalid-language,cg20_dynamic_array_single_diagnostic,Diagnostics layering
+DIAG-PROFILE-CALL-PATH,invalid-language,cg20_profile_call_path,Diagnostics layering
 CGFX-TECHNIQUE,out-of-scope,cg20_manifest,CgFX exclusion

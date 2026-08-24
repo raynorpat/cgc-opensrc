@@ -82,6 +82,17 @@ typedef enum CgScalarKind_Rec {
 
 CgScalarKind GetScalarKind(const Type *type);
 void SetScalarKind(Type *type, CgScalarKind kind);
+
+/*
+ * Canonical poison query.  UndefinedType is the shared sentinel every
+ * recovery path stamps onto operands whose type computation already
+ * failed and reported exactly one diagnostic; diagnostic layers ask
+ * this query instead of comparing sentinels inline so "return early,
+ * never report twice" stays uniform.
+ */
+
+int CgTypeIsPoison(const Type *type);
+
 int CgScalarIsCompileTime(CgScalarKind kind);
 int CgScalarIsIntegral(CgScalarKind kind);
 int CgScalarIsUnsigned(CgScalarKind kind);

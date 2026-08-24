@@ -331,6 +331,10 @@ typedef struct GlslModule_Rec {
     GlslLoc errorLoc;
     GlslErrorKind errorKind;
     const char *errorReason;
+    // Frontend Symbol of the function whose body was being lowered
+    // when the failure was recorded; compilation control uses it to
+    // layer call-path notes under the primary profile diagnostic.
+    const void *errorSymbol;
     const char *resourceName;
     int resourceUsed;
     int resourceAvailable;

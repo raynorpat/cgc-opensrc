@@ -1,0 +1,22 @@
+// Layered profile-failure call path: main -> first -> second ->
+// unsupported.  The glslv profile rejects discard while generation
+// lowers the reachable helpers; the report carries the primary
+// diagnostic at that statement, then one note per call-path hop back
+// to the entry -- "second", "first", then "main", each anchored at
+// its declaration.
+
+float4 second(float4 color)
+{
+    discard;
+    return color;
+}
+
+float4 first(float4 color)
+{
+    return second(color);
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return first(position);
+}

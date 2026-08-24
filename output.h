@@ -35,58 +35,38 @@ PRODUCTS.
 IN NO EVENT SHALL NVIDIA BE LIABLE FOR ANY SPECIAL, INDIRECT,
 INCIDENTAL, EXEMPLARY, CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
 TO, LOST PROFITS; PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
-USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) OR ARISING IN ANY WAY
-OUT OF THE USE, REPRODUCTION, MODIFICATION AND/OR DISTRIBUTION OF THE
-NVIDIA SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER THEORY OF CONTRACT,
-TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF
-NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+WHETHER UNDER THEORY OF CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 \****************************************************************************/
 
 //
-// scanner.h
+// output.h - Transactional compiler output.
+//
+// Generation runs against a same-directory temporary file; only a
+// fully successful compilation commits it over the destination with an
+// atomic replace.  Any earlier abort closes the temporary and removes
+// exactly its own path, so a failed compilation leaves a pre-existing
+// destination byte-for-byte untouched.  With no destination the stream
+// is stdout directly and commit merely flushes it.
 //
 
-#if !defined(__SCANNER_H)
-#define __SCANNER_H 1
+#if !defined(__OUTPUT_H)
+#define __OUTPUT_H 1
 
-#define MAX_SYMBOL_NAME_LEN 128
-#define MAX_STRING_LEN 512
+#include <stdio.h>
 
-// Not really atom table stuff but needed first...
+typedef struct OutputTransaction_Rec {
+    const char *destination;
+    char *temporary;
+    FILE *stream;
+    int isStdout;
+} OutputTransaction;
 
-typedef struct SourceLoc_Rec {
-    unsigned short file, line;
-} SourceLoc;
+int BeginOutputTransaction(OutputTransaction *transaction,
+                           const char *destination);
+int CommitOutputTransaction(OutputTransaction *transaction);
+void AbortOutputTransaction(OutputTransaction *transaction);
 
-int yyparse (void);
-
-void yyerror(const char *s);
-int yylex(void);
-
-typedef struct InputSrc {
-    struct InputSrc	*prev;
-    int			(*scan)(struct InputSrc *);
-    int			(*getch)(struct InputSrc *);
-    void		(*ungetch)(struct InputSrc *, int);
-    int			name;  /* atom */
-    int			line;
-} InputSrc;
-
-int InitScanner(CgStruct *Cg);
-int FreeScanner(CgStruct *Cg);
-int SetInputFile(const char *fname);
-int ScanFromString(char *);
-int scan_include_name(void);
-
-void SemanticParseError(SourceLoc *loc, int num, const char *mess, ...);
-void SemanticError(SourceLoc *loc, int num, const char *mess, ...);
-void InternalError(SourceLoc *loc, int num, const char *mess, ...);
-void SemanticWarning(SourceLoc *loc, int num, const char *mess, ...);
-void InformationalNotice(SourceLoc *loc, int num, const char *mess, ...);
-void SemanticNote(SourceLoc *loc, int num, const char *mess, ...);
-void FatalError(const char *mess, ...);
-
-int GetErrorCount(void);
-
-#endif // !(defined(__SCANNER_H)
-
+#endif // !defined(__OUTPUT_H)

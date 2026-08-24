@@ -351,4 +351,24 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define NOTICE_SSS_CMEMBER_ALLOCATED        9501, "connector member \"%s.%s\" allocated to register \"%s\""
 
+// Cg 2.0 diagnostic layering reserves these code groups:
+//
+//     1400-1419   language version and keyword rules
+//     1420-1439   canonical type and conversion rules
+//     1440-1459   overload resolution and interface conformance
+//     6300-6319   generic-profile Cg IR diagnostics
+//     9020-9039   Cg IR internals beyond 9011-9012
+//
+// Layered notes ride the notice block below them: a note accompanies
+// an already-reported primary diagnostic (ambiguity candidates, call
+// paths behind a profile failure), never counts as an error or
+// warning, and is itself reported exactly once per primary.
+//
+//     9502-9519   layered notes
+
+#define NOTICE_S_OVERLOAD_CANDIDATE     9502, "candidate #%d: %s"
+#define NOTICE_S_CG_PROFILE_FAILURE_IN  9503, "profile failure in function \"%s\""
+#define NOTICE_S_CG_CALL_PATH           9504, "called from function \"%s\""
+#define NOTICE_S_CG_ENTRY_PATH          9505, "reached from entry function \"%s\""
+
 #endif // !defined(__ERRORS_H)

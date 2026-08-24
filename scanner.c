@@ -403,6 +403,33 @@ void InformationalNotice(SourceLoc *loc, int num, const char *mess, ...)
     }
 } // InformationalNotice
 
+/*
+ * SemanticNote() - A layered note attached to an already-reported
+ *         primary diagnostic: overload candidates under an ambiguity
+ *         error, call-path hops under a profile failure.  A note
+ *         never bumps any count and is not suppressed by -nowarn,
+ *         because its primary error stays visible regardless; in
+ *         -error mode the primary is withheld, so its notes are too.
+ */
+
+void SemanticNote(SourceLoc *loc, int num, const char *mess, ...)
+{
+    va_list args;
+
+    if (Cg->options.ErrorMode)
+        return;
+    if (loc->file) {
+        fprintf(Cg->options.listfd, "%s(%d) : notice C%04d: ",
+                GetAtomString(atable, loc->file), loc->line, num);
+    } else {
+        fprintf(Cg->options.listfd, "(%d) : notice C%04d: ", loc->line, num);
+    }
+    va_start(args, mess);
+    vfprintf(Cg->options.listfd, mess, args);
+    va_end(args);
+    fprintf(Cg->options.listfd, "\n");
+} // SemanticNote
+
 // The scanner:
 
 static int nextchar(FileInputSrc *in)

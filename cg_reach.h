@@ -119,4 +119,15 @@ const CgReachEdge *CgReachWitness(const CgReachGraph *graph,
 
 void CgReachDestroy(CgReachGraph *graph);
 
+/*
+ * CgReachSetActiveGraph()/CgReachActiveGraph() - Diagnostic-layer
+ *          seam: compilation control arms the live graph while
+ *          generation runs so layered call-path notes can consult the
+ *          witnesses after a profile diagnostic.  The graph is owned
+ *          by CompileProgram; this only points at it.
+ */
+
+void CgReachSetActiveGraph(CgReachGraph *graph);
+const CgReachGraph *CgReachActiveGraph(void);
+
 #endif // !defined(__CG_REACH_H)

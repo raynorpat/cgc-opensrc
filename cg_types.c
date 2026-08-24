@@ -111,6 +111,19 @@ void SetScalarKind(Type *type, CgScalarKind kind)
 } // SetScalarKind
 
 /*
+ * CgTypeIsPoison() - Nonzero for the shared UndefinedType recovery
+ *          sentinel: an operand of that type already produced its one
+ *          diagnostic, so downstream conversion, overload, interface,
+ *          lowering, and profile layers must return early instead of
+ *          reporting again.
+ */
+
+int CgTypeIsPoison(const Type *type)
+{
+    return type == UndefinedType;
+} // CgTypeIsPoison
+
+/*
  * CgScalarIsCompileTime() - Returns TRUE if kinds of this class are
  *                          compile-time constants.
  *

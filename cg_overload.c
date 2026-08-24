@@ -151,6 +151,12 @@ static int lArgumentMatch(Type *formal, Type *actual)
 
     if (!formal || !actual)
         return CG_MATCH_NONE;
+    if (CgTypeIsPoison(formal) || CgTypeIsPoison(actual)) {
+        /* A poisoned operand already reported its one diagnostic; it
+         * matches nothing, so resolution fails without reporting
+         * again. */
+        return CG_MATCH_NONE;
+    }
     if (lExactOrUnsizedCompat(formal, actual))
         return CG_MATCH_EXACT;
     /* Boundary ruling: no scalar<->aggregate shape conversions as

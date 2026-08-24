@@ -20,3 +20,21 @@ endif()
 if(NOT diagnostic MATCHES "${MESSAGE}")
     message(FATAL_ERROR "missing diagnostic '${MESSAGE}':\n${diagnostic}")
 endif()
+
+# NOTES pins layered notes in document order: each entry must appear
+# literally (quotes stripped from the diagnostic first) after the
+# previous one, so the call-path hop order is part of the contract.
+
+if(DEFINED NOTES)
+    string(REPLACE "\"" "" clean_diagnostic "${diagnostic}")
+    set(remaining_notes "${clean_diagnostic}")
+    foreach(note IN LISTS NOTES)
+        string(FIND "${remaining_notes}" "${note}" note_found)
+        if(note_found EQUAL -1)
+            message(FATAL_ERROR
+                "missing ordered note '${note}':\n${diagnostic}")
+        endif()
+        string(SUBSTRING "${remaining_notes}" ${note_found} -1
+            remaining_notes)
+    endforeach()
+endif()

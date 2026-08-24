@@ -691,7 +691,8 @@ return_stmt *NewReturnStmt(SourceLoc *loc, Scope *fScope, expr *fExpr)
                 if (fExpr) {
                     SemanticError(loc, ERROR___VOID_FUN_RETURNS_VALUE);
                 }
-            } else if (fScope->returnType != UndefinedType) {
+            } else if (!CgTypeIsPoison(fScope->returnType) &&
+                       !(fExpr && CgTypeIsPoison(fExpr->common.type))) {
                 if (ConvertType(loc, fExpr, fScope->returnType, fExpr->common.type, &lExpr, 0, 0, 1)) {
                     fExpr = lExpr;
                 } else {
@@ -1301,7 +1302,9 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                     dExpr->bin.left = tExpr;
                     return 1;
                 } else {
-                    SemanticError(loc, ERROR___INVALID_INITIALIZATION);
+                    if (!CgTypeIsPoison(vType) &&
+                        !CgTypeIsPoison(lExpr->common.type))
+                        SemanticError(loc, ERROR___INVALID_INITIALIZATION);
                     return 0;
                 }
             } else {
@@ -1368,7 +1371,9 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                     dExpr->bin.left = tExpr;
                     return 1;
                 } else {
-                    SemanticError(loc, ERROR___INCOMPAT_TYPE_INIT);
+                    if (!CgTypeIsPoison(vType) &&
+                        !CgTypeIsPoison(lExpr->common.type))
+                        SemanticError(loc, ERROR___INCOMPAT_TYPE_INIT);
                     return 0;
                 }
             }
@@ -1867,16 +1872,20 @@ static void lValidateParameterDefaults(SourceLoc *loc, Symbol *funSymb)
                 expr *converted = NULL;
                 expr *value = FoldConstants(init->bin.left);
 
-                if (!ConvertType(loc, value, formalType,
-                                 value->common.type, &converted, 0, 0, 0))
-                {
-                    SemanticError(&formal->loc,
-                                  ERROR___DEFAULT_NOT_CONVERTIBLE,
-                                  GetAtomString(atable, formal->name));
-                    formal->details.var.init = NULL;
-                    continue;
+                /* Poison defaults keep their recorded shape: the value's
+                 * type already reported its one diagnostic. */
+                if (!CgTypeIsPoison(value->common.type)) {
+                    if (!ConvertType(loc, value, formalType,
+                                     value->common.type, &converted, 0, 0, 0))
+                    {
+                        SemanticError(&formal->loc,
+                                      ERROR___DEFAULT_NOT_CONVERTIBLE,
+                                      GetAtomString(atable, formal->name));
+                        formal->details.var.init = NULL;
+                        continue;
+                    }
+                    init->bin.left = converted;
                 }
-                init->bin.left = converted;
             }
         }
     }
@@ -2433,6 +2442,28 @@ Type *SetInterfaceMembers(SourceLoc *loc, Type *fType, Scope *members)
 } // SetInterfaceMembers
 
 /*
+ * lSignatureHasPoison() - TRUE when a method's signature involves the
+ *         poison recovery type: its declaration already reported its
+ *         one diagnostic, so conformance checking must not report a
+ *         second one about the same broken type.
+ */
+
+static int lSignatureHasPoison(Symbol *fSymb)
+{
+    TypeList *param;
+
+    if (!fSymb->type)
+        return 0;
+    if (CgTypeIsPoison(fSymb->type->fun.rettype))
+        return 1;
+    for (param = fSymb->type->fun.paramtypes; param; param = param->next) {
+        if (CgTypeIsPoison(param->type))
+            return 1;
+    }
+    return 0;
+} // lSignatureHasPoison
+
+/*
  * lSignatureMatches() - Compare an implementing method against an
  *         interface method: same name is checked by the caller; here the
  *         return type, parameter count, parameter directions, and
@@ -2520,6 +2551,11 @@ void CheckInterfaceConformance(SourceLoc *loc, Type *fType)
         }
         if (impl)
             continue;
+        if (named && lSignatureHasPoison(named)) {
+            /* The mismatch is the poisoned signature itself; its
+             * declaration already reported, so stay silent here. */
+            continue;
+        }
         if (named) {
             SemanticError(loc, ERROR_SSSSD_INTERFACE_METHOD_SIGNATURE,
                           GetAtomString(atable, decl->name),
@@ -2932,6 +2968,11 @@ int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
 
     if (!toType || !fromType)
         return 0;
+    if (CgTypeIsPoison(toType) || CgTypeIsPoison(fromType)) {
+        /* A poisoned operand already reported its one diagnostic;
+         * conversion layers return early instead of reporting again. */
+        return 0;
+    }
     ToPacked = (toType->properties & TYPE_MISC_PACKED) != 0;
     FromPacked = (fromType->properties & TYPE_MISC_PACKED) != 0;
     if (Explicit && IsSameUnqualifiedType(toType, fromType) &&
@@ -3918,6 +3959,8 @@ expr *NewCastOperator(SourceLoc *loc, expr *fExpr, Type *toType)
 {
     expr *lExpr;
 
+    if (CgTypeIsPoison(fExpr->common.type) || CgTypeIsPoison(toType))
+        return fExpr;
     if (ConvertType(loc, fExpr, toType, fExpr->common.type, &lExpr, 0, 1, 1)) {
         lExpr->common.type = toType;
         return lExpr;
@@ -4114,6 +4157,37 @@ static expr *lAppendDefaultArguments(SourceLoc *loc, Symbol *fSymb,
 } // lAppendDefaultArguments
 
 /*
+ * lFormatOverloadCandidate() - Render one candidate signature into
+ *         "out" as "rettype name(param, ...)", mirroring the type
+ *         formatting the tree dumps use.
+ */
+
+static void lFormatOverloadCandidate(Symbol *fSymb, char *out, int size)
+{
+    char tname[128], uname[128];
+    Symbol *param;
+
+    FormatTypeString(tname, sizeof tname, uname, sizeof uname,
+                     fSymb->type->fun.rettype);
+    strncpy(out, tname, size - 1);
+    out[size - 1] = '\0';
+    strncat(out, uname, size - strlen(out) - 1);
+    strncat(out, " ", size - strlen(out) - 1);
+    strncat(out, GetAtomString(atable, fSymb->name),
+            size - strlen(out) - 1);
+    strncat(out, "(", size - strlen(out) - 1);
+    for (param = fSymb->details.fun.params; param; param = param->next) {
+        FormatTypeString(tname, sizeof tname, uname, sizeof uname,
+                         param->type);
+        strncat(out, tname, size - strlen(out) - 1);
+        strncat(out, uname, size - strlen(out) - 1);
+        if (param->next)
+            strncat(out, ", ", size - strlen(out) - 1);
+    }
+    strncat(out, ")", size - strlen(out) - 1);
+} // lFormatOverloadCandidate
+
+/*
  * lResolveOverloadedFunction() - Resolve an overloaded function call
  *         through CgResolveOverload.  All candidate state and ranking
  *         live inside the non-mutating resolver; this wrapper only
@@ -4128,6 +4202,7 @@ static Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb,
     CgOverloadResult lResult;
     Symbol *lSymb;
     int numvalid = 0;
+    char candidate[512];
 
     if (!CgResolveOverload(&Cg->theHAL->profileIdentity, fSymb, *fActuals,
                            &lResult))
@@ -4135,17 +4210,16 @@ static Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb,
         if (lResult.ambiguous) {
             SemanticError(loc, ERROR_S_AMBIGUOUS_FUN_REFERENCE,
                           GetAtomString(atable, fSymb->name));
-#if 1 // Detailed error messages - requires printing of types
+            /* Layered notes carry each candidate through the scanner
+             * diagnostic channel instead of raw stdout writes. */
             lSymb = fSymb;
             while (lSymb) {
-                printf("    #%d: ", ++numvalid);
-                PrintType(lSymb->type->fun.rettype, 0);
-                printf(" %s", GetAtomString(atable, lSymb->name));
-                PrintType(lSymb->type, 0);
-                printf("\n");
+                lFormatOverloadCandidate(lSymb, candidate,
+                                         sizeof candidate);
+                SemanticNote(loc, NOTICE_S_OVERLOAD_CANDIDATE,
+                             ++numvalid, candidate);
                 lSymb = lSymb->details.fun.overload;
             }
-#endif
             return fSymb;
         }
         /* No viable overload: fall back to ordinary argument binding
@@ -4316,7 +4390,8 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                                 IsPacked(formalType) == IsPacked(actualType))
                             {
                                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
-                            } else {
+                            } else if (!CgTypeIsPoison(actualType) &&
+                                       !CgTypeIsPoison(formalType)) {
                                 SemanticError(loc, ERROR_D_OUT_PARAM_NOT_SAME_TYPE, paramno);
                             }
                         } else {
@@ -4346,7 +4421,8 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                  * base-sampler formal; incompatible specific kinds fall
                  * through to the error below. */
                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
-            } else {
+            } else if (!CgTypeIsPoison(actualType) &&
+                       !CgTypeIsPoison(formalType)) {
                 SemanticError(loc, ERROR_D_INCOMPATIBLE_PARAMETER, paramno);
             }
             lFormals = lFormals->next;
@@ -4418,11 +4494,10 @@ expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
             return lExpr;
         }
         SemanticError(loc, ERROR___ASSIGN_INCOMPATIBLE_TYPES);
-    }
-    if (ConvertType(loc, fExpr, vType, eType, &lExpr, InInit, 0, 1)) {
+    } else if (ConvertType(loc, fExpr, vType, eType, &lExpr, InInit, 0, 1)) {
         fExpr = lExpr;
     } else {
-        if (vType != UndefinedType && eType != UndefinedType)
+        if (!CgTypeIsPoison(vType) && !CgTypeIsPoison(eType))
             SemanticError(loc, ERROR___ASSIGN_INCOMPATIBLE_TYPES);
     }
     base = GetBase(vType);

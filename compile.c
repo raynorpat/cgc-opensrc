@@ -82,24 +82,27 @@ static void *lIRPoolAlloc(void *arg, size_t size)
  *          lowering and verification succeed, "moduleOut" holds the
  *          verified module for the profile's IR hooks.
  *
+ * The reachability graph is built into the caller's "reach" and stays
+ * alive until the caller destroys it: profile generation consults it
+ * for layered call-path notes after a profile diagnostic.
+ *
  * Returns nonzero when the program lowered AND verified.
  */
 
 static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
-                             CgIRModule *moduleOut)
+                             CgIRModule *moduleOut, CgReachGraph *reach)
 {
-    CgReachGraph reach;
     CgIRLowerContext context;
     int OK;
 
-    memset(&reach, 0, sizeof(reach));
-    if (!CgReachBuild(program, &reach)) {
+    memset(reach, 0, sizeof(*reach));
+    if (!CgReachBuild(program, reach)) {
         InternalError(loc, ERROR_S_CG_IR_INVARIANT, "reachability build");
         return 0;
     }
     CgIRInitModule(moduleOut, lIRPoolAlloc, fScope->pool);
     context.module = moduleOut;
-    context.reach = &reach;
+    context.reach = reach;
     memset(&context.verifyDiagnostic, 0,
            sizeof(context.verifyDiagnostic));
     OK = CgIRLowerProgram(&context, fScope, program);
@@ -112,29 +115,71 @@ static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
                               context.verifyDiagnostic.reason));
         }
     }
-    CgReachDestroy(&reach);
     return OK;
 } // lLowerAndVerifyIR
 
 /*
- * OpenOutputFile()
+ * ReportProfileCallPath() - Layered notes under a primary profile
+ *          diagnostic: one notice naming the function that holds the
+ *          rejected construct, then one notice per witness hop back to
+ *          the entry function, each anchored at its declaration site so
+ *          every hop keeps a source location.
  *
+ * "failingSymbol" is the frontend Symbol of the function whose body
+ * failed profile validation (opaque here to keep hal headers out of
+ * this interface).  Silent when no live reachability graph exists or
+ * the symbol is not part of the reachable set.
+ */
+
+void ReportProfileCallPath(const void *failingSymbol)
+{
+    const Symbol *symbol = (const Symbol *) failingSymbol;
+    const CgReachGraph *reach = CgReachActiveGraph();
+    const CgReachEdge *edge;
+    SourceLoc loc;
+
+    if (!reach || !symbol || !CgReachContainsSymbol(reach, symbol))
+        return;
+    loc = symbol->loc;
+    SemanticNote(&loc, NOTICE_S_CG_PROFILE_FAILURE_IN,
+                 GetAtomString(atable, symbol->name));
+    while ((edge = CgReachWitness(reach, symbol)) != NULL &&
+           edge->from != NULL)
+    {
+        const CgReachEdge *next;
+
+        symbol = edge->from;
+        next = CgReachWitness(reach, symbol);
+        loc = symbol->loc;
+        if (next && next->from != NULL) {
+            SemanticNote(&loc, NOTICE_S_CG_CALL_PATH,
+                         GetAtomString(atable, symbol->name));
+        } else {
+            SemanticNote(&loc, NOTICE_S_CG_ENTRY_PATH,
+                         GetAtomString(atable, symbol->name));
+        }
+    }
+} // ReportProfileCallPath
+
+/*
+ * OpenOutputFile() - Begin the output transaction where generation
+ *          starts.  Everything the compiler emits -- header, banner,
+ *          interface description, generated code, closing trailer --
+ *          lands in the transaction's same-directory temporary (or
+ *          straight to stdout when no destination was named); the
+ *          destination only appears when CloseOutputFiles() commits.
  */
 
 int OpenOutputFile(void)
 {
-    if (Cg->options.outputFileName) {
-        Cg->options.outfd = fopen(Cg->options.outputFileName, "w");
-        if (Cg->options.outfd) {
-            Cg->options.OutputFileOpen = 1;
-        } else {
-            FatalError("Can't open output file \"%s\"", Cg->options.outputFileName);
-            return 0;
-        }
-    } else {
-        Cg->options.outfd = stdout;
-        Cg->options.OutputFileOpen = 1;
+    if (!BeginOutputTransaction(&Cg->options.outputTransaction,
+                                Cg->options.outputFileName))
+    {
+        FatalError("Can't open output file \"%s\"", Cg->options.outputFileName);
+        return 0;
     }
+    Cg->options.outfd = Cg->options.outputTransaction.stream;
+    Cg->options.OutputFileOpen = 1;
     Cg->theHAL->PrintCodeHeader(Cg->options.outfd);
     fprintf(Cg->options.outfd, "%s cgc version %d.%d.%04d%s, build date %s  %s\n", Cg->theHAL->comment,
             HSL_VERSION, HSL_SUB_VERSION, HSL_SUB_SUB_VERSION, NDA_STRING, Build_Date, Build_Time);
@@ -184,8 +229,13 @@ void PrintOptions(int argc, char **argv)
 } // PrintOptions
 
 /*
- * CloseOutputFiles()
- *
+ * CloseOutputFiles() - Write the closing trailer, then finish the
+ *          output transaction.  The transaction commits -- replacing
+ *          the destination atomically -- only when compilation is
+ *          error-free and the closing write succeeds; every other
+ *          path aborts, leaving the destination untouched and
+ *          removing just the temporary.  The listing file keeps its
+ *          historical close semantics.
  */
 
 int CloseOutputFiles(const char *mess)
@@ -194,10 +244,13 @@ int CloseOutputFiles(const char *mess)
         if (!Cg->options.ListFileOpen)
             fprintf(Cg->options.outfd, "%s %s\n", Cg->theHAL->comment, mess);
         Cg->options.OutputFileOpen = 0;
-        if (fclose(Cg->options.outfd)) {
+        if (GetErrorCount() != 0) {
+            AbortOutputTransaction(&Cg->options.outputTransaction);
+        } else if (CommitOutputTransaction(&Cg->options.outputTransaction)) {
             FatalError("Error closing output file.");
             return 0;
         }
+        Cg->options.outfd = NULL;
     }
     if (Cg->options.ListFileOpen) {
         fprintf(Cg->options.listfd, "%s %s\n", Cg->theHAL->comment, mess);
@@ -209,6 +262,21 @@ int CloseOutputFiles(const char *mess)
     }
     return 1;
 } // CloseOutputFiles
+
+/*
+ * AbortCompilationOutput() - Discard an open output transaction on an
+ *          early exit that bypasses the normal close path, so no
+ *          temporary file outlives the compiler process.
+ */
+
+void AbortCompilationOutput(void)
+{
+    if (Cg->options.OutputFileOpen) {
+        Cg->options.OutputFileOpen = 0;
+        AbortOutputTransaction(&Cg->options.outputTransaction);
+        Cg->options.outfd = NULL;
+    }
+} // AbortCompilationOutput
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Misc Support Functions: ///////////////////////////////////
@@ -2831,9 +2899,12 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
     Scope *lScope;
     stmt *lStmt;
     CgIRModule irModule;
+    CgReachGraph reachGraph;
     SourceLoc irLoc;
     int useIR;
 
+    memset(&reachGraph, 0, sizeof(reachGraph));
+    CgReachSetActiveGraph(&reachGraph);
     if (GetErrorCount() == 0) {
         if (fScope->programs) {
             theHAL->globalScope = fScope;
@@ -2847,7 +2918,8 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
             // it before any generation runs.  Failure stops
             // compilation with one internal diagnostic.
 
-            if (!lLowerAndVerifyIR(loc, fScope, program, &irModule))
+            if (!lLowerAndVerifyIR(loc, fScope, program, &irModule,
+                                   &reachGraph))
                 goto done;
 
             // A profile carrying both IR hooks takes over emission for
@@ -2951,6 +3023,8 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
         }
     }
 done:
+    CgReachSetActiveGraph(NULL);
+    CgReachDestroy(&reachGraph);
     return GetErrorCount();
 } // CompileProgram
 

@@ -48,6 +48,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __COMPILE_H 1
 
 #include "language.h"
+#include "output.h"
 
 int InitCgStruct(void);
 
@@ -60,6 +61,10 @@ typedef struct Options_Rec{
     const char *listFileName;
     FILE *outfd;
     FILE *listfd;
+    // Transactional generation state: the destination named by
+    // "outputFileName" is owned by the transaction below, and backends
+    // write only through "outfd".
+    OutputTransaction outputTransaction;
     int OutputFileOpen;
     int ListFileOpen;
     int DebugMode;
@@ -115,6 +120,8 @@ int OpenOutputFile(void);
 int OpenListFile(void);
 void PrintOptions(int argc, char **argv);
 int CloseOutputFiles(const char *mess);
+void AbortCompilationOutput(void);
+void ReportProfileCallPath(const void *failingSymbol);
 
 int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope);
 void SetSymbolFlagsList(Scope *fScope, int fVal);

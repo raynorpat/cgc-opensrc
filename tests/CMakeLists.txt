@@ -171,6 +171,42 @@ function(add_cg20_success name source)
     )
 endfunction()
 
+# Output transaction (Task 18): a failed compilation must preserve the
+# pre-existing destination and leave no ".cgc-tmp-*" temporary behind.
+
+add_test(
+    NAME cg20_output_preserved_on_failure
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DDESTINATION=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_output_preserved_on_failure.out"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_output_transaction.cmake
+)
+
+# Layered diagnostics: count-pinned single reports for poisoned
+# operands and dynamic-array assignment intercepts.
+
+add_test(
+    NAME cg20_poison_return_single_diagnostic
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/poison_return.cg
+        -DCODE=1008
+        -DCOUNT=1
+        -DFORBID=C1016
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic_count.cmake
+)
+add_test(
+    NAME cg20_dynamic_array_single_diagnostic
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/dynamic_array_element_mismatch.cg
+        -DCODE=1035
+        -DCOUNT=1
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic_count.cmake
+)
+
 add_cg20_success(cg20_smoke tests/cg20/profile/smoke.cg)
 add_cg20_success(cg20_scalar_types tests/cg20/types/scalars.cg)
 add_cg20_success(cg20_literal_suffixes tests/cg20/literals/suffixes.cg)
@@ -408,7 +444,28 @@ add_test(
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/ambiguous_overload.cg
         -DCODE=1101
         -DMESSAGE=ambiguous.overloaded.function.reference
+        "-DNOTES=candidate #1: float probe(float);candidate #2: float probe(int)"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+
+# Profile-failure call-path notes (Task 18): the primary diagnostic at
+# the rejected operation is followed by one note per hop back to the
+# entry, naming second, first, then main in order.  The rejection is a
+# generation-time decision, so this runner must not pass -nocode.
+
+add_test(
+    NAME cg20_profile_call_path
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=glslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/profile_call_path.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_profile_call_path.glsl"
+        -DCODE=6202
+        -DEXPECTED_LINE=10
+        -DMESSAGE=discard
+        "-DNOTES=profile failure in function second;called from function first;reached from entry function main"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic.cmake
 )
 add_test(
     NAME cg20_interface_data_member

@@ -152,9 +152,21 @@ static CgIRStorage lMapStorage(Type *fType)
     return CGIR_STORAGE_NONE;
 } // lMapStorage
 
+/*
+ * lNewDecl() - One IR declaration for a frontend symbol.  A poison
+ *          recovery type can never be represented in the IR; the
+ *          frontend already reported its one diagnostic, so lowering
+ *          fails the module quietly (all-or-nothing) instead of
+ *          reporting a second diagnostic.
+ */
+
 static CgIRDecl *lNewDecl(CgIRLower *L, Symbol *symbol, Type *fType,
                           CgIRDomain defaultDomain, CgIRExpr *initializer)
 {
+    if (CgTypeIsPoison(fType)) {
+        L->module->failed = 1;
+        return NULL;
+    }
     return CgIRNewDecl(L->module, symbol, symbol ? symbol->name : 0,
                        fType, lMapStorage(fType),
                        lMapDomain(fType, defaultDomain),

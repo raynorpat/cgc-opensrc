@@ -367,3 +367,15 @@ void CgReachDestroy(CgReachGraph *graph)
     graph->capacity = 0;
     graph->failed = 0;
 } // CgReachDestroy
+
+static CgReachGraph *lActiveGraph = NULL;
+
+void CgReachSetActiveGraph(CgReachGraph *graph)
+{
+    lActiveGraph = graph;
+} // CgReachSetActiveGraph
+
+const CgReachGraph *CgReachActiveGraph(void)
+{
+    return lActiveGraph;
+} // CgReachActiveGraph

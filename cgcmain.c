@@ -121,6 +121,7 @@ int main(int argc, char **argv)
                                      LookUpAddString(atable, "<stdlib>"),
                                      StartGlobalScope))
             {
+                AbortCompilationOutput();
                 return 1;
             }
         } else
