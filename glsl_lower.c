@@ -7018,6 +7018,19 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
     case CGIR_EXPR_ASSIGN:
         switch (expr->u.assign.op) {
         case CGIR_OP_ASSIGN:
+            /* A vector value can never print into a scalar component
+             * target ("m[0][0] = v"): well-typed user code cannot
+             * build that assign, so reaching it means a producer
+             * group-write run fell back elementwise -- fail loudly
+             * instead of emitting invalid GLSL. */
+            if (expr->u.assign.value != NULL &&
+                expr->u.assign.value->type != NULL &&
+                IsScalar(expr->type) &&
+                IsVector(expr->u.assign.value->type, NULL))
+            {
+                GlslRecordFailure(context, "GLSL 1.10 expression");
+                return NULL;
+            }
             target = GlslNewExpr(context->module, GLSL_EXPR_BINARY, type);
             if (target == NULL)
                 return NULL;
@@ -7209,6 +7222,20 @@ static int GlslIRMatrixStoreShape(const CgIRExpr *expr,
 } // GlslIRMatrixStoreShape
 
 /*
+ * GlslIRStoreTargetMarked() - True when the store's element chain is a
+ *          Task 16 producer selector target (selectorRead): every
+ *          store the `_m` group-write lowering synthesizes carries
+ *          the mark and nothing else may set it.
+ */
+
+static int GlslIRStoreTargetMarked(const CgIRExpr *expr)
+{
+    return expr != NULL && expr->kind == CGIR_EXPR_ASSIGN &&
+           expr->u.assign.target != NULL &&
+           expr->u.assign.target->selectorRead;
+} // GlslIRStoreTargetMarked
+
+/*
  * GlslIRIsTempMove() - A synthesized temporary assignment: temp = expr.
  */
 
@@ -7341,13 +7368,22 @@ static int GlslIRTryGroupWrite(GlslLowerContext *context,
         if (storeCount >= 4) {
             /* Frontend `_m` selector groups pack at most four
              * components, so a fifth consecutive store cannot extend a
-             * producer run.  An over-long run of plain user stores is
-             * an elementwise fill: fall back to independent statements
-             * for the whole head.  With consumed "$" temporaries the
-             * shape is a genuine producer violation and stays loud. */
-            if (objectTemp == NULL && valueTemp == NULL)
-                return 0;
-            return -1;
+             * producer run.  A producer run marks its store targets
+             * (selectorRead): re-lowering it elementwise would print
+             * each whole-vector value into one scalar component
+             * target, so any marked run stays a loud failure.  Only
+             * an over-long run of unmarked plain user stores is an
+             * elementwise fill that falls back to independent
+             * statements for the whole head; runs behind consumed "$"
+             * temporaries remain genuine producer violations and stay
+             * loud as well. */
+            if ((cursor->kind == CGIR_STMT_EXPR &&
+                 GlslIRStoreTargetMarked(cursor->u.expression)) ||
+                objectTemp != NULL || valueTemp != NULL)
+            {
+                return -1;
+            }
+            return 0;
         }
         if (storeCount == 0)
             storeBase = base;

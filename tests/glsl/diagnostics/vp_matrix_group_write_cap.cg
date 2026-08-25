@@ -1,0 +1,22 @@
+// Fix round 2 regression pin: a producer group write (four `_m`
+// selector stores sharing one base node and one whole-vector value)
+// followed by ANY fifth consecutive matching-shape element store
+// cannot fall back to elementwise lowering -- each store's whole-
+// vector value would print into one scalar component target -- so the
+// four-component count cap keeps the loud unsupported-operation
+// failure for producer-marked runs.  The trailing store is spelled as
+// a single `_m` selector write: selector targets carry CG_SCALAR_INT
+// coordinates and match the recognizer shape, unlike explicit [r][c]
+// chains whose folded constants are CG_SCALAR_CINT.  Expected: error
+// C6201 at the entry ("GLSL 1.10 program"), no output published.
+
+void main(float4 position : POSITION,
+          out float4 clip : POSITION)
+{
+    float4x4 local;
+
+    clip = position;
+    local._m00_m11_m22_m33 = position;
+    local._m01 = position.w;
+    clip.y += local[0][0] + local[0][1];
+}

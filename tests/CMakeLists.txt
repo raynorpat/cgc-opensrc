@@ -595,6 +595,51 @@ add_test(
     COMMAND glsl_semantics_unit
 )
 
+# Real GlslLowerCgIR driven by direct CgIRModule construction: the
+# matrix group-write recognizer branches (distinct-value coordinate
+# validation, producer-marked count cap, elementwise assignment shape)
+# have no shader-level source that shares one base node across sibling
+# stores, so they are covered at the unit layer.
+
+add_executable(glsl_lower_ir_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/glsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/glsl_hal.c
+    ${PROJECT_SOURCE_DIR}/glsl_ir.c
+    ${PROJECT_SOURCE_DIR}/glsl_lower.c
+    ${PROJECT_SOURCE_DIR}/glslf_hal.c
+    ${PROJECT_SOURCE_DIR}/glslv_hal.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    glsl_lower_ir_test.c
+)
+
+target_include_directories(glsl_lower_ir_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(glsl_lower_ir_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME glsl_lower_ir_unit
+    COMMAND glsl_lower_ir_unit
+)
+
+add_test(
+    NAME glsl_lower_ir_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:glsl_lower_ir_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+
 add_executable(cg_language_unit
     ${PROJECT_SOURCE_DIR}/language.c
     cg_language_test.c
@@ -1264,6 +1309,14 @@ add_glsl_profile_failure(glslv_discard glslv
 add_glsl_profile_failure(glslv_impure_array_aggregate glslv
     tests/glsl/diagnostics/vp_impure_array_aggregate.cg 6201 28
     "side-effecting.aggregate.with.arrays")
+# Fix round 2: a producer group write (`_m` selector stores with
+# selectorRead-marked targets) followed by any fifth consecutive
+# matching-shape element store cannot fall back to elementwise
+# lowering -- each whole-vector value would print into one scalar
+# component target -- so the count cap keeps the loud failure.
+add_glsl_profile_failure(glslv_matrix_group_write_cap glslv
+    tests/glsl/diagnostics/vp_matrix_group_write_cap.cg 6201 13
+    "GLSL.1.10.program")
 add_glsl_profile_failure(glslv_builtin_position_width glslv
     tests/glsl/diagnostics/vp_builtin_position_width.cg 6203 2 POSITION)
 add_glsl_profile_failure(glslf_builtin_position_width glslf
