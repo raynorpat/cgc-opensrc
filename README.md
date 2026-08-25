@@ -1,12 +1,55 @@
 # Release Information
 
-This release builds the Cg compiler front end (`cgc`) and its `tokenize`
-helper with CMake:
+This is the Cg 2.0 compiler: `cgc` compiles standalone Cg 2.0 shaders and
+its `tokenize` helper regenerates the standard library. Both build with
+CMake:
 
 ```sh
 cmake -S . -B build
 cmake --build build --config Release
 ```
+
+## Language versions
+
+The default language is Cg 2.0. The historical Cg 1.1 behavior stays
+available explicitly through `-version 1.1`; `-version 2.0` selects the
+default language explicitly, and any other version string is a
+command-line error:
+
+```sh
+./build/cgc -quiet -profile generic shader.cg              # default: Cg 2.0
+./build/cgc -quiet -version 2.0 -profile generic shader.cg # explicit 2.0
+./build/cgc -quiet -version 1.1 -profile generic shader.cg # legacy mode
+```
+
+Cg 2.0 adds the complete scalar family (`char`, `unsigned char`, `short`,
+`unsigned short`, `int`, `unsigned int`, `long`, `unsigned long`, `fixed`,
+`half`, `float`, `double`, plus the compile-time `cint`/`cfloat`), their
+literal suffixes (`u`/`ul`, `h`, `x`, `f`, `d`), typed implicit/explicit
+conversions with lossy-conversion warnings, first-class sized and unsized
+arrays (including `.length` and dynamic assignment), the full sampler
+family as language types, interfaces with single inheritance and dynamic
+dispatch, struct methods, profile-qualified overloads with wildcard
+precedence, default arguments, and a backend-neutral normalized Cg IR.
+Reserved words of Cg 2.0 that are not implemented syntax (CgFX words,
+C++-isms) are rejected with a reserved-word diagnostic; `technique`,
+`pass`, and `compile` are recognized case-insensitively. The reserved-word
+grid shipped in this release is best-effort pending direct verification
+against the published specification (notably whether `vertexshader` is
+reserved like its sibling `pixelshader`).
+
+Scope: this compiler implements the standalone shader language and
+standard library only. CgFX constructs — techniques, passes, annotations,
+state assignments, and runtime effect selection — parse nowhere and stay
+reserved. Legacy mode exists to preserve intentional historical behavior;
+it accepts a superset of the old scanner keywords.
+
+Under the default language the neutral `generic` profile lowers every
+reachable construct to verified, typed Cg IR and prints it in a
+deterministic normalized form (diagnostics-friendly; not a promised
+interchange format). With explicit `-version 1.1 -profile generic` the
+compiler prints the historical tree dump instead, byte-compatible with
+earlier releases for legacy sources.
 
 The release contains a pre-built parser (`parser.c` and `parser.h`) generated
 from `parser.y` with GNU Bison. Normal builds use the checked-in generated
@@ -19,14 +62,15 @@ cmake --build build --target regenerate_parser
 ```
 
 The parser target requires GNU Bison. The standard-library target uses the
-locally built `tokenize` executable.
+locally built `tokenize` executable. Both must leave the checked-in
+generated sources unchanged.
 
 ## Profiles
 
 The compiler provides these profiles:
 
-- `generic` performs the historical semantic checks and prints the compiler
-  tree.
+- `generic` is the complete neutral backend: under Cg 2.0 it accepts every
+  valid program and emits the normalized IR described above.
 - `glslv` translates a Cg vertex entry point to strict GLSL 1.10.
 - `glslf` translates a Cg fragment entry point to strict GLSL 1.10.
 
@@ -66,10 +110,13 @@ readable helpers and overloads, structured conditionals and loops,
 `break`/`continue`, common numeric and geometric intrinsics, fragment
 `discard`, and base 1D, 2D, 3D, and cube texture sampling in fragment shaders.
 
-The GLSL profiles explicitly reject extensions and newer language behavior,
-non-square matrices, multiple fragment color outputs, recursion, shadow and
-rectangle samplers, vertex texture sampling, unsupported packed arrays, and
-operations without an exact base-1.10 translation. Their portable OpenGL 2.0
+Valid Cg 2.0 constructs outside that subset are never frontend errors: the
+language accepts them (the neutral `generic` profile compiles every one of
+them), and a GLSL profile instead reports a profile diagnostic naming the
+unsupported operation — for example non-square matrices, interface
+dispatch, dynamic unsized arrays, bitwise operators on vectors, vertex
+texture sampling, recursion, rectangle samplers, or operations without an
+exact base-1.10 translation. Their portable OpenGL 2.0
 limits are 16 vertex attributes, 32 varying floating-point components, 512
 vertex and 64 fragment uniform components, zero vertex texture units, two
 fragment texture units, and one fragment color output.
@@ -77,7 +124,7 @@ fragment texture units, and one fragment color output.
 `glslangValidator` is an optional test dependency. CMake discovers it once
 when tests are configured and adds stage-correct validation for every
 successful GLSL fixture; golden, unit, diagnostic, interface-text, and generic
-regression tests remain enabled when it is absent. Run the suite with:
+regression tests remain enabled when it is absent. Run the suites with:
 
 ```sh
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -85,12 +132,28 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
+The Cg 2.0 conformance manifest lives at `tests/cg20/conformance.csv`: one
+row per normative requirement, each naming the single registered CTest that
+answers it (`valid-generic`, `invalid-language`, `backend-reject`, or
+`out-of-scope`). The `cg20_manifest` test enforces that every row names a
+registered test, that requirement ids are unique, and that every intrinsic
+opcode in `cg_stdlib.def` is unique. To run just the conformance and
+regeneration checks:
+
+```sh
+ctest --test-dir build -C Release -R "cg20|stdlib_regeneration|parser" --output-on-failure
+```
+
 ## Compiler Internals
 
-The historical tree-printing back end is almost entirely encapsulated in
-`generic_hal.[ch]`. The GLSL profiles share a structured source backend in
-`glsl_ir.[ch]`, `glsl_lower.c`, and `glsl_codegen.c`, with stage-specific HAL
-descriptors.
+Under the default Cg 2.0 language every profile consumes the backend-neutral
+typed IR built by `cg_ir.c` and verified by `cg_ir_verify.c` before any
+target code runs; `generic` prints it through `cg_ir_print.c`. The
+historical tree-printing back end remains in `generic_hal.[ch]` for explicit
+`-version 1.1` compiles. The GLSL profiles share a structured source backend
+in `glsl_ir.[ch]`, `glsl_lower.c`, and `glsl_codegen.c`, with stage-specific
+HAL descriptors; their Cg-IR lowering lives in `glsl_lower.c`
+(`GlslLowerCgIR`).
 
 `hal.[ch]` describes the hardware abstraction layer by which profiles
 communicate with the front-end. To add a new profile, you can use

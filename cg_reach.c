@@ -280,7 +280,21 @@ static void lWalkStmt(CgReachGraph *graph, Symbol *function, stmt *fStmt)
 
 static void lExpandFunction(CgReachGraph *graph, Symbol *function)
 {
-    lWalkStmtList(graph, function, function->details.fun.statements);
+    if (function->kind == FUNCTION_S) {
+        lWalkStmtList(graph, function, function->details.fun.statements);
+    } else if (function->kind == VARIABLE_S) {
+        /*
+         * lReachAdmit() files referenced file-scope variables into the
+         * graph beside functions, but a variable keeps its initializer
+         * in details.var.init -- which unions with fun.statements.
+         * Reading the function body of a variable walked raw expression
+         * memory as statement nodes.  Expand the declaration
+         * initializer instead: lLowerGlobal() lowers exactly this
+         * expression, so calls inside it are reached too.  Uniforms
+         * without initializers carry NULL and expand to nothing.
+         */
+        lWalkExpr(graph, function, function->details.var.init);
+    }
 } // lExpandFunction
 
 ///////////////////////////////// Public API /////////////////////////////////

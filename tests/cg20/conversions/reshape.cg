@@ -1,0 +1,12 @@
+// Vector-to-matrix and matrix-to-vector reshaping casts convert when
+// the element counts match exactly, in either direction, under an
+// explicit cast.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    float4 v = float4(1.0, 2.0, 3.0, 4.0);
+    float2x2 m = (float2x2)v;
+    float4 back = (float4)m;
+
+    return p * 0.25 + back * 0.125;
+}

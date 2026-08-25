@@ -264,10 +264,6 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                     lSymb = lSymb->next;
                 }
                 fStmt = stmtlist;
-            } else {
-                // Already reported:
-                // SemanticError(&program->loc, ERROR_S_PROGRAM_MUST_RETURN_STRUCT,
-                //               GetAtomString(atable, program->name));
             }
         }
         if (lstr->preserveReturns) {

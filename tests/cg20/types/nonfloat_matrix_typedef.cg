@@ -1,0 +1,21 @@
+// Non-float matrix spellings are not language-predefined types: only
+// float1x1-float4x4 come interned with the standard-type registry.  The
+// other scalar kinds form matrices by user declaration over packed row
+// vectors, exactly like any other typedef.
+
+typedef packed int2 int2x2[2];
+typedef packed half3 half3x3[3];
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    int2x2 m;
+    half3x3 h;
+
+    m[0] = int2(1, 2);
+    m[1] = int2(3, 4);
+    h[0] = half3(0.5, 0.5, 0.5);
+    h[1] = half3(0.25, 0.25, 0.25);
+    h[2] = half3(0.125, 0.125, 0.125);
+
+    return p * 0.0 + float(m[1][1]) * 0.25 + float(h[2][0]) * 0.125;
+}

@@ -1,0 +1,8 @@
+// A selected entry program must declare a semantic on its return value
+// so the runtime knows the output connector; an unbound return is a
+// language error even under the neutral generic profile.
+
+float4 main(float4 position : POSITION)
+{
+    return position;
+}

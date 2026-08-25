@@ -1,0 +1,28 @@
+// ANSI C conditional directives: #if/#elif/#else/#endif over integer
+// macro arithmetic with the defined() operator, and nesting.
+
+#define LEVEL 2
+#define WIDE (LEVEL > 1)
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+#if LEVEL == 1
+    float4 a = -p;
+#elif LEVEL == 2 && defined(LEVEL)
+    float4 a = p * 0.5;
+#else
+    float4 a = p;
+#endif
+
+#if WIDE
+# if !defined(NOT_DEFINED)
+    float4 b = a * 2.0;
+# else
+    float4 b = a;
+# endif
+#else
+    float4 b = a;
+#endif
+
+    return a * 0.5 + b * 0.5;
+}

@@ -57,7 +57,6 @@ static void InitHAL_HAL(slHAL *);
 static int GetCapsBit_HAL(int bitNumber);
 static int GetConnectorUses_HAL(int cid, int pid);
 static int GetConnectorRegister_HAL(int cid, int ByIndex, int ratom, Binding *fBind);
-static int GetFloatSuffixBase_HAL(SourceLoc *loc, int suffix);
 static int GetSizeof_HAL(Type *fType);
 static int GetAlignment_HAL(Type *fType);
 static int CheckDeclarators_HAL(SourceLoc *loc, const dtype *fDtype);
@@ -217,7 +216,6 @@ static void InitHAL_HAL(slHAL *fHAL)
     fHAL->GetConnectorAtom = NULL;
     fHAL->GetConnectorUses = GetConnectorUses_HAL;
     fHAL->GetConnectorRegister = GetConnectorRegister_HAL;
-    fHAL->GetFloatSuffixBase = GetFloatSuffixBase_HAL;
     fHAL->GetSizeof = GetSizeof_HAL;
     fHAL->GetAlignment = GetAlignment_HAL;
     fHAL->CheckDeclarators = CheckDeclarators_HAL;
@@ -410,25 +408,6 @@ static int GetConnectorRegister_HAL(int cid, int ByIndex, int ratom, Binding *fB
 {
     return 0;
 } // GetConnectorRegister_HAL
-
-/*
- * GetFloatSuffixBase_HAL() - Check for profile-specific limitations of floating point
- *         suffixes and return the base for this suffix.
- *
- */
-
-static int GetFloatSuffixBase_HAL(SourceLoc *loc, int suffix)
-{
-    switch (suffix) {
-    case ' ':
-        return TYPE_BASE_CFLOAT;
-    case 'f':
-        return TYPE_BASE_FLOAT;
-    default:
-        SemanticError(loc, ERROR_C_UNSUPPORTED_FP_SUFFIX, suffix);
-        return TYPE_BASE_UNDEFINED_TYPE;
-    }
-} // GetFloatSuffixBase_HAL
 
 /*
  * GetSizeof_HAL() - Return a profile specific size for this scalar, vector, or matrix type.

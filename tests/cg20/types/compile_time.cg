@@ -1,0 +1,13 @@
+// Cg 2.0 compile-time scalar spellings: cint and cfloat name constant
+// types (and their packed vector spellings) whose values fold at compile
+// time; they need no const qualifier of their own.
+
+cfloat kPi = 3.14;
+cint kTwo = 2;
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    cfloat4 v = cfloat4(1.0, 2.0, 3.0, kTwo);
+    cint2 w = cint2(1, 2);
+    return (p + v) * (kPi * 0.25) + float(w[1]) * 0.0;
+}

@@ -1,0 +1,16 @@
+// Reshaping casts require equal element counts: casting a nine-element
+// matrix to a four-component vector is not a conversion and reports
+// "cast not allowed".
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    float3x3 big;
+
+    big[0] = float3(1.0, 2.0, 3.0);
+    big[1] = float3(4.0, 5.0, 6.0);
+    big[2] = float3(7.0, 8.0, 9.0);
+
+    float4 squeezed = (float4)big;
+
+    return p * 0.0 + squeezed.w;
+}

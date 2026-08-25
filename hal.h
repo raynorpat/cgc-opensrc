@@ -152,7 +152,6 @@ struct slHAL_Rec {
     int (*GetConnectorAtom)(int);
     int (*GetConnectorUses)(int, int);
     int (*GetConnectorRegister)(int cid, int ByIndex, int ratom, Binding *fBind);
-    int (*GetFloatSuffixBase)(SourceLoc *loc, int suffix);
     int (*GetSizeof)(Type *fType);
     int (*GetAlignment)(Type *fType);
     int (*CheckDeclarators)(SourceLoc *loc, const dtype *fDtype);

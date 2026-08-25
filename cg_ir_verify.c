@@ -86,14 +86,20 @@ typedef struct CgIRVerifyContext_Rec {
 
 /*
  * CgIRFail() - Record the one controlled internal diagnostic and stop.
- *          Assertion-enabled builds never reach the diagnostic: the
- *          invariant violation aborts right here.
+ *          Assertion-enabled builds abort right here: a lowered module
+ *          failing verification is an internal invariant violation.
+ *          The unit suite (CG_IR_TEST_SEAMS) hand-builds invalid
+ *          modules to exercise these failure paths deliberately, so
+ *          under that seam the controlled diagnostic is recorded
+ *          without the abort.
  */
 
 static int CgIRFail(CgIRVerifyContext *ctx, CgIRVerifyReason reason,
                    SourceLoc loc, const void *node)
 {
+#if !defined(CG_IR_TEST_SEAMS)
     assert(!"Cg IR invariant violated");
+#endif
     if (ctx->diagnostic != NULL) {
         ctx->diagnostic->reason = reason;
         ctx->diagnostic->loc = loc;

@@ -1817,8 +1817,13 @@ int main(int argc, char **argv)
 
     reachMainSymb = lReachFunction("reachMain", 30, NULL);
     reachASymb = lReachFunction("reachHelperA", 31, NULL);
-    reachBSymb = lReachFunction("reachHelperB", 32,
-                                lReachBlockStmtNode(lReachExprStmtNode(NULL)));
+    /* helperB carries an empty statement body: lReachFunction's third
+     * parameter is the one CALL EXPRESSION its body makes, so a bare
+     * statement must be installed directly rather than wrapped as if
+     * it were an expression. */
+    reachBSymb = lReachFunction("reachHelperB", 32, NULL);
+    reachBSymb->details.fun.statements =
+        lReachBlockStmtNode(lReachExprStmtNode(NULL));
     reachUnusedSymb = lReachFunction("reachUnused", 33, NULL);
     /* Globals must live in the real global scope for reachability to
      * recognize them; AddSymbol inserts into its reversed-atom tree. */

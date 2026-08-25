@@ -13,6 +13,15 @@ if(DEFINED MESSAGE AND NOT "${output}${error}" MATCHES "${MESSAGE}")
         "Cg 2.0 fixture did not match '${MESSAGE}'\nstdout:\n${output}\nstderr:\n${error}")
 endif()
 
+# FORBID pins an absence: the regex may not appear in the combined
+# output.  Used for exclusion rules such as a static global staying out
+# of the program-interface listing.
+
+if(DEFINED FORBID AND "${output}${error}" MATCHES "${FORBID}")
+    message(FATAL_ERROR
+        "Cg 2.0 fixture output contains forbidden '${FORBID}':\nstdout:\n${output}\nstderr:\n${error}")
+endif()
+
 # EXPECTED golden mode: generate the program to ACTUAL via -o, strip the
 # volatile banner lines the compiler writes into every output stream, and
 # compare the normalized text byte-for-byte with the checked-in file.

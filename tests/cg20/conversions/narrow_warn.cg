@@ -1,0 +1,11 @@
+// A narrowing implicit conversion between kinds of the same class loses
+// information: the language keeps the program valid but issues the
+// lossy-conversion warning at every such site.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    int wide = 7;
+    short narrow = wide;
+
+    return p * narrow * 0.125;
+}

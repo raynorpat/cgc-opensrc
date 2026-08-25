@@ -1,0 +1,12 @@
+// Cg 2.0 Boolean constants: the true and false keywords are literal
+// values of the bool type, usable in initialization and selection.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    bool yes = true;
+    bool no = false;
+
+    if (yes && !no)
+        return p;
+    return -p;
+}

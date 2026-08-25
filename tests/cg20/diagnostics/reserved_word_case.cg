@@ -1,0 +1,10 @@
+// Reserved words marked case-insensitive by the specification are
+// recognized in any capitalization: "Compile" and "TECHNIQUE" hit the
+// same reserved-word rule as their lowercase spellings.
+
+float4 main(float4 position : POSITION) : COLOR0
+{
+    float Compile = 1.0;
+    float TECHNIQUE = 2.0;
+    return position * Compile * TECHNIQUE;
+}

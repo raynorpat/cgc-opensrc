@@ -1,0 +1,6 @@
+// Shared body for pp/include_main.cg.
+
+float4 included_helper(float4 v)
+{
+    return v * 0.5;
+}

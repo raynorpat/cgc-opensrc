@@ -164,7 +164,6 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_D_OUT_PARAM_IS_CONST          1112, "const qualified actual parameter #%d cannot be out parameter"
 #define ERROR_D_OUT_PARAM_NOT_SAME_TYPE     1113, "actual parameter #%d must be same type as formal out parameter"
 #define ERROR_S_NON_UNIFORM_PARAM_INIT      1114, "only uniform parameters can be initialized \"%s\""
-#define ERROR_S_NO_COMPAT_OVERLOADED_FUN    1115, "unable to find compatible overloaded function \"%s\""
 #define ERROR_S_JUMP_NOT_IN_LOOP            1116, "\"%s\" statement is not within a loop"
 #define ERROR_S_CANNOT_INFER_ARRAY_SIZE     1117, "cannot infer array size"
 
@@ -236,10 +235,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_MATRIX_OPERAND_GR_4         5017, "dimensions of matrix operands to \"%s\" cannot exceed 4"
 #define ERROR___CONSTRUCTER_VECTOR_LEN_GR_4 5018, "length of constructed vectors cannot exceed 4"
 #define ERROR_S_ONE_PROGRAM                 5019, "one program per compilation, program \"%s\" also defined"
-#define ERROR_C_UNSUPPORTED_FP_SUFFIX       5020, "profile does not support float constant suffix \"%c\""
 
 #define ERROR_S_PROGRAM_PARAM_NOT_UNIFORM   5028, "non-connector program parameter \"%s\" must have uniform domain"
-#define ERROR_S_PROGRAM_MUST_RETURN_STRUCT  5029, "program \"%s\" must return a struct"
 
 //#define ERROR_SS_CMEMBER_NOT_SCALAR_VECTOR  5032, "connector member \"%s.%s\" is not a scalar or vector"
 //#define ERROR_SS_CMEMBER_NOT_NUMERIC        5033, "connector member \".%s%s\" is not a numeric type"
