@@ -76,6 +76,8 @@ int InitCgStruct(void)
     while (--len >= 0)
         p[len] = 0;
     Cg->options.languageVersion = CG_LANGUAGE_DEFAULT;
+    Cg->options.profileOptions = NULL;
+    Cg->options.profileOptionsTail = &Cg->options.profileOptions;
     Cg->bindings = NULL;
     Cg->allProfiles = NULL;
     Cg->theHAL = NULL;
@@ -86,6 +88,54 @@ int InitCgStruct(void)
     Cg->lastSourceLoc.line = 0;
     return 1;
 } // InitCgStruct
+
+/*
+ * AppendProfileOption() - Record one raw "-po value" occurrence on the
+ *         compile options' owned list.  The command line text is stored
+ *         verbatim; interpreting it is the geometry option parser's job.
+ *         The ordinal records where the value appeared on the command
+ *         line.  Returns 1 on success, 0 on allocation failure.
+ */
+
+int AppendProfileOption(Options *options, const char *text)
+{
+    CgProfileOption *option;
+    CgProfileOption *walk;
+    int ordinal;
+
+    option = (CgProfileOption *) malloc(sizeof(CgProfileOption));
+    if (option == NULL)
+        return 0;
+    ordinal = 0;
+    for (walk = options->profileOptions; walk != NULL; walk = walk->next)
+        ordinal++;
+    option->next = NULL;
+    option->text = text;
+    option->ordinal = ordinal;
+    *options->profileOptionsTail = option;
+    options->profileOptionsTail = &option->next;
+    return 1;
+} // AppendProfileOption
+
+/*
+ * FreeCgStruct() - Release the resources owned by the compile options.
+ *
+ */
+
+void FreeCgStruct(void)
+{
+    CgProfileOption *option;
+    CgProfileOption *next;
+
+    option = Cg->options.profileOptions;
+    while (option != NULL) {
+        next = option->next;
+        free(option);
+        option = next;
+    }
+    Cg->options.profileOptions = NULL;
+    Cg->options.profileOptionsTail = &Cg->options.profileOptions;
+} // FreeCgStruct
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////// End of cgstruct.c //////////////////////////////////////

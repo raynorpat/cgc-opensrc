@@ -18,6 +18,7 @@ add_executable(cgc
     atom.c
     binding.c
     cgcmain.c
+    cg_geometry.c
     cg_ir.c
     cg_ir_lower.c
     cg_ir_print.c

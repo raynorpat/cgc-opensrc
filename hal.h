@@ -48,6 +48,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __HAL_H 1
 
 #include "cg_overload.h"    // CgProfileIdentity for slHAL/slProfile
+#include "cg_geometry.h"    // CgIRStage for CgProfileProgramStage
 
 // Typedefs for things defined here in "hal.h":
 
@@ -232,6 +233,7 @@ struct slHAL_Rec {
 slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id);
 void SetProfileIdentity(const char *name, CgProfileStage stage,
                         const char *wildcardName, int wildcardSpecificity);
+CgIRStage CgProfileProgramStage(const CgProfileIdentity *identity);
 slProfile *EnumerateProfiles(int index);
 
 int InitHAL(const char *profileName, const char *entryName);

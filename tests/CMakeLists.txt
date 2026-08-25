@@ -824,6 +824,23 @@ add_test(
     COMMAND cg_stdlib_unit
 )
 
+add_executable(cg_geometry_unit
+    ${PROJECT_SOURCE_DIR}/cg_geometry.c
+    cg_geometry_test.c
+)
+target_include_directories(cg_geometry_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+set_target_properties(cg_geometry_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_geometry_unit
+    COMMAND cg_geometry_unit
+)
+
 add_executable(cg_ir_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/cg_ir.c
@@ -1137,7 +1154,7 @@ add_cg20_failure(glslf_sampler_struct
 
 foreach(cg20_external_test
         cg_language_unit cg_types_unit cg_overload_unit cg_stdlib_unit
-        generic_position glslv_passthrough glslf_passthrough)
+        cg_geometry_unit generic_position glslv_passthrough glslf_passthrough)
     set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${cg20_external_test}")
 endforeach()
 

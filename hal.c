@@ -148,6 +148,29 @@ void SetProfileIdentity(const char *name, CgProfileStage stage,
 } // SetProfileIdentity
 
 /*
+ * CgProfileProgramStage() - Convert a registered profile identity's
+ *         coarse pipeline stage into the shared Cg IR stage used by
+ *         geometry topology resolution.  Neutral profiles (generic)
+ *         answer CGIR_STAGE_NEUTRAL so non-geometry programs keep their
+ *         existing normalized output.
+ */
+
+CgIRStage CgProfileProgramStage(const CgProfileIdentity *identity)
+{
+    switch (identity->stage) {
+    case CG_PROFILE_STAGE_VERTEX:
+        return CGIR_STAGE_VERTEX;
+    case CG_PROFILE_STAGE_GEOMETRY:
+        return CGIR_STAGE_GEOMETRY;
+    case CG_PROFILE_STAGE_FRAGMENT:
+        return CGIR_STAGE_FRAGMENT;
+    case CG_PROFILE_STAGE_NEUTRAL:
+    default:
+        return CGIR_STAGE_NEUTRAL;
+    }
+} // CgProfileProgramStage
+
+/*
  * EnumerateProfiles()
  *
  */

@@ -321,6 +321,29 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_GLSL_SAMPLER                6208, "GLSL 1.10 does not support sampler feature \"%s\""
 #define ERROR_S_GLSL_NON_SQUARE_MATRIX      6209, "GLSL 1.10 requires a square matrix, found \"%s\""
 
+// Numbers 6300 to 6319 are reserved for geometry programs
+
+#define ERROR_S_GEOMETRY_PROFILE_OPTION       6300, "invalid geometry profile option \"%s\""
+#define ERROR_S_GEOMETRY_PROFILE_CONFLICT     6301, "conflicting geometry profile option \"%s\""
+#define ERROR___GEOMETRY_INPUT_REQUIRED       6302, "geometry input topology is required"
+#define ERROR_S_GEOMETRY_REPEATED_MODIFIER    6303, "repeated geometry modifier \"%s\""
+#define ERROR_SS_GEOMETRY_MODIFIER_CONFLICT   6304, "geometry modifier \"%s\" conflicts with \"%s\""
+#define ERROR___GEOMETRY_MODIFIER_FUNCTION    6305, "geometry modifier requires a function"
+#define ERROR_S_GEOMETRY_ATTRIB_PLACEMENT     6306, "AttribArray is not permitted on %s"
+#define ERROR_S_GEOMETRY_ATTRIB_ELEMENT       6307, "invalid AttribArray element type \"%s\""
+#define ERROR___GEOMETRY_ATTRIB_READ_ONLY     6308, "AttribArray values are read-only"
+#define ERROR___GEOMETRY_ATTRIB_STAGE         6309, "AttribArray requires a geometry program"
+#define ERROR_S_GEOMETRY_OPERATION_ARITY      6310, "invalid arguments to geometry operation \"%s\""
+#define ERROR_S_GEOMETRY_OPERATION_CONTEXT    6311, "geometry operation \"%s\" must be a complete statement"
+#define ERROR___GEOMETRY_OUTPUT_SEMANTIC      6312, "geometry output value has no binding semantic"
+#define ERROR_S_GEOMETRY_DUPLICATE_SEMANTIC   6313, "duplicate geometry output semantic \"%s\""
+#define ERROR_S_GEOMETRY_SEMANTIC              6314, "invalid geometry semantic \"%s\""
+#define ERROR___GEOMETRY_FLAT_POSITION        6315, "POSITION cannot be passed to flatAttrib"
+#define ERROR_S_GEOMETRY_ENTRY_CALL           6316, "geometry entry \"%s\" cannot be called"
+#define ERROR_S_GEOMETRY_STAGE                6317, "geometry operation \"%s\" is reachable from a non-geometry entry"
+#define ERROR_SS_GLSL_PROFILE_STAGE           6318, "%s profile cannot compile a %s program"
+#define ERROR___GLSL_GEOMETRY_MAX_REQUIRED    6319, "glslg requires -po Vertices=N"
+
 // Warnings:
 
 #define WARNING___QUALIFIER_SPECIFIED_TWICE 7001, "qualifier specified twice"

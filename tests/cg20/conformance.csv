@@ -214,6 +214,7 @@ PROFILE-GLSL-INTERFACE-REJECT,backend-reject,glslv_glsl_interface_dispatch,Profi
 GENERIC-ACCEPTS-INTERFACE,valid-generic,cg20_glsl_interface_dispatch_generic,Profiles
 PROFILE-GLSL-UNSIZED-REJECT,backend-reject,glslv_glsl_unsized_array,Profiles
 GENERIC-ACCEPTS-UNSIZED,valid-generic,cg20_glsl_unsized_array_generic,Profiles
+GEOM-OPTION-PARSE,valid-generic,cg_geometry_unit,Geometry profile options
 EMISSION-NORMALIZED-IR,valid-generic,cg20_ir_normalized,Emission
 EMISSION-GLSL-GOLDENS,valid-generic,glslv_passthrough,Emission
 MANDATE-VERTEX-POSITION,valid-generic,glslv_passthrough,Mandatory program outputs

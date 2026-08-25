@@ -50,10 +50,19 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "language.h"
 #include "output.h"
 
+// Repeatable raw "-po value" occurrences, owned by the option list:
+
+typedef struct CgProfileOption_Rec CgProfileOption;
+
 int InitCgStruct(void);
+void FreeCgStruct(void);
 
 typedef struct Options_Rec{
     const char *profileString;
+    // Every "-po value" occurrence in command line order, stored
+    // verbatim for the geometry profile option parser to interpret:
+    CgProfileOption *profileOptions;
+    CgProfileOption **profileOptionsTail;
     const char *entryName;
     CgLanguageVersion languageVersion;
     const char *sourceFileName;
@@ -122,6 +131,8 @@ void PrintOptions(int argc, char **argv);
 int CloseOutputFiles(const char *mess);
 void AbortCompilationOutput(void);
 void ReportProfileCallPath(const void *failingSymbol);
+
+int AppendProfileOption(Options *options, const char *text);
 
 int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope);
 void SetSymbolFlagsList(Scope *fScope, int fVal);

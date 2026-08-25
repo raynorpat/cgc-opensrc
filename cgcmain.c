@@ -150,6 +150,7 @@ int main(int argc, char **argv)
     FreeSymbolTable(Cg);
     FreeAtomTable(atable);
     CloseOutputFiles("End of program");
+    FreeCgStruct();
     return numerrors;
 } // main
 
@@ -158,7 +159,7 @@ void PrintHelp()
     slProfile *lProfile;
     int ii;
 
-    printf("usage: cgc [-quiet] [-nocode] [-nostdlib] [-longprogs] [-v] [-Dmacro[=value]] \n           [-version 1.1|2.0] [-profile id] [-entry id] [-o ofile] [file.cg]\n");
+    printf("usage: cgc [-quiet] [-nocode] [-nostdlib] [-longprogs] [-v] [-Dmacro[=value]] \n           [-version 1.1|2.0] [-profile id] [-entry id] [-po option]... [-o ofile] [file.cg]\n");
 #if defined(CGC_DEBUG_THE_COMPILER)
     printf("           [-atom] [-scan] [-tree] [-node] [-final] [-trap] [-comments] [-cdbg0]\n");
 #endif
@@ -308,6 +309,14 @@ int CommandLineArgs(int argc, char **argv, int pass)
                         return 0;
                     }
                 }
+            } else if (!strcmp(argv[ii], "-po")) {
+                ii++;
+                if (ii >= argc) {
+                    printf(OPENSL_TAG ": missing profile option after \"-po\"\n");
+                    return 0;
+                }
+                if (pass == 0 && !AppendProfileOption(&Cg->options, argv[ii]))
+                    return 0;
             } else {
                 if (pass == 1) {
                     printf(OPENSL_TAG ": bad argument: \"%s\"\n", argv[ii]);
