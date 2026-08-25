@@ -1,0 +1,15 @@
+// helper_parameter.cg - a sampler-typed helper formal is legal at the
+// language layer: the helper receives the program's uniform sampler and
+// samples through it.  Only the glslf backend caps this shape to plain
+// uniform declarations, so the neutral generic profile is the success
+// witness for the SAMPLER-HELPER-PARAM-CAP row.
+
+float4 sampleImage(sampler2D image, float2 coord)
+{
+    return tex2D(image, coord);
+}
+
+float4 main(float4 position : POSITION, uniform sampler2D image) : COLOR0
+{
+    return sampleImage(image, position.xy);
+}

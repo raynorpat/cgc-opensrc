@@ -271,12 +271,12 @@ add_cg20_success(cg20_conversion_narrow_warn
 add_cg20_failure(cg20_conversion_reshape_mismatch
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reshape_mismatch.cg
-    -DCODE=1033 -DMESSAGE=cast.not.allowed
+    -DCODE=1033 -DEXPECTED_LINE=13 -DMESSAGE=cast.not.allowed
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 add_cg20_failure(cg20_remainder_float_diag
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/remainder_float.cg
-    -DCODE=1021 "-DMESSAGE=operands.to.\"%\".must.be.integral"
+    -DCODE=1021 -DEXPECTED_LINE=9 "-DMESSAGE=operands.to.\"%\".must.be.integral"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 add_cg20_success(cg20_unsized_array
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
@@ -339,6 +339,10 @@ add_cg20_failure(cg20_sampler_varying_global
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/sampler_varying_global.cg
     -DCODE=1151 "-DMESSAGE=sampler.variables.must.be.global.uniforms"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_success(cg20_sampler_helper_parameter
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/samplers/helper_parameter.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
 
 # The sampler-to-numeric cast rejection is a language conversion rule:
 # it fires identically under the neutral generic profile, which is the
@@ -357,7 +361,7 @@ add_cg20_failure(cg20_reserved_word
 add_cg20_failure(cg20_reserved_word_case
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word_case.cg
-    -DCODE=1300 -DMESSAGE=reserved.word
+    -DCODE=1300 -DEXPECTED_LINE=7 -DMESSAGE=reserved.word
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 add_cg20_failure(cg20_literal_overflow
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
@@ -368,7 +372,7 @@ add_cg20_failure(cg20_literal_overflow
 add_cg20_failure(cg20_return_needs_semantic
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/return_needs_semantic.cg
-    -DCODE=5121 "-DMESSAGE=must.declare.a.semantic.on.its.return.value"
+    -DCODE=5121 -DEXPECTED_LINE=5 "-DMESSAGE=must.declare.a.semantic.on.its.return.value"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
 # Entry return semantics are scalar/vector only (Task 1b ruling): a
@@ -380,7 +384,7 @@ add_cg20_failure(cg20_return_needs_semantic
 add_cg20_failure(cg20_matrix_return_reject
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/matrix_return.cg
-    -DCODE=5107 "-DMESSAGE=not.a.scalar.or.vector"
+    -DCODE=5107 -DEXPECTED_LINE=0 "-DMESSAGE=not.a.scalar.or.vector"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 add_cg20_success(cg20_legacy_keywords
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
@@ -1107,6 +1111,13 @@ add_cg20_failure(glslf_sampler_comparison
     -DCODE=1022 -DEXPECTED_LINE=8
     "-DREASON=must.be.numeric"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
+
+# SAMPLER-HELPER-PARAM-CAP: the glslf backend caps sampler-typed
+# helper formals to plain uniform declarations; the language layer
+# itself permits them, witnessed by the generic success twin
+# cg20_sampler_helper_parameter.  This legacy GLSL fixture cannot be
+# its own twin because generic's output-only TEXCOORD binding rejects
+# its entry shape first (C5108), for reasons unrelated to samplers.
 
 add_cg20_failure(glslf_sampler_helper_parameter
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf

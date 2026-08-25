@@ -21,6 +21,19 @@ if(NOT diagnostic MATCHES "${MESSAGE}")
     message(FATAL_ERROR "missing diagnostic '${MESSAGE}':\n${diagnostic}")
 endif()
 
+# EXPECTED_LINE optionally pins the diagnostic's source location.  Most
+# diagnostics cite "<source>(<line>)"; profile-binder rejections may
+# carry a bare "(0)" with no file component, so anchor on the
+# "(<line>) : error" location token itself.  Undefined means no line
+# check, preserving existing consumers.
+
+if(DEFINED EXPECTED_LINE)
+    if(NOT diagnostic MATCHES "\\(${EXPECTED_LINE}\\) : error")
+        message(FATAL_ERROR
+            "diagnostic does not cite line ${EXPECTED_LINE}:\n${diagnostic}")
+    endif()
+endif()
+
 # NOTES pins layered notes in document order: each entry must appear
 # literally (quotes stripped from the diagnostic first) after the
 # previous one, so the call-path hop order is part of the contract.
