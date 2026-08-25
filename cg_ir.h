@@ -59,7 +59,10 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // NULL/zero even over dirty allocator memory.  Flag policy (which nodes
 // are synthesized, lvalues, or side-effecting) belongs to callers and
 // later validation, not to builders; builders assert only cheap local
-// requirements such as non-NULL operands and types.
+// requirements such as non-NULL operands and types.  Lowering
+// temp-hoists every effecting subtree into its own statement, so
+// consumers may assume value nodes stored into or shared across the
+// module graph are effect-free.
 //
 // Include discipline: this header follows the repository prelude
 // convention (see cg_stdlib.h) and consumes SourceLoc, Type, Symbol,
@@ -258,7 +261,13 @@ struct CgIRExpr_Rec {
      * chain it synthesizes.  Explicit source indexing builds the same
      * INDEX(INDEX(base,row),column) shape without this mark, so GLSL
      * lowering can keep the two print forms apart (selectors transpose,
-     * explicit chains print as written) instead of guessing by shape. */
+     * explicit chains print as written) instead of guessing by shape.
+     * GLSL lowering also gates its matrix group-write cap fallback on
+     * this mark as the producer/user discriminator -- an over-long run
+     * of marked store targets stays a loud failure while an unmarked
+     * run falls back to independent elementwise statements -- so
+     * removing the marker would reintroduce a silent-invalid-output
+     * defect. */
     int selectorRead;
     CgIRExpr *next;
     union {
@@ -373,6 +382,8 @@ struct CgIRModule_Rec {
     CgIRFunction *entry;
     CgIRDecl *globals;
     CgIRFunction *functions;
+    /* Borrowed pointer: the pointed-to profile identity must outlive
+     * the module. */
     const CgProfileIdentity *profile;
 };
 

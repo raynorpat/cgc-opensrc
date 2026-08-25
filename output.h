@@ -64,8 +64,20 @@ typedef struct OutputTransaction_Rec {
     int isStdout;
 } OutputTransaction;
 
+/*
+ * BeginOutputTransaction() - Start generating into a private stream.
+ *          Returns nonzero on success, zero on failure.
+ */
+
 int BeginOutputTransaction(OutputTransaction *transaction,
                            const char *destination);
+
+/*
+ * CommitOutputTransaction() - Finish a successful compilation by
+ *          replacing the destination with the generated output.
+ *          Returns zero on success, nonzero on failure.
+ */
+
 int CommitOutputTransaction(OutputTransaction *transaction);
 void AbortOutputTransaction(OutputTransaction *transaction);
 

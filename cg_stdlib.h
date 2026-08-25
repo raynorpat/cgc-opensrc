@@ -90,8 +90,9 @@ typedef struct CgIntrinsicSignature_Rec {
  * InitCgStdlib() - Expand the catalog into "scope": one internal
  *          function symbol per expanded signature carrying its
  *          immutable signature pointer, plus the helper-structure
- *          variants selected by the current profile family.  Repeated
- *          installation over the same scope is idempotent.
+ *          variants selected by the current profile family.
+ *          Signature installation is guarded against duplication;
+ *          helper structure rows are not.
  */
 
 int InitCgStdlib(Scope *scope);

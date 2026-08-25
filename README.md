@@ -49,7 +49,11 @@ reachable construct to verified, typed Cg IR and prints it in a
 deterministic normalized form (diagnostics-friendly; not a promised
 interchange format). With explicit `-version 1.1 -profile generic` the
 compiler prints the historical tree dump instead, byte-compatible with
-earlier releases for legacy sources.
+earlier releases for legacy sources that clear the shared internal
+gates: every language mode builds and verifies the Cg IR before any
+emission, so a source triggering an internal-invariant rejection
+(`C9011`/`C9012`) fails with an internal error in legacy mode too,
+where an earlier release may have emitted output.
 
 The release contains a pre-built parser (`parser.c` and `parser.h`) generated
 from `parser.y` with GNU Bison. Normal builds use the checked-in generated

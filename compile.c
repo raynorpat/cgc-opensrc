@@ -106,6 +106,14 @@ static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
     memset(&context.verifyDiagnostic, 0,
            sizeof(context.verifyDiagnostic));
     OK = CgIRLowerProgram(&context, fScope, program);
+    if (!OK && GetErrorCount() == 0) {
+
+        // A silent lowering failure is the sticky module allocation
+        // case: report it so the output transaction aborts instead of
+        // committing truncated output.
+
+        InternalError(loc, ERROR_S_CG_IR_INVARIANT, "Cg IR lowering");
+    }
     if (OK) {
         OK = CgIRVerifyModule(moduleOut, &context.verifyDiagnostic);
         if (!OK) {
@@ -2920,7 +2928,6 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
     stmt *lStmt;
     CgIRModule irModule;
     CgReachGraph reachGraph;
-    SourceLoc irLoc;
     int useIR;
 
     memset(&reachGraph, 0, sizeof(reachGraph));
@@ -3029,11 +3036,10 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                 if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
                     OutputBindings(Cg->options.outfd, theHAL, program);
 
-                irLoc = *loc;
                 if (GetErrorCount() == 0) {
                     int errorsBeforeHook = GetErrorCount();
 
-                    if (!theHAL->ValidateIR(&irLoc, &irModule)) {
+                    if (!theHAL->ValidateIR(loc, &irModule)) {
                         if (GetErrorCount() == errorsBeforeHook) {
                             InternalError(loc, ERROR_S_CG_IR_INVARIANT,
                                           "profile validation of Cg IR");
@@ -3041,7 +3047,7 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                     } else if (!Cg->options.NoCodeGen &&
                                GetErrorCount() == 0) {
                         errorsBeforeHook = GetErrorCount();
-                        if (!theHAL->GenerateIR(&irLoc, &irModule) &&
+                        if (!theHAL->GenerateIR(loc, &irModule) &&
                             GetErrorCount() == errorsBeforeHook) {
                             InternalError(loc, ERROR_S_CG_IR_INVARIANT,
                                           "profile IR generation");

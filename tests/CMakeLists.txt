@@ -865,23 +865,6 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
 )
 
-# Conformance-manifest cross-check (Task 20): every non-out-of-scope
-# row of conformance.csv must name one CTest registered through
-# add_cg20_success/add_cg20_failure (or one unit binary), requirement
-# ids must be unique, and cg_stdlib.def must keep assigning unique
-# intrinsic opcodes.  Registered after every name above exists so the
-# CG20_TEST_NAMES snapshot is complete.
-
-# A few manifest rows answer their rule with a pre-existing suite test
-# that predates the add_cg20_* helpers: the language, type, overload,
-# and stdlib unit binaries, the historical generic golden for
-# position.cg (the -version 1.1 opt-in row), and the two GLSL golden
-# passthrough fixtures pinning mandatory vertex/fragment outputs.
-# Record them so the cross-check sees one witness per cited row.
-# The cross-check itself is registered after the last add_cg20_*
-# registration near the end of this file so the CG20_TEST_NAMES
-# snapshot is complete.
-
 add_generic_regression(position position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
 add_generic_regression(reflection reflection.cg
