@@ -1,0 +1,228 @@
+# Cg 2.0 Conformance Manifest
+#
+# Columns - id,classification,test,source
+#   id              stable requirement identifier. Unique, enforced.
+#   classification  valid-generic or invalid-language or backend-reject
+#                   or out-of-scope.
+#   test            exactly one registered CTest (enforced against the
+#                   CG20_TEST_NAMES property recorded by
+#                   add_cg20_success and add_cg20_failure). Out-of-scope
+#                   rows cite the manifest checker itself.
+#   source          normative section this row answers.
+#
+# Note - comment text must avoid semicolons because file(STRINGS)
+# splits list entries there.
+#
+# Derivation authority: no network was available while closing this
+# grid, so normative sections were derived from the approved design doc
+# (docs/superpowers/specs/2026-08-23-cg-2-language-ir-design.md), the
+# implemented compiler behavior, and the checked-in fixtures/catalog.
+# The reserved-word grid in particular is best-effort pending direct
+# verification against the published Cg 2.0 specification (see README,
+# "Reserved words"): whether "vertexshader" is spec-reserved like its
+# "pixelshader" sibling, and the exact case-insensitivity flags and
+# C++ cast-family entries, remain open verification items.
+# Lines starting with '#' are documentation, not rows.
+
+id,classification,test,source
+LANG-DEFAULT-2.0,valid-generic,cg20_ir_normalized,Cg language policy
+LANG-LEGACY-OPT-IN,valid-generic,generic_position,Cg language policy
+LANG-VERSION-PARSE,valid-generic,cg_language_unit,Cg language policy
+LANG-LEGACY-SUPERSET,valid-generic,cg20_legacy_keywords,Cg language policy
+LITERAL-SUFFIXES,valid-generic,cg20_literal_suffixes,Lexical conventions
+LITERAL-INT-RADICES,valid-generic,cg20_literal_int_forms,Lexical conventions
+LITERAL-FLOAT-FORMS,valid-generic,cg20_literal_float_forms,Lexical conventions
+LITERAL-BOOL-CONSTANTS,valid-generic,cg20_literal_bool,Lexical conventions
+LITERAL-OVERFLOW-DIAG,invalid-language,cg20_literal_overflow,Lexical conventions
+RESERVE-WORD-DIAG,invalid-language,cg20_reserved_word,Reserved words
+RESERVE-CASE-INSENSITIVE,invalid-language,cg20_reserved_word_case,Reserved words
+RESERVE-CGFX-TECHNIQUE,out-of-scope,cg20_manifest,CgFX exclusion
+RESERVE-CGFX-PASS,out-of-scope,cg20_manifest,CgFX exclusion
+RESERVE-CGFX-COMPILE,out-of-scope,cg20_manifest,CgFX exclusion
+RESERVE-CGFX-STATEBLOCK,out-of-scope,cg20_manifest,CgFX exclusion
+TYPE-SCALAR-KINDS,valid-generic,cg20_scalar_types,Types
+TYPE-COMPILE-TIME,valid-generic,cg20_type_compile_time,Types
+TYPE-VECTOR-LENGTHS,valid-generic,cg20_type_vectors_matrices,Types
+TYPE-MATRIX-FLOAT-PREDEF,valid-generic,cg20_type_vectors_matrices,Types
+TYPE-NONFLOAT-MATRIX-TYPEDEF,valid-generic,cg20_nonfloat_matrix_typedef,Types
+TYPE-SAMPLER-KINDS,valid-generic,cg20_sampler_base_compat,Samplers
+STRUCT-DATA-WITH-METHODS,valid-generic,cg20_conversions_aggregate,Struct types
+INTERFACE-IMPLEMENTATION,valid-generic,cg20_interface_conformance,Interfaces
+INTERFACE-DYNAMIC-DISPATCH,valid-generic,cg20_interface_dispatch,Interfaces
+ARRAY-SIZED-NESTED,valid-generic,cg20_arrays_nested_struct,Arrays
+ARRAY-UNSIZED-DYNAMIC,valid-generic,cg20_unsized_array,Unsized arrays
+ARRAY-LENGTH-OP,valid-generic,cg20_array_length,Array operations
+ARRAY-INIT-INFER-DIAG,invalid-language,cg20_unsized_initializer,Unsized arrays
+CONV-CLASSIFICATION-UNIT,valid-generic,cg_types_unit,Type conversions
+CONV-CTC-PROMOTION,valid-generic,cg20_conversions_numeric,Type conversions
+CONV-SIGNED-UNSIGNED,valid-generic,cg20_conversions_numeric,Type conversions
+CONV-SCALAR-SMEAR,valid-generic,cg20_conversions_numeric,Type conversions
+CONV-VECTOR-NARROW,valid-generic,cg20_conversions_numeric,Type conversions
+CONV-MATRIX-SUBMATRIX,valid-generic,cg20_conversions_numeric,Type conversions
+CONV-NARROW-WARN,valid-generic,cg20_conversion_narrow_warn,Type conversions
+CONV-BOOL-NUMERIC,valid-generic,cg20_conversion_bool_int,Type conversions
+CONV-STRUCT-PAIRWISE,valid-generic,cg20_conversions_aggregate,Type conversions
+CONV-STRUCT-FIRST-MEMBER,valid-generic,cg20_conversion_struct_scalar,Type conversions
+CONV-ARRAY-ELEMENTWISE,valid-generic,cg20_conversions_aggregate,Type conversions
+CONV-VEC-MAT-RESHAPE,valid-generic,cg20_conversion_reshape,Type conversions
+CONV-RESHAPE-MISMATCH-DIAG,invalid-language,cg20_conversion_reshape_mismatch,Type conversions
+CONV-SAMPLER-OPAQUE-DIAG,invalid-language,cg20_invalid_conversion,Type conversions
+CONV-DYNARRAY-ELEM-DIAG,invalid-language,cg20_dynamic_array_single_diagnostic,Dynamic arrays
+ARITH-USUAL-KINDS,valid-generic,cg_types_unit,Arithmetic promotions
+OP-BITWISE-INTEGER,valid-generic,cg20_literal_suffixes,Operators
+OP-REMAINDER-INTEGER,valid-generic,cg20_control_flow,Operators
+OP-REMAINDER-NONINT-DIAG,invalid-language,cg20_remainder_float_diag,Operators
+STMT-CONDITIONAL-LOOPS,valid-generic,cg20_control_flow,Statements
+SWIZZLE-FORMS,valid-generic,cg20_swizzles,Vector components
+STMT-DISCARD,valid-generic,cg20_discard_generic,Statements
+STMT-COMPOUND-ASSIGN,valid-generic,cg20_unsized_array,Assignment
+OVERLOAD-TIER-RANKING,valid-generic,cg_overload_unit,Function overloading
+OVERLOAD-DEFAULT-ARGS,valid-generic,cg20_overload_defaults,Default arguments
+OVERLOAD-DEFAULT-ORDER-DIAG,invalid-language,cg20_default_after_optional,Default arguments
+OVERLOAD-AMBIGUOUS-DIAG,invalid-language,cg20_ambiguous_overload,Function overloading
+OVERLOAD-EXACT-SELECTOR,valid-generic,cg20_profile_overload_vertex,Profile-qualified overloading
+OVERLOAD-STAGE-WILDCARD,valid-generic,cg20_profile_overload_fragment,Profile-qualified overloading
+OVERLOAD-OPEN-SELECTION,valid-generic,cg20_profile_overload_open,Profile-qualified overloading
+IFACE-DEFAULT-DOMAINS,valid-generic,cg20_default_domains,Binding semantics
+IFACE-VARYING-GLOBALS,valid-generic,cg20_global_varying,Binding semantics
+IFACE-INPUT-ALIAS,valid-generic,cg20_input_alias,Binding semantics
+IFACE-STATIC-NONGLOBAL,valid-generic,cg20_static_global,Binding semantics
+IFACE-OUTPUT-ALIAS-DIAG,invalid-language,cg20_output_alias,Program interface
+IFACE-CASE-CANONICAL-DIAG,invalid-language,cg20_semantic_case_collision,Program interface
+ENTRY-RETURN-BOUND,valid-generic,cg20_smoke,Entry points
+ENTRY-RETURN-SEMANTIC-DIAG,invalid-language,cg20_return_needs_semantic,Entry points
+ENTRY-MATRIX-RETURN-REJECT,backend-reject,cg20_matrix_return_reject,Entry points
+PP-OBJECT-MACROS,valid-generic,cg20_pp_object_macros,Preprocessing
+PP-FUNCTION-MACROS,valid-generic,cg20_pp_function_macros,Preprocessing
+PP-CONDITIONAL-DIRECTIVES,valid-generic,cg20_pp_conditionals,Preprocessing
+PP-INCLUDE-SEARCH,valid-generic,cg20_pp_include,Preprocessing
+SAMPLER-ASSIGN-DIAG,invalid-language,cg20_sampler_assignment,Sampler restrictions
+SAMPLER-KIND-MISMATCH-DIAG,invalid-language,cg20_sampler_incompatible,Sampler restrictions
+SAMPLER-NONUNIFORM-DIAG,invalid-language,cg20_sampler_varying_global,Sampler restrictions
+SAMPLER-LOCAL-DIAG,invalid-language,glslf_local_sampler,Sampler restrictions
+SAMPLER-ARRAY-DIAG,invalid-language,glslf_sampler_array,Sampler restrictions
+SAMPLER-INIT-DIAG,invalid-language,glslf_sampler_default,Sampler restrictions
+SAMPLER-HELPER-RETURN-DIAG,invalid-language,glslf_sampler_helper_return,Sampler restrictions
+SAMPLER-COND-DIAG,invalid-language,glslf_sampler_conditional,Sampler restrictions
+SAMPLER-CAST-DIAG,invalid-language,glslf_sampler_cast,Sampler restrictions
+SAMPLER-CTOR-DIAG,invalid-language,glslf_sampler_constructor,Sampler restrictions
+SAMPLER-COMPARE-DIAG,invalid-language,glslf_sampler_comparison,Sampler restrictions
+SAMPLER-STRUCT-MEMBER-DIAG,invalid-language,glslf_sampler_struct,Sampler restrictions
+SAMPLER-HELPER-PARAM-CAP,backend-reject,glslf_sampler_helper_parameter,Sampler restrictions
+SAMPLER-RECT-GLSL-REJECT,backend-reject,glslf_sampler_rect,Sampler restrictions
+STDLIB-CATALOG-COVERAGE,valid-generic,cg_stdlib_unit,Cg Standard Library Functions
+STDLIB-ABS,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ACOS,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ALL,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ANY,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ASIN,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ATAN,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ATAN2,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-CEIL,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-CLAMP,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-COS,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-COSH,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-CROSS,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-DEGREES,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-DETERMINANT,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-DOT,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-EXP,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-EXP2,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-FLOOR,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-FMOD,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-FRAC,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-FREXP,valid-generic,cg20_intrinsic_out_params,Cg Standard Library Functions
+STDLIB-ISFINITE,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ISINF,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ISNAN,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-LDEXP,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-LERP,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-LIT,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-LOG,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-LOG10,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-LOG2,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-MAX,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-MIN,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-MODF,valid-generic,cg20_intrinsic_out_params,Cg Standard Library Functions
+STDLIB-MUL,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-NOISE,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-POW,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-RADIANS,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-ROUND,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-RSQRT,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-SATURATE,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-SIGN,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-SIN,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-SINCOS,valid-generic,cg20_intrinsic_out_params,Cg Standard Library Functions
+STDLIB-SINH,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-SMOOTHSTEP,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-SQRT,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-STEP,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-TAN,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-TANH,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-TRANSPOSE,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-DISTANCE,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-FACEFORWARD,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-LENGTH,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-NORMALIZE,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-REFLECT,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-REFRACT,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-DDX,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-DDY,valid-generic,cg20_intrinsic_numeric,Cg Standard Library Functions
+STDLIB-DEBUG,valid-generic,cg20_intrinsic_debug,Cg Standard Library Functions
+STDLIB-TEX1D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEX1DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEX2D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEX2DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEX3D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEX3DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEXCUBE,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEXCUBEPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEXRECT,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-TEXRECTPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEX1D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEX1D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEX1DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEX1DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEX2D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEX2D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEX2DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEX2DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEX3D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEX3D,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEX3DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEX3DPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEXCUBE,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEXCUBE,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEXCUBEPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEXCUBEPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEXRECT,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEXRECT,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-H4TEXRECTPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-X4TEXRECTPROJ,valid-generic,cg20_intrinsic_texture_families,Cg Standard Library Functions
+STDLIB-SPECIAL-LIT-PACKING,valid-generic,cg20_intrinsic_numeric,Standard library result rules
+STDLIB-SPECIAL-GEOMETRY-ARGS,valid-generic,cg20_intrinsic_numeric,Standard library parameter rules
+STDLIB-SPECIAL-DERIVATIVES,valid-generic,cg20_intrinsic_numeric,Standard library parameter rules
+STDLIB-SPECIAL-OUTPARAM-DIRECTION,valid-generic,cg20_intrinsic_out_params,Standard library parameter rules
+STDLIB-SPECIAL-DEBUG-SIDE-EFFECTS,valid-generic,cg20_intrinsic_debug,Standard library purity rules
+STDLIB-SPECIAL-TEX-PRECISION,valid-generic,cg20_intrinsic_texture_families,Standard library result rules
+STDLIB-FRAGOUT-HELPERS,valid-generic,cg20_intrinsic_predefined_outputs_glslf,Predefined output structures
+STDLIB-HELPER-STAGE-REJECT,invalid-language,cg20_intrinsic_predefined_outputs_reject_glslv,Predefined output structures
+STDLIB-HELPER-OPEN-REJECT,invalid-language,cg20_intrinsic_predefined_outputs_reject_generic,Predefined output structures
+PROFILE-UNREACHABLE,backend-reject,cg20_unreachable_profile_feature,Profiles
+PROFILE-GLSL-INTERFACE-REJECT,backend-reject,glslv_glsl_interface_dispatch,Profiles
+GENERIC-ACCEPTS-INTERFACE,valid-generic,cg20_glsl_interface_dispatch_generic,Profiles
+PROFILE-GLSL-UNSIZED-REJECT,backend-reject,glslv_glsl_unsized_array,Profiles
+GENERIC-ACCEPTS-UNSIZED,valid-generic,cg20_glsl_unsized_array_generic,Profiles
+EMISSION-NORMALIZED-IR,valid-generic,cg20_ir_normalized,Emission
+EMISSION-GLSL-GOLDENS,valid-generic,glslv_passthrough,Emission
+MANDATE-VERTEX-POSITION,valid-generic,glslv_passthrough,Mandatory program outputs
+MANDATE-FRAGMENT-COLOR,valid-generic,glslf_passthrough,Mandatory program outputs
+DIAG-LAYERED-POISON,invalid-language,cg20_poison_return_single_diagnostic,Diagnostics layering
+DIAG-PROFILE-CALL-PATH,invalid-language,cg20_profile_call_path,Diagnostics layering
+OUTPUT-TRANSACTIONAL,invalid-language,cg20_output_preserved_on_failure,Diagnostics layering
+REACH-GRAPH-DETERMINISTIC,valid-generic,cg20_reachable,Reachability
+CGFX-TECHNIQUES,out-of-scope,cg20_manifest,CgFX exclusion
+CGFX-PASSES,out-of-scope,cg20_manifest,CgFX exclusion
+CGFX-ANNOTATIONS,out-of-scope,cg20_manifest,CgFX exclusion
+CGFX-STATE-EXECUTION,out-of-scope,cg20_manifest,CgFX exclusion

@@ -57,26 +57,137 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "glsl_hal.h"
+#include "cg_stdlib.h"
+#include "cg_ir.h"
+#include "cg_reach.h"
+#include "cg_ir_lower.h"
+#include "language.h"
 
 /*
- * OpenOutputFile()
+ * lIRPoolAlloc() - Cg IR nodes live in the compilation's global-scope
+ *          memory pool: zero-filled, released with the symbol table.
+ */
+
+static void *lIRPoolAlloc(void *arg, size_t size)
+{
+    return mem_Calloc((MemoryPool *) arg, size, 1);
+} // lIRPoolAlloc
+
+/*
+ * lLowerAndVerifyIR() - Cg 2.0 seam: after entry selection and language
+ *          checking, compute the reachable set, lower the typed tree,
+ *          and verify the module.  On verification failure exactly one
+ *          controlled internal diagnostic reports the verifier's reason
+ *          at the failing node's location and compilation stops.  When
+ *          lowering and verification succeed, "moduleOut" holds the
+ *          verified module for the profile's IR hooks.
  *
+ * The reachability graph is built into the caller's "reach" and stays
+ * alive until the caller destroys it: profile generation consults it
+ * for layered call-path notes after a profile diagnostic.
+ *
+ * Returns nonzero when the program lowered AND verified.
+ */
+
+static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
+                             CgIRModule *moduleOut, CgReachGraph *reach)
+{
+    CgIRLowerContext context;
+    int OK;
+
+    memset(reach, 0, sizeof(*reach));
+    if (!CgReachBuild(program, reach)) {
+        InternalError(loc, ERROR_S_CG_IR_INVARIANT, "reachability build");
+        return 0;
+    }
+    CgIRInitModule(moduleOut, lIRPoolAlloc, fScope->pool);
+    context.module = moduleOut;
+    context.reach = reach;
+    memset(&context.verifyDiagnostic, 0,
+           sizeof(context.verifyDiagnostic));
+    OK = CgIRLowerProgram(&context, fScope, program);
+    if (!OK && GetErrorCount() == 0) {
+
+        // A silent lowering failure is the sticky module allocation
+        // case: report it so the output transaction aborts instead of
+        // committing truncated output.
+
+        InternalError(loc, ERROR_S_CG_IR_INVARIANT, "Cg IR lowering");
+    }
+    if (OK) {
+        OK = CgIRVerifyModule(moduleOut, &context.verifyDiagnostic);
+        if (!OK) {
+            InternalError(&context.verifyDiagnostic.loc,
+                          ERROR_S_CG_IR_INVARIANT,
+                          CgIRVerifyReasonName(
+                              context.verifyDiagnostic.reason));
+        }
+    }
+    return OK;
+} // lLowerAndVerifyIR
+
+/*
+ * ReportProfileCallPath() - Layered notes under a primary profile
+ *          diagnostic: one notice naming the function that holds the
+ *          rejected construct, then one notice per witness hop back to
+ *          the entry function, each anchored at its declaration site so
+ *          every hop keeps a source location.
+ *
+ * "failingSymbol" is the frontend Symbol of the function whose body
+ * failed profile validation (opaque here to keep hal headers out of
+ * this interface).  Silent when no live reachability graph exists or
+ * the symbol is not part of the reachable set.
+ */
+
+void ReportProfileCallPath(const void *failingSymbol)
+{
+    const Symbol *symbol = (const Symbol *) failingSymbol;
+    const CgReachGraph *reach = CgReachActiveGraph();
+    const CgReachEdge *edge;
+    SourceLoc loc;
+
+    if (!reach || !symbol || !CgReachContainsSymbol(reach, symbol))
+        return;
+    loc = symbol->loc;
+    SemanticNote(&loc, NOTICE_S_CG_PROFILE_FAILURE_IN,
+                 GetAtomString(atable, symbol->name));
+    while ((edge = CgReachWitness(reach, symbol)) != NULL &&
+           edge->from != NULL)
+    {
+        const CgReachEdge *next;
+
+        symbol = edge->from;
+        next = CgReachWitness(reach, symbol);
+        loc = symbol->loc;
+        if (next && next->from != NULL) {
+            SemanticNote(&loc, NOTICE_S_CG_CALL_PATH,
+                         GetAtomString(atable, symbol->name));
+        } else {
+            SemanticNote(&loc, NOTICE_S_CG_ENTRY_PATH,
+                         GetAtomString(atable, symbol->name));
+        }
+    }
+} // ReportProfileCallPath
+
+/*
+ * OpenOutputFile() - Begin the output transaction where generation
+ *          starts.  Everything the compiler emits -- header, banner,
+ *          interface description, generated code, closing trailer --
+ *          lands in the transaction's same-directory temporary (or
+ *          straight to stdout when no destination was named); the
+ *          destination only appears when CloseOutputFiles() commits.
  */
 
 int OpenOutputFile(void)
 {
-    if (Cg->options.outputFileName) {
-        Cg->options.outfd = fopen(Cg->options.outputFileName, "w");
-        if (Cg->options.outfd) {
-            Cg->options.OutputFileOpen = 1;
-        } else {
-            FatalError("Can't open output file \"%s\"", Cg->options.outputFileName);
-            return 0;
-        }
-    } else {
-        Cg->options.outfd = stdout;
-        Cg->options.OutputFileOpen = 1;
+    if (!BeginOutputTransaction(&Cg->options.outputTransaction,
+                                Cg->options.outputFileName))
+    {
+        FatalError("Can't open output file \"%s\"", Cg->options.outputFileName);
+        return 0;
     }
+    Cg->options.outfd = Cg->options.outputTransaction.stream;
+    Cg->options.OutputFileOpen = 1;
     Cg->theHAL->PrintCodeHeader(Cg->options.outfd);
     fprintf(Cg->options.outfd, "%s cgc version %d.%d.%04d%s, build date %s  %s\n", Cg->theHAL->comment,
             HSL_VERSION, HSL_SUB_VERSION, HSL_SUB_SUB_VERSION, NDA_STRING, Build_Date, Build_Time);
@@ -126,21 +237,12 @@ void PrintOptions(int argc, char **argv)
 } // PrintOptions
 
 /*
- * CloseOutputFiles()
- *
+ * CloseListingFile() - Write the closing trailer to an open listing
+ *          file and close it.  Returns zero if the close fails.
  */
 
-int CloseOutputFiles(const char *mess)
+static int CloseListingFile(const char *mess)
 {
-    if (Cg->options.OutputFileOpen) {
-        if (!Cg->options.ListFileOpen)
-            fprintf(Cg->options.outfd, "%s %s\n", Cg->theHAL->comment, mess);
-        Cg->options.OutputFileOpen = 0;
-        if (fclose(Cg->options.outfd)) {
-            FatalError("Error closing output file.");
-            return 0;
-        }
-    }
     if (Cg->options.ListFileOpen) {
         fprintf(Cg->options.listfd, "%s %s\n", Cg->theHAL->comment, mess);
         Cg->options.ListFileOpen = 0;
@@ -150,7 +252,59 @@ int CloseOutputFiles(const char *mess)
         }
     }
     return 1;
+} // CloseListingFile
+
+/*
+ * CloseOutputFiles() - Write the closing trailer, then finish the
+ *          output transaction.  The transaction commits -- replacing
+ *          the destination atomically -- only when compilation is
+ *          error-free and every closing operation has succeeded,
+ *          including the listing close; every other path aborts,
+ *          leaving the destination untouched and removing just the
+ *          temporary.  The listing file keeps its historical close
+ *          semantics.
+ */
+
+int CloseOutputFiles(const char *mess)
+{
+    if (Cg->options.OutputFileOpen) {
+        if (!Cg->options.ListFileOpen)
+            fprintf(Cg->options.outfd, "%s %s\n", Cg->theHAL->comment, mess);
+        Cg->options.OutputFileOpen = 0;
+        Cg->options.outfd = NULL;
+        if (GetErrorCount() != 0) {
+            AbortOutputTransaction(&Cg->options.outputTransaction);
+            if (!CloseListingFile(mess))
+                return 0;
+        } else if (!CloseListingFile(mess)) {
+            /* The listing never finished, so the output must not be
+             * published either. */
+            AbortOutputTransaction(&Cg->options.outputTransaction);
+            return 0;
+        } else if (CommitOutputTransaction(&Cg->options.outputTransaction)) {
+            FatalError("Error closing output file.");
+            return 0;
+        }
+    } else if (!CloseListingFile(mess)) {
+        return 0;
+    }
+    return 1;
 } // CloseOutputFiles
+
+/*
+ * AbortCompilationOutput() - Discard an open output transaction on an
+ *          early exit that bypasses the normal close path, so no
+ *          temporary file outlives the compiler process.
+ */
+
+void AbortCompilationOutput(void)
+{
+    if (Cg->options.OutputFileOpen) {
+        Cg->options.OutputFileOpen = 0;
+        AbortOutputTransaction(&Cg->options.outputTransaction);
+        Cg->options.outfd = NULL;
+    }
+} // AbortCompilationOutput
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Misc Support Functions: ///////////////////////////////////
@@ -739,6 +893,7 @@ expr *GenConvertVectorLength(expr *fExpr, int base, int len, int newlen)
     expr *lExpr;
 
     if (newlen != len) {
+        mask = 0;
         for (ii = 0; ii < newlen; ii++) {
             if (ii < len) {
                 mask |= ii << (ii*2);
@@ -962,13 +1117,17 @@ stmt *ConvertDebugCallsStmt(stmt *fStmt, void *arg1, int arg2)
         // Look for a call to "debug(float4)":
 
         eExpr = fStmt->exprst.exp;
-        if (eExpr && eExpr->common.kind == BINARY_N && eExpr->bin.op == FUN_BUILTIN_OP) {
+        if (eExpr && eExpr->common.kind == BINARY_N &&
+            eExpr->bin.op == FUN_INTRINSIC_OP)
+        {
             sExpr = eExpr->bin.left;
             if (sExpr->common.kind == SYMB_N) {
+                /* debug(float4) is recognized by its stable catalog
+                 * identity, not by any group/index encoding. */
                 lSymb = sExpr->sym.symbol;
-#define BUILTIN_GROUP_NV30FP_DBG     0
-                if (lSymb->details.fun.group == BUILTIN_GROUP_NV30FP_DBG &&
-                    lSymb->details.fun.index == 0x444)
+                if (CgIntrinsicSignatureForSymbol(lSymb) != NULL &&
+                    CgIntrinsicSignatureForSymbol(lSymb)->intrinsic ==
+                        CG_INTRINSIC_DEBUG)
                 {
                     if (arg2) {
 
@@ -1103,7 +1262,7 @@ int IsAssignSVOp(expr *fExpr)
         if (fExpr->common.kind == BINARY_N) {
             lop = fExpr->bin.op;
             if (lop == ASSIGN_OP || lop == ASSIGN_V_OP || lop == ASSIGN_GEN_OP ||
-                lop == ASSIGN_MASKED_KV_OP)
+                lop == ASSIGN_DYN_OP || lop == ASSIGN_MASKED_KV_OP)
             {
                 return 1;
             }
@@ -1488,12 +1647,12 @@ int GetConstIndex(expr *fExpr)
         switch (fExpr->co.op) {
         case ICONST_OP:
         case BCONST_OP:
-            return fExpr->co.val[0].i;
+            return (int) fExpr->co.val[0].value.i;
             break;
         case FCONST_OP:
         case HCONST_OP:
         case XCONST_OP:
-            return (int) fExpr->co.val[0].f;
+            return (int) fExpr->co.val[0].value.f;
             break;
         default:
             break;
@@ -1779,6 +1938,11 @@ static void AssignAggregate(StmtList *fStatements, Type *fType,
     case TYPE_CATEGORY_STRUCT:
         lSymb = fType->str.members->symbols;
         while (lSymb) {
+            if (IsFunction(lSymb)) {
+                /* Methods are not data: aggregate copies skip them. */
+                lSymb = lSymb->next;
+                continue;
+            }
             lType = lSymb->type;
             lExpr = DupExpr(varExpr);
             mExpr = GenMember(lSymb);
@@ -1792,6 +1956,15 @@ static void AssignAggregate(StmtList *fStatements, Type *fType,
         }
         break;
     case TYPE_CATEGORY_ARRAY:
+        /* Unsized arrays are unreachable here today: struct members are
+         * always sized and FlattenStructAssignments() only dispatches
+         * struct-typed assignments. Should that ever change, fail loudly
+         * instead of silently dropping the aggregate copy. */
+        if (fType->arr.numels == CG_ARRAY_UNSIZED) {
+            InternalError(Cg->pLastSourceLoc,
+                          ERROR___NO_UNSIZED_AGGREGATE_COPY);
+            break;
+        }
         lType = fType->arr.eltype;
         for (index = 0; index < fType->arr.numels; index++) {
             lExpr = NewIndexOperator(Cg->pLastSourceLoc,
@@ -1856,7 +2029,7 @@ static int AggregateExprNeedsMaterialization(expr *fExpr)
         return AggregateExprNeedsMaterialization(fExpr->un.arg);
     case BINARY_N:
         if (fExpr->bin.op == FUN_CALL_OP ||
-            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+            fExpr->bin.op == FUN_INTRINSIC_OP) return 1;
         return AggregateExprNeedsMaterialization(fExpr->bin.left) ||
                AggregateExprNeedsMaterialization(fExpr->bin.right);
     case TRINARY_N:
@@ -2300,6 +2473,7 @@ static stmt *FlattenIfStatementsStmt(stmt *fStmt, void *arg1, int flevel)
                             nsubop = lsubop;
                             break;
                         case ASSIGN_GEN_OP:
+                        case ASSIGN_DYN_OP:
                             nop = ASSIGN_COND_GEN_OP;
                             nsubop = lsubop;
                             break;
@@ -2479,6 +2653,8 @@ static void lPrintUniformVariableDescription(FILE *out, const char *symbolName, 
             }
             fprintf(out, " : %d : %d", paramNo, 1);
             fprintf(out, "\n");
+        } else if (IsUnsizedArray(fType)) {
+            /* A dynamically sized uniform has no enumerable layout. */
         } else {
             for (ii = 0; ii < fType->arr.numels; ii++) {
                 sprintf(newSymbolName, "%s[%d]", symbolName, ii);
@@ -2750,7 +2926,12 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
     Symbol *program;
     Scope *lScope;
     stmt *lStmt;
+    CgIRModule irModule;
+    CgReachGraph reachGraph;
+    int useIR;
 
+    memset(&reachGraph, 0, sizeof(reachGraph));
+    CgReachSetActiveGraph(&reachGraph);
     if (GetErrorCount() == 0) {
         if (fScope->programs) {
             theHAL->globalScope = fScope;
@@ -2760,68 +2941,120 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
             if (GetErrorCount() != 0)
                 goto done;
 
-            // Convert to Basic Blocks Format goes here...
+            // Cg 2.0: lower the reachable program to Cg IR and verify
+            // it before any generation runs.  Failure stops
+            // compilation with one internal diagnostic.
 
-            // Inline appropriate function calls...
+            if (!lLowerAndVerifyIR(loc, fScope, program, &irModule,
+                                   &reachGraph))
+                goto done;
 
-            lScope = program->details.fun.locals;
-            lStmt = program->details.fun.statements;
-            lStmt = ConcatStmts(fScope->initStmts, lStmt);
-            if (GetErrorCount() == 0) {
-                lStmt = ExpandInlineFunctionCalls(lScope, lStmt, NULL);
-                PostApplyToExpressions(CheckForHiddenVaryingReferences, lStmt, NULL, 0);
-                if (Cg->options.DumpParseTree || Cg->options.DumpNodeTree) {
-                    program->details.fun.statements = lStmt;
-                    printf("=======================================================================\n");
-                    printf("After inlining functions:\n");
-                    printf("=======================================================================\n");
-                    PrintSymbolTree(program->details.fun.locals->symbols);
-                    if (Cg->options.DumpParseTree)
+            // A profile carrying both IR hooks takes over emission for
+            // Cg 2.0 sources; -version 1.1 keeps the historical tree
+            // pipeline below.
+
+            useIR = (Cg->options.languageVersion == CG_LANGUAGE_2_0 &&
+                     theHAL->ValidateIR && theHAL->GenerateIR);
+
+            if (!useIR) {
+
+                // Convert to Basic Blocks Format goes here...
+
+                // Inline appropriate function calls...
+
+                lScope = program->details.fun.locals;
+                lStmt = program->details.fun.statements;
+                lStmt = ConcatStmts(fScope->initStmts, lStmt);
+                if (GetErrorCount() == 0) {
+                    lStmt = ExpandInlineFunctionCalls(lScope, lStmt, NULL);
+                    PostApplyToExpressions(CheckForHiddenVaryingReferences, lStmt, NULL, 0);
+                    if (Cg->options.DumpParseTree || Cg->options.DumpNodeTree) {
+                        program->details.fun.statements = lStmt;
+                        printf("=======================================================================\n");
+                        printf("After inlining functions:\n");
+                        printf("=======================================================================\n");
+                        PrintSymbolTree(program->details.fun.locals->symbols);
+                        if (Cg->options.DumpParseTree)
+                            PrintFunction(program);
+                        if (Cg->options.DumpNodeTree)
+                            BPrintFunction(program);
+                        printf("=======================================================================\n");
+                    }
+
+                    CheckConnectorUsageMain(program, lStmt);
+                    lStmt = ConvertDebugCalls(loc, lScope, lStmt, Cg->options.DebugMode);
+                    PostApplyToExpressions(ExpandIncDecExpr, lStmt, NULL, 0);
+                    PostApplyToExpressions(ExpandCompoundAssignmentExpr, lStmt, NULL, 0);
+                    lStmt = PostApplyToStatements(FlattenCommasStmt, lStmt, NULL, 0);
+                    lStmt = PostApplyToStatements(RemoveEmptyStatementsStmt, lStmt, NULL, 0);
+                    lStmt = PostApplyToStatements(FlattenChainedAssignmentsStmt, lStmt, NULL, 0);
+                    PostApplyToExpressions(ConvertNamedConstantsExpr, lStmt, NULL, 0);
+                    if (theHAL->GetCapsBit(CAPS_DECONSTRUCT_MATRICES))
+                        lStmt = DeconstructMatrices(lScope, lStmt);
+                    lStmt = FlattenStructAssignments(lScope, lStmt);
+                    if (!theHAL->GetCapsBit(CAPS_DONT_FLATTEN_IF_STATEMENTS))
+                        lStmt = FlattenIfStatements(lScope, lStmt);
+
+                    // Optimizations:
+
+                    PostApplyToExpressions(ConstantFoldNode, lStmt, NULL, 0);
+
+                    // Lots more optimization stuff goes here...
+
+                    if (Cg->options.DumpFinalTree) {
+                        program->details.fun.statements = lStmt;
+                        printf("=======================================================================\n");
+                        printf("Final program:\n");
+                        printf("=======================================================================\n");
+                        PrintSymbolTree(program->details.fun.locals->symbols);
                         PrintFunction(program);
-                    if (Cg->options.DumpNodeTree)
-                        BPrintFunction(program);
-                    printf("=======================================================================\n");
+                        if (Cg->options.DumpNodeTree)
+                            BPrintFunction(program);
+                        printf("=======================================================================\n");
+                    }
                 }
 
-                CheckConnectorUsageMain(program, lStmt);
-                lStmt = ConvertDebugCalls(loc, lScope, lStmt, Cg->options.DebugMode);
-                PostApplyToExpressions(ExpandIncDecExpr, lStmt, NULL, 0);
-                PostApplyToExpressions(ExpandCompoundAssignmentExpr, lStmt, NULL, 0);
-                lStmt = PostApplyToStatements(FlattenCommasStmt, lStmt, NULL, 0);
-                lStmt = PostApplyToStatements(RemoveEmptyStatementsStmt, lStmt, NULL, 0);
-                lStmt = PostApplyToStatements(FlattenChainedAssignmentsStmt, lStmt, NULL, 0);
-                PostApplyToExpressions(ConvertNamedConstantsExpr, lStmt, NULL, 0);
-                if (theHAL->GetCapsBit(CAPS_DECONSTRUCT_MATRICES))
-                    lStmt = DeconstructMatrices(lScope, lStmt);
-                lStmt = FlattenStructAssignments(lScope, lStmt);
-                if (!theHAL->GetCapsBit(CAPS_DONT_FLATTEN_IF_STATEMENTS))
-                    lStmt = FlattenIfStatements(lScope, lStmt);
-
-                // Optimizations:
-
-                PostApplyToExpressions(ConstantFoldNode, lStmt, NULL, 0);
-
-                // Lots more optimization stuff goes here...
-
-                if (Cg->options.DumpFinalTree) {
-                    program->details.fun.statements = lStmt;
-                    printf("=======================================================================\n");
-                    printf("Final program:\n");
-                    printf("=======================================================================\n");
-                    PrintSymbolTree(program->details.fun.locals->symbols);
-                    PrintFunction(program);
-                    if (Cg->options.DumpNodeTree)
-                        BPrintFunction(program);
-                    printf("=======================================================================\n");
+                program->details.fun.statements = lStmt;
+                if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
+                    OutputBindings(Cg->options.outfd, theHAL, program);
+                if (GetErrorCount() == 0) {
+                    if (!Cg->options.NoCodeGen) {
+                        theHAL->GenerateCode(loc, fScope, program);
+                    }
                 }
-            }
 
-            program->details.fun.statements = lStmt;
-            if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
-                OutputBindings(Cg->options.outfd, theHAL, program);
-            if (GetErrorCount() == 0) {
-                if (!Cg->options.NoCodeGen)
-                    theHAL->GenerateCode(loc, fScope, program);
+            } else {
+
+                // Cg 2.0 IR emission: the interface description still
+                // goes out first, then the profile validates and
+                // prints the verified module all-or-nothing.  A
+                // profile that reports its own diagnostic (GLSL
+                // 6200-6209 rejections, for example) owns the failure;
+                // the internal invariant fires only for silent hook
+                // failures.  The legacy error gate is mirrored so
+                // hooks never run on a compilation already in error.
+
+                if (!theHAL->GetCapsBit(CAPS_LATE_BINDINGS))
+                    OutputBindings(Cg->options.outfd, theHAL, program);
+
+                if (GetErrorCount() == 0) {
+                    int errorsBeforeHook = GetErrorCount();
+
+                    if (!theHAL->ValidateIR(loc, &irModule)) {
+                        if (GetErrorCount() == errorsBeforeHook) {
+                            InternalError(loc, ERROR_S_CG_IR_INVARIANT,
+                                          "profile validation of Cg IR");
+                        }
+                    } else if (!Cg->options.NoCodeGen &&
+                               GetErrorCount() == 0) {
+                        errorsBeforeHook = GetErrorCount();
+                        if (!theHAL->GenerateIR(loc, &irModule) &&
+                            GetErrorCount() == errorsBeforeHook) {
+                            InternalError(loc, ERROR_S_CG_IR_INVARIANT,
+                                          "profile IR generation");
+                        }
+                    }
+                }
             }
 
             if (Cg->options.ErrorMode)
@@ -2832,6 +3065,8 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
         }
     }
 done:
+    CgReachSetActiveGraph(NULL);
+    CgReachDestroy(&reachGraph);
     return GetErrorCount();
 } // CompileProgram
 

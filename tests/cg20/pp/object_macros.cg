@@ -1,0 +1,36 @@
+// ANSI C object macros expand at use sites; a macro may be defined,
+// tested with #ifdef/#ifndef/#if defined(...), cleared with #undef, and
+// redefined.
+
+#define SCALE 2.0
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+#ifdef SCALE
+    float4 a = p * SCALE;
+#else
+    float4 a = -p;
+#endif
+
+#ifndef SCALE
+    float4 b = -p;
+#else
+    float4 b = p * SCALE * 0.5;
+#endif
+
+#undef SCALE
+#ifdef SCALE
+    float4 c = -p;
+#else
+    float4 c = p;
+#endif
+
+#define SCALE 4.0
+#if defined(SCALE)
+    float4 d = c * SCALE;
+#else
+    float4 d = c;
+#endif
+
+    return a * 0.125 + b * 0.125 + d * 0.25;
+}

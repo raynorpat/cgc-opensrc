@@ -213,7 +213,7 @@ static void lBPrintExpression(expr *fexpr, int level)
             case CONST_N:
                 switch (fexpr->co.op) {
                 case ICONST_OP:
-                    printf("%d", fexpr->co.val[0].i);
+                    printf("%d", (int) fexpr->co.val[0].value.i);
                     break;
                 case ICONST_V_OP:
                     nn = SUBOP_GET_S(subop);
@@ -221,18 +221,19 @@ static void lBPrintExpression(expr *fexpr, int level)
                     for (ii = 0; ii < nn; ii++) {
                         if (ii > 0)
                             printf(", ");
-                        printf("%d", fexpr->co.val[ii].i);
+                        printf("%d", (int) fexpr->co.val[ii].value.i);
                     }
                     printf(" }");
                     break;
                 case BCONST_OP:
-                    bval = fexpr->co.val[0].i;
+                    bval = (int) fexpr->co.val[0].value.i;
                     if (bval == 0) {
                         printf("false");
                     } else if (bval == 1) {
                         printf("true");
                     } else {
-                        printf("<<bad-bool-%08x>>", fexpr->co.val[0].i);
+                        printf("<<bad-bool-%08x>>",
+                               (unsigned) fexpr->co.val[0].value.i);
                     }
                     break;
                 case BCONST_V_OP:
@@ -241,13 +242,14 @@ static void lBPrintExpression(expr *fexpr, int level)
                     for (ii = 0; ii < nn; ii++) {
                         if (ii > 0)
                             printf(", ");
-                        bval = fexpr->co.val[ii].i;
+                        bval = (int) fexpr->co.val[ii].value.i;
                         if (bval == 0) {
                             printf("false");
                         } else if (bval == 1) {
                             printf("true");
                         } else {
-                            printf("<<bad-bool-%08x>>", fexpr->co.val[ii].i);
+                            printf("<<bad-bool-%08x>>",
+                                   (unsigned) fexpr->co.val[ii].value.i);
                         }
                     }
                     printf(" }");
@@ -255,7 +257,7 @@ static void lBPrintExpression(expr *fexpr, int level)
                 case FCONST_OP:
                 case HCONST_OP:
                 case XCONST_OP:
-                    printf("%1.6g", fexpr->co.val[0].f);
+                    printf("%1.6g", fexpr->co.val[0].value.f);
                     break;
                 case FCONST_V_OP:
                 case HCONST_V_OP:
@@ -265,7 +267,7 @@ static void lBPrintExpression(expr *fexpr, int level)
                     for (ii = 0; ii < nn; ii++) {
                         if (ii > 0)
                             printf(", ");
-                        printf("%1.6g", fexpr->co.val[ii].f);
+                        printf("%1.6g", fexpr->co.val[ii].value.f);
                     }
                     printf(" }");
                     break;
@@ -453,6 +455,26 @@ void BPrintStmt(stmt *fstmt)
 }
 
 /*
+ * lTypeNameString() - Return a printable string of a type's scalar identity.
+ *
+ * Canonical scalar kinds are authoritative; bases not modeled by the
+ * canonical kind table keep their legacy names.
+ *
+ */
+
+static const char *lTypeNameString(const Type *fType, int base)
+{
+    CgScalarKind kind;
+
+    kind = GetScalarKind(fType);
+    if (kind != CG_SCALAR_NONE) {
+        return CgScalarKindName(kind);
+    } else {
+        return GetBaseTypeNameString(base);
+    }
+} // lTypeNameString
+
+/*
  * FormatTypeString() - Build a printable string of a type.
  *
  * Arrays are shown as: "packed float[4]" instead of "float4".
@@ -488,11 +510,15 @@ void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
             strcat(name, "<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
-            strcat(name, GetBaseTypeNameString(base));
+        case TYPE_CATEGORY_SAMPLER:
+            strcat(name, lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
             FormatTypeString(name, size, name2, size2, fType->arr.eltype);
-            sprintf(tname, "[%d]", fType->arr.numels);
+            if (fType->arr.numels == CG_ARRAY_UNSIZED)
+                strcpy(tname, "[]");
+            else
+                sprintf(tname, "[%d]", fType->arr.numels);
             strcat(name2, tname);
             break;
         case TYPE_CATEGORY_FUNCTION:
@@ -501,6 +527,10 @@ void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
         case TYPE_CATEGORY_STRUCT:
             strcat(name, "struct ");
             strcat(name, GetAtomString(atable, fType->str.tag));
+            break;
+        case TYPE_CATEGORY_INTERFACE:
+            strcat(name, "interface ");
+            strcat(name, GetAtomString(atable, fType->iface.tag));
             break;
         case TYPE_CATEGORY_CONNECTOR:
             cid = Cg->theHAL->GetConnectorAtom(fType->str.variety);
@@ -556,21 +586,25 @@ void FormatTypeStringRT(char *name, int size, char *name2, int size2, Type *fTyp
             strcat(name, "<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
-            strcat(name, GetBaseTypeNameString(base));
+        case TYPE_CATEGORY_SAMPLER:
+            strcat(name, lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
             if (IsMatrix(fType, &len, &len2)) {
-                strcat(name, GetBaseTypeNameString(base));
+                strcat(name, lTypeNameString(fType, base));
                 sprintf(tname, "%dx%d", len2, len);
                 strcat(name, tname);
             } else if (IsVector(fType, &len)) {
-                strcat(name, GetBaseTypeNameString(base));
+                strcat(name, lTypeNameString(fType, base));
                 tname[0] = '0' + len;
                 tname[1] = '\0';
                 strcat(name, tname);
             } else {
                 FormatTypeStringRT(name, size, name2, size2, fType->arr.eltype, Unqualified);
-                sprintf(tname, "[%d]", fType->arr.numels);
+                if (fType->arr.numels == CG_ARRAY_UNSIZED)
+                    strcpy(tname, "[]");
+                else
+                    sprintf(tname, "[%d]", fType->arr.numels);
                 strcat(name2, tname);
             }
             break;
@@ -580,6 +614,10 @@ void FormatTypeStringRT(char *name, int size, char *name2, int size2, Type *fTyp
         case TYPE_CATEGORY_STRUCT:
             strcat(name, "struct ");
             strcat(name, GetAtomString(atable, fType->str.tag));
+            break;
+        case TYPE_CATEGORY_INTERFACE:
+            strcat(name, "interface ");
+            strcat(name, GetAtomString(atable, fType->iface.tag));
             break;
         case TYPE_CATEGORY_CONNECTOR:
             cid = Cg->theHAL->GetConnectorAtom(fType->str.variety);
@@ -636,12 +674,16 @@ void PrintType(Type *fType, int level)
             printf("<<category=NONE>>");
             break;
         case TYPE_CATEGORY_SCALAR:
+        case TYPE_CATEGORY_SAMPLER:
             base = GetBase(fType);
-            printf("%s", GetBaseTypeNameString(base));
+            printf("%s", lTypeNameString(fType, base));
             break;
         case TYPE_CATEGORY_ARRAY:
             PrintType(fType->arr.eltype, level);
-            printf("[%d]", fType->arr.numels);
+            if (fType->arr.numels == CG_ARRAY_UNSIZED)
+                printf("[]");
+            else
+                printf("[%d]", fType->arr.numels);
             break;
         case TYPE_CATEGORY_FUNCTION:
             printf("(");
@@ -659,6 +701,13 @@ void PrintType(Type *fType, int level)
                 printf("struct %s", GetAtomString(atable, fType->str.tag));
             } else {
                 printf("struct");
+            }
+            break;
+        case TYPE_CATEGORY_INTERFACE:
+            if (fType->iface.tag) {
+                printf("interface %s", GetAtomString(atable, fType->iface.tag));
+            } else {
+                printf("interface");
             }
             break;
         case TYPE_CATEGORY_CONNECTOR:
@@ -775,22 +824,22 @@ void lPrintExpr(expr *fexpr)
     case CONST_N:
         switch (fexpr->co.op) {
         case ICONST_OP:
-            printf("%d", fexpr->co.val[0].i);
+            printf("%d", (int) fexpr->co.val[0].value.i);
             break;
         case ICONST_V_OP:
-            printf("{ %d", fexpr->co.val[0].i);
+            printf("{ %d", (int) fexpr->co.val[0].value.i);
             len = SUBOP_GET_S(fexpr->co.subop);
             for (ii = 1; ii < len; ii++)
-                printf(", %d", fexpr->co.val[ii].i);
+                printf(", %d", (int) fexpr->co.val[ii].value.i);
             printf(" }");
             break;
         case BCONST_OP:
-            if (fexpr->co.val[0].i == 0) {
+            if (fexpr->co.val[0].value.i == 0) {
                 printf("false");
-            } else if (fexpr->co.val[0].i == 1) {
+            } else if (fexpr->co.val[0].value.i == 1) {
                 printf("true");
             } else {
-                printf("<<BBCONST=%d>>", fexpr->co.val[0].i);
+                printf("<<BBCONST=%d>>", (int) fexpr->co.val[0].value.i);
             }
             break;
         case BCONST_V_OP:
@@ -798,23 +847,23 @@ void lPrintExpr(expr *fexpr)
             len = SUBOP_GET_S(fexpr->co.subop);
             for (ii = 0; ii < len; ii++)
                 if (ii) printf(", ");
-                if (fexpr->co.val[ii].i == 0) {
+                if (fexpr->co.val[ii].value.i == 0) {
                     printf("false");
-                } else if (fexpr->co.val[ii].i == 1) {
+                } else if (fexpr->co.val[ii].value.i == 1) {
                     printf("true");
                 } else {
-                    printf("<<BBCONST=%d>>", fexpr->co.val[ii].i);
+                    printf("<<BBCONST=%d>>", (int) fexpr->co.val[ii].value.i);
                 }
             printf(" }");
             break;
         case FCONST_OP:
-            printf("%.6gf", fexpr->co.val[0].f);
+            printf("%.6gf", fexpr->co.val[0].value.f);
             break;
         case HCONST_OP:
-            printf("%.6gh", fexpr->co.val[0].f);
+            printf("%.6gh", fexpr->co.val[0].value.f);
             break;
         case XCONST_OP:
-            printf("%.6gx", fexpr->co.val[0].f);
+            printf("%.6gx", fexpr->co.val[0].value.f);
             break;
         case FCONST_V_OP:
             tag = 'f';
@@ -825,10 +874,10 @@ void lPrintExpr(expr *fexpr)
         case XCONST_V_OP:
             tag = 'x';
         floatvec:
-            printf("{ %.6g%c", fexpr->co.val[0].f, tag);
+            printf("{ %.6g%c", fexpr->co.val[0].value.f, tag);
             len = SUBOP_GET_S(fexpr->co.subop);
             for (ii = 1; ii < len; ii++)
-                printf(", %.6g%c", fexpr->co.val[ii].f, tag);
+                printf(", %.6g%c", fexpr->co.val[ii].value.f, tag);
             printf(" }");
             break;
         }
@@ -909,6 +958,9 @@ void lPrintExpr(expr *fexpr)
         case VECTOR_V_OP:
             printf(" }");
             break;
+        case ARRAY_LENGTH_OP:
+            printf(".length");
+            break;
         case POSTDEC_OP:
             printf("--");
             break;
@@ -927,7 +979,8 @@ void lPrintExpr(expr *fexpr)
             printf("[");
             break;
         case FUN_CALL_OP:
-        case FUN_BUILTIN_OP:
+        case FUN_INTRINSIC_OP:
+        case INTERFACE_CALL_OP:
             printf("(");
             break;
         case FUN_ARG_OP:
@@ -1042,6 +1095,7 @@ void lPrintExpr(expr *fexpr)
         case ASSIGN_OP:
         case ASSIGN_V_OP:
         case ASSIGN_GEN_OP:
+        case ASSIGN_DYN_OP:
             printf(" = ");
             break;
         case ASSIGNMINUS_OP:
@@ -1083,7 +1137,8 @@ void lPrintExpr(expr *fexpr)
             printf("]");
             break;
         case FUN_CALL_OP:
-        case FUN_BUILTIN_OP:
+        case FUN_INTRINSIC_OP:
+        case INTERFACE_CALL_OP:
             printf(")");
             break;
         default:

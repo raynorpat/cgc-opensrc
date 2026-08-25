@@ -1,0 +1,12 @@
+// Vector-to-matrix reshaping casts are rejected by the emitter even
+// though the element counts match: the language reports "cast not
+// allowed" instead of lowering the reinterpretation.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    float4 v = float4(1.0, 2.0, 3.0, 4.0);
+
+    float2x2 reshaped = (float2x2)v;
+
+    return p * 0.0 + reshaped[0][0];
+}

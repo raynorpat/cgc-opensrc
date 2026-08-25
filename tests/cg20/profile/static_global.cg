@@ -1,0 +1,10 @@
+// A static global keeps its value in module scope but stays out of the
+// program interface: it appears in neither the uniform listing nor the
+// connector tables of the compiled interface.
+
+static float4 hidden = float4(1.0, 0.0, 0.0, 1.0);
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    return p * hidden;
+}

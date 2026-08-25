@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"D:/raynorpat/cgc/build-win32/cmake_install.cmake",
+		"D:/raynorpat/cgc/build-win32/tests/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

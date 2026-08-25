@@ -1,0 +1,20 @@
+// Explicit structure-to-scalar casts extract the value of the first
+// data member; the remaining members drop.
+
+struct Pair
+{
+    float amount;
+    int label;
+};
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    Pair src;
+
+    src.amount = 1.5;
+    src.label = 2;
+
+    float extracted = (float)src;
+
+    return p * extracted * 0.5;
+}

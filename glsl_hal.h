@@ -128,7 +128,12 @@ int RegisterProfiles_glsl(void);
 int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile);
 int InitHAL_glslv(slHAL *hal);
 int InitHAL_glslf(slHAL *hal);
-int GlslLowerProgram(GlslModule *module, const GlslProfileDesc *profile,
+/* Cg 2.0 boundary: lower a verified Cg IR module into the GLSL module. */
+int GlslLowerCgIR(GlslModule *module, const GlslProfileDesc *profile,
+    const CgIRModule *source);
+/* Legacy tree consumer, retained only for explicit -version 1.1
+ * compiles; see glsl_lower.c. */
+int GlslLowerLegacyProgram(GlslModule *module, const GlslProfileDesc *profile,
     SourceLoc *loc, Scope *scope, Symbol *program);
 int GlslWriteModule(FILE *out, const GlslModule *module);
 const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,

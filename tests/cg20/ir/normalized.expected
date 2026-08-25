@@ -1,0 +1,29 @@
+# Generic output by Cg compiler
+//vendor NVIDIA Corporation
+//version 1.0.1
+//profile generic
+//program main
+//semantic g_tint : COLOR0
+//var float4 g_tint : COLOR0 :  : -1 : 1
+//var float4 position : $vin.POSITION : POSITION : 0 : 1
+//var float4 POSITION : $vout.POSITION : POSITION : -1 : 1
+//default g_tint = 0.25 0.5 0.75 1
+uniform struct $vin $vin;
+uniform struct $vout $vout;
+uniform float4 g_tint : COLOR0 = float4(0.250000, 0.500000, 0.750000, 1.000000);
+
+void main(varying float4 position : POSITION)
+{
+  position = $vin.POSITION;
+  $vout.POSITION = helperA(position);
+}
+
+float4 helperA(float4 v)
+{
+  return helperB(v) + g_tint;
+}
+
+float4 helperB(float4 v)
+{
+  return v * (float)0.500000;
+}

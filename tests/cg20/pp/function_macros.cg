@@ -1,0 +1,16 @@
+// ANSI C function-like macros expand with argument substitution and
+// rescan their replacement list, so one helper macro can build on
+// another.
+
+#define GAIN 0.5
+#define TINT(base, weight) ((base) * (weight))
+#define SOFT(base) TINT(base, GAIN)
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    float4 a = TINT(p, 0.25);
+    float4 b = SOFT(p);
+    float4 c = TINT(TINT(p, GAIN), GAIN);
+
+    return a * 0.5 + b * 0.25 + c * 0.25;
+}

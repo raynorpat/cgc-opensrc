@@ -1,0 +1,14 @@
+// Cg 2.0 floating literal forms: digits with a fraction, a leading-dot
+// form, a trailing-dot form, exponent notation, and the f suffix.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    const float plain = 1.5;
+    const float leadingDot = .5;
+    const float trailingDot = 2.;
+    const float exponent = 1e2;
+    const float negativeExp = 1.5e-3;
+    const float suffixed = 0.25f;
+    return p * 0.0 + float4(plain, leadingDot + trailingDot,
+                            exponent * negativeExp, suffixed);
+}

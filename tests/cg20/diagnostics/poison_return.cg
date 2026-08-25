@@ -1,0 +1,10 @@
+// Poison suppression: an operand whose type computation already
+// failed (here, the undefined variable) reports its one diagnostic and
+// every downstream layer returns early.  The return-statement
+// conversion must not add a second "incompatible with return type"
+// error for the same broken operand.
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return nowhere_defined;
+}

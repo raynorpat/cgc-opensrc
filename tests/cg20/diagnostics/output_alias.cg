@@ -1,0 +1,15 @@
+// output_alias.cg - two outputs bound to the same COLOR0 semantic alias
+// the same output connector.  The language rejects the second binding and
+// points at the first declaration.
+struct FragmentOut {
+    float4 first : COLOR0;
+    float4 second : COLOR0;
+};
+
+FragmentOut main(float4 color : ATTRIB0)
+{
+    FragmentOut output;
+    output.first = color;
+    output.second = color;
+    return output;
+}

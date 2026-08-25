@@ -47,6 +47,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if !defined(__HAL_H)
 #define __HAL_H 1
 
+#include "cg_overload.h"    // CgProfileIdentity for slHAL/slProfile
+
 // Typedefs for things defined here in "hal.h":
 
 typedef struct slHAL_Rec slHAL;
@@ -89,6 +91,7 @@ struct slProfile_Rec {
     int (*InitHAL)(slHAL *);
     const char *name;
     int id;
+    CgProfileIdentity profileIdentity;  // Selector surface registered for this profile
 };
 
 // Hal version of connector register description:
@@ -118,6 +121,14 @@ enum SemanticProperties {
     SEM_EXCLUSIVE = 32, SEM_REQUIRED = 64
 };
 
+/*
+ * Backend-neutral Cg IR module (defined in cg_ir.h).  Declared here so
+ * the IR hooks below can name it; only verified modules ever reach a
+ * profile through them.
+ */
+
+typedef struct CgIRModule_Rec CgIRModule;
+
 typedef struct SemanticsDescriptor_Rec {
     const char *sname;
     int base;
@@ -141,7 +152,6 @@ struct slHAL_Rec {
     int (*GetConnectorAtom)(int);
     int (*GetConnectorUses)(int, int);
     int (*GetConnectorRegister)(int cid, int ByIndex, int ratom, Binding *fBind);
-    int (*GetFloatSuffixBase)(SourceLoc *loc, int suffix);
     int (*GetSizeof)(Type *fType);
     int (*GetAlignment)(Type *fType);
     int (*CheckDeclarators)(SourceLoc *loc, const dtype *fDtype);
@@ -152,10 +162,7 @@ struct slHAL_Rec {
     int (*IsIntegralBase)(int fBase);
     int (*IsTexobjBase)(int fBase);
     int (*IsValidRuntimeBase)(int fBase);
-    int (*IsValidScalarCast)(int toBase, int fromBase, int Explicit);
     int (*IsValidOperator)(SourceLoc *loc, int name, int op, int subop);
-    int (*GetBinOpBase)(int lop, int lbase, int rbase, int llen, int rlen);
-    int (*ConvertConstant)(const scalar_constant *fval, int fbase, int tbase, expr **fexpr);
     int (*BindUniformUnbound)(SourceLoc *loc, Symbol *fSymb, Binding *lBind);
     int (*BindUniformPragma)(SourceLoc *loc, Symbol *fSymb, Binding *lBind,
                         const Binding *fBind);
@@ -168,6 +175,14 @@ struct slHAL_Rec {
     int (*PrintCodeHeader)(FILE *out);
     int (*GenerateCode)(SourceLoc *loc, Scope *fScope, Symbol *program);
 
+    // Cg 2.0 IR hooks: invoked with a verified module only when the
+    // language version is 2.0.  Profiles leave them NULL unless they
+    // intentionally accept every verified module; the compiler keeps
+    // the legacy tree path whenever either hook is missing.
+
+    int (*ValidateIR)(SourceLoc *loc, const CgIRModule *module);
+    int (*GenerateIR)(SourceLoc *loc, const CgIRModule *module);
+
     // Profile specific data members:
 
     const char *vendor;
@@ -176,6 +191,8 @@ struct slHAL_Rec {
     int profileName;
     int pid;
     int entryName;
+
+    CgProfileIdentity profileIdentity;  // Selector surface of this compilation's profile
 
     SemanticsDescriptor *semantics;
     int numSemantics;
@@ -213,6 +230,8 @@ struct slHAL_Rec {
 };
 
 slProfile *RegisterProfile(int (*InitHAL)(slHAL *), const char *name, int id);
+void SetProfileIdentity(const char *name, CgProfileStage stage,
+                        const char *wildcardName, int wildcardSpecificity);
 slProfile *EnumerateProfiles(int index);
 
 int InitHAL(const char *profileName, const char *entryName);

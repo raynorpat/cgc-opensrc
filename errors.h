@@ -70,6 +70,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR___HEX_CONST_OVERFLOW           126, "hex constant overflow"
 #define ERROR___ERROR_IN_HEX_CONSTANT        127, "error in hex constant"
 #define ERROR___OCT_CONST_OVERFLOW           128, "octal constant overflow"
+#define ERROR___MALFORMED_LITERAL_SUFFIX     129, "malformed numeric constant suffix"
+#define ERROR___LITERAL_CONST_OVERFLOW       130, "numeric constant overflow"
 
 // Parser errors
 
@@ -162,8 +164,33 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_D_OUT_PARAM_IS_CONST          1112, "const qualified actual parameter #%d cannot be out parameter"
 #define ERROR_D_OUT_PARAM_NOT_SAME_TYPE     1113, "actual parameter #%d must be same type as formal out parameter"
 #define ERROR_S_NON_UNIFORM_PARAM_INIT      1114, "only uniform parameters can be initialized \"%s\""
-#define ERROR_S_NO_COMPAT_OVERLOADED_FUN    1115, "unable to find compatible overloaded function \"%s\""
 #define ERROR_S_JUMP_NOT_IN_LOOP            1116, "\"%s\" statement is not within a loop"
+#define ERROR_S_CANNOT_INFER_ARRAY_SIZE     1117, "cannot infer array size"
+
+// Cg 2.0 sampler language rules
+
+#define ERROR___SAMPLER_ASSIGNMENT          1150, "assignment of sampler values is not allowed"
+#define ERROR_S_SAMPLER_DECLARATION         1151, "sampler variables must be global uniforms or function parameters \"%s\""
+#define ERROR___SAMPLER_RETURN              1152, "cannot return a sampler value"
+#define ERROR_S_SAMPLER_OUT_PARAM           1153, "sampler \"%s\" may only be passed as an in parameter"
+#define ERROR___SAMPLER_CONDITIONAL         1154, "samplers are not allowed in conditional selection"
+
+// Cg 2.0 interface language rules
+
+#define ERROR_S_INTERFACE_DATA_MEMBER       1155, "data members not allowed in interface \"%s\""
+#define ERROR_SSSSD_INTERFACE_METHOD_MISSING 1156, "struct \"%s\" does not implement interface method \"%s\" declared at %s(%d)"
+#define ERROR_SSSSD_INTERFACE_METHOD_SIGNATURE 1157, "implementation of interface method \"%s\" in struct \"%s\" does not match interface method declared at %s(%d)"
+#define ERROR_S_TAG_IS_NOT_AN_INTERFACE     1158, "tag \"%s\" is not an interface"
+
+// Cg 2.0 default arguments and profile-qualified overloads
+
+#define ERROR_S_DEFAULT_AFTER_OPTIONAL      1160, "default argument for \"%s\" follows a parameter without one"
+#define ERROR_S_DEFAULT_PARAM_QUALIFIER     1161, "default arguments are only allowed for in parameters \"%s\""
+#define ERROR___DEFAULT_NOT_CONSTANT        1162, "default argument must be a compile-time constant \"%s\""
+#define ERROR___DEFAULT_NOT_CONVERTIBLE     1163, "default argument cannot be converted to the parameter type of \"%s\""
+#define ERROR_S_DEFAULT_REDECLARATION       1164, "redeclaration of \"%s\" cannot change an existing default argument"
+#define ERROR_S_UNKNOWN_PROFILE             1165, "\"%s\" does not name a known profile or profile wildcard"
+#define ERROR_S_PROFILE_SPECIFIER_MISPLACED 1166, "profile specifier \"%s\" must qualify a function declaration"
 
 #define ERROR___QSTN_SCALAR_3RD_OPND_EXPECTED   1201, "expected scalar third operand to \"? :\""
 #define ERROR___QSTN_VECTOR_3RD_OPND_EXPECTED   1202, "expected vector third operand to \"? :\""
@@ -173,6 +200,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR___QSTN_INVALID_1ST_OPERAND    1206, "invalid first operand to \"? :\""
 #define ERROR___QSTN_1ST_OPERAND_NOT_SCALAR 1207, "expected scalar first operand to \"? :\""
 
+#define ERROR_S_RESERVED_WORD               1300, "reserved word \"%s\""
 #define ERROR___REF_TO_VAR_WITH_NO_VALUE    1301, "use of variable with no defined value"
 
 // Errors detected when compiling
@@ -207,10 +235,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_MATRIX_OPERAND_GR_4         5017, "dimensions of matrix operands to \"%s\" cannot exceed 4"
 #define ERROR___CONSTRUCTER_VECTOR_LEN_GR_4 5018, "length of constructed vectors cannot exceed 4"
 #define ERROR_S_ONE_PROGRAM                 5019, "one program per compilation, program \"%s\" also defined"
-#define ERROR_C_UNSUPPORTED_FP_SUFFIX       5020, "profile does not support float constant suffix \"%c\""
 
 #define ERROR_S_PROGRAM_PARAM_NOT_UNIFORM   5028, "non-connector program parameter \"%s\" must have uniform domain"
-#define ERROR_S_PROGRAM_MUST_RETURN_STRUCT  5029, "program \"%s\" must return a struct"
 
 //#define ERROR_SS_CMEMBER_NOT_SCALAR_VECTOR  5032, "connector member \"%s.%s\" is not a scalar or vector"
 //#define ERROR_SS_CMEMBER_NOT_NUMERIC        5033, "connector member \".%s%s\" is not a numeric type"
@@ -252,6 +278,11 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_SEMANTIC_TYPE_CONFLICT      5118, "variable type conflicts with semantics \"%s\""
 #define ERROR_SS_VAR_SEMANTIC_NOT_VISIBLE   5119, "variable/member \"%s\" has semantic \"%s\" which is not visible in this profile"
 #define ERROR_S_NO_TEXUNITS_AVAILABLE       5120, "no texture units left to bind to \"%s\""
+#define ERROR_S_PROGRAM_RETURN_NEEDS_SEMANTIC 5121, "program \"%s\" must declare a semantic on its return value"
+
+// Cg 2.0 program interface rules
+
+#define ERROR_SSSD_PROGRAM_OUTPUT_ALIAS     5122, "program outputs conflict at semantic \"%s\"; \"%s\" declared at %s(%d)"
 
 #define ERROR_S_INVALID_INTERNAL_FUNCTION   5201, "invalid internal function declaration for \"%s\""
 
@@ -301,6 +332,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define WARNING_S_FORWARD_SEMANTICS_IGNORED 7007, "\"%s\" semantics in forward declaration ignored"
 #define WARNING_S_SEMANTICS_AND_BINDING     7008, "non-uniform variable has both semantics and binding \"%s\""
 #define WARNING_S_CANT_BIND_UNIFORM_VAR     7009, "cannot locate default uniform binding for \"%s\""
+#define WARNING___IMPLICIT_CONVERSION       7010, "implicit conversion may lose information"
 
 // CPP wornings
 #define WARNING___CPP_MACRO_REDEFINED       7101, "Macro %s redefined"
@@ -320,9 +352,32 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_NO_CODE_HEADER              9007, "missing code header function for program profile \"%s\""
 #define ERROR_S_MALLOC_FAILED               9008, "malloc failed in \"%s\""
 #define ERROR___NO_MATRIX_DECONSTRUCTION    9009, "matrix deconstruction not supported"
+#define ERROR___NO_UNSIZED_AGGREGATE_COPY   9010, "unsized array aggregate copy not supported"
+#define ERROR_S_CG_IR_INVARIANT             9011, "Cg IR invariant violated: %s"
+#define ERROR_S_CG_IR_UNLOWERABLE           9012, "Cg IR cannot represent construct: %s"
 
 // Misc. notices
 
 #define NOTICE_SSS_CMEMBER_ALLOCATED        9501, "connector member \"%s.%s\" allocated to register \"%s\""
+
+// Cg 2.0 diagnostic layering reserves these code groups:
+//
+//     1400-1419   language version and keyword rules
+//     1420-1439   canonical type and conversion rules
+//     1440-1459   overload resolution and interface conformance
+//     6300-6319   generic-profile Cg IR diagnostics
+//     9020-9039   Cg IR internals beyond 9011-9012
+//
+// Layered notes ride the notice block below them: a note accompanies
+// an already-reported primary diagnostic (ambiguity candidates, call
+// paths behind a profile failure), never counts as an error or
+// warning, and is itself reported exactly once per primary.
+//
+//     9502-9519   layered notes
+
+#define NOTICE_S_OVERLOAD_CANDIDATE     9502, "candidate #%d: %s"
+#define NOTICE_S_CG_PROFILE_FAILURE_IN  9503, "profile failure in function \"%s\""
+#define NOTICE_S_CG_CALL_PATH           9504, "called from function \"%s\""
+#define NOTICE_S_CG_ENTRY_PATH          9505, "reached from entry function \"%s\""
 
 #endif // !defined(__ERRORS_H)

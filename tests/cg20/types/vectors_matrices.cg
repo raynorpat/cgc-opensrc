@@ -1,0 +1,20 @@
+// Cg 2.0 vector and matrix spellings: every canonical kind declares
+// lengths 1-4, and the float family additionally carries the predefined
+// float1x1-float4x4 matrix names including non-square shapes.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    int1 a = 1;
+    short2 b = short2(2, 3);
+    uint3 c = uint3(4, 5, 6);
+    double4 d = double4(0.5, 0.25, 0.125, 0.0625);
+    float2x3 m23;
+    float4x3 m43;
+
+    m23[0] = float3(1.0, 2.0, 3.0);
+    m23[1] = float3(4.0, 5.0, 6.0);
+    m43[0] = float3(1.0, b.x, c.z);
+    m43[3] = float3(0.5, d.w, 0.5);
+
+    return p * 0.0 + float4(m23[1][2], m43[3][1], d.y, b[0]) * 0.25;
+}

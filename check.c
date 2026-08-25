@@ -136,7 +136,7 @@ static int ProgramReturnExprNeedsTemp(expr *fExpr)
         return ProgramReturnExprNeedsTemp(fExpr->un.arg);
     case BINARY_N:
         if (fExpr->bin.op == FUN_CALL_OP ||
-            fExpr->bin.op == FUN_BUILTIN_OP) return 1;
+            fExpr->bin.op == FUN_INTRINSIC_OP) return 1;
         return ProgramReturnExprNeedsTemp(fExpr->bin.left) ||
                ProgramReturnExprNeedsTemp(fExpr->bin.right);
     case TRINARY_N:
@@ -243,7 +243,16 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                         }
                         outputVar = (expr *) NewSymbNode(VARIABLE_OP, voutVar);
                         lExpr = GenMemberReference(outputVar, outSymb);
-                        rexpr = GenMemberReference(returnVar, retSymb);
+                        if (sourceReturn->returnst.exp->common.type != NULL &&
+                            GetCategory(sourceReturn->returnst.exp->common.type) !=
+                                TYPE_CATEGORY_STRUCT)
+                        {
+                            // Entry returned through a synthesized single-member
+                            // connector: assign the returned value directly:
+                            rexpr = returnVar;
+                        } else {
+                            rexpr = GenMemberReference(returnVar, retSymb);
+                        }
                         if (IsScalar(lSymb->type) || IsVector(lSymb->type, &len)) {
                             lStmt = NewSimpleAssignmentStmt(&program->loc, lExpr, rexpr, 0);
                             stmtlist = ConcatStmts(stmtlist, lStmt);
@@ -255,22 +264,6 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
                     lSymb = lSymb->next;
                 }
                 fStmt = stmtlist;
-            } else {
-                // Scalar or vector return with a semantic, bound by
-                // BuildSemanticStructs() to an implicit $vout member named
-                // after the program:
-                voutVar = Cg->theHAL->varyingOut;
-                voutScope = voutVar->type->str.members;
-                lname = program->details.fun.semantics;
-                outSymb = lname ? LookUpLocalSymbol(voutScope, lname) : NULL;
-                if (outSymb) {
-                    outputVar = (expr *) NewSymbNode(VARIABLE_OP, voutVar);
-                    lExpr = GenMemberReference(outputVar, outSymb);
-                    rexpr = sourceReturn->returnst.exp;
-                    lStmt = NewSimpleAssignmentStmt(&program->loc, lExpr,
-                                                    rexpr, 0);
-                    fStmt = lStmt;
-                }
             }
         }
         if (lstr->preserveReturns) {
@@ -718,6 +711,7 @@ static expr *CheckConnectorUsage(expr *fExpr, void *arg1, int arg2)
             case ASSIGN_OP:
             case ASSIGN_V_OP:
             case ASSIGN_GEN_OP:
+            case ASSIGN_DYN_OP:
             case ASSIGN_MASKED_KV_OP:
                 fExpr->bin.left = CheckConnectorUsage(fExpr->bin.left, arg1, 1);
                 fExpr->bin.right = CheckConnectorUsage(fExpr->bin.right, arg1, 0);

@@ -1,0 +1,15 @@
+// semantic_case_collision.cg - semantic identity is case-canonical, so
+// COLOR0 and color0 name the same output connector.  The language rejects
+// the second binding as an output alias.
+struct FragmentOut {
+    float4 first : COLOR0;
+    float4 second : color0;
+};
+
+FragmentOut main(float4 color : ATTRIB0)
+{
+    FragmentOut output;
+    output.first = color;
+    output.second = color;
+    return output;
+}

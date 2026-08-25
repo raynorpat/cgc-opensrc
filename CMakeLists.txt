@@ -18,6 +18,15 @@ add_executable(cgc
     atom.c
     binding.c
     cgcmain.c
+    cg_ir.c
+    cg_ir_lower.c
+    cg_ir_print.c
+    cg_ir_verify.c
+    cg_numeric.c
+    cg_overload.c
+    cg_reach.c
+    cg_stdlib.c
+    cg_types.c
     cgstruct.c
     check.c
     compile.c
@@ -32,7 +41,9 @@ add_executable(cgc
     glslf_hal.c
     hal.c
     inline.c
+    language.c
     memory.c
+    output.c
     parser.c
     printutils.c
     scanner.c
@@ -49,7 +60,9 @@ add_executable(cgc
 
 add_executable(tokenize
     atom.c
+    cg_numeric.c
     cgstruct.c
+    language.c
     scanner.c
     tokenize.c
     tokens.c

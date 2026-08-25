@@ -1,0 +1,47 @@
+// Fragment twin of vp_matrix_element_stores.cg: a mixed-coordinate run
+// of adjacent explicit matrix stores lowers as independent statements
+// keeping each store's own coordinates, and a sixteen-store elementwise
+// fill passes the four-component producer selector cap.
+
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float4 color : COLOR0,
+                 uniform float3x3 source)
+{
+    FragmentOut output;
+    float3x3 mixed;
+    float4x4 fill;
+
+    // Mixed-coordinate adjacent stores: lowering must not mirror the
+    // left-hand coordinates onto the right-hand side.
+    mixed[0][0] = source[0][0];
+    mixed[1][0] = source[0][1];
+    mixed[0][2] = source[2][0];
+
+    // Sixteen-store elementwise fill: past the producer cap, so the
+    // whole run lowers as independent statements.
+    fill[0][0] = 1.0;
+    fill[1][0] = 2.0;
+    fill[2][0] = 3.0;
+    fill[3][0] = 4.0;
+    fill[0][1] = 5.0;
+    fill[1][1] = 6.0;
+    fill[2][1] = 7.0;
+    fill[3][1] = 8.0;
+    fill[0][2] = 9.0;
+    fill[1][2] = 10.0;
+    fill[2][2] = 11.0;
+    fill[3][2] = 12.0;
+    fill[0][3] = 13.0;
+    fill[1][3] = 14.0;
+    fill[2][3] = 15.0;
+    fill[3][3] = 16.0;
+
+    output.color = color + float4(mixed[0][0] + fill[3][3],
+                                  mixed[1][0] - fill[0][0],
+                                  mixed[0][2] * 0.5 + fill[1][2],
+                                  fill[2][1] * 0.0);
+    return output;
+}

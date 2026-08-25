@@ -44,25 +44,12 @@ if(NOT diagnostics MATCHES "${REASON}")
     message(FATAL_ERROR
         "${PROFILE} did not identify ${REASON}:\n${diagnostics}")
 endif()
-if(NOT EXISTS "${ACTUAL}")
-    message(FATAL_ERROR "cgc did not create ${ACTUAL}")
-endif()
-file(READ "${ACTUAL}" actual_text)
-string(REPLACE "\r\n" "\n" actual_text "${actual_text}")
-string(REPLACE "\r" "\n" actual_text "${actual_text}")
-if(NOT actual_text MATCHES "(^|\n)// End of program\n?$")
+# Transactional output (Task 18): a failed translation publishes
+# nothing -- the -o destination is withheld entirely, so no partial
+# shader body can ever replace a previous program.
+
+if(EXISTS "${ACTUAL}")
+    file(READ "${ACTUAL}" published)
     message(FATAL_ERROR
-        "${PROFILE} did not terminate normally:\n${actual_text}")
+        "failed compilation published an output file:\n${published}")
 endif()
-string(REGEX REPLACE "(^|\n)// cgc version [^\n]*\n" "\\1"
-    actual_text "${actual_text}")
-string(REGEX REPLACE "(^|\n)// command line args:[^\n]*\n" "\\1"
-    actual_text "${actual_text}")
-string(REGEX REPLACE "(^|\n)// End of program\n?$" "\\1"
-    actual_text "${actual_text}")
-if(NOT actual_text STREQUAL "#version 110\n")
-    file(WRITE "${ACTUAL}.normalized" "${actual_text}")
-    message(FATAL_ERROR
-        "${PROFILE} wrote a partial shader; actual: ${ACTUAL}.normalized")
-endif()
-file(REMOVE "${ACTUAL}.normalized")

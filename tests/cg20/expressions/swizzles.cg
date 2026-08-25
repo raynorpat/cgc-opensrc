@@ -1,0 +1,16 @@
+// Cg 2.0 swizzle forms: .xyzw and .rgba component-name sets read any
+// vector, repeated components broadcast, and single-component lvalues
+// write one element of a vector in place.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    float4 v = p;
+    float4 w;
+
+    v.x = 0.5;
+    v.a = 1.0;
+    w.xyz = v.zyx * 0.5;
+    w.w = v.y + 1.0;
+
+    return float4(v.r, v.g, v.b, v.a) * 0.25 + w * 0.125;
+}

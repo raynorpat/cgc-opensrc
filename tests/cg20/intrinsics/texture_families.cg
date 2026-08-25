@@ -1,0 +1,173 @@
+// Cg 2.0 standard-library texture families (Task 13).
+//
+// Declares every canonical sampler kind and routes every base,
+// projected, explicit-gradient, h4, and x4 texture family through
+// helpers over global uniform samplers.  Compiled through the generic
+// profile only; the GLSL 1.10 profiles have no lowering for most of
+// these forms.
+
+uniform sampler1D   image1D;
+uniform sampler2D   image2D;
+uniform sampler3D   image3D;
+uniform samplerCUBE imageCube;
+uniform samplerRECT imageRect;
+
+// ---- float4 base and explicit-gradient families ----
+
+float4 base1D(float s)
+{
+    return tex1D(image1D, s);
+}
+
+float4 gradient1D(float s)
+{
+    return tex1D(image1D, s, ddx(s), ddy(s));
+}
+
+float4 base2D(float2 s)
+{
+    return tex2D(image2D, s);
+}
+
+float4 gradient2D(float2 s)
+{
+    return tex2D(image2D, s, ddx(s), ddy(s));
+}
+
+float4 base3D(float3 s)
+{
+    return tex3D(image3D, s);
+}
+
+float4 gradient3D(float3 s)
+{
+    return tex3D(image3D, s, ddx(s), ddy(s));
+}
+
+float4 baseCUBE(float3 s)
+{
+    return texCUBE(imageCube, s);
+}
+
+float4 gradientCUBE(float3 s)
+{
+    return texCUBE(imageCube, s, ddx(s), ddy(s));
+}
+
+float4 baseRECT(float2 s)
+{
+    return texRECT(imageRect, s);
+}
+
+float4 gradientRECT(float2 s)
+{
+    return texRECT(imageRect, s, ddx(s), ddy(s));
+}
+
+// ---- projected families through a float4 q-coordinate ----
+
+float4 proj1D(float4 s)
+{
+    return tex1Dproj(image1D, s);
+}
+
+float4 proj2D(float4 s)
+{
+    return tex2Dproj(image2D, s);
+}
+
+float4 proj3D(float4 s)
+{
+    return tex3Dproj(image3D, s);
+}
+
+float4 projCUBE(float4 s)
+{
+    return texCUBEproj(imageCube, s);
+}
+
+float4 projRECT(float4 s)
+{
+    return texRECTproj(imageRect, s);
+}
+
+// ---- h4 (half4 result) variants ----
+
+half4 half1D(float s)        { return h4tex1D(image1D, s); }
+half4 half2D(float2 s)       { return h4tex2D(image2D, s); }
+half4 half3D(float3 s)       { return h4tex3D(image3D, s); }
+half4 halfCUBE(float3 s)     { return h4texCUBE(imageCube, s); }
+half4 halfRECT(float2 s)     { return h4texRECT(imageRect, s); }
+half4 halfProj1D(float4 s)   { return h4tex1Dproj(image1D, s); }
+half4 halfProj2D(float4 s)   { return h4tex2Dproj(image2D, s); }
+half4 halfProj3D(float4 s)   { return h4tex3Dproj(image3D, s); }
+half4 halfProjCUBE(float4 s) { return h4texCUBEproj(imageCube, s); }
+half4 halfProjRECT(float4 s) { return h4texRECTproj(imageRect, s); }
+
+// ---- x4 (fixed4 result) variants ----
+
+fixed4 fixed1D(float s)      { return x4tex1D(image1D, s); }
+fixed4 fixed2D(float2 s)     { return x4tex2D(image2D, s); }
+fixed4 fixed3D(float3 s)     { return x4tex3D(image3D, s); }
+fixed4 fixedCUBE(float3 s)   { return x4texCUBE(imageCube, s); }
+fixed4 fixedRECT(float2 s)   { return x4texRECT(imageRect, s); }
+fixed4 fixedProj1D(float4 s)   { return x4tex1Dproj(image1D, s); }
+fixed4 fixedProj2D(float4 s)   { return x4tex2Dproj(image2D, s); }
+fixed4 fixedProj3D(float4 s)   { return x4tex3Dproj(image3D, s); }
+fixed4 fixedProjCUBE(float4 s) { return x4texCUBEproj(imageCube, s); }
+fixed4 fixedProjRECT(float4 s) { return x4texRECTproj(imageRect, s); }
+
+struct TextureOut
+{
+    float4 color : COLOR0;
+};
+
+TextureOut main(float2 texcoord : ATTRIB0)
+{
+    TextureOut result;
+
+    float tx = texcoord.x;
+    float ty = texcoord.y;
+    float2 tc = float2(tx, ty);
+    float3 tc3 = float3(tx, ty, tx);
+    float4 tcq = float4(tx, ty, tx, 1.0);
+
+    float4 acc = base1D(tx) + base2D(tc) +
+                 base3D(tc3) +
+                 baseCUBE(tc3) +
+                 baseRECT(tc);
+    acc = acc + gradient1D(tx) +
+          gradient2D(tc) +
+          gradient3D(tc3) +
+          gradientCUBE(tc3) +
+          gradientRECT(tc);
+    acc = acc + proj1D(float4(tx, ty, 0.0, 1.0)) +
+          proj2D(float4(tx, ty, 0.0, 1.0)) +
+          proj3D(float4(tx, ty, tx, 1.0)) +
+          projCUBE(float4(tx, ty, ty, 0.5)) +
+          projRECT(float4(tx, ty, 1.0, 1.0));
+
+    // Every helper result converts into the accumulated color.
+    half4 h = half1D(tx) + half2D(tc) +
+              half3D(tc3) +
+              halfCUBE(tc3) +
+              halfRECT(tc);
+    h += halfProj1D(tcq) + halfProj2D(tcq) +
+         halfProj3D(tcq) +
+         halfProjCUBE(tcq) +
+         halfProjRECT(tcq);
+    fixed4 f = fixed1D(tx) + fixed2D(tc) +
+               fixed3D(tc3) +
+               fixedCUBE(tc3) +
+               fixedRECT(tc);
+    f += fixedProj1D(tcq) + fixedProj2D(tcq) +
+         fixedProj3D(tcq) +
+         fixedProjCUBE(tcq) +
+         fixedProjRECT(tcq);
+
+    acc = acc + float4(h.x, h.y, h.z, 1.0);
+    acc = acc + float4(f.x, f.y, f.z, 1.0);
+
+    result.color = saturate(acc);
+    return result;
+}

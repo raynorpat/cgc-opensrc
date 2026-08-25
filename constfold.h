@@ -51,7 +51,8 @@ expr *FoldConstants(expr *fexpr);
 expr *ConstantFoldNode(expr *fexpr, void *, int);
 
 // struct operations defines the set of possible basic operations we might
-// want to do on some data type
+// want to do on some data type.  Every entry delegates the arithmetic to
+// cg_numeric and is indexed through kind_ops[] by CgScalarKind.
 typedef struct operations_rec {
     opcode      const_opcode;   // opcode to use for constants of this type
     void (*op_neg)(scalar_constant *, const scalar_constant *);
@@ -67,21 +68,15 @@ typedef struct operations_rec {
     void (*op_xor)(scalar_constant *, const scalar_constant *, const scalar_constant *);
     void (*op_band)(scalar_constant *, const scalar_constant *, const scalar_constant *);
     void (*op_bor)(scalar_constant *, const scalar_constant *, const scalar_constant *);
-    void (*op_shr)(scalar_constant *, const scalar_constant *, int);
-    void (*op_shl)(scalar_constant *, const scalar_constant *, int);
+    int (*op_shr)(scalar_constant *, const scalar_constant *, int);
+    int (*op_shl)(scalar_constant *, const scalar_constant *, int);
     int (*op_lt)(const scalar_constant *, const scalar_constant *);
     int (*op_gt)(const scalar_constant *, const scalar_constant *);
     int (*op_le)(const scalar_constant *, const scalar_constant *);
     int (*op_ge)(const scalar_constant *, const scalar_constant *);
     int (*op_eq)(const scalar_constant *, const scalar_constant *);
     int (*op_ne)(const scalar_constant *, const scalar_constant *);
-    void (*cvtTo[TYPE_BASE_LAST_USER+1])(scalar_constant *, const scalar_constant *);
-    void (*cvtFrom[TYPE_BASE_LAST_USER+1])(scalar_constant *, const scalar_constant *);
 } operations;
-
-extern operations *runtime_ops[];
-
-void HAL_SetupHalfFixedTypes(int, int);
 
 #endif // !defined(__CONSTFOLD_H)
 

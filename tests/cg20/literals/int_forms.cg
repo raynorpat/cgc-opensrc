@@ -1,0 +1,10 @@
+// Cg 2.0 integer literal forms: decimal, hexadecimal, and octal
+// constants, with the u and ul unsigned-width suffixes.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    const int dec = 42;
+    const unsigned int hex = 0x2Au;
+    const unsigned long oct = 052ul;
+    return p * 0.0 + float4(dec, hex, oct & 0xfful, 1.0) * 0.25;
+}

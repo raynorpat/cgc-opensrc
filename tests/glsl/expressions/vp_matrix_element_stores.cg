@@ -1,0 +1,50 @@
+// Elementwise explicit matrix stores under the Cg IR GLSL path.
+// Regression pins for the group-write recognizer: a mixed-coordinate
+// run of adjacent stores must fall back to independent statements so
+// every store keeps its own right-hand coordinates, and an elementwise
+// fill longer than the four-component producer selector cap must lower
+// instead of failing.  Pairs with fp_matrix_element_stores.cg.
+
+struct VertexOut {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+VertexOut main(float4 position : ATTRIB0,
+               uniform float3x3 source)
+{
+    VertexOut output;
+    float3x3 mixed;
+    float4x4 fill;
+
+    // Mixed-coordinate adjacent stores: lowering must not mirror the
+    // left-hand coordinates onto the right-hand side.
+    mixed[0][0] = source[0][0];
+    mixed[1][0] = source[0][1];
+    mixed[0][2] = source[2][0];
+
+    // Sixteen-store elementwise fill: past the producer cap, so the
+    // whole run lowers as independent statements.
+    fill[0][0] = 1.0;
+    fill[1][0] = 2.0;
+    fill[2][0] = 3.0;
+    fill[3][0] = 4.0;
+    fill[0][1] = 5.0;
+    fill[1][1] = 6.0;
+    fill[2][1] = 7.0;
+    fill[3][1] = 8.0;
+    fill[0][2] = 9.0;
+    fill[1][2] = 10.0;
+    fill[2][2] = 11.0;
+    fill[3][2] = 12.0;
+    fill[0][3] = 13.0;
+    fill[1][3] = 14.0;
+    fill[2][3] = 15.0;
+    fill[3][3] = 16.0;
+
+    output.position = position + float4(fill[3][3], fill[0][0],
+                                        fill[1][2], fill[2][1]);
+    output.color = float4(mixed[0][0], mixed[1][0],
+                          mixed[0][2] + fill[0][0], 1.0);
+    return output;
+}

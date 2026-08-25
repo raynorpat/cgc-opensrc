@@ -1,0 +1,36 @@
+// Explicit -version 1.1 remains available for legacy sources, and the
+// legacy scanner accepts the Cg 2.0 scalar keywords too: the version
+// keyword set is a superset (a documented intentional divergence, since
+// Cg 1.1 never reserved these spellings).
+
+half4 blend(half4 base)
+{
+    return base * 0.5h;
+}
+
+fixed4 tint(fixed4 base)
+{
+    return base * 0.25x;
+}
+
+unsigned long maskbits(unsigned long seed)
+{
+    return seed & 0xfffful;
+}
+
+struct FlatOut {
+    float4 color : COLOR0;
+};
+
+FlatOut main(float4 p : ATTRIB0)
+{
+    FlatOut o;
+
+    half4 h = half4(0.5, 0.5, 0.5, 1.0);
+    fixed4 f = fixed4(1.0, 0.5, 0.25, 0.125);
+    unsigned long m = maskbits(0x12345678ul);
+
+    o.color = (blend(h) + tint(f)) * float(m & 1ul) * 0.0 + p.w;
+    o.color += float(double(2.0)) * 0.0;
+    return o;
+}

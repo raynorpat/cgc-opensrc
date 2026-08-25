@@ -1,0 +1,11 @@
+// global_varying.cg - explicit varying-domain globals join the program
+// interface.  Reading coord copies the ATTRIB0 connector in; writing
+// color copies out through the COLOR0 output connector.
+varying float4 coord : ATTRIB0;
+varying float4 color : COLOR0;
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    color = coord * 0.5;
+    return position;
+}

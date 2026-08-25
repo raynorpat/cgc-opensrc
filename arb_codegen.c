@@ -666,6 +666,18 @@ static void ArbPrintUniformVarDescription(FILE *out, const char *symbolName,
 
     category = GetCategory(fType);
     switch (category) {
+    case TYPE_CATEGORY_SAMPLER:
+        // Canonical sampler uniforms carry their texture-unit binding
+        // and print without the scalar/vector shape gate:
+        if (fBind && fBind->none.kind == BK_TEXUNIT) {
+            lFormatTypeParts(fType, str1, sizeof(str1), str2, sizeof(str2));
+            fprintf(out, "#var %s %s%s : %s", str1, symbolName, str2,
+                    semanticName);
+            fprintf(out, " : texunit %d", fBind->texunit.unitno);
+            fprintf(out, " : %d : %d", paramNo, 1);
+            fprintf(out, "\n");
+        }
+        break;
     case TYPE_CATEGORY_SCALAR:
     case TYPE_CATEGORY_ARRAY:
         if (IsScalar(fType) || IsVector(fType, &len) ||
@@ -853,7 +865,29 @@ void ArbWriteBindingMetadata(FILE *out, slHAL *fHAL, Symbol *program)
     }
 
     retType = program->type->fun.rettype;
-    if (GetCategory(retType) == TYPE_CATEGORY_STRUCT) {
+    if (GetCategory(retType) == TYPE_CATEGORY_STRUCT &&
+        retType->str.tag == LookUpAddString(atable, "$progret")) {
+        // Cg 2.0 scalar/vector entry returns arrive wrapped in a
+        // synthesized single-member connector ($progret).  Emit the
+        // flat program-named var line, matching every other backend.
+        Scope *voutScope = fHAL->varyingOut->type->str.members;
+        Symbol *outSymb = program->details.fun.semantics
+            ? LookUpLocalSymbol(voutScope, program->details.fun.semantics)
+            : NULL;
+        Symbol *retMember = retType->str.members->symbols;
+        if (outSymb && retMember) {
+            char str1[100], str2[100];
+            lFormatTypeParts(retMember->type, str1, sizeof(str1),
+                             str2, sizeof(str2));
+            fprintf(out, "#var %s %s%s", str1,
+                    GetAtomString(atable, program->name), "");
+            fprintf(out, " : $vout.%s",
+                    GetAtomString(atable, program->details.fun.semantics));
+            fprintf(out, " : %s",
+                    GetAtomString(atable, outSymb->details.var.bind->conn.rname));
+            fprintf(out, " : -1 : 1\n");
+        }
+    } else if (GetCategory(retType) == TYPE_CATEGORY_STRUCT) {
         lArbWriteVaryingVar(out, GetAtomString(atable, program->name),
                             program, "$vout", -1);
     } else if (!IsVoid(retType) && program->details.fun.semantics) {

@@ -1,0 +1,14 @@
+int runtime_length(float vals[])
+{
+    return vals.length;
+}
+
+float4 main(float4 p : POSITION) : POSITION
+{
+    float arr[3] = { 1.0, 2.0, 3.0 };
+    float4 v = float4(1.0, 2.0, 3.0, 4.0);
+    float4x4 m;
+    int n;
+    n = v.length + m.length + arr.length;
+    return p + v * ((n + runtime_length(arr)) * 0.0);
+}

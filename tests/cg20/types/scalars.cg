@@ -1,0 +1,18 @@
+float4 main(float4 position : POSITION) : POSITION
+{
+    char c = 1;
+    unsigned char uc = 2;
+    short s = 3;
+    unsigned short us = 4;
+    int i = 5;
+    unsigned int ui = 6;
+    long l = 7;
+    unsigned long ul = 8;
+    half h = 0.5;
+    fixed x = 0.5;
+    float f = 0.5;
+    double d = 0.5;
+    float4 iv = float4(c, uc, s, us);
+    float4 uv = float4(i, ui, l, ul);
+    return position + (iv + uv) * (h + x + f + d) * 0.0;
+}

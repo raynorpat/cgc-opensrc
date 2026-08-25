@@ -1,0 +1,14 @@
+D:/raynorpat/cgc/build-win32/CMakeFiles/Experimental.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/Nightly.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/Continuous.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/NightlyMemoryCheck.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/cgc.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/tokenize.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/regenerate_stdlib.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/regenerate_parser.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/RUN_TESTS.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/ALL_BUILD.dir
+D:/raynorpat/cgc/build-win32/CMakeFiles/ZERO_CHECK.dir
+D:/raynorpat/cgc/build-win32/tests/CMakeFiles/glsl_ir_unit.dir
+D:/raynorpat/cgc/build-win32/tests/CMakeFiles/glsl_semantics_unit.dir
+D:/raynorpat/cgc/build-win32/tests/CMakeFiles/RUN_TESTS.dir

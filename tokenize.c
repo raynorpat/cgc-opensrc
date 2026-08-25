@@ -110,3 +110,4 @@ void readCPPline() { assert(0); }
 void MarkErrorPosHit(SourceLoc *loc) { assert(0); }
 Scope *CurrentScope = 0;
 void *mem_Alloc(MemoryPool *pool, size_t size) { assert(0); return 0; }
+int CgScalarIsUnsigned(CgScalarKind kind) { (void) kind; assert(0); return 0; }

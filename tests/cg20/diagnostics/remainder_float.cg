@@ -1,0 +1,10 @@
+// The % operator requires integral operands; applying it to floating
+// values is a language rule violation.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    float x = 7.0;
+    float y = 2.0;
+
+    return p * (x % y) * 0.0;
+}

@@ -47,9 +47,9 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if !defined(__HSLVERSION_H)
 #define __HSLVERSION_H 1
 
-#define HSL_VERSION         1
-#define HSL_SUB_VERSION     1
-#define HSL_SUB_SUB_VERSION 0  // 4 digit decimal number 
+#define HSL_VERSION         2
+#define HSL_SUB_VERSION     0
+#define HSL_SUB_SUB_VERSION 0  // 4 digit decimal number
 
 #if defined(NV30_SUPPORT)
 #define NDA_STRING " NDA Release"

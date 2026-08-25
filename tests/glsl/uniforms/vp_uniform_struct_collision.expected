@@ -5,8 +5,8 @@
 
 struct cg_gl_Data
 {
-    vec4 cg_gl_value;
     vec4 cg_gl_value_1;
+    vec4 cg_gl_value;
 };
 
 struct VertexOut
@@ -22,6 +22,6 @@ void main()
     vec4 position;
     VertexOut result;
     position = cg_ATTRIB0;
-    result.position = position + cg_output.cg_gl_value + cg_output.cg_gl_value_1;
+    result.position = position + cg_output.cg_gl_value_1 + cg_output.cg_gl_value;
     gl_Position = result.position;
 }

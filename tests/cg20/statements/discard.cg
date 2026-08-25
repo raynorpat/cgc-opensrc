@@ -1,0 +1,12 @@
+// discard ends a fragment program invocation; the neutral generic
+// profile accepts the statement wherever fragment code may contain it,
+// leaving profile capability decisions to each backend.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    if (p.x > 0.5)
+    {
+        discard;
+    }
+    return p;
+}

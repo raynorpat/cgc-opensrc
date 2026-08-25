@@ -403,6 +403,33 @@ void InformationalNotice(SourceLoc *loc, int num, const char *mess, ...)
     }
 } // InformationalNotice
 
+/*
+ * SemanticNote() - A layered note attached to an already-reported
+ *         primary diagnostic: overload candidates under an ambiguity
+ *         error, call-path hops under a profile failure.  A note
+ *         never bumps any count and is not suppressed by -nowarn,
+ *         because its primary error stays visible regardless; in
+ *         -error mode the primary is withheld, so its notes are too.
+ */
+
+void SemanticNote(SourceLoc *loc, int num, const char *mess, ...)
+{
+    va_list args;
+
+    if (Cg->options.ErrorMode)
+        return;
+    if (loc->file) {
+        fprintf(Cg->options.listfd, "%s(%d) : notice C%04d: ",
+                GetAtomString(atable, loc->file), loc->line, num);
+    } else {
+        fprintf(Cg->options.listfd, "(%d) : notice C%04d: ", loc->line, num);
+    }
+    va_start(args, mess);
+    vfprintf(Cg->options.listfd, mess, args);
+    va_end(args);
+    fprintf(Cg->options.listfd, "\n");
+} // SemanticNote
+
 // The scanner:
 
 static int nextchar(FileInputSrc *in)
@@ -446,15 +473,15 @@ static void ungetchar(FileInputSrc *in, int ch)
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
- * lBuildFloatValue() - Quick and dirty conversion to floating point.  Since all
- *         we need is single precision this should be quite precise.
+ * lBuildFloatValue() - Quick and dirty conversion to floating point.  The
+ *         result keeps double precision so typed "d" suffix literals do not
+ *         lose bits before their kind is known.
  */
 
-static float lBuildFloatValue(const char *str, int len, int exp)
+static double lBuildFloatValue(const char *str, int len, int exp)
 {
     double val, expval, ten;
     int ii, llen, absexp;
-    float rv;
 
     val = 0.0;
     llen = len;
@@ -476,23 +503,136 @@ static float lBuildFloatValue(const char *str, int len, int exp)
             val /= expval;
         }
     }
-    rv = (float)val;
-    if (isinff(rv)) {
-        SemanticError(Cg->tokenLoc, ERROR___FP_CONST_OVERFLOW);
-    }
-    return rv;
+    return val;
 } // lBuildFloatValue
+
+/*
+ * lIsLiteralLetter() - TRUE if "ch" can extend a numeric literal suffix.
+ *
+ */
+
+static int lIsLiteralLetter(int ch)
+{
+    return (ch >= 'a' && ch <= 'z') ||
+           (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9') ||
+           ch == '_';
+} // lIsLiteralLetter
+
+/*
+ * lBadLiteralSuffix() - Report a repeated or incompatible suffix sequence.
+ *
+ */
+
+static void lBadLiteralSuffix(void)
+{
+    SemanticError(Cg->tokenLoc, ERROR___MALFORMED_LITERAL_SUFFIX);
+} // lBadLiteralSuffix
+
+/*
+ * lScanPastLetters() - Consume the rest of a malformed letter run; "ch" is
+ *         the first unconsumed character.  Leaves the run terminator
+ *         unread so scanning resumes at the token boundary.
+ *
+ */
+
+static void lScanPastLetters(int ch)
+{
+    while (lIsLiteralLetter(ch))
+        ch = Cg->currentInput->getch(Cg->currentInput);
+    Cg->currentInput->ungetch(Cg->currentInput, ch);
+} // lScanPastLetters
+
+/*
+ * lCheckSuffixEnd() - Verify the character ending a suffix is not another
+ *         literal letter; repeated suffix letters are malformed and are
+ *         consumed through the end of the run.  The terminating character
+ *         is left unread.
+ */
+
+static void lCheckSuffixEnd(int ch)
+{
+    if (lIsLiteralLetter(ch)) {
+        lBadLiteralSuffix();
+        lScanPastLetters(Cg->currentInput->getch(Cg->currentInput));
+    } else {
+        Cg->currentInput->ungetch(Cg->currentInput, ch);
+    }
+} // lCheckSuffixEnd
+
+/*
+ * lScanIntegerSuffix() - Consume an integer suffix sequence whose first
+ *         letter is "ch" and return the matching canonical scalar kind.
+ *         Repeated or incompatible suffix letters report the malformed
+ *         suffix diagnostic while still yielding the best-fit kind.
+ *
+ */
+
+static CgScalarKind lScanIntegerSuffix(int ch)
+{
+    CgScalarKind kind;
+    int next;
+
+    switch (ch) {
+    case 't':
+        kind = CG_SCALAR_CHAR;
+        break;
+    case 's':
+        kind = CG_SCALAR_SHORT;
+        break;
+    case 'i':
+        kind = CG_SCALAR_INT;
+        break;
+    case 'l':
+        kind = CG_SCALAR_LONG;
+        break;
+    case 'u':
+        next = Cg->currentInput->getch(Cg->currentInput);
+        switch (next) {
+        case 't':
+            kind = CG_SCALAR_UCHAR;
+            break;
+        case 's':
+            kind = CG_SCALAR_USHORT;
+            break;
+        case 'i':
+            kind = CG_SCALAR_UINT;
+            break;
+        case 'l':
+            kind = CG_SCALAR_ULONG;
+            break;
+        default:
+            // Only t/s/i/l may follow "u"; any other letter repeats or
+            // conflicts with it:
+            kind = CG_SCALAR_UINT;
+            if (lIsLiteralLetter(next)) {
+                lBadLiteralSuffix();
+                lScanPastLetters(Cg->currentInput->getch(Cg->currentInput));
+                return kind;
+            }
+            Cg->currentInput->ungetch(Cg->currentInput, next);
+            return kind;
+        }
+        break;
+    default:
+        return CG_SCALAR_UNDEFINED;
+    }
+    lCheckSuffixEnd(Cg->currentInput->getch(Cg->currentInput));
+    return kind;
+} // lScanIntegerSuffix
 
 /*
  * lFloatConst() - Scan a floating point constant.  Assumes that the scanner
  *         has seen at least one digit, followed by either a decimal '.' or the
- *         letter 'e'.
+ *         letter 'e'.  A trailing suffix selects the literal's scalar kind;
+ *         without one the constant is a compile-time cfloat.
  */
 
 static int lFloatConst(char *str, int len, int ch)
 {
     int HasDecimal, declen, exp, ExpSign;
-    float lval;
+    double dval;
+    CgScalarKind kind;
 
     HasDecimal = 0;
     declen = 0;
@@ -538,27 +678,67 @@ static int lFloatConst(char *str, int len, int ch)
     }
 
     if (len == 0) {
-        lval = 0.0f;
+        dval = 0.0;
     } else {
-        lval = lBuildFloatValue(str, len, exp - declen);
+        dval = lBuildFloatValue(str, len, exp - declen);
     }
 
     // Suffix:
 
-    yylval.sc_fval = lval;
-    if (ch == 'h') {
-        return FLOATHCONST_SY;
-    } else {
-        if (ch == 'x') {
-            return FLOATXCONST_SY;
-        } else {
-            if (ch == 'f') {
-                return FLOATCONST_SY;
-            } else {
-                Cg->currentInput->ungetch(Cg->currentInput, ch);
-                return CFLOATCONST_SY;
-            }
+    switch (ch) {
+    case 'h':
+        kind = CG_SCALAR_HALF;
+        break;
+    case 'x':
+        kind = CG_SCALAR_FIXED;
+        break;
+    case 'f':
+        kind = CG_SCALAR_FLOAT;
+        break;
+    case 'd':
+        kind = CG_SCALAR_DOUBLE;
+        break;
+    case 't':
+    case 's':
+    case 'i':
+    case 'l':
+    case 'u':
+        // Integer suffix letters cannot follow a floating literal:
+        while (lIsLiteralLetter(ch)) {
+            ch = Cg->currentInput->getch(Cg->currentInput);
         }
+        Cg->currentInput->ungetch(Cg->currentInput, ch);
+        lBadLiteralSuffix();
+        kind = CG_SCALAR_CFLOAT;
+        break;
+    default:
+        Cg->currentInput->ungetch(Cg->currentInput, ch);
+        kind = CG_SCALAR_CFLOAT;
+        break;
+    }
+    if (kind != CG_SCALAR_CFLOAT)
+        lCheckSuffixEnd(Cg->currentInput->getch(Cg->currentInput));
+
+    CgNumericSetFloat(&yylval.sc_literal, kind, dval);
+    CgNumericNormalize(&yylval.sc_literal, &yylval.sc_literal);
+    if (kind != CG_SCALAR_DOUBLE &&
+        isinff((float)yylval.sc_literal.value.f))
+    {
+        SemanticError(Cg->tokenLoc, ERROR___FP_CONST_OVERFLOW);
+    }
+
+    // The kind inside sc_literal distinguishes double constants; there is
+    // no separate DOUBLECONST_SY token:
+
+    switch (kind) {
+    case CG_SCALAR_HALF:
+        return FLOATHCONST_SY;
+    case CG_SCALAR_FIXED:
+        return FLOATXCONST_SY;
+    case CG_SCALAR_FLOAT:
+        return FLOATCONST_SY;
+    default:
+        return CFLOATCONST_SY;
     }
 } // lFloatConst
 
@@ -572,6 +752,9 @@ static int byte_scan(InputSrc *in)
     char string_val[MAX_STRING_LEN + 1];
     int AlreadyComplained;
     int len, ch, ii, ival;
+    CgUInt64 uval;
+    int uovf;
+    CgScalarKind kind;
 
     for (;;) {
         yylval.sc_int = 0;
@@ -625,47 +808,111 @@ static int byte_scan(InputSrc *in)
                 {
                     AlreadyComplained = 0;
                     ival = 0;
+                    uval = 0;
+                    uovf = 0;
                     do {
+                        if (ch >= '0' && ch <= '9') {
+                            ii = ch - '0';
+                        } else if (ch >= 'A' && ch <= 'F') {
+                            ii = ch - 'A' + 10;
+                        } else {
+                            ii = ch - 'a' + 10;
+                        }
+                        if (uovf) {
+                            ; // value already wider than 64 bits
+                        } else if (uval > (((CgUInt64)-1) - (CgUInt64)ii) / 16) {
+                            uval = 0;
+                            uovf = 1;
+                        } else {
+                            uval = (uval << 4) | (CgUInt64)ii;
+                        }
                         if (ival <= 0x0fffffff) {
-                            if (ch >= '0' && ch <= '9') {
-                                ii = ch - '0';
-                            } else if (ch >= 'A' && ch <= 'F') {
-                                ii = ch - 'A' + 10;
-                            } else {
-                                ii = ch - 'a' + 10;
-                            }
                             ival = (ival << 4) | ii;
                         } else {
-                            if (!AlreadyComplained)
-                                SemanticError(Cg->tokenLoc, ERROR___HEX_CONST_OVERFLOW);
                             AlreadyComplained = 1;
                         }
                         ch = Cg->currentInput->getch(Cg->currentInput);
                     } while ((ch >= '0' && ch <= '9') ||
                              (ch >= 'A' && ch <= 'F') ||
                              (ch >= 'a' && ch <= 'f'));
+                    if (ch == 't' || ch == 's' || ch == 'i' ||
+                        ch == 'l' || ch == 'u')
+                    {
+                        // A suffix widens the literal beyond legacy cint:
+                        kind = lScanIntegerSuffix(ch);
+                        if (uovf)
+                            SemanticError(Cg->tokenLoc,
+                                          ERROR___LITERAL_CONST_OVERFLOW);
+                        if (CgScalarIsUnsigned(kind)) {
+                            CgNumericSetUnsigned(&yylval.sc_literal, kind,
+                                                 uval);
+                        } else {
+                            CgNumericSetSigned(&yylval.sc_literal, kind,
+                                               (CgInt64)uval);
+                        }
+                        CgNumericNormalize(&yylval.sc_literal,
+                                           &yylval.sc_literal);
+                        return INTCONST_SY;
+                    }
+                    Cg->currentInput->ungetch(Cg->currentInput, ch);
+                    if (AlreadyComplained)
+                        SemanticError(Cg->tokenLoc,
+                                      ERROR___HEX_CONST_OVERFLOW);
+                    yylval.sc_literal.kind = CG_SCALAR_CINT;
+                    yylval.sc_literal.value.i = ival;
+                    return INTCONST_SY;
                 } else {
                     SemanticError(Cg->tokenLoc, ERROR___ERROR_IN_HEX_CONSTANT);
                 }
                 Cg->currentInput->ungetch(Cg->currentInput, ch);
-                yylval.sc_int = ival;
+                yylval.sc_literal.kind = CG_SCALAR_CINT;
+                yylval.sc_literal.value.i = 0;
                 return INTCONST_SY;
             } else if (ch >= '0' && ch <= '7') { // octal integer constants
                 AlreadyComplained = 0;
                 ival = 0;
+                uval = 0;
+                uovf = 0;
                 do {
+                    ii = ch - '0';
+                    if (uovf) {
+                        ; // value already wider than 64 bits
+                    } else if (uval > (((CgUInt64)-1) - (CgUInt64)ii) / 8) {
+                        uval = 0;
+                        uovf = 1;
+                    } else {
+                        uval = (uval << 3) | (CgUInt64)ii;
+                    }
                     if (ival <= 0x1fffffff) {
-                        ii = ch - '0';
                         ival = (ival << 3) | ii;
                     } else {
-                        if (!AlreadyComplained)
-                            SemanticError(Cg->tokenLoc, ERROR___OCT_CONST_OVERFLOW);
                         AlreadyComplained = 1;
                     }
                     ch = Cg->currentInput->getch(Cg->currentInput);
                 } while (ch >= '0' && ch <= '7');
+                if (ch == 't' || ch == 's' || ch == 'i' ||
+                    ch == 'l' || ch == 'u')
+                {
+                    // A suffix widens the literal beyond legacy cint:
+                    kind = lScanIntegerSuffix(ch);
+                    if (uovf)
+                        SemanticError(Cg->tokenLoc,
+                                      ERROR___LITERAL_CONST_OVERFLOW);
+                    if (CgScalarIsUnsigned(kind)) {
+                        CgNumericSetUnsigned(&yylval.sc_literal, kind, uval);
+                    } else {
+                        CgNumericSetSigned(&yylval.sc_literal, kind,
+                                           (CgInt64)uval);
+                    }
+                    CgNumericNormalize(&yylval.sc_literal,
+                                       &yylval.sc_literal);
+                    return INTCONST_SY;
+                }
                 Cg->currentInput->ungetch(Cg->currentInput, ch);
-                yylval.sc_int = ival;
+                if (AlreadyComplained)
+                    SemanticError(Cg->tokenLoc, ERROR___OCT_CONST_OVERFLOW);
+                yylval.sc_literal.kind = CG_SCALAR_CINT;
+                yylval.sc_literal.value.i = ival;
                 return INTCONST_SY;
             } else {
                 Cg->currentInput->ungetch(Cg->currentInput, ch);
@@ -684,8 +931,41 @@ static int byte_scan(InputSrc *in)
                     ch = Cg->currentInput->getch(Cg->currentInput);
                 }
             } while (ch >= '0' && ch <= '9');
-            if (ch == '.' || ch == 'e' || ch == 'f' || ch == 'h' || ch == 'x') {
+            if (ch == '.' || ch == 'e' || ch == 'd' ||
+                ch == 'f' || ch == 'h' || ch == 'x')
+            {
                 return lFloatConst(symbol_name, len, ch);
+            } else if (ch == 't' || ch == 's' || ch == 'i' ||
+                       ch == 'l' || ch == 'u')
+            {
+                // Suffixed decimals keep all digits at full 64 bits:
+                uval = 0;
+                uovf = 0;
+                for (ii = 0; ii < len; ii++) {
+                    int digit = symbol_name[ii] - '0';
+
+                    if (uovf) {
+                        ; // value already wider than 64 bits
+                    } else if (uval > (((CgUInt64)-1) - (CgUInt64)digit) / 10) {
+                        uval = 0;
+                        uovf = 1;
+                    } else {
+                        uval = uval * 10 + (CgUInt64)digit;
+                    }
+                }
+                kind = lScanIntegerSuffix(ch);
+                if (uovf)
+                    SemanticError(Cg->tokenLoc,
+                                  ERROR___LITERAL_CONST_OVERFLOW);
+                if (CgScalarIsUnsigned(kind)) {
+                    CgNumericSetUnsigned(&yylval.sc_literal, kind, uval);
+                } else {
+                    CgNumericSetSigned(&yylval.sc_literal, kind,
+                                       (CgInt64)uval);
+                }
+                CgNumericNormalize(&yylval.sc_literal,
+                                   &yylval.sc_literal);
+                return INTCONST_SY;
             } else {
                 Cg->currentInput->ungetch(Cg->currentInput, ch);
                 ival = 0;
@@ -699,7 +979,8 @@ static int byte_scan(InputSrc *in)
                     }
                     ival = ival*10 + ch;
                 }
-                yylval.sc_int = ival;
+                yylval.sc_literal.kind = CG_SCALAR_CINT;
+                yylval.sc_literal.value.i = ival;
                 return INTCONST_SY;
             }
             break;
@@ -923,8 +1204,13 @@ int yylex(void)
             Cg->mostRecentToken = yylval.sc_ident;
             if (yylval.sc_ident >= FIRST_USER_TOKEN_SY) {
                 Symbol *pSymb = LookUpSymbol(NULL, yylval.sc_ident);
-                if (pSymb && IsTypedef(pSymb))
+                if (pSymb && IsTypedef(pSymb)) {
                     token = TYPEIDENT_SY;
+                } else if (CgIsReservedWord(GetAtomString(atable, yylval.sc_ident),
+                                            Cg->options.languageVersion)) {
+                    // The atom stays in yylval.sc_ident for error reporting.
+                    token = RESERVED_SY;
+                }
             } else {
                 token = yylval.sc_ident;
             }
@@ -953,10 +1239,10 @@ int yylex(void)
             case FLOATCONST_SY:
             case FLOATHCONST_SY:
             case FLOATXCONST_SY:
-                printf(" = %9.6g", yylval.sc_fval);
+                printf(" = %9.6g", yylval.sc_literal.value.f);
                 break;
             case INTCONST_SY:
-                printf(" = %d", yylval.sc_int);
+                printf(" = %d", (int)yylval.sc_literal.value.i);
                 break;
             }
             printf("\n");

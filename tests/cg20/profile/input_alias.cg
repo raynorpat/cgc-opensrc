@@ -1,0 +1,9 @@
+// input_alias.cg - repeated input semantic atoms stay legal.  Both
+// parameters bind ATTRIB0; each receives its own synthesized copy of the
+// input, and returning the unchanged second copy must compile.
+float4 main(float4 first : ATTRIB0,
+            float4 second : ATTRIB0) : COLOR0
+{
+    float4 copy = first;
+    return second + (copy - first);
+}

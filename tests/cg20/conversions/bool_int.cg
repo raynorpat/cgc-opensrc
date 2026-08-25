@@ -1,0 +1,14 @@
+// Boolean interconverts implicitly with every numeric kind: an int
+// accepts a bool actual and a bool accepts an int actual without a
+// cast in either direction.
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    bool flag = p.x > 0.5;
+    int asInt = flag;
+    bool backFromInt = asInt;
+
+    if (backFromInt || asInt == 0)
+        return p;
+    return -p;
+}

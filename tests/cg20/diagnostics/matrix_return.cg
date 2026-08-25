@@ -1,0 +1,14 @@
+// A selected entry program binds its return value through the declared
+// semantic only when that value is a scalar or a vector; matrix returns
+// are handed to the profile binder and rejected there, exactly like
+// hand-written struct matrix members.
+
+float2x2 main(float4 p : POSITION) : TEXCOORD0
+{
+    float2x2 m;
+
+    m[0] = p.xy;
+    m[1] = p.zw;
+
+    return m;
+}

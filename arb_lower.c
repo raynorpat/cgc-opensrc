@@ -1,4 +1,4 @@
-﻿/****************************************************************************\
+/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_stdlib.h"
 #include "arb_ir.h"
 
 typedef struct ConsumedStmt_Rec {
@@ -265,10 +266,10 @@ static int EvalConstInt(ArbLowerContext *ctx, expr *e, int *out)
     case CONST_N:
         switch (e->co.op) {
         case ICONST_OP:
-            *out = e->co.val[0].i;
+            *out = e->co.val[0].value.i;
             return 1;
         case BCONST_OP:
-            *out = e->co.val[0].i ? 1 : 0;
+            *out = e->co.val[0].value.i ? 1 : 0;
             return 1;
         default:
             return 0;
@@ -1741,7 +1742,7 @@ static int LowerConstantNode(ArbLowerContext *ctx, expr *expression,
     case HCONST_OP:
     case XCONST_OP:
         for (ii = 0; ii < 4; ii++)
-            values[ii] = expression->co.val[0].f;
+            values[ii] = expression->co.val[0].value.f;
         size = 1;
         break;
     case FCONST_V_OP:
@@ -1749,19 +1750,19 @@ static int LowerConstantNode(ArbLowerContext *ctx, expr *expression,
     case XCONST_V_OP:
         size = SUBOP_GET_S1(expression->co.subop);
         for (ii = 0; ii < 4; ii++)
-            values[ii] = expression->co.val[ii < size ? ii : 0].f;
+            values[ii] = expression->co.val[ii < size ? ii : 0].value.f;
         break;
     case ICONST_OP:
     case BCONST_OP:
         for (ii = 0; ii < 4; ii++)
-            values[ii] = (float) expression->co.val[0].i;
+            values[ii] = (float) expression->co.val[0].value.i;
         size = 1;
         break;
     case ICONST_V_OP:
     case BCONST_V_OP:
         size = SUBOP_GET_S1(expression->co.subop);
         for (ii = 0; ii < 4; ii++)
-            values[ii] = (float) expression->co.val[ii < size ? ii : 0].i;
+            values[ii] = (float) expression->co.val[ii < size ? ii : 0].value.i;
         break;
     default:
         SemanticError(Cg->pLastSourceLoc,
@@ -1906,7 +1907,52 @@ static int LowerBuiltinCall(ArbLowerContext *ctx, expr *expression,
     expr *args = expression->bin.right;
     int index = fun->details.fun.index;
 
-    if (fun->details.fun.group != ARB_BUILTIN_GROUP) {
+    if (fun->details.fun.intrinsic != NULL) {
+        /* Declarative-catalog call: translate the stable intrinsic
+         * identity to the equivalent ARB builtin index.  Catalog
+         * signatures supersede the profile __internal prototypes for
+         * every shared name; bias forms remain catalog-free and keep
+         * their legacy group/index classification. */
+        switch (fun->details.fun.intrinsic->intrinsic) {
+        case CG_INTRINSIC_RSQRT:
+            index = ARB_BUILTIN_RSQ;
+            break;
+        case CG_INTRINSIC_TEX1D:
+            index = ARB_BUILTIN_TEX1D;
+            break;
+        case CG_INTRINSIC_TEX1DPROJ:
+            index = ARB_BUILTIN_TEX1DPROJ;
+            break;
+        case CG_INTRINSIC_TEX2D:
+            index = ARB_BUILTIN_TEX2D;
+            break;
+        case CG_INTRINSIC_TEX2DPROJ:
+            index = ARB_BUILTIN_TEX2DPROJ;
+            break;
+        case CG_INTRINSIC_TEX3D:
+            index = ARB_BUILTIN_TEX3D;
+            break;
+        case CG_INTRINSIC_TEX3DPROJ:
+            index = ARB_BUILTIN_TEX3DPROJ;
+            break;
+        case CG_INTRINSIC_TEXCUBE:
+            index = ARB_BUILTIN_TEXCUBE;
+            break;
+        case CG_INTRINSIC_TEXCUBEPROJ:
+            index = ARB_BUILTIN_TEXCUBEPROJ;
+            break;
+        case CG_INTRINSIC_TEXRECT:
+            index = ARB_BUILTIN_TEXRECT;
+            break;
+        case CG_INTRINSIC_TEXRECTPROJ:
+            index = ARB_BUILTIN_TEXRECTPROJ;
+            break;
+        default:
+            SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
+                          GetAtomString(atable, fun->name));
+            return 0;
+        }
+    } else if (fun->details.fun.group != ARB_BUILTIN_GROUP) {
         SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION,
                       GetAtomString(atable, fun->name));
         return 0;
@@ -2532,7 +2578,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
         case FUN_CALL_OP:
             SemanticError(loc, ERROR_S_ARB_UNSUPPORTED_OPERATION, "call");
             return 0;
-        case FUN_BUILTIN_OP:
+        case FUN_INTRINSIC_OP:
             return LowerBuiltinCall(ctx, expression, loc, operand);
         case ASSIGN_OP: case ASSIGN_V_OP: case ASSIGN_GEN_OP:
         case ASSIGN_MASKED_KV_OP:

@@ -4,8 +4,12 @@ foreach(required CGC SOURCE EXPECTED_SHA256)
     endif()
 endforeach()
 
+# The pinned hashes guard the historical tree-dump output, which stays
+# the emission path for explicit -version 1.1 compiles; default-language
+# (Cg 2.0) compiles emit normalized Cg IR instead.
+
 execute_process(
-    COMMAND "${CGC}" -quiet -profile generic "${SOURCE}"
+    COMMAND "${CGC}" -quiet -version 1.1 -profile generic "${SOURCE}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE output
     ERROR_VARIABLE error

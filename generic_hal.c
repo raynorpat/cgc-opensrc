@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "generic_hal.h"
+#include "cg_ir.h"
 
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -71,6 +72,8 @@ static int BindVaryingSemantic_generic(SourceLoc *loc, Symbol *fSymb,
                                        int IsOutVal);
 static int PrintCodeHeader_generic(FILE *out);
 static int GenerateCode_generic(SourceLoc *loc, Scope *fScope, Symbol *program);
+static int ValidateIR_generic(SourceLoc *loc, const CgIRModule *module);
+static int GenerateIR_generic(SourceLoc *loc, const CgIRModule *module);
 // Static data
 #define FLT TYPE_BASE_FLOAT
 
@@ -119,6 +122,7 @@ static SemanticsDescriptor Semantics_generic[] = {
 // the same thing as aliases
     // Varying input semantics:
     { "ATTRIB",   FLT, 4, REG_AP2V_ATTR0, 16, AP2V_GROUP, SEM_IN | SEM_VARYING, },
+    { "POSITION", FLT, 4, REG_AP2V_ATTR0, 16, AP2V_GROUP, SEM_IN | SEM_VARYING, },
     // Varying output semantics:
     { "POSITION", FLT, 4, REG_V2FR_HPOS, 1, V2FR_GROUP, SEM_OUT | SEM_VARYING, },
     { "FOG",      FLT, 1, REG_V2FR_FOGC, 0, V2FR_GROUP, SEM_OUT | SEM_VARYING, },
@@ -147,6 +151,10 @@ static ConnectorDescriptor connectors_generic[] = {
 int RegisterProfiles_generic(void)
 {
     RegisterProfile(InitHAL_generic, PROFILE_GENERIC_NAME, PROFILE_GENERIC_ID);
+    /* The generic profile is stage-neutral: only open-profile
+     * declarations answer to it. */
+    SetProfileIdentity(PROFILE_GENERIC_NAME, CG_PROFILE_STAGE_NEUTRAL,
+                       NULL, 0);
     return 1;
 } // RegisterProfiles_generic
 
@@ -171,6 +179,10 @@ static int InitHAL_generic(slHAL *fHAL)
     fHAL->BindVaryingSemantic = BindVaryingSemantic_generic;
     fHAL->PrintCodeHeader = PrintCodeHeader_generic;
     fHAL->GenerateCode = GenerateCode_generic;
+    /* Generic is the complete Cg 2.0 neutral backend: it accepts every
+     * verified module and emits the normalized IR text. */
+    fHAL->ValidateIR = ValidateIR_generic;
+    fHAL->GenerateIR = GenerateIR_generic;
 
     /* Initialize data. */
     fHAL->vendor = VENDOR_STRING_GENERIC;
@@ -350,6 +362,15 @@ static int BindVaryingSemantic_generic(SourceLoc *loc, Symbol *fSymb,
     for (ii = 0; ii < Cg->theHAL->numSemantics; ii++, semantics++) {
         match = semantics->numregs > 0 ? root : pname;
         if (!strcmp(match, semantics->sname)) {
+            // A semantic may be listed once for input and once for output;
+            // skip entries that do not support the requested direction:
+            if (IsOutVal) {
+                if (!(semantics->properties & SEM_OUT))
+                    continue;
+            } else {
+                if (!(semantics->properties & SEM_IN))
+                    continue;
+            }
             if (semantics->numregs > 0) {
                 if (index >= semantics->numregs) {
                     SemanticError(loc, ERROR_S_SEMANTICS_INDEX_TOO_BIG, pname);
@@ -444,6 +465,30 @@ static int GenerateCode_generic(SourceLoc *loc, Scope *fScope, Symbol *program)
     PrintFunctions(fScope->symbols);
     return 1;
 } // GenerateCode_generic
+
+/*
+ * ValidateIR_generic() - The neutral profile accepts every module the
+ * verifier admitted; there is nothing profile-specific left to check.
+ */
+
+static int ValidateIR_generic(SourceLoc *loc, const CgIRModule *module)
+{
+    (void) loc;
+    (void) module;
+    return 1;
+} // ValidateIR_generic
+
+/*
+ * GenerateIR_generic() - Emit the normalized Cg IR text of the verified
+ * module to the compiler's output stream.  CgIRPrintModule verifies
+ * again before its first byte and writes all-or-nothing.
+ */
+
+static int GenerateIR_generic(SourceLoc *loc, const CgIRModule *module)
+{
+    (void) loc;
+    return CgIRPrintModule(Cg->options.outfd, module);
+} // GenerateIR_generic
 
 ///////////////////////////////////////////////////////////////////////////////
 //////////////////////// End of generic_hal.c /////////////////////////////////

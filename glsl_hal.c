@@ -549,6 +549,29 @@ static int GlslResolvedType(Type *source, GlslType *target)
 
     if (source == NULL || target == NULL)
         return 0;
+    if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
+        /* Adapter: canonical language samplers map onto the GLSL
+         * texture-object bases; kinds with no GLSL 1.10 spelling do not
+         * resolve and are rejected by the caller. */
+        switch (source->samp.samplerKind) {
+        case CG_SAMPLER_1D:
+            base = GLSL_BASE_SAMPLER1D;
+            break;
+        case CG_SAMPLER_2D:
+            base = GLSL_BASE_SAMPLER2D;
+            break;
+        case CG_SAMPLER_3D:
+            base = GLSL_BASE_SAMPLER3D;
+            break;
+        case CG_SAMPLER_CUBE:
+            base = GLSL_BASE_SAMPLERCUBE;
+            break;
+        default:
+            return 0;
+        }
+        *target = GlslNumericType(base, 1);
+        return 1;
+    }
     if (IsMatrix(source, &cols, &rows)) {
         if (GetBase(source) != TYPE_BASE_FLOAT &&
             GetBase(source) != TYPE_BASE_CFLOAT) return 0;
@@ -671,74 +694,166 @@ static void *GlslCompilerAlloc(void *arg, size_t size)
     return mem_Calloc((MemoryPool *) arg, size, 1);
 }
 
+/*
+ * GlslReportLowerFailure() - One profile diagnostic for a failed
+ *          lowering, translated from the module error fields; layered
+ *          call-path notes follow the primary report.
+ */
+
+static int GlslReportLowerFailure(const GlslProfileDesc *profile,
+                                  const GlslModule *module,
+                                  const Symbol *program)
+{
+    SourceLoc failureLoc;
+    const char *failureReason;
+
+    failureLoc = program->loc;
+    if (module->errorLoc.file != 0 || module->errorLoc.line != 0) {
+        failureLoc.file = (unsigned short) module->errorLoc.file;
+        failureLoc.line = (unsigned short) module->errorLoc.line;
+    }
+    if (module->resourceName != NULL) {
+        SemanticError(&failureLoc, ERROR_SII_GLSL_RESOURCE_LIMIT,
+                      module->resourceName, module->resourceUsed,
+                      module->resourceAvailable);
+    } else {
+        failureReason = module->errorReason != NULL ?
+                        module->errorReason : "GLSL 1.10 program";
+        switch (module->errorKind) {
+        case GLSL_ERROR_UNSUPPORTED_TYPE:
+            SemanticError(&failureLoc, ERROR_S_GLSL_UNSUPPORTED_TYPE,
+                          failureReason);
+            break;
+        case GLSL_ERROR_STAGE_OPERATION:
+            SemanticError(&failureLoc, ERROR_SS_GLSL_STAGE_OPERATION,
+                          profile->name, failureReason);
+            break;
+        case GLSL_ERROR_INTERFACE_CONFLICT:
+            SemanticError(&failureLoc,
+                          ERROR_S_GLSL_INTERFACE_CONFLICT,
+                          failureReason);
+            break;
+        case GLSL_ERROR_NAME_COLLISION:
+            SemanticError(&failureLoc, ERROR_S_GLSL_NAME_COLLISION,
+                          failureReason);
+            break;
+        case GLSL_ERROR_INTRINSIC:
+            SemanticError(&failureLoc, ERROR_S_GLSL_INTRINSIC,
+                          failureReason);
+            break;
+        case GLSL_ERROR_SAMPLER:
+            SemanticError(&failureLoc, ERROR_S_GLSL_SAMPLER,
+                          failureReason);
+            break;
+        case GLSL_ERROR_NON_SQUARE_MATRIX:
+            SemanticError(&failureLoc,
+                          ERROR_S_GLSL_NON_SQUARE_MATRIX,
+                          failureReason);
+            break;
+        default:
+            SemanticError(&failureLoc,
+                          ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                          failureReason);
+            break;
+        }
+    }
+    ReportProfileCallPath(module->errorSymbol);
+    return 0;
+}
+
 static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
 {
     const GlslProfileDesc *profile;
     GlslModule module;
-    SourceLoc failureLoc;
-    const char *failureReason;
     int errorCount;
 
+    (void) loc;
     profile = (const GlslProfileDesc *) Cg->theHAL->localData;
     GlslInitModule(&module, profile->stage, GlslCompilerAlloc,
                    CurrentScope->pool);
-    if (!GlslLowerProgram(&module, profile, loc, scope, program)) {
-        failureLoc = program->loc;
-        if (module.errorLoc.file != 0 || module.errorLoc.line != 0) {
-            failureLoc.file = (unsigned short) module.errorLoc.file;
-            failureLoc.line = (unsigned short) module.errorLoc.line;
-        }
-        if (module.resourceName != NULL) {
-            SemanticError(&failureLoc, ERROR_SII_GLSL_RESOURCE_LIMIT,
-                          module.resourceName, module.resourceUsed,
-                          module.resourceAvailable);
-        } else {
-            failureReason = module.errorReason != NULL ?
-                            module.errorReason : "GLSL 1.10 program";
-            switch (module.errorKind) {
-            case GLSL_ERROR_UNSUPPORTED_TYPE:
-                SemanticError(&failureLoc, ERROR_S_GLSL_UNSUPPORTED_TYPE,
-                              failureReason);
-                break;
-            case GLSL_ERROR_STAGE_OPERATION:
-                SemanticError(&failureLoc, ERROR_SS_GLSL_STAGE_OPERATION,
-                              profile->name, failureReason);
-                break;
-            case GLSL_ERROR_INTERFACE_CONFLICT:
-                SemanticError(&failureLoc,
-                              ERROR_S_GLSL_INTERFACE_CONFLICT,
-                              failureReason);
-                break;
-            case GLSL_ERROR_NAME_COLLISION:
-                SemanticError(&failureLoc, ERROR_S_GLSL_NAME_COLLISION,
-                              failureReason);
-                break;
-            case GLSL_ERROR_INTRINSIC:
-                SemanticError(&failureLoc, ERROR_S_GLSL_INTRINSIC,
-                              failureReason);
-                break;
-            case GLSL_ERROR_SAMPLER:
-                SemanticError(&failureLoc, ERROR_S_GLSL_SAMPLER,
-                              failureReason);
-                break;
-            case GLSL_ERROR_NON_SQUARE_MATRIX:
-                SemanticError(&failureLoc,
-                              ERROR_S_GLSL_NON_SQUARE_MATRIX,
-                              failureReason);
-                break;
-            default:
-                SemanticError(&failureLoc,
-                              ERROR_S_GLSL_UNSUPPORTED_OPERATION,
-                              failureReason);
-                break;
-            }
-        }
-        return 0;
+    if (!GlslLowerLegacyProgram(&module, profile, loc, scope, program)) {
+        return GlslReportLowerFailure(profile, &module, program);
     }
     errorCount = GetErrorCount();
     if (!GlslWriteModule(Cg->options.outfd, &module)) {
         if (GetErrorCount() == errorCount) {
-            SemanticError(&program->loc,
+            SourceLoc writerLoc;
+
+            writerLoc = program->loc;
+            SemanticError(&writerLoc,
+                          ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                          "GLSL 1.10 module writer");
+        }
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * ValidateIR_glsl() - Lower the verified Cg IR into a scratch module
+ *          over a throwaway pool: profile validation without output.
+ *          No pointer from this call is cached anywhere.
+ */
+
+static int ValidateIR_glsl(SourceLoc *loc, const CgIRModule *source)
+{
+    const GlslProfileDesc *profile;
+    MemoryPool *pool;
+    GlslModule module;
+    Symbol *program;
+    int OK;
+
+    (void) loc;
+    profile = (const GlslProfileDesc *) Cg->theHAL->localData;
+    program = CurrentScope != NULL && CurrentScope->programs != NULL ?
+              CurrentScope->programs->symb : NULL;
+    if (program == NULL)
+        return 0;
+    pool = mem_CreatePool(16 * 1024, 8);
+    if (pool == NULL)
+        return 0;
+    GlslInitModule(&module, profile->stage, GlslCompilerAlloc, pool);
+    OK = GlslLowerCgIR(&module, profile, source);
+    if (!OK)
+    {
+        /* Translate the recorded diagnostic FIRST: the reason strings
+         * live in the scratch pool. */
+        GlslReportLowerFailure(profile, &module, program);
+        OK = 0;
+    }
+    mem_FreePool(pool);
+    return OK;
+}
+
+/*
+ * GenerateIR_glsl() - Lower again into the compilation pool and write
+ *      the GLSL translation all-or-nothing.
+ */
+
+static int GenerateIR_glsl(SourceLoc *loc, const CgIRModule *source)
+{
+    const GlslProfileDesc *profile;
+    GlslModule module;
+    Symbol *program;
+    int errorCount;
+
+    (void) loc;
+    profile = (const GlslProfileDesc *) Cg->theHAL->localData;
+    program = CurrentScope != NULL && CurrentScope->programs != NULL ?
+              CurrentScope->programs->symb : NULL;
+    if (program == NULL)
+        return 0;
+    GlslInitModule(&module, profile->stage, GlslCompilerAlloc,
+                   CurrentScope->pool);
+    if (!GlslLowerCgIR(&module, profile, source))
+        return GlslReportLowerFailure(profile, &module, program);
+    errorCount = GetErrorCount();
+    if (!GlslWriteModule(Cg->options.outfd, &module)) {
+        if (GetErrorCount() == errorCount) {
+            SourceLoc writerLoc;
+
+            writerLoc = program->loc;
+            SemanticError(&writerLoc,
                           ERROR_S_GLSL_UNSUPPORTED_OPERATION,
                           "GLSL 1.10 module writer");
         }
@@ -766,6 +881,11 @@ int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile)
     hal->PrintCodeHeader = PrintCodeHeader_glsl;
     hal->GenerateCode = GenerateCode_glsl;
 
+    /* Cg 2.0 IR hooks: GLSL accepts every verified module through
+     * profile validation; -version 1.1 keeps the legacy tree path. */
+    hal->ValidateIR = ValidateIR_glsl;
+    hal->GenerateIR = GenerateIR_glsl;
+
     hal->vendor = VENDOR_STRING_GLSL;
     hal->version = VERSION_STRING_GLSL;
 
@@ -790,5 +910,13 @@ int RegisterProfiles_glsl(void)
 {
     RegisterProfile(InitHAL_glslv, PROFILE_GLSLV_NAME, PROFILE_GLSLV_ID);
     RegisterProfile(InitHAL_glslf, PROFILE_GLSLF_NAME, PROFILE_GLSLF_ID);
+    /* glslv answers to its exact name and to the vertex wildcard "vs";
+     * glslf to its exact name and the fragment wildcard "ps".  The
+     * wildcard specificity integer orders wildcard candidates against
+     * each other; exact names always outrank wildcards. */
+    SetProfileIdentity(PROFILE_GLSLV_NAME, CG_PROFILE_STAGE_VERTEX,
+                       "vs", 10);
+    SetProfileIdentity(PROFILE_GLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT,
+                       "ps", 10);
     return 1;
 }

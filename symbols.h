@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __SYMBOLS_H 1
 
 #include "memory.h"
+#include "cg_types.h"
 
 #define MAX_ARRAY_DIMENSIONS 3
 
@@ -77,6 +78,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TYPE_CATEGORY_FUNCTION      0x00000030
 #define TYPE_CATEGORY_STRUCT        0x00000040
 #define TYPE_CATEGORY_CONNECTOR     0x00000050
+#define TYPE_CATEGORY_SAMPLER       0x00000060
+#define TYPE_CATEGORY_INTERFACE     0x00000070
 
 #define TYPE_DOMAIN_MASK            0x00000f00
 #define TYPE_DOMAIN_SHIFT           8
@@ -125,17 +128,23 @@ typedef enum StrorageClass {
 
 union stmt_rec;
 
+// Defined in "cg_stdlib.h"; kept as a forward declaration here so the
+// symbol table never includes that header (header-cycle rule):
+
+struct CgIntrinsicSignature_Rec;
+
 // Typedefs for things defined here in "symbols.h":
 
 typedef struct Scope_Rec Scope;
 typedef struct FunSymbol_Rec FunSymbol;
 typedef struct Symbol_Rec Symbol;
-typedef union Type_Rec Type;
 typedef struct TypeCommon_Rec TypeCommon;
 typedef struct TypeScalar_Rec TypeScalar;
 typedef struct TypeArray_Rec TypeArray;
 typedef struct TypeStruct_Rec TypeStruct;
+typedef struct TypeInterface_Rec TypeInterface;
 typedef struct TypeFunction_Rec TypeFunction;
+typedef struct TypeSampler_Rec TypeSampler;
 
 typedef struct SymbolList_Rec {
     struct SymbolList_Rec *next;
@@ -172,16 +181,19 @@ typedef struct TypeList_Rec {
 struct TypeCommon_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
 };
 
 struct TypeScalar_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
 };
 
 struct TypeArray_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
     Type *eltype;
     int numels;
 };
@@ -189,6 +201,7 @@ struct TypeArray_Rec {
 struct TypeStruct_Rec { // for structs and connectors
     int properties;
     int size;
+    CgScalarKind scalarKind;
     Type *unqualifiedtype;
     Scope *members;
     SourceLoc loc;
@@ -199,13 +212,31 @@ struct TypeStruct_Rec { // for structs and connectors
     char *allocated;  // set if corresponding register has been bound
     int csize;
     void *tempptr;    // temp for FP30 backend connectors: dagnode* to DOP_VARYING
+    Type *implementedInterface; // interface this struct implements, or NULL
+};
+
+struct TypeInterface_Rec {
+    int properties;
+    int size;
+    CgScalarKind scalarKind;
+    Scope *members;
+    SourceLoc loc;
+    int tag;          // interface tag
 };
 
 struct TypeFunction_Rec {
     int properties;
     int size;
+    CgScalarKind scalarKind;
     Type *rettype;
     TypeList *paramtypes;
+};
+
+struct TypeSampler_Rec {
+    int properties;
+    int size;
+    CgScalarKind scalarKind;
+    CgSamplerKind samplerKind;
 };
 
 union Type_Rec {
@@ -214,10 +245,14 @@ union Type_Rec {
     TypeScalar sc;
     TypeArray arr;
     TypeStruct str;
+    TypeInterface iface;
     TypeFunction fun;
+    TypeSampler samp;
 };
 
 // Symbol table is a simple binary tree.
+
+#include "cg_overload.h"    // CgProfileSelector for FunSymbol
 
 struct FunSymbol_Rec {
     Scope *locals;
@@ -225,11 +260,17 @@ struct FunSymbol_Rec {
     union stmt_rec *statements;
     union stmt_rec *entryOutputAssignments;
     Symbol *overload;   // List of overloaded versions of this function
-    int flags;          // Used when resolving overloaded reference
+    int flags;          // Unused since Cg 2.0: resolution is non-mutating (cg_overload.h)
     short group;        // Built-in function group
     short index;        // Built-in function index
+    const struct CgIntrinsicSignature_Rec *intrinsic;
+                        // Immutable catalog signature of a declarative
+                        // standard-library intrinsic, NULL otherwise
     char HasOutParams;
-    int semantics;      // Return-value semantic atom for programs
+    int semantics;      // Return value semantic recorded on declaration, 0 if none
+    Type *ownerType;    // Owning struct or interface for methods, NULL otherwise
+    int isMethod;       // > 0 when declared inside an interface or struct body
+    CgProfileSelector profileSelector;  // Profile qualification; open when unqualified
 };
 
 typedef struct VarSymbol_Rec {

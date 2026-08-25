@@ -1,0 +1,20 @@
+// Cg 2.0 default arguments (Task 12).
+//
+// "accent" gives its final two parameters constant defaults.  Every
+// call below resolves to it and binds completely: with both defaults,
+// with an explicit gain, and with every argument explicit.
+
+float3 accent(float3 base, float gain = 0.5, float lift = 0.125)
+{
+    return base * gain + float3(lift, lift, lift);
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    float3 bothDefaults = accent(position.xyz);
+    float3 explicitGain = accent(position.xyz, 1.0);
+    float3 fullyExplicit = accent(position.xyz, 1.0, 0.0);
+    float3 total = bothDefaults + explicitGain + fullyExplicit;
+
+    return float4(total.x * 0.25, total.y, total.z, 1.0);
+}

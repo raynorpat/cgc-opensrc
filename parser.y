@@ -48,6 +48,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define NO_PARSER 1
 #include "slglobals.h"
+#include "cg_numeric.h"
 
 %}
 
@@ -57,6 +58,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     int    sc_token;
     int    sc_int;
     float  sc_fval;
+    CgNumericValue sc_literal;
     int    sc_ident;
     spec   sc_specifiers;
     dtype  sc_type;
@@ -80,7 +82,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> BOOLEAN_SY 264
 %token <sc_token> BREAK_SY 265
 %token <sc_token> CASE_SY 266
-%token <sc_fval>  CFLOATCONST_SY 267
+%token <sc_literal> CFLOATCONST_SY 267
 %token <sc_token> COLONCOLON_SY 268
 %token <sc_token> CONST_SY 269
 %token <sc_token> CONTINUE_SY 270
@@ -92,9 +94,9 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> ERROR_SY 276
 %token <sc_token> EXTERN_SY 277
 %token <sc_token> FLOAT_SY 278
-%token <sc_fval>  FLOATCONST_SY 279
-%token <sc_fval>  FLOATHCONST_SY 280
-%token <sc_fval>  FLOATXCONST_SY 281
+%token <sc_literal> FLOATCONST_SY 279
+%token <sc_literal> FLOATHCONST_SY 280
+%token <sc_literal> FLOATXCONST_SY 281
 %token <sc_token> FOR_SY 282
 %token <sc_token> GE_SY 283
 %token <sc_token> GG_SY 284
@@ -105,7 +107,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> INLINE_SY 289
 %token <sc_token> INOUT_SY 290
 %token <sc_token> INT_SY 291
-%token <sc_int>   INTCONST_SY 292
+%token <sc_literal> INTCONST_SY 292
 %token <sc_token> INTERNAL_SY 293
 %token <sc_token> LE_SY 294
 %token <sc_token> LL_SY 295
@@ -129,7 +131,16 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> VOID_SY 313
 %token <sc_token> WHILE_SY 314
 
-%token <sc_token> FIRST_USER_TOKEN_SY 315  /* Must be last token declaration */
+%token <sc_token> CHAR_SY 315
+%token <sc_token> DOUBLE_SY 316
+%token <sc_token> FIXED_SY 317
+%token <sc_token> HALF_SY 318
+%token <sc_token> INTERFACE_SY 319
+%token <sc_token> LONG_SY 320
+%token <sc_token> SHORT_SY 321
+%token <sc_token> UNSIGNED_SY 322
+%token <sc_token> RESERVED_SY 323
+%token <sc_token> FIRST_USER_TOKEN_SY 324  /* Must be last token declaration */
 
 /*************<<<<<<<<<<<<<<<<<<<********************
 %type <dummy> abstract_parameter_declaration
@@ -139,6 +150,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <dummy> compound_tail
 %type <dummy> external_declaration
 %type <dummy> function_definition
+%type <dummy> interface_compound_header
 %type <dummy> struct_compound_header
 
 %type <sc_int> function_specifier
@@ -152,6 +164,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 %type <sc_ident> identifier
 %type <sc_ident> member_identifier
+%type <sc_ident> profile_specifier
 %type <sc_ident> scope_identifier
 %type <sc_ident> semantics_identifier
 %type <sc_ident> struct_identifier
@@ -173,6 +186,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <sc_type> abstract_declaration_specifiers
 %type <sc_type> abstract_declaration_specifiers2
 %type <sc_type> declaration_specifiers
+%type <sc_ptype> interface_specifier
 %type <sc_ptype> struct_or_connector_header
 %type <sc_ptype> struct_or_connector_specifier
 /***
@@ -231,6 +245,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <sc_stmt> if_statement
 %type <sc_stmt> init_declarator
 %type <sc_stmt> init_declarator_list
+%type <sc_stmt> interface_member_declaration
+%type <sc_stmt> interface_member_declaration_list
 %type <sc_stmt> iteration_statement
 %type <sc_stmt> jump_statement
 %type <sc_stmt> return_statement
@@ -255,6 +271,21 @@ compilation_unit:         external_declaration
 external_declaration:     declaration
                               { $$ = GlobalInitStatements(CurrentScope, $1); }
                         | function_definition
+                              { $$ = 0; }
+                        | profile_specifier function_definition
+                              { $$ = 0; }
+                        | profile_specifier declaration
+                              { $$ = GlobalInitStatements(CurrentScope, $2); ClearPendingProfileSpecifier(); }
+;
+
+/* A profile specifier names either an exact profile or a registered
+ * wildcard before a function return type.  Names shadowed by a typedef
+ * reach the parser as TYPEIDENT_SY and therefore keep their ordinary
+ * type interpretation; only bare identifiers get here, and the action
+ * rejects identifiers that no profile answers to. */
+
+profile_specifier:        identifier
+                              { $$ = $1; SetPendingProfileSpecifier(Cg->tokenLoc, $1); }
 ;
 
 declaration:              declaration_specifiers ';'
@@ -338,7 +369,31 @@ type_specifier:           INT_SY
                               { $$ = LookUpTypeSymbol(NULL, BOOLEAN_SY); }
                         | TEXOBJ_SY
                               { $$ = LookUpTypeSymbol(NULL, TEXOBJ_SY); }
+                        | CHAR_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | SHORT_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | LONG_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | HALF_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | FIXED_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | DOUBLE_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | UNSIGNED_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $1, 0); }
+                        | UNSIGNED_SY CHAR_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
+                        | UNSIGNED_SY SHORT_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
+                        | UNSIGNED_SY INT_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
+                        | UNSIGNED_SY LONG_SY
+                              { $$ = ResolveScalarTypeSpecifier(Cg->tokenLoc, $2, 1); }
                         | struct_or_connector_specifier
+                              { $$ = $1; }
+                        | interface_specifier
                               { $$ = $1; }
                         | type_identifier
                               { $$ = LookUpTypeSymbol(NULL, $1); }
@@ -364,6 +419,8 @@ type_qualifier:           CONST_SY
 
 type_domain:              UNIFORM_SY
                               { $$ = TYPE_DOMAIN_UNIFORM; }
+                        | VARYING_SY
+                              { $$ = TYPE_DOMAIN_VARYING; }
 ;
 
 /*******************/
@@ -404,9 +461,11 @@ in_out:                   IN_SY
 
 struct_or_connector_specifier:
                           struct_or_connector_header struct_compound_header struct_declaration_list '}'
-                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope()); }
+                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope());
+                                CheckInterfaceConformance(Cg->tokenLoc, $$); }
                         | untagged_struct_header struct_compound_header struct_declaration_list '}'
-                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope()); }
+                              { $$ = SetStructMembers(Cg->tokenLoc, $1, PopScope());
+                                CheckInterfaceConformance(Cg->tokenLoc, $$); }
                         | struct_or_connector_header
                               { $$ = $1; }
 ;
@@ -420,6 +479,8 @@ struct_or_connector_header:
                               { $$ = StructHeader(Cg->tokenLoc, CurrentScope, 0, $2); }
                         | STRUCT_SY struct_identifier ':' semantics_identifier
                               { $$ = StructHeader(Cg->tokenLoc, CurrentScope, $4, $2); }
+                        | STRUCT_SY struct_identifier ':' type_identifier
+                              { $$ = SetStructInterface(Cg->tokenLoc, CurrentScope, $2, $4); }
 ;
 
 struct_identifier:        identifier
@@ -436,6 +497,43 @@ struct_declaration_list:  struct_declaration
 
 struct_declaration:       declaration
                             { $$ = $1; }
+                        | function_definition
+                            { $$ = NULL; }
+;
+
+/******************/
+/* Interface Types */
+/******************/
+
+interface_specifier:
+                          INTERFACE_SY struct_identifier interface_compound_header
+                          interface_member_declaration_list
+                          '}'
+                              { $$ = SetInterfaceMembers(Cg->tokenLoc,
+                                                         InterfaceHeader(Cg->tokenLoc, CurrentScope, $2),
+                                                         PopScope()); }
+;
+
+interface_compound_header:
+                          compound_header
+                              { CurrentScope->IsStructScope = 1; $$ = $1; }
+;
+
+/* Interface members are method prototypes only: a declaration ending in
+ * ';'.  Bodies cannot be parsed here, and the completion action rejects
+ * anything that is not a function. */
+
+interface_member_declaration_list:
+                          interface_member_declaration
+                        | interface_member_declaration_list interface_member_declaration
+;
+
+interface_member_declaration:
+                          declaration_specifiers declarator ';'
+                              /* Data members are rejected when the body
+                               * completes (SetInterfaceMembers), which
+                               * reports at the offending declaration. */
+                              { $$ = NULL; }
 ;
 
 /**************/
@@ -481,7 +579,7 @@ semantic_declarator:      basic_declarator
 basic_declarator:         identifier
                               { $$ = NewDeclNode(Cg->tokenLoc, $1, &CurrentDeclTypeSpecs); }
                         | basic_declarator '[' INTCONST_SY /* constant_expression */ ']'
-                              { $$ = Array_Declarator(Cg->tokenLoc, $1, $3, 0); }
+                              { $$ = Array_Declarator(Cg->tokenLoc, $1, (int) $3.value.i, 0); }
                         | basic_declarator '[' ']'
                               { $$ = Array_Declarator(Cg->tokenLoc, $1, 0 , 1); }
                         | function_decl_header parameter_list ')'
@@ -497,7 +595,7 @@ function_decl_header:     basic_declarator '('
 abstract_declarator:      /* empty */
                               { $$ = NewDeclNode(Cg->tokenLoc, 0, &CurrentDeclTypeSpecs); }
                         | abstract_declarator '[' INTCONST_SY /* constant_expression */  ']'
-                              { $$ = Array_Declarator(Cg->tokenLoc, $1, $3, 0); }
+                              { $$ = Array_Declarator(Cg->tokenLoc, $1, (int) $3.value.i, 0); }
                         | abstract_declarator '[' ']'
                               { $$ = Array_Declarator(Cg->tokenLoc, $1, 0 , 1); }
 /***
@@ -557,6 +655,12 @@ initializer:              expression
                               { $$ = Initializer(Cg->tokenLoc, $2); }
                         | '{' initializer_list ',' '}'
                               { $$ = Initializer(Cg->tokenLoc, $2); }
+                        | '{' '}'
+                              /* An empty list: element counting in the
+                               * semantic actions decides whether the size
+                               * can be inferred ("cannot infer array size").
+                               */
+                              { $$ = Initializer(Cg->tokenLoc, NULL); }
 ;
 
 initializer_list:         initializer
@@ -795,9 +899,11 @@ expression:               conditional_expression
 /***********************/
 
 function_definition:      function_definition_header block_item_list '}'
-                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, $2); PopScope(); }
+                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, $2); PopScope();
+                                ResumeStructScopeAfterMethodBody(); }
                         | function_definition_header '}'
-                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, NULL); PopScope(); }
+                              { DefineFunction(Cg->tokenLoc, CurrentScope, $1, NULL); PopScope();
+                                ResumeStructScopeAfterMethodBody(); }
 ;
 
 function_definition_header: declaration_specifiers declarator '{'
@@ -998,26 +1104,27 @@ variable_identifier:      identifier
 ;
 
 identifier:               IDENT_SY
+                              { $$ = $1; }
+                        | RESERVED_SY
+                              {
+                                /* SemanticError, not SemanticParseError: the
+                                 * latter is gated by AllowSemanticParseErrors */
+                                SemanticError(Cg->tokenLoc, ERROR_S_RESERVED_WORD,
+                                              GetAtomString(atable, $1));
+                                $$ = $1;
+                              }
 ;
 
 constant:                 INTCONST_SY /* Temporary! */
-                              { $$ = (expr *) NewIConstNode(ICONST_OP, $1, TYPE_BASE_CINT); }
+                              { $$ = (expr *) NewNumericConstNode(ICONST_OP, &$1); }
                         | CFLOATCONST_SY /* Temporary! */
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, ' ');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
                         | FLOATCONST_SY /* Temporary! */
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'f');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
                         | FLOATHCONST_SY /* Temporary! */
-                              { int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'h');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
                         | FLOATXCONST_SY /* Temporary! */
-                              {int base = Cg->theHAL->GetFloatSuffixBase(Cg->tokenLoc, 'x');
-                                $$ = (expr *) NewFConstNode(FCONST_OP, $1, base);
-                              }
+                              { $$ = (expr *) NewNumericConstNode(FCONST_OP, &$1); }
 ;
 
 /***

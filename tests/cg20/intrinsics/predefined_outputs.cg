@@ -1,0 +1,23 @@
+// Cg 2.0 predefined output helper structures (Task 13).
+//
+// fragout and fragout_float are declarative helper-structure rows
+// installed only when the selected profile family defines them (the
+// fragment stage).  This fixture exercises both structures under the
+// matching glslf profile: main returns fragout, and a helper returns
+// fragout_float.
+
+fragout main(float4 color : COLOR0)
+{
+    fragout result;
+
+    result.col = color;
+    return result;
+}
+
+fragout_float extra(float value)
+{
+    fragout_float small;
+
+    small.col = value;
+    return small;
+}

@@ -75,6 +75,7 @@ int InitCgStruct(void)
     len = sizeof(Cg->options);
     while (--len >= 0)
         p[len] = 0;
+    Cg->options.languageVersion = CG_LANGUAGE_DEFAULT;
     Cg->bindings = NULL;
     Cg->allProfiles = NULL;
     Cg->theHAL = NULL;

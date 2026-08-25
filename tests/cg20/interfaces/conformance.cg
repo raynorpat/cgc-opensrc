@@ -1,0 +1,23 @@
+interface Scale
+{
+    float apply(float value);
+};
+
+struct Twice : Scale
+{
+    float apply(float value)
+    {
+        return value * 2.0;
+    }
+};
+
+float run(Scale operation, float value)
+{
+    return operation.apply(value);
+}
+
+float4 main(float4 p : POSITION) : POSITION
+{
+    Twice operation;
+    return p + run(operation, 1.0) * 0.0;
+}

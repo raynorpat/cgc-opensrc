@@ -83,6 +83,7 @@ void SemanticError(SourceLoc *loc, int num, const char *mess, ...);
 void InternalError(SourceLoc *loc, int num, const char *mess, ...);
 void SemanticWarning(SourceLoc *loc, int num, const char *mess, ...);
 void InformationalNotice(SourceLoc *loc, int num, const char *mess, ...);
+void SemanticNote(SourceLoc *loc, int num, const char *mess, ...);
 void FatalError(const char *mess, ...);
 
 int GetErrorCount(void);

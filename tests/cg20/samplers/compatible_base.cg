@@ -1,0 +1,39 @@
+// compatible_base.cg - a base "sampler" formal accepts every specific
+// sampler kind through in parameter passing.  Each specific-kind helper
+// mirrors an entry shape and forwards its program parameter to the shared
+// base-sampler helper.
+
+float4 fetch(sampler image, float4 fallback)
+{
+    return fallback;
+}
+
+float4 with1D(sampler1D image)
+{
+    return fetch(image, float4(1.0, 0.0, 0.0, 0.0));
+}
+
+float4 with2D(sampler2D image)
+{
+    return fetch(image, float4(0.0, 1.0, 0.0, 0.0));
+}
+
+float4 with3D(sampler3D image)
+{
+    return fetch(image, float4(0.0, 0.0, 1.0, 0.0));
+}
+
+float4 withCUBE(samplerCUBE image)
+{
+    return fetch(image, float4(0.0, 0.0, 0.0, 1.0));
+}
+
+float4 withRECT(samplerRECT image)
+{
+    return fetch(image, float4(0.5, 0.5, 0.5, 0.5));
+}
+
+float4 main(uniform sampler2D image) : COLOR0
+{
+    return fetch(image, float4(0.25, 0.5, 0.0, 1.0));
+}

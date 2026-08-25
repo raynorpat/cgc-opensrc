@@ -51,6 +51,9 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define OPENSL_TAG "cgc"
 
+#include "cg_types.h"
+#include "cg_numeric.h"
+
 // Typedefs for things defined here in "support.h":
 
 typedef struct dtype_rec dtype;
@@ -103,6 +106,9 @@ typedef enum subopkind {
     PICK( CAST_CS_OP,   "cast",    '(', UNARY_N, SUB_CS ), \
     PICK( CAST_CV_OP,   "castv",   '(', UNARY_N, SUB_CV ), \
     PICK( CAST_CM_OP,   "castm",   '(', UNARY_N, SUB_CM ), \
+    PICK( CAST_SHAPE_OP, "castshape", '(', UNARY_N, SUB_NONE ), \
+    PICK( CAST_STRUCT_OP, "caststruct", '(', UNARY_N, SUB_NONE ), \
+    PICK( ARRAY_LENGTH_OP, "length", '.', UNARY_N, SUB_NONE ), \
     PICK( NEG_OP,       "neg",     '-', UNARY_N, SUB_S  ), \
     PICK( NEG_V_OP,     "negv",    '-', UNARY_N, SUB_V  ), \
     PICK( POS_OP,       "pos",     '+', UNARY_N, SUB_S  ), \
@@ -122,7 +128,8 @@ typedef enum subopkind {
     PICK( MEMBER_SELECTOR_OP, "mselect", '.',   BINARY_N, SUB_NONE ), \
     PICK( ARRAY_INDEX_OP,     "index",   '[',   BINARY_N, SUB_NONE ), \
     PICK( FUN_CALL_OP,        "call",    '(',   BINARY_N, SUB_NONE ), \
-    PICK( FUN_BUILTIN_OP,     "builtin", 0,     BINARY_N, SUB_NONE ), \
+    PICK( FUN_INTRINSIC_OP,   "intrinsic", 0,   BINARY_N, SUB_NONE ), \
+    PICK( INTERFACE_CALL_OP,  "icall",   '(',   BINARY_N, SUB_NONE ), \
     PICK( FUN_ARG_OP,         "arg",     0,     BINARY_N, SUB_NONE ), \
     PICK( EXPR_LIST_OP,       "list",    0,     BINARY_N, SUB_NONE ), \
     PICK( MUL_OP,             "mul",     '*',   BINARY_N, SUB_S    ), \
@@ -196,6 +203,7 @@ typedef enum subopkind {
     PICK( ASSIGN_OP,          "assign",  '=',   BINARY_N, SUB_S    ), \
     PICK( ASSIGN_V_OP,        "assignv", '=',   BINARY_N, SUB_V    ), \
     PICK( ASSIGN_GEN_OP,      "assigngen", '=', BINARY_N, SUB_NONE ), \
+    PICK( ASSIGN_DYN_OP,      "assigndyn", '=', BINARY_N, SUB_NONE ), \
     PICK( ASSIGN_MASKED_KV_OP, "assignm", '=',  BINARY_N, SUB_KV  ), \
     \
     PICK( ASSIGNMINUS_OP,     "assign-", ASSIGNMINUS_SY, BINARY_N, SUB_S ), \
@@ -350,10 +358,12 @@ struct symb_rec {
     Symbol *symbol;
 };
 
-typedef union scalar_constant_rec {
-    float f;
-    int i;
-} scalar_constant;
+/*
+ * Scalar constants carry their canonical kind with the datum, so folding and
+ * lowering can honor typed literals without re-deriving width or signedness:
+ */
+
+typedef CgNumericValue scalar_constant;
 
 typedef struct constant_rec {
     nodekind kind;
@@ -377,6 +387,7 @@ typedef struct unary_rec {
     opcode op;
     int subop;
     expr *arg;
+    Type *targetType;   // Canonical cast target; NULL for non-cast nodes
 } unary;
 
 typedef struct binary_rec {
@@ -501,6 +512,7 @@ constant *NewIConstNode(opcode op, int fval, int base);
 constant *NewBConstNode(opcode op, int fval, int base);
 constant *NewFConstNode(opcode op, float fval, int base);
 constant *NewFConstNodeV(opcode op, float *fval, int len, int base);
+constant *NewNumericConstNode(opcode op, const CgNumericValue *value);
 unary *NewUnopNode(opcode op, expr *arg);
 unary *NewUnopSubNode(opcode op, int subop, expr *arg);
 binary *NewBinopNode(opcode op, expr *left, expr *right);
@@ -538,9 +550,12 @@ int SetTypeDomain(SourceLoc *loc, dtype *fType, int domain);
 int SetTypeMisc(SourceLoc *loc, dtype *fType, int misc);
 int SetTypePacked(SourceLoc *loc, dtype *fType);
 int SetStorageClass(SourceLoc *loc, dtype *fType, int storage);
+Type *ResolveScalarTypeSpecifier(SourceLoc *loc, int token, int isUnsigned);
 
 /********************************** Parser Semantic Rules: ***********************************/
 
+void SetPendingProfileSpecifier(SourceLoc *loc, int ident);
+void ClearPendingProfileSpecifier(void);
 expr *Initializer(SourceLoc *loc, expr *fExpr);
 expr *InitializerList(SourceLoc *loc, expr *list, expr *fExpr);
 expr *ArgumentList(SourceLoc *loc, expr *flist, expr *fExpr);
@@ -557,8 +572,14 @@ decl *Array_Declarator(SourceLoc *loc, decl *fDecl, int size, int Empty);
 Symbol *AddFormalParamDecls(Scope *fScope, decl *params);
 decl *SetFunTypeParams(Scope *fScope, decl *func, decl *params, decl *actuals);
 decl *FunctionDeclHeader(SourceLoc *loc, Scope *fScope, decl *func);
+void SuspendStructScopeForMethodBody(void);
+void ResumeStructScopeAfterMethodBody(void);
 
 Type *StructHeader(SourceLoc *loc, Scope *fScope, int ctype, int tag);
+Type *InterfaceHeader(SourceLoc *loc, Scope *fScope, int tag);
+Type *SetStructInterface(SourceLoc *loc, Scope *fScope, int tag, int interfaceAtom);
+Type *SetInterfaceMembers(SourceLoc *loc, Type *fType, Scope *members);
+void CheckInterfaceConformance(SourceLoc *loc, Type *fType);
 
 Symbol *DefineVar(SourceLoc *loc, Scope *fScope, int atom, Type *fType);
 Symbol *DefineTypedef(SourceLoc *loc, Scope *fScope, int atom, Type *fType);
@@ -573,11 +594,14 @@ expr *BasicVariable(SourceLoc *loc, int name);
 int IsLValue(const expr *fExpr);
 int IsConst(const expr *fExpr);
 int IsArrayIndex(const expr *fExpr);
-int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int IgnorePacked,
-                int Explicit);
-expr *CastScalarVectorMatrix(expr *fExpr, int fbase, int tbase, int len, int len2);
-int ConvertNumericOperands(int baseop, expr **lexpr, expr **rexpr, int lbase, int rbase,
-                           int llen, int rlen, int llen2, int rlen2);
+int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
+                expr **result, int IgnorePacked, int Explicit,
+                int AllowShapeConversions);
+expr *CastScalarVectorMatrix(expr *fExpr, CgScalarKind fkind, CgScalarKind tkind,
+                             int len, int len2);
+Type *ConvertNumericOperands(int baseop, expr **lexpr, expr **rexpr,
+                             Type *lType, Type *rType,
+                             int llen, int rlen, int llen2, int rlen2);
 expr *CheckBooleanExpr(SourceLoc *loc, expr *fExpr, int AllowVector);
 
 expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int IntegralOnly);

@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\raynorpat\cgc\build-win32\CMakeFiles\ba56d7f9a50a7e383d44db061a99cf15\regenerate_stdlib.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="D:\raynorpat\cgc\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="D:\raynorpat\cgc\build-win32\CMakeFiles\regenerate_stdlib" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{0626BF6F-6873-31F2-A479-2126545C2F81}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

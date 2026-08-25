@@ -1,4 +1,4 @@
-﻿find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
+find_program(GLSLANG_VALIDATOR NAMES glslangValidator)
 if(NOT GLSLANG_VALIDATOR)
     message(STATUS
         "glslangValidator not found; GLSL source validation tests are disabled")
@@ -160,6 +160,492 @@ function(add_glsl_boundary name profile source stage)
     add_glsl_validation(${name} ${profile} ${stage} ${source})
 endfunction()
 
+# Every Cg 2.0 conformance test registers through one of these two
+# helpers so the global CG20_TEST_NAMES property stays complete; the
+# cg20_manifest cross-check requires every non-out-of-scope manifest
+# row to name exactly one name recorded here.  Everything after the
+# test name is the add_test COMMAND tail (cmake driver script plus its
+# -D definitions).
+
+function(add_cg20_success name)
+    set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${name}")
+    add_test(NAME "${name}" COMMAND ${CMAKE_COMMAND} ${ARGN})
+endfunction()
+
+function(add_cg20_failure name)
+    set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${name}")
+    add_test(NAME "${name}" COMMAND ${CMAKE_COMMAND} ${ARGN})
+endfunction()
+
+# Output transaction (Task 18): a failed compilation must preserve the
+# pre-existing destination and leave no ".cgc-tmp-*" temporary behind.
+
+add_cg20_failure(cg20_output_preserved_on_failure
+    -DCGC=$<TARGET_FILE:cgc>
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DDESTINATION=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_output_preserved_on_failure.out"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_output_transaction.cmake
+)
+
+# Layered diagnostics: count-pinned single reports for poisoned
+# operands and dynamic-array assignment intercepts.
+
+add_cg20_failure(cg20_poison_return_single_diagnostic
+    -DCGC=$<TARGET_FILE:cgc>
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/poison_return.cg
+    -DCODE=1008
+    -DCOUNT=1
+    -DFORBID=C1016
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic_count.cmake
+)
+add_cg20_failure(cg20_dynamic_array_single_diagnostic
+    -DCGC=$<TARGET_FILE:cgc>
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/dynamic_array_element_mismatch.cg
+    -DCODE=1035
+    -DCOUNT=1
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic_count.cmake
+)
+
+add_cg20_success(cg20_smoke
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/profile/smoke.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_scalar_types
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/types/scalars.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_literal_suffixes
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/literals/suffixes.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_literal_int_forms
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/literals/int_forms.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_literal_float_forms
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/literals/float_forms.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_literal_bool
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/literals/bool_literals.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_type_compile_time
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/types/compile_time.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_type_vectors_matrices
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/types/vectors_matrices.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_nonfloat_matrix_typedef
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/types/nonfloat_matrix_typedef.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_conversions_numeric
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/conversions/numeric.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_conversions_aggregate
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/conversions/aggregate_casts.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_conversion_struct_scalar
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/conversions/struct_scalar.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_conversion_bool_int
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/conversions/bool_int.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_conversion_reshape
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/conversions/reshape.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_conversion_narrow_warn
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/conversions/narrow_warn.cg
+    "-DMESSAGE=implicit.conversion.may.lose.information"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_failure(cg20_conversion_reshape_mismatch
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reshape_mismatch.cg
+    -DCODE=1033 -DEXPECTED_LINE=13 -DMESSAGE=cast.not.allowed
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_remainder_float_diag
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/remainder_float.cg
+    -DCODE=1021 -DEXPECTED_LINE=9 "-DMESSAGE=operands.to.\"%\".must.be.integral"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_success(cg20_unsized_array
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/arrays/unsized.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_arrays_nested_struct
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/arrays/nested_struct.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_array_length
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/arrays/length.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_control_flow
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/statements/control_flow.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_discard_generic
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/statements/discard.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_swizzles
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/expressions/swizzles.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_failure(cg20_unsized_initializer
+    -DCGC=$<TARGET_FILE:cgc>
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/unsized_initializer.cg
+    -DCODE=1117 -DEXPECTED_LINE=3
+    "-DREASON=cannot.infer.array.size"
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_unsized_initializer.txt"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_generic_failure.cmake
+)
+add_cg20_success(cg20_static_global
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/profile/static_global.cg
+    "-DFORBID=hidden"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_sampler_base_compat
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/samplers/compatible_base.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_sampler_rect
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/samplers/rect.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_failure(cg20_sampler_assignment
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/sampler_assignment.cg
+    -DCODE=1150 -DMESSAGE=sampler.values
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_sampler_incompatible
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/sampler_incompatible.cg
+    -DCODE=1102 "-DMESSAGE=incompatible.type.for.parameter"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_sampler_varying_global
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/sampler_varying_global.cg
+    -DCODE=1151 "-DMESSAGE=sampler.variables.must.be.global.uniforms"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_success(cg20_sampler_helper_parameter
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/samplers/helper_parameter.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+
+# The sampler-to-numeric cast rejection is a language conversion rule:
+# it fires identically under the neutral generic profile, which is the
+# strongest witness that no profile gate is involved.
+
+add_cg20_failure(cg20_invalid_conversion
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/invalid_conversion.cg
+    -DCODE=1033 "-DMESSAGE=cast.not.allowed"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_reserved_word
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word.cg
+    -DCODE=1300 -DMESSAGE=reserved.word
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_reserved_word_case
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word_case.cg
+    -DCODE=1300 -DEXPECTED_LINE=7 -DMESSAGE=reserved.word
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_literal_overflow
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/literal_overflow.cg
+    -DCODE=130
+    "-DMESSAGE=literal_overflow\\.cg\\(3\\).*literal_overflow\\.cg\\(4\\)"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_return_needs_semantic
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/return_needs_semantic.cg
+    -DCODE=5121 -DEXPECTED_LINE=5 "-DMESSAGE=must.declare.a.semantic.on.its.return.value"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
+# Entry return semantics are scalar/vector only (Task 1b ruling): a
+# matrix entry return carries its semantic to the profile binder, which
+# rejects it exactly like a hand-written struct matrix member.  Valid Cg
+# IR, rejected backend -- the generic profile is itself the rejecting
+# backend here, so no generic success twin can exist for this row.
+
+add_cg20_failure(cg20_matrix_return_reject
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/matrix_return.cg
+    -DCODE=5107 -DEXPECTED_LINE=0 "-DMESSAGE=not.a.scalar.or.vector"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_success(cg20_legacy_keywords
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-version\;1.1"
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/profile/legacy_keywords.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_pp_object_macros
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/pp/object_macros.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_pp_function_macros
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/pp/function_macros.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_pp_conditionals
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/pp/conditionals.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_pp_include
+    -DCGC=$<TARGET_FILE:cgc>
+    -DMAIN_SOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/pp/include_main.cg
+    -DINCLUDED_SOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/pp/included_header.cg
+    "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20-include-work"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_include.cmake)
+add_cg20_success(cg20_default_domains
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/profile/default_domains.cg
+    "-DMESSAGE=//semantic globalTint.*//var float4 globalTint.*-1 : 1.*//var float4 position : [$]vin[.]POSITION"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_input_alias
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/profile/input_alias.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_global_varying
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/profile/global_varying.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_failure(cg20_output_alias
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/output_alias.cg
+    -DCODE=5122 "-DMESSAGE=outputs.conflict.at.semantic"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_semantic_case_collision
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/semantic_case_collision.cg
+    -DCODE=5122 "-DMESSAGE=outputs.conflict.at.semantic"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_success(cg20_interface_conformance
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/interfaces/conformance.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_interface_dispatch
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/interfaces/dispatch.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_overload_defaults
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/overloads/defaults.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+
+# Task 19 profile-reject fixtures: valid Cg 2.0 sources (generic must
+# compile each) whose GLSL lowering is rejected at profile validation
+# with a specific unsupported reason instead of reaching codegen.
+
+add_cg20_success(cg20_glsl_interface_dispatch_generic
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/glsl_interface_dispatch.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_failure(glslv_glsl_interface_dispatch
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslv
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/glsl_interface_dispatch.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_glsl_interface_dispatch.glsl"
+    -DCODE=6200 -DEXPECTED_LINE=19 -DREASON=interface
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
+
+add_cg20_success(cg20_glsl_unsized_array_generic
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/glsl_unsized_array.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_failure(glslv_glsl_unsized_array
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslv
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/glsl_unsized_array.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_glsl_unsized_array.glsl"
+    -DCODE=6200 -DEXPECTED_LINE=6 "-DREASON=dynamic.unsized.array"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
+
+# Task 9 carry-in pin: samplerRECT has no GLSL spelling; rejection is
+# anchored in the language sampler rules (post pid-gate retirement).
+add_cg20_failure(glslf_sampler_rect
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/samplers/rect.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_rect.glsl"
+    -DCODE=6200 -DEXPECTED_LINE=4 -DREASON=samplerRECT
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
+
+# Cg 2.0 reachability fixtures (Task 16): reachable.cg compiles through
+# generic; unreachable_profile_feature keeps a glslv-rejected operation
+# inside an uncalled helper and must still generate code under glslv.
+
+add_cg20_success(cg20_reachable
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/ir/reachable.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+
+# Compiler-level normalized golden (Task 17): under the default Cg 2.0
+# language the generic profile emits the verified module as normalized
+# Cg IR; reachable.cg pins its complete normalized output byte-for-byte.
+
+add_cg20_success(cg20_ir_normalized
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/ir/reachable.cg
+    -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/cg20/ir/normalized.expected
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_ir_normalized.txt"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+if(GLSLANG_VALIDATOR)
+    set(cg20_unreachable_validator "-DVALIDATOR=${GLSLANG_VALIDATOR}")
+else()
+    set(cg20_unreachable_validator "")
+endif()
+add_cg20_success(cg20_unreachable_profile_feature
+    -DCGC=$<TARGET_FILE:cgc>
+    -DPROFILE=glslv
+    -DSTAGE=vert
+    -DENTRY=main
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/ir/unreachable_profile_feature.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_unreachable_profile_feature.glsl"
+    "-DMESSAGE=#version 110"
+    ${cg20_unreachable_validator}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake)
+
+# Cg 2.0 standard-library fixtures (Task 13): the numeric and texture
+# families compile through generic only; predefined_outputs exercises
+# the fragment-family helper structures under glslf and rejects them
+# under glslv.
+
+add_cg20_success(cg20_intrinsic_numeric
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/numeric.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_intrinsic_out_params
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/out_params.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_intrinsic_texture_families
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/texture_families.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+add_cg20_success(cg20_intrinsic_debug
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/debug.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+# The fragment-family helper structures answer only under glslf; both
+# rejecting profiles report the unknown-profile-specifier diagnostic at
+# the first use of the undeclared structure name.
+
+add_cg20_success(cg20_intrinsic_predefined_outputs_glslf
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/predefined_outputs.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+
+set(cg20_predefined_outputs_source
+    ${PROJECT_SOURCE_DIR}/tests/cg20/intrinsics/predefined_outputs.cg)
+foreach(reject_profile glslv generic)
+    add_cg20_failure(cg20_intrinsic_predefined_outputs_reject_${reject_profile}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=${reject_profile}
+        -DSOURCE=${cg20_predefined_outputs_source}
+        -DCODE=1165
+        -DREASON=does.not.name.a.known.profile
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_helper_reject.cmake
+    )
+endforeach()
+
+# Profile-qualified overload resolution: each stage must select its own
+# exact overload and pass glslang validation on the generated program.
+# The same fixture run under the neutral generic profile must resolve to
+# the open-profile overload, pinning the last tier of the precedence
+# rule from the language side.
+
+function(add_cg20_profile_selection name profile stage entry marker)
+    if(GLSLANG_VALIDATOR)
+        set(cg20_profile_validator "-DVALIDATOR=${GLSLANG_VALIDATOR}")
+    else()
+        set(cg20_profile_validator "")
+    endif()
+    add_cg20_success(${name}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=${profile}
+        -DSTAGE=${stage}
+        -DENTRY=${entry}
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/overloads/profile.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
+        "-DMESSAGE=${marker}"
+        ${cg20_profile_validator}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake
+    )
+endfunction()
+add_cg20_profile_selection(cg20_profile_overload_vertex glslv vert mainV
+    "0\\.25, *0\\.5, *0\\.5, *1\\.0")
+add_cg20_profile_selection(cg20_profile_overload_fragment glslf frag mainF
+    "0\\.875, *0\\.5, *0\\.5, *1\\.0")
+add_cg20_success(cg20_profile_overload_open
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DENTRY=mainV
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/overloads/profile.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_profile_overload_open.glsl"
+    "-DMESSAGE=0\\.625000"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake)
+
+add_cg20_failure(cg20_default_after_optional
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/default_after_optional.cg
+    -DCODE=1160 -DMESSAGE=default.argument.for
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_ambiguous_overload
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/ambiguous_overload.cg
+    -DCODE=1101
+    "-DMESSAGE=ambiguous.overloaded.function.reference"
+    "-DNOTES=candidate #1: float probe(float);candidate #2: float probe(int)"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
+# Profile-failure call-path notes (Task 18): the primary diagnostic at
+# the rejected operation is followed by one note per hop back to the
+# entry, naming second, first, then main in order.  The rejection is a
+# generation-time decision, so this runner must not pass -nocode.
+
+add_cg20_failure(cg20_profile_call_path
+    -DCGC=$<TARGET_FILE:cgc>
+    -DPROFILE=glslv
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/profile_call_path.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_profile_call_path.glsl"
+    -DCODE=6202
+    -DEXPECTED_LINE=10
+    -DMESSAGE=discard
+    "-DNOTES=profile failure in function second;called from function first;reached from entry function main"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_diagnostic.cmake
+)
+add_cg20_failure(cg20_interface_data_member
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/interface_data.cg
+    -DCODE=1155 "-DMESSAGE=data.members.not.allowed.in.interface"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_interface_missing_method
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/interface_missing_method.cg
+    -DCODE=1156 "-DMESSAGE=does.not.implement.interface.method"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_interface_bad_signature
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/interface_bad_signature.cg
+    -DCODE=1157 "-DMESSAGE=does.not.match.interface.method"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
@@ -217,12 +703,192 @@ add_test(
     COMMAND glsl_semantics_unit
 )
 
+# Real GlslLowerCgIR driven by direct CgIRModule construction: the
+# matrix group-write recognizer branches (distinct-value coordinate
+# validation, producer-marked count cap, elementwise assignment shape)
+# have no shader-level source that shares one base node across sibling
+# stores, so they are covered at the unit layer.
+
+add_executable(glsl_lower_ir_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/glsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/glsl_hal.c
+    ${PROJECT_SOURCE_DIR}/glsl_ir.c
+    ${PROJECT_SOURCE_DIR}/glsl_lower.c
+    ${PROJECT_SOURCE_DIR}/glslf_hal.c
+    ${PROJECT_SOURCE_DIR}/glslv_hal.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    glsl_lower_ir_test.c
+)
+
+target_include_directories(glsl_lower_ir_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(glsl_lower_ir_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME glsl_lower_ir_unit
+    COMMAND glsl_lower_ir_unit
+)
+
+add_test(
+    NAME glsl_lower_ir_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:glsl_lower_ir_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+
+add_executable(cg_language_unit
+    ${PROJECT_SOURCE_DIR}/language.c
+    cg_language_test.c
+)
+target_include_directories(cg_language_unit PRIVATE ${PROJECT_SOURCE_DIR})
+set_target_properties(cg_language_unit PROPERTIES
+    C_STANDARD 90 C_STANDARD_REQUIRED YES C_EXTENSIONS YES)
+add_test(NAME cg_language_unit COMMAND cg_language_unit)
+
+add_executable(cg_types_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    cg_types_test.c
+)
+target_include_directories(cg_types_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+set_target_properties(cg_types_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_types_unit
+    COMMAND cg_types_unit
+)
+
+add_executable(cg_overload_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_overload.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    cg_overload_test.c
+)
+target_include_directories(cg_overload_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+set_target_properties(cg_overload_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_overload_unit
+    COMMAND cg_overload_unit
+)
+
+add_executable(cg_stdlib_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    cg_stdlib_test.c
+)
+target_include_directories(cg_stdlib_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+set_target_properties(cg_stdlib_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_stdlib_unit
+    COMMAND cg_stdlib_unit
+)
+
+add_executable(cg_ir_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_lower.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_print.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_reach.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    cg_ir_test.c
+)
+target_include_directories(cg_ir_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+# The unit suite hand-builds invalid modules to exercise the verifier's
+# controlled failure paths; CG_IR_TEST_SEAMS lets CgIRFail record its
+# diagnostic in assertion-enabled builds instead of aborting.  Compiler
+# binaries keep the loud abort for lowered-module invariant breaks.
+target_compile_definitions(cg_ir_unit PRIVATE
+    CG_IR_TEST_SEAMS=1
+)
+set_target_properties(cg_ir_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+add_test(
+    NAME cg_ir_unit
+    COMMAND cg_ir_unit
+)
+
+add_test(
+    NAME cg_ir_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:cg_ir_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+
 add_generic_regression(position position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
 add_generic_regression(reflection reflection.cg
-    aa2c396563920d50a7b45a6a06c359ec865faa338de4ad42294143a1243b6d8b)
+    54c9eafeef857ed7d520e5e487293e0ff623e6463363edced7bde9877c5b159e)
 add_generic_regression(vertexlight vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
+# Hashes updated by "Parse Cg 2.0 type keywords": the new fixed keyword
+# atoms shift dynamic atom IDs, which reorders top-level declarations in
+# generic output.  Content is unchanged (verified equal modulo declaration
+# order against pre-change builds).
+# Hash updated by "Model Cg 2.0 sampler types": interning the six sampler
+# type-name atoms during symbol-table initialization shifts dynamic atom
+# IDs, which reorders top-level declarations in generic output.  Content
+# is unchanged (verified byte-equal modulo declaration order against the
+# pre-change build).
+# Hash updated by "Add the Cg 2.0 intrinsic catalog": the FUN_BUILTIN_OP
+# opcode was renamed FUN_INTRINSIC_OP, so the node dump for the one
+# intrinsic call in reflection.cg now prints "intrinsic" instead of
+# "builtin".  No other output content changed.
+# These regressions run with explicit -version 1.1 (see check_generic.cmake):
+# their hashes pin the historical generic tree dump, byte-identical between
+# default-language and 1.1 compiles for these legacy inputs, while Cg 2.0
+# emission switched to the normalized IR printer ("Emit normalized Cg IR
+# from generic").
 add_generic_regression(vertexlight4 vertexlight4.cg
     8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
@@ -231,7 +897,7 @@ add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg
     0a03690bd59c1ed3ed7f8799845b4468157ff57743c72bb2bf0cd6d54345bea1)
 add_generic_regression(helper_discard
     tests/glsl/diagnostics/generic_helper_discard.cg
-    4afadd12ac3af8acdb484c0e26a854dfa0fb7f9e3d8d31d64bf6ebf37e4cf058)
+    bd6b290f26f99e5aba011e12059163aa3648a872710b0f04f40b654fe8b73afc)
 add_generic_diagnostic(generic_matrix_scalar2_baseline
     tests/glsl/diagnostics/generic_matrix_scalar2.cg 1035 9
     "assignment.of.incompatible.types")
@@ -270,6 +936,14 @@ add_glsl_fixture(glslv_passthrough glslv
 add_glsl_fixture(glslf_passthrough glslf
     tests/glsl/profile/fp_passthrough.cg
     tests/glsl/profile/fp_passthrough.expected)
+
+add_glsl_fixture(glslv_scalar_return glslv
+    tests/glsl/profile/vp_scalar_return.cg
+    tests/glsl/profile/vp_scalar_return.expected)
+
+add_glsl_fixture(glslf_scalar_return glslf
+    tests/glsl/profile/fp_scalar_return.cg
+    tests/glsl/profile/fp_scalar_return.expected)
 
 add_glsl_fixture(glslf_control glslf
     tests/glsl/expressions/fp_control.cg
@@ -331,49 +1005,151 @@ add_glsl_profile_failure(glslv_sampler glslv
     tests/glsl/textures/vp_sampler.cg 6202 7
     "texture.sampling")
 
-add_glsl_profile_failure(glslf_local_sampler glslf
-    tests/glsl/textures/fp_local_sampler.cg 6208 6
-    "samplers.must.be.uniforms")
+# Sampler pins updated by "Lower Cg IR to GLSL 1.10" (Task 19): the GLSL
+# pid-gate around the Cg 2.0 language sampler rules was retired, so these
+# rejections now surface at the language layer with the shared 1150-1154
+# families instead of the lowering-only 6208 family.  Lines shift where
+# the language rule anchors at the declaration/return rather than the
+# first use.  Content each test pins is unchanged: one diagnostic, same
+# rejected program.  These registrations run through add_cg20_failure so
+# the conformance-manifest cross-check can cite them by name.
 
-add_glsl_profile_failure(glslf_sampler_array glslf
-    tests/glsl/textures/fp_sampler_array.cg 6208 3
-    "sampler.arrays.or.aggregates")
+add_cg20_failure(glslf_local_sampler
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_local_sampler.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_local_sampler.glsl"
+    -DCODE=1151 -DEXPECTED_LINE=6
+    "-DREASON=global.uniforms.or.function.parameters"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_default glslf
-    tests/glsl/textures/fp_sampler_default.cg 1056 3
-    "invalid.initialization")
+add_cg20_failure(glslf_sampler_array
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_array.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_array.glsl"
+    -DCODE=1151 -DEXPECTED_LINE=3
+    "-DREASON=global.uniforms.or.function.parameters"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_helper_return glslf
-    tests/glsl/textures/fp_sampler_helper_return.cg 6208 3
-    "sampler.helper.result")
+add_cg20_failure(glslf_sampler_default
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_default.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_default.glsl"
+    -DCODE=1056 -DEXPECTED_LINE=3
+    "-DREASON=invalid.initialization"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_conditional glslf
-    tests/glsl/textures/fp_sampler_conditional.cg 6208 7
-    "texture.sampler.argument.must.be.a.direct.bound.uniform")
+add_cg20_failure(glslf_sampler_helper_return
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_helper_return.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_helper_return.glsl"
+    -DCODE=1152 -DEXPECTED_LINE=5
+    "-DREASON=cannot.return.a.sampler.value"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_assignment glslf
-    tests/glsl/textures/fp_sampler_assignment.cg 6208 7
-    "opaque.sampler.expression")
+add_cg20_failure(glslf_sampler_conditional
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_conditional.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_conditional.glsl"
+    -DCODE=1154 -DEXPECTED_LINE=7
+    "-DREASON=samplers.are.not.allowed.in.conditional.selection"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_cast glslf
-    tests/glsl/textures/fp_sampler_cast.cg 1033 5
-    "cast.not.allowed")
+add_cg20_failure(glslf_sampler_assignment
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_assignment.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_assignment.glsl"
+    -DCODE=1150 -DEXPECTED_LINE=7
+    "-DREASON=assignment.of.sampler.values.is.not.allowed"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_constructor glslf
-    tests/glsl/textures/fp_sampler_constructor.cg 5502 5
-    "requires.numeric.or.bool.elements")
+add_cg20_failure(glslf_sampler_cast
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_cast.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_cast.glsl"
+    -DCODE=1033 -DEXPECTED_LINE=5
+    "-DREASON=cast.not.allowed"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_comparison glslf
-    tests/glsl/textures/fp_sampler_comparison.cg 1022 8
-    "must.be.numeric")
+add_cg20_failure(glslf_sampler_constructor
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_constructor.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_constructor.glsl"
+    -DCODE=5502 -DEXPECTED_LINE=5
+    "-DREASON=requires.numeric.or.bool.elements"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_helper_parameter glslf
-    tests/glsl/textures/fp_sampler_helper_parameter.cg 6208 1
-    "samplers.must.be.uniforms")
+add_cg20_failure(glslf_sampler_comparison
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_comparison.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_comparison.glsl"
+    -DCODE=1022 -DEXPECTED_LINE=8
+    "-DREASON=must.be.numeric"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
 
-add_glsl_profile_failure(glslf_sampler_struct glslf
-    tests/glsl/textures/fp_sampler_struct.cg 6208 1
-    "samplers.must.be.uniforms")
+# SAMPLER-HELPER-PARAM-CAP: the glslf backend caps sampler-typed
+# helper formals to plain uniform declarations; the language layer
+# itself permits them, witnessed by the generic success twin
+# cg20_sampler_helper_parameter.  This legacy GLSL fixture cannot be
+# its own twin because generic's output-only TEXCOORD binding rejects
+# its entry shape first (C5108), for reasons unrelated to samplers.
+
+add_cg20_failure(glslf_sampler_helper_parameter
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_helper_parameter.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_helper_parameter.glsl"
+    -DCODE=6208 -DEXPECTED_LINE=1
+    "-DREASON=samplers.must.be.uniforms"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
+
+add_cg20_failure(glslf_sampler_struct
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/textures/fp_sampler_struct.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslf_sampler_struct.glsl"
+    -DCODE=1151 -DEXPECTED_LINE=1
+    "-DREASON=global.uniforms.or.function.parameters"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake)
+
+# Conformance-manifest cross-check (Task 20): every non-out-of-scope
+# row of conformance.csv must name one CTest registered through
+# add_cg20_success/add_cg20_failure (or one unit binary), requirement
+# ids must be unique, and cg_stdlib.def must keep assigning unique
+# intrinsic opcodes.  Registered after the LAST add_cg20_* call above;
+# any future add_cg20_* registration must stay above this point or be
+# folded into one of the helpers so the snapshot stays complete.
+
+# A few manifest rows answer their rule with a pre-existing suite test
+# that predates the add_cg20_* helpers: the language, type, overload,
+# and stdlib unit binaries, the historical generic golden for
+# position.cg (the -version 1.1 opt-in row), and the two GLSL golden
+# passthrough fixtures pinning mandatory vertex/fragment outputs.
+# Record them so the cross-check sees one witness per cited row.
+
+foreach(cg20_external_test
+        cg_language_unit cg_types_unit cg_overload_unit cg_stdlib_unit
+        generic_position glslv_passthrough glslf_passthrough)
+    set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${cg20_external_test}")
+endforeach()
+
+get_property(cg20_test_names GLOBAL PROPERTY CG20_TEST_NAMES)
+add_test(
+    NAME cg20_manifest
+    COMMAND ${CMAKE_COMMAND}
+        -DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/cg20/conformance.csv
+        "-DTEST_NAMES=${cg20_test_names}"
+        -DPIN_CATALOG=${PROJECT_SOURCE_DIR}/cg_stdlib.def
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_manifest.cmake
+)
 
 add_glsl_profile_failure(glslf_invalid_texture_coord glslf
     tests/glsl/textures/fp_invalid_coord.cg 1102 6
@@ -578,6 +1354,17 @@ add_glsl_fixture(glslv_matrix_selectors_once glslv
     tests/glsl/expressions/vp_matrix_selectors_once.cg
     tests/glsl/expressions/vp_matrix_selectors_once.expected)
 
+# Explicit elementwise matrix stores (fix round 1): mixed-coordinate
+# adjacent stores lower independently with their own coordinates, and a
+# sixteen-store fill passes the four-component producer group cap.
+add_glsl_fixture(glslv_matrix_element_stores glslv
+    tests/glsl/expressions/vp_matrix_element_stores.cg
+    tests/glsl/expressions/vp_matrix_element_stores.expected)
+
+add_glsl_fixture(glslf_matrix_element_stores glslf
+    tests/glsl/expressions/fp_matrix_element_stores.cg
+    tests/glsl/expressions/fp_matrix_element_stores.expected)
+
 add_glsl_fixture(glslv_aggregate_defaults glslv
     tests/glsl/uniforms/vp_aggregate_defaults.cg
     tests/glsl/uniforms/vp_aggregate_defaults.expected)
@@ -606,6 +1393,18 @@ add_glsl_fixture(glslv_uniform_struct_nested glslv
     tests/glsl/uniforms/vp_uniform_struct_nested.cg
     tests/glsl/uniforms/vp_uniform_struct_nested.expected)
 
+# Expected output updated by "Add the Cg 2.0 intrinsic catalog": interning
+# the standard-library catalog atoms during symbol-table initialization
+# shifts dynamic atom IDs, and symbol trees order by bit-reversed atom ID,
+# so the two colliding cg_gl_Data members swap positions in the golden.
+# Content is unchanged: the emitted declaration/usage multisets are equal
+# to the pre-change golden modulo that ordering (verified against an
+# af70094 baseline build).
+# Updated again by "Gate matrix write fallback on producer markers" (merge
+# of opengl-arb-profiles): ARB profile registration interns further atoms
+# at startup, shifting the same tie-break once more.  Re-verified as
+# order-only: member declarations swap and the commutative addition swaps
+# operands with it; token multiset equality proven against db3d1a6.
 add_glsl_fixture(glslv_uniform_struct_collision glslv
     tests/glsl/uniforms/vp_uniform_struct_collision.cg
     tests/glsl/uniforms/vp_uniform_struct_collision.expected)
@@ -638,6 +1437,9 @@ add_glsl_fixture(glslv_function_local_collision glslv
     tests/glsl/profile/vp_function_local_collision.cg
     tests/glsl/profile/vp_function_local_collision.expected)
 
+add_glsl_diagnostic(glslv_missing_return_semantic glslv
+    tests/glsl/diagnostics/vp_missing_return_semantic.cg 5121 1
+    "must.declare.a.semantic.on.its.return.value")
 add_glsl_diagnostic(glslv_non_square_diagnostic glslv
     tests/glsl/diagnostics/vp_non_square.cg 6209 2
     "square.matrix,.found.*float4x3")
@@ -722,6 +1524,14 @@ add_glsl_profile_failure(glslv_discard glslv
 add_glsl_profile_failure(glslv_impure_array_aggregate glslv
     tests/glsl/diagnostics/vp_impure_array_aggregate.cg 6201 28
     "side-effecting.aggregate.with.arrays")
+# Fix round 2: a producer group write (`_m` selector stores with
+# selectorRead-marked targets) followed by any fifth consecutive
+# matching-shape element store cannot fall back to elementwise
+# lowering -- each whole-vector value would print into one scalar
+# component target -- so the count cap keeps the loud failure.
+add_glsl_profile_failure(glslv_matrix_group_write_cap glslv
+    tests/glsl/diagnostics/vp_matrix_group_write_cap.cg 6201 13
+    "GLSL.1.10.program")
 add_glsl_profile_failure(glslv_builtin_position_width glslv
     tests/glsl/diagnostics/vp_builtin_position_width.cg 6203 2 POSITION)
 add_glsl_profile_failure(glslf_builtin_position_width glslf
@@ -754,9 +1564,13 @@ add_glsl_profile_failure(glslv_duplicate_exact_input_same glslv
 add_glsl_profile_failure(glslv_duplicate_exact_input_type glslv
     tests/glsl/diagnostics/vp_duplicate_exact_input_type.cg 6204 6
     "interface.conflicts")
+# Exact-duplicate outputs moved from the GLSL interface-conflict check to
+# the language-level output-alias rule ("Enforce Cg program interface
+# semantics"): same canonical semantic, so the second declaration is
+# rejected before any profile lowering.
 add_glsl_profile_failure(glslv_duplicate_exact_output glslv
-    tests/glsl/diagnostics/vp_duplicate_exact_output.cg 6204 4
-    "interface.conflicts")
+    tests/glsl/diagnostics/vp_duplicate_exact_output.cg 5122 4
+    "outputs.conflict.at.semantic")
 add_glsl_profile_failure(glslf_duplicate_exact_input_same glslf
     tests/glsl/diagnostics/fp_duplicate_exact_input_same.cg 6204 6
     "interface.conflicts")
@@ -764,8 +1578,8 @@ add_glsl_profile_failure(glslf_duplicate_exact_input_type glslf
     tests/glsl/diagnostics/fp_duplicate_exact_input_type.cg 6204 6
     "interface.conflicts")
 add_glsl_profile_failure(glslf_duplicate_exact_output glslf
-    tests/glsl/diagnostics/fp_duplicate_exact_output.cg 6204 3
-    "interface.conflicts")
+    tests/glsl/diagnostics/fp_duplicate_exact_output.cg 5122 3
+    "outputs.conflict.at.semantic")
 add_glsl_failure(glslv_constant_remainder
     tests/glsl/diagnostics/vp_constant_remainder.cg 6 remainder)
 add_glsl_failure(glslv_constant_shift_left

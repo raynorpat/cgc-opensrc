@@ -52,6 +52,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "glsl_hal.h"
 
 dtype CurrentDeclTypeSpecs = { 0, };
 
@@ -120,72 +121,130 @@ symb *NewSymbNode(opcode op, Symbol *fSymb)
 } // NewSymbNode
 
 /*
- * NewIConstNode() - Create a new integer constant node.
+ * lLegacyBaseForKind() - Legacy four-bit base caching a canonical scalar
+ *                        kind in "constant.subop".  Kinds without a base of
+ *                        their own share the int or float legacy base.
  *
  */
- 
-constant *NewIConstNode(opcode op, int fval, int base)
+
+static int lLegacyBaseForKind(CgScalarKind kind)
+{
+    switch (kind) {
+    case CG_SCALAR_CFLOAT:
+        return TYPE_BASE_CFLOAT;
+    case CG_SCALAR_CINT:
+        return TYPE_BASE_CINT;
+    case CG_SCALAR_BOOL:
+        return TYPE_BASE_BOOLEAN;
+    case CG_SCALAR_CHAR:
+    case CG_SCALAR_UCHAR:
+    case CG_SCALAR_SHORT:
+    case CG_SCALAR_USHORT:
+    case CG_SCALAR_INT:
+    case CG_SCALAR_UINT:
+    case CG_SCALAR_LONG:
+    case CG_SCALAR_ULONG:
+        return TYPE_BASE_INT;
+    case CG_SCALAR_FIXED:
+    case CG_SCALAR_HALF:
+    case CG_SCALAR_FLOAT:
+    case CG_SCALAR_DOUBLE:
+        return TYPE_BASE_FLOAT;
+    default:
+        return TYPE_BASE_UNDEFINED_TYPE;
+    }
+} // lLegacyBaseForKind
+
+/*
+ * lKindForLegacyBase() - Canonical kind a legacy constructor's base stands
+ *                        for; unknown bases keep the compile-time kinds.
+ *
+ */
+
+static CgScalarKind lKindForLegacyBase(int base)
+{
+    switch (base) {
+    case TYPE_BASE_CFLOAT:
+        return CG_SCALAR_CFLOAT;
+    case TYPE_BASE_BOOLEAN:
+        return CG_SCALAR_BOOL;
+    case TYPE_BASE_INT:
+        return CG_SCALAR_INT;
+    case TYPE_BASE_FLOAT:
+        return CG_SCALAR_FLOAT;
+    default:
+        return CG_SCALAR_CINT;
+    }
+} // lKindForLegacyBase
+
+/*
+ * NewNumericConstNode() - Create a constant node holding one typed value.
+ *
+ * The node type comes from the interned standard types for the value's
+ * canonical kind, and the legacy subop cache records the old four-bit base
+ * when the kind has one.
+ *
+ */
+
+constant *NewNumericConstNode(opcode op, const CgNumericValue *value)
 {
     constant *pconst;
 
     assert(NodeKind[op] == CONST_N);
+    assert(value);
     pconst = (constant *) malloc(sizeof(constant));
     pconst->kind = CONST_N;
-    pconst->type = GetStandardType(base, 0, 0);
+    pconst->type = GetStandardTypeKind(value->kind, 0, 0);
     pconst->IsLValue = 0;
     pconst->IsConst = 0;
     pconst->HasSideEffects = 0;
     pconst->op = op;
-    pconst->subop = SUBOP__(base);
-    pconst->val[0].i = fval;
+    pconst->subop = SUBOP__(lLegacyBaseForKind(value->kind));
+    pconst->val[0] = *value;
     pconst->tempptr[0] = 0;
     return pconst;
+} // NewNumericConstNode
+
+/*
+ * NewIConstNode() - Create a new integer constant node.
+ *
+ */
+
+constant *NewIConstNode(opcode op, int fval, int base)
+{
+    CgNumericValue value;
+
+    assert(NodeKind[op] == CONST_N);
+    CgNumericSetSigned(&value, lKindForLegacyBase(base), fval);
+    return NewNumericConstNode(op, &value);
 } // NewIConstNode
 
 /*
  * NewBConstNode() - Create a new Boolean constant node.
  *
  */
- 
+
 constant *NewBConstNode(opcode op, int fval, int base)
 {
-    constant *pconst;
+    CgNumericValue value;
 
     assert(NodeKind[op] == CONST_N);
-    pconst = (constant *) malloc(sizeof(constant));
-    pconst->kind = CONST_N;
-    pconst->type = GetStandardType(base, 0, 0);
-    pconst->IsLValue = 0;
-    pconst->IsConst = 0;
-    pconst->HasSideEffects = 0;
-    pconst->op = op;
-    pconst->subop = SUBOP__(base);
-    pconst->val[0].i = fval;
-    pconst->tempptr[0] = 0;
-    return pconst;
+    CgNumericSetSigned(&value, lKindForLegacyBase(base), (fval != 0));
+    return NewNumericConstNode(op, &value);
 } // NewBConstNode
 
 /*
  * NewFConstNode() - Create a new floating point constant node.
  *
  */
- 
+
 constant *NewFConstNode(opcode op, float fval, int base)
 {
-    constant *pconst;
+    CgNumericValue value;
 
     assert(NodeKind[op] == CONST_N);
-    pconst = (constant *) malloc(sizeof(constant));
-    pconst->kind = CONST_N;
-    pconst->type = GetStandardType(base, 0, 0);
-    pconst->IsLValue = 0;
-    pconst->IsConst = 0;
-    pconst->HasSideEffects = 0;
-    pconst->op = op;
-    pconst->subop = SUBOP__(base);
-    pconst->val[0].f = fval;
-    pconst->tempptr[0] = 0;
-    return pconst;
+    CgNumericSetFloat(&value, lKindForLegacyBase(base), fval);
+    return NewNumericConstNode(op, &value);
 } // NewFConstNode
 
 /*
@@ -196,6 +255,7 @@ constant *NewFConstNode(opcode op, float fval, int base)
 constant *NewFConstNodeV(opcode op, float *fval, int len, int base)
 {
     constant *pconst;
+    CgScalarKind kind;
     int ii;
 
     assert(NodeKind[op] == CONST_N);
@@ -207,8 +267,11 @@ constant *NewFConstNodeV(opcode op, float *fval, int len, int base)
     pconst->HasSideEffects = 0;
     pconst->op = op;
     pconst->subop = SUBOP_V(len, base);
-    for (ii = 0; ii < len; ii++)
-        pconst->val[ii].f = fval[ii];
+    kind = lKindForLegacyBase(base);
+    for (ii = 0; ii < len; ii++) {
+        pconst->val[ii].kind = kind;
+        pconst->val[ii].value.f = fval[ii];
+    }
     pconst->tempptr[0] = 0;
     return pconst;
 } // NewFConstNodeV
@@ -234,6 +297,7 @@ unary *NewUnopNode(opcode op, expr *arg)
     pun->op = op;
     pun->subop = 0;
     pun->arg = arg;
+    pun->targetType = NULL;
     pun->tempptr[0] = 0;
     return pun;
 } // NewUnopNode
@@ -259,6 +323,7 @@ unary *NewUnopSubNode(opcode op, int subop, expr *arg)
     pun->op = op;
     pun->subop = subop;
     pun->arg = arg;
+    pun->targetType = NULL;
     pun->tempptr[0] = 0;
     return pun;
 } // NewUnopSubNode
@@ -615,13 +680,19 @@ return_stmt *NewReturnStmt(SourceLoc *loc, Scope *fScope, expr *fExpr)
         while (fScope->level > 2)
             fScope = fScope->next;
         fScope->HasReturnStmt = 1;
+        if ((fExpr && IsSampler(fExpr->common.type, NULL)) ||
+            IsSampler(fScope->returnType, NULL))
+        {
+            SemanticError(loc, ERROR___SAMPLER_RETURN);
+        }
         if (fScope->returnType) {
             if (fScope->returnType == VoidType) {
                 if (fExpr) {
                     SemanticError(loc, ERROR___VOID_FUN_RETURNS_VALUE);
                 }
-            } else if (fScope->returnType != UndefinedType) {
-                if (ConvertType(fExpr, fScope->returnType, fExpr->common.type, &lExpr, 0, 0)) {
+            } else if (!CgTypeIsPoison(fScope->returnType) &&
+                       !(fExpr && CgTypeIsPoison(fExpr->common.type))) {
+                if (ConvertType(loc, fExpr, fScope->returnType, fExpr->common.type, &lExpr, 0, 0, 1)) {
                     fExpr = lExpr;
                 } else {
                     SemanticError(loc, ERROR___RETURN_EXPR_INCOMPAT);
@@ -897,6 +968,60 @@ int SetStorageClass(SourceLoc *loc, dtype *fType, int storage)
     return 1;
 } // SetStorageClass
 
+/*
+ * ResolveScalarTypeSpecifier() - Map a scalar type-specifier token to its
+ *         canonical standard type.  "isUnsigned" upgrades integral kinds to
+ *         their unsigned counterparts; token combinations that have no
+ *         unsigned form report a language diagnostic and yield
+ *         UndefinedType.
+ */
+
+Type *ResolveScalarTypeSpecifier(SourceLoc *loc, int token, int isUnsigned)
+{
+    CgScalarKind kind;
+    Type *fType;
+
+    // A lone "unsigned" means unsigned int:
+
+    if (token == UNSIGNED_SY && !isUnsigned)
+        return GetStandardTypeKind(CG_SCALAR_UINT, 0, 0);
+
+    switch (token) {
+    case CHAR_SY:    kind = CG_SCALAR_CHAR;    break;
+    case SHORT_SY:   kind = CG_SCALAR_SHORT;   break;
+    case INT_SY:     kind = CG_SCALAR_INT;     break;
+    case LONG_SY:    kind = CG_SCALAR_LONG;    break;
+    case HALF_SY:    kind = CG_SCALAR_HALF;    break;
+    case FIXED_SY:   kind = CG_SCALAR_FIXED;   break;
+    case FLOAT_SY:   kind = CG_SCALAR_FLOAT;   break;
+    case DOUBLE_SY:  kind = CG_SCALAR_DOUBLE;  break;
+    default:
+        kind = CG_SCALAR_UNDEFINED;
+        break;
+    }
+
+    if (isUnsigned) {
+        switch (kind) {
+        case CG_SCALAR_CHAR:  kind = CG_SCALAR_UCHAR;  break;
+        case CG_SCALAR_SHORT: kind = CG_SCALAR_USHORT; break;
+        case CG_SCALAR_INT:   kind = CG_SCALAR_UINT;   break;
+        case CG_SCALAR_LONG:  kind = CG_SCALAR_ULONG;  break;
+        default:
+            SemanticError(loc, ERROR_S_TYPE_NAME_EXPECTED,
+                          GetAtomString(atable, token));
+            return UndefinedType;
+        }
+    }
+
+    fType = GetStandardTypeKind(kind, 0, 0);
+    if (!fType || kind == CG_SCALAR_UNDEFINED) {
+        SemanticError(loc, ERROR_S_TYPE_NAME_EXPECTED,
+                      GetAtomString(atable, token));
+        return UndefinedType;
+    }
+    return fType;
+} // ResolveScalarTypeSpecifier
+
 /********************************** Parser Semantic Rules: ***********************************/
 
 /*
@@ -1044,6 +1169,48 @@ stmt *CheckStmt(stmt *fStmt)
 } // CheckStmt
 
 /*
+ * Struct scopes are suspended while a method body parses so that method
+ * definitions sit at ordinary function depth: their locals scopes,
+ * return-statement bookkeeping, and inlining metadata then behave exactly
+ * like free functions.  SuspendStructScopeForMethodBody() runs from
+ * Function_Definition_Header() when the header appears inside a struct;
+ * ResumeStructScopeAfterMethodBody() runs from the function-definition
+ * grammar action after the body scope is popped.  The pair is a no-op for
+ * definitions outside struct bodies.
+ */
+
+typedef struct SuspendedScopeRec {
+    Scope *scope;
+    struct SuspendedScopeRec *next;
+} SuspendedScope;
+
+static SuspendedScope *lSuspendedStructScopes;
+
+void SuspendStructScopeForMethodBody(void)
+{
+    SuspendedScope *lSuspend;
+
+    if (CurrentScope && CurrentScope->IsStructScope) {
+        lSuspend = (SuspendedScope *) malloc(sizeof(SuspendedScope));
+        lSuspend->scope = PopScope();
+        lSuspend->next = lSuspendedStructScopes;
+        lSuspendedStructScopes = lSuspend;
+    }
+} // SuspendStructScopeForMethodBody
+
+void ResumeStructScopeAfterMethodBody(void)
+{
+    SuspendedScope *lSuspend;
+
+    if (lSuspendedStructScopes) {
+        lSuspend = lSuspendedStructScopes;
+        lSuspendedStructScopes = lSuspend->next;
+        PushScope(lSuspend->scope);
+        free(lSuspend);
+    }
+} // ResumeStructScopeAfterMethodBody
+
+/*
  * Function_Definition_Header() - Combine function <declaration_specifiers> and <declarator>.
  *
  */
@@ -1056,6 +1223,8 @@ decl *Function_Definition_Header(SourceLoc *loc, decl *fDecl)
     int InProgram;
     int category, domain, qualifiers;
     Type *retType;
+
+    SuspendStructScopeForMethodBody();
 
     if (IsFunction(lSymb)) {
         if (fDecl->type.type.properties & TYPE_MISC_ABSTRACT_PARAMS) {
@@ -1119,14 +1288,22 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
     case TYPE_CATEGORY_NONE:
         return 0;
     case TYPE_CATEGORY_SCALAR:
+    case TYPE_CATEGORY_SAMPLER:
         if (dExpr->common.kind == BINARY_N && dExpr->bin.op == EXPR_LIST_OP) {
+            if (!dExpr->bin.left) {
+                /* "{}" parses as an empty initializer list. */
+                SemanticError(loc, ERROR___TOO_LITTLE_DATA);
+                return 0;
+            }
             lExpr = FoldConstants(dExpr->bin.left);
             if (lExpr->common.kind == CONST_N) {
-                if (ConvertType(lExpr, vType, lExpr->co.type, &tExpr, 1, 0)) {
+                if (ConvertType(loc, lExpr, vType, lExpr->co.type, &tExpr, 1, 0, 1)) {
                     dExpr->bin.left = tExpr;
                     return 1;
                 } else {
-                    SemanticError(loc, ERROR___INVALID_INITIALIZATION);
+                    if (!CgTypeIsPoison(vType) &&
+                        !CgTypeIsPoison(lExpr->common.type))
+                        SemanticError(loc, ERROR___INVALID_INITIALIZATION);
                     return 0;
                 }
             } else {
@@ -1177,11 +1354,10 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                 } else {
                     subop = SUBOP_V(vlen, GetBase(vType));
                     dExpr->bin.left = (expr *) NewUnopSubNode(VECTOR_V_OP, subop, dExpr->bin.left);
-                    if (Cg->theHAL->GetCapsBit(
-                            CAPS_AGGREGATE_DEFAULT_BINDINGS) &&
-                        !IsVector(vType, NULL) &&
-                        !IsMatrix(vType, NULL, NULL))
-                    {
+                    if (!IsVector(vType, NULL) && !IsMatrix(vType, NULL, NULL)) {
+                        /* First-class arrays copy as their declared shape;
+                         * repacking them would change packedness and break
+                         * the whole-array rvalue copy. */
                         dExpr->bin.left->un.type = vType;
                     } else {
                         dExpr->bin.left->un.type =
@@ -1190,11 +1366,13 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                     return 1;
                 }
             } else {
-                if (ConvertType(lExpr, vType, lExpr->common.type, &tExpr, 0, 0)) {
+                if (ConvertType(loc, lExpr, vType, lExpr->common.type, &tExpr, 0, 0, 1)) {
                     dExpr->bin.left = tExpr;
                     return 1;
                 } else {
-                    SemanticError(loc, ERROR___INCOMPAT_TYPE_INIT);
+                    if (!CgTypeIsPoison(vType) &&
+                        !CgTypeIsPoison(lExpr->common.type))
+                        SemanticError(loc, ERROR___INCOMPAT_TYPE_INIT);
                     return 0;
                 }
             }
@@ -1230,9 +1408,22 @@ decl *Param_Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fE
                           GetAtomString(atable, fDecl->name));
         }
         if (fExpr) {
-            if (GetDomain(lType) != TYPE_DOMAIN_UNIFORM) {
-                SemanticError(loc, ERROR_S_NON_UNIFORM_PARAM_INIT,
-                              GetAtomString(atable, fDecl->name));
+            /* Domain/qualifier/constant rules for parameter defaults
+             * are enforced with full function context by
+             * lValidateParameterDefaults() once the formal list is
+             * complete; here the initializer is only shaped and
+             * recorded on the declarator. */
+            /* An empty-bracket array parameter sizes its top-level
+             * dimension from the initializer list exactly like a local
+             * declaration; the count lives in the declaration-local
+             * dtype copy and survives GetTypePointer(). */
+            if (IsUnsizedArray(lType)) {
+                int numels = lCountInitializerElements(fExpr);
+                if (numels <= 0) {
+                    SemanticError(loc, ERROR_S_CANNOT_INFER_ARRAY_SIZE);
+                    return fDecl;
+                }
+                lType->arr.numels = numels;
             }
             if (lCheckInitializationData(loc, lType, fExpr, 0)) {
                 fDecl->initexpr = fExpr;
@@ -1243,13 +1434,73 @@ decl *Param_Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fE
 } // Param_Init_Declarator
 
 /*
+ * lCountInitializerElements() - Count the top-level elements of an
+ *         initializer list.  The grammar wraps every initializer in an
+ *         EXPR_LIST_OP node and chains the members of a brace list off the
+ *         wrapper's left node, so counting starts one level down.  An
+ *         empty or malformed list counts as zero so callers can report
+ *         that the size cannot be inferred.
+ *
+ */
+
+static int lCountInitializerElements(expr *fExpr)
+{
+    int numels = 0;
+
+    if (!fExpr || fExpr->common.kind != BINARY_N ||
+        fExpr->bin.op != EXPR_LIST_OP)
+    {
+        return 0;
+    }
+    fExpr = fExpr->bin.left;
+    while (fExpr &&
+           fExpr->common.kind == BINARY_N &&
+           fExpr->bin.op == EXPR_LIST_OP)
+    {
+        numels++;
+        fExpr = fExpr->bin.right;
+    }
+    return numels;
+} // lCountInitializerElements
+
+/*
+ * lSizeUnsizedArrayFromInitializer() - Replace the declared unsized array
+ *         type of "lSymb" with a concrete array whose top-level length is
+ *         the number of top-level elements in the initializer list.  The
+ *         declaration context owns this Type object (unsized types are not
+ *         interned), so replacing it cannot alias any other declaration.
+ *
+ * Returns: TRUE if the type was sized, FALSE after emitting the language
+ *          diagnostic for lists from which no size can be inferred.
+ *
+ */
+
+static int lSizeUnsizedArrayFromInitializer(SourceLoc *loc, Symbol *lSymb,
+                                            expr *fExpr)
+{
+    Type *nType;
+    int numels;
+
+    numels = lCountInitializerElements(fExpr);
+    if (numels <= 0) {
+        SemanticError(loc, ERROR_S_CANNOT_INFER_ARRAY_SIZE);
+        return 0;
+    }
+    nType = DupType(lSymb->type);
+    nType->arr.numels = numels;
+    nType->arr.size = Cg->theHAL->GetSizeof(nType);
+    lSymb->type = nType;
+    return 1;
+} // lSizeUnsizedArrayFromInitializer
+
+/*
  * Init_Declarator() - Set initial value and/or semantics for this declarator.
  *
  */
 
 stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
 {
-    int category, len, len2, base;
+    int category, base;
     stmt *lStmt = NULL;
     int IsGlobal, IsStatic, IsUniform, IsParam, DontAssign;
     Symbol *lSymb;
@@ -1274,6 +1525,17 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                 IsStatic = lSymb->storageClass == SC_STATIC;
                 IsUniform = GetDomain(lType) == TYPE_DOMAIN_UNIFORM;
                 IsParam = lSymb->properties & SYMB_IS_PARAMETER;
+                if (IsUnsizedArray(lType)) {
+                    /* An empty-bracket declarator with an initializer list
+                     * takes its top-level length from that list; without
+                     * one it stays dynamically sized and is only usable
+                     * through whole-array assignment. */
+                    if (fExpr) {
+                        if (!lSizeUnsizedArrayFromInitializer(loc, lSymb, fExpr))
+                            return lStmt;
+                        lType = lSymb->type;
+                    }
+                }
                 if (IsGlobal && !IsStatic) {
                     DontAssign = 1;
                 } else if (IsParam) {
@@ -1290,6 +1552,7 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                         SemanticError(loc, ERROR___INVALID_INITIALIZATION);
                         break;
                     case TYPE_CATEGORY_SCALAR:
+                    case TYPE_CATEGORY_SAMPLER:
                         assert(fExpr->common.kind == BINARY_N && fExpr->bin.op == EXPR_LIST_OP);
                         if (DontAssign) {
                             lSymb->details.var.init = fExpr;
@@ -1299,16 +1562,15 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                         }
                         break;
                     case TYPE_CATEGORY_ARRAY:
-                        if (IsVector(lType, &len) || IsMatrix(lType, &len, &len2)) {
-                            assert(fExpr->common.kind == BINARY_N && fExpr->bin.op == EXPR_LIST_OP);
-                            if (DontAssign) {
-                                lSymb->details.var.init = fExpr;
-                            } else {
-                                lExpr = (expr *) NewSymbNode(VARIABLE_OP, lSymb);
-                                lStmt = NewSimpleAssignmentStmt(loc, lExpr, fExpr->bin.left, 1);
-                            }
+                        /* Vectors, matrices, and first-class arrays all
+                         * take whole-aggregate initializers; the rvalue
+                         * copy is a full-array assignment. */
+                        assert(fExpr->common.kind == BINARY_N && fExpr->bin.op == EXPR_LIST_OP);
+                        if (DontAssign) {
+                            lSymb->details.var.init = fExpr;
                         } else {
-                            SemanticError(loc, ERROR___ARRAY2_INIT_NOT_DONE);
+                            lExpr = (expr *) NewSymbNode(VARIABLE_OP, lSymb);
+                            lStmt = NewSimpleAssignmentStmt(loc, lExpr, fExpr->bin.left, 1);
                         }
                         break;
                     }
@@ -1329,6 +1591,329 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
     }
     return lStmt;
 } // Init_Declarator
+
+/*
+ * lCheckSamplerDeclaration() - Enforce the Cg 2.0 sampler placement rules
+ * where a variable declarator introduces a name: samplers live only as
+ * formal parameters (handled by the caller) and as global uniform
+ * variables.  Function locals, static globals, and structure members are
+ * rejected, as are arrays and other aggregates with sampler elements.
+ * Global declarations must carry uniform domain; varying or unqualified
+ * globals would otherwise be silently bound as uniforms.  Since the
+ * GLSL-only sampler pid-gate was retired these rules apply uniformly to
+ * every profile, GLSL profiles included.
+ */
+
+static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,
+                                     int name, Type *fType, int IsStatic)
+{
+    Type *element;
+
+    if (!IsSampler(fType, NULL)) {
+        element = fType;
+        while (element && IsArray(element))
+            element = element->arr.eltype;
+        if (!element || !IsSampler(element, NULL))
+            return;
+    }
+    if (fScope->IsStructScope || fScope->level > 1 || IsStatic)
+    {
+        SemanticError(loc, ERROR_S_SAMPLER_DECLARATION,
+                      GetAtomString(atable, name));
+    }
+    else if (GetDomain(fType) != TYPE_DOMAIN_UNIFORM)
+    {
+        /* The remaining case is a file-scope declaration; it is only a
+         * legal sampler home when declared "uniform". */
+        SemanticError(loc, ERROR_S_SAMPLER_DECLARATION,
+                      GetAtomString(atable, name));
+    }
+} // lCheckSamplerDeclaration
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////// Profile specifiers and parameter defaults: ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * A <profile_specifier> is parsed before a function's return type.  The
+ * grammar action records it here and the next top-level function
+ * declarator consumes it; a specifier followed by anything other than a
+ * function declaration is rejected where the declarator is processed.
+ */
+
+static CgProfileSelector lPendingProfileSelector;
+static int lHavePendingProfileSpecifier;
+
+/*
+ * SetPendingProfileSpecifier() - Validate an identifier appearing in
+ *         profile-specifier position.  It must name either a registered
+ *         profile (EnumerateProfiles) or a wildcard atom some profile
+ *         registered through SetProfileIdentity.  Typedef shadowing
+ *         needs no handling here: shadowed names reach the parser as
+ *         TYPEIDENT_SY and never enter this rule.
+ */
+
+void SetPendingProfileSpecifier(SourceLoc *loc, int ident)
+{
+    slProfile *lProfile;
+    int ii;
+
+    lHavePendingProfileSpecifier = 0;
+    for (ii = 0; (lProfile = EnumerateProfiles(ii)) != NULL; ii++) {
+        if (!strcmp(lProfile->name, GetAtomString(atable, ident))) {
+            /* Exact profile name: highest selector specificity. */
+            lPendingProfileSelector.name = ident;
+            lPendingProfileSelector.specificity =
+                CG_PROFILE_EXACT_SPECIFICITY;
+            lPendingProfileSelector.isOpen = 0;
+            lHavePendingProfileSpecifier = 1;
+            return;
+        }
+    }
+    for (ii = 0; (lProfile = EnumerateProfiles(ii)) != NULL; ii++) {
+        const CgProfileIdentity *identity = &lProfile->profileIdentity;
+        int jj;
+
+        for (jj = 0; jj < identity->wildcardCount; jj++) {
+            if (identity->wildcards[jj] == ident) {
+                lPendingProfileSelector.name = ident;
+                lPendingProfileSelector.specificity =
+                    identity->specificity ? identity->specificity[jj] : 0;
+                lPendingProfileSelector.isOpen = 0;
+                lHavePendingProfileSpecifier = 1;
+                return;
+            }
+        }
+    }
+    SemanticError(loc, ERROR_S_UNKNOWN_PROFILE,
+                  GetAtomString(atable, ident));
+} // SetPendingProfileSpecifier
+
+/*
+ * ClearPendingProfileSpecifier() - Drop any unconsumed specifier so it
+ *         cannot leak into a later declaration.
+ */
+
+void ClearPendingProfileSpecifier(void)
+{
+    lHavePendingProfileSpecifier = 0;
+} // ClearPendingProfileSpecifier
+
+/*
+ * lAttachPendingProfileSpecifier() - Give a freshly declared function
+ *         symbol whatever specifier is pending.
+ */
+
+static void lAttachPendingProfileSpecifier(Symbol *fSymb)
+{
+    if (lHavePendingProfileSpecifier && fSymb && IsFunction(fSymb)) {
+        fSymb->details.fun.profileSelector = lPendingProfileSelector;
+        lHavePendingProfileSpecifier = 0;
+    }
+} // lAttachPendingProfileSpecifier
+
+/*
+ * lRejectPendingProfileSpecifier() - A specifier was followed by a
+ *         non-function declaration.
+ */
+
+static void lRejectPendingProfileSpecifier(SourceLoc *loc)
+{
+    if (lHavePendingProfileSpecifier) {
+        SemanticError(loc, ERROR_S_PROFILE_SPECIFIER_MISPLACED,
+                      GetAtomString(atable, lPendingProfileSelector.name));
+        lHavePendingProfileSpecifier = 0;
+    }
+} // lRejectPendingProfileSpecifier
+
+/*
+ * lIsEntryFunctionName() - Top-level entry parameters become program
+ *         interface values, so their defaults follow the uniform rules
+ *         rather than the helper ones.
+ */
+
+static int lIsEntryFunctionName(int name)
+{
+    return name == Cg->theHAL->entryName;
+} // lIsEntryFunctionName
+
+/*
+ * lIsConstantInit() - TRUE when every element of an initializer-list
+ *         node folds to a constant.  Parameter initializers arrive
+ *         wrapped by Initializer() in EXPR_LIST_OP nodes whose members
+ *         chain through bin.right.
+ */
+
+static int lIsConstantInit(expr *fInit)
+{
+    expr *element;
+
+    if (!fInit || fInit->common.kind != BINARY_N ||
+        fInit->bin.op != EXPR_LIST_OP)
+    {
+        return 0;
+    }
+    for (element = fInit; element; element = element->bin.right) {
+        expr *value;
+
+        if (element->common.kind != BINARY_N ||
+            element->bin.op != EXPR_LIST_OP)
+        {
+            break;
+        }
+        value = element->bin.left;
+        if (!value) {
+            return 0;
+        }
+        if (value->common.kind == BINARY_N &&
+            value->bin.op == EXPR_LIST_OP)
+        {
+            /* Nested brace lists were validated elementwise when the
+             * declarator recorded them. */
+            continue;
+        }
+        if (FoldConstants(value)->common.kind != CONST_N) {
+            return 0;
+        }
+    }
+    return 1;
+} // lIsConstantInit
+
+/*
+ * lValidateParameterDefaults() - Enforce the Cg 2.0 default-argument
+ *         rules over one function's ordered formals:
+ *
+ *           - helper calls fill unsupplied trailing arguments from
+ *             defaults, so a default may only appear after parameters
+ *             that always receive values;
+ *           - a top-level (entry) default requires a uniform parameter,
+ *             and entry uniforms are program-interface values rather
+ *             than call arguments, so positionality does not apply;
+ *           - a helper default requires a plain in parameter;
+ *           - every default is a compile-time constant convertible to
+ *             the parameter type, stored converted.
+ *
+ *         Invalid defaults are dropped from the formal so later passes
+ *         see only well-formed calls.
+ */
+
+static void lValidateParameterDefaults(SourceLoc *loc, Symbol *funSymb)
+{
+    Symbol *formal;
+    int IsEntry;
+
+    if (!funSymb || !IsFunction(funSymb)) {
+        return;
+    }
+    IsEntry = lIsEntryFunctionName(funSymb->name);
+    for (formal = funSymb->details.fun.params; formal;
+         formal = formal->next)
+    {
+        expr *init = formal->details.var.init;
+        Type *formalType = formal->type;
+
+        if (IsEntry) {
+            /* Entry formals become program inputs: a default is just
+             * the uniform's binding value and stands on its own. */
+            if (init && GetDomain(formalType) != TYPE_DOMAIN_UNIFORM) {
+                SemanticError(&formal->loc, ERROR_S_NON_UNIFORM_PARAM_INIT,
+                              GetAtomString(atable, formal->name));
+                formal->details.var.init = NULL;
+            }
+            continue;
+        }
+        if (!init) {
+            continue;
+        }
+        /* Defaults are legal only as a trailing run: every parameter
+         * after a defaulted one must carry a default too. */
+        {
+            Symbol *scan;
+
+            for (scan = formal->next; scan; scan = scan->next) {
+                if (!scan->details.var.init) {
+                    SemanticError(&formal->loc,
+                                  ERROR_S_DEFAULT_AFTER_OPTIONAL,
+                                  GetAtomString(atable, formal->name));
+                    formal->details.var.init = NULL;
+                    break;
+                }
+            }
+            if (!formal->details.var.init) {
+                continue;
+            }
+        }
+        {
+            int quals = GetQualifiers(formalType);
+
+            if (quals & TYPE_QUALIFIER_OUT) {
+                SemanticError(&formal->loc, ERROR_S_DEFAULT_PARAM_QUALIFIER,
+                              GetAtomString(atable, formal->name));
+                formal->details.var.init = NULL;
+                continue;
+            }
+            if (!lIsConstantInit(init)) {
+                SemanticError(&formal->loc, ERROR___DEFAULT_NOT_CONSTANT,
+                              GetAtomString(atable, formal->name));
+                formal->details.var.init = NULL;
+                continue;
+            }
+            /* Single-value defaults are re-expressed at the parameter's
+             * own type inside the same EXPR_LIST wrapper; multi-element
+             * brace lists were converted elementwise when recorded. */
+            if (init->bin.left && !init->bin.right &&
+                init->bin.left->common.type &&
+                !IsSameUnqualifiedType(formalType,
+                                       init->bin.left->common.type))
+            {
+                expr *converted = NULL;
+                expr *value = FoldConstants(init->bin.left);
+
+                /* Poison defaults keep their recorded shape: the value's
+                 * type already reported its one diagnostic. */
+                if (!CgTypeIsPoison(value->common.type)) {
+                    if (!ConvertType(loc, value, formalType,
+                                     value->common.type, &converted, 0, 0, 0))
+                    {
+                        SemanticError(&formal->loc,
+                                      ERROR___DEFAULT_NOT_CONVERTIBLE,
+                                      GetAtomString(atable, formal->name));
+                        formal->details.var.init = NULL;
+                        continue;
+                    }
+                    init->bin.left = converted;
+                }
+            }
+        }
+    }
+} // lValidateParameterDefaults
+
+/*
+ * lPreserveParameterDefaults() - A redeclaration that matches an older
+ *         one by signature cannot change an existing default: carry the
+ *         original default forward when the redeclaration omits it and
+ *         reject any attempt to re-specify one.
+ */
+
+static void lPreserveParameterDefaults(SourceLoc *loc, Symbol *fOldFun,
+                                       Symbol *fNewParams, int atom)
+{
+    Symbol *oldFormal, *newFormal;
+
+    for (oldFormal = fOldFun->details.fun.params, newFormal = fNewParams;
+         oldFormal && newFormal;
+         oldFormal = oldFormal->next, newFormal = newFormal->next)
+    {
+        if (oldFormal->details.var.init && newFormal->details.var.init) {
+            SemanticError(loc, ERROR_S_DEFAULT_REDECLARATION,
+                          GetAtomString(atable, atom));
+            return;
+        }
+        if (oldFormal->details.var.init) {
+            newFormal->details.var.init = oldFormal->details.var.init;
+        }
+    }
+} // lPreserveParameterDefaults
 
 /*
  * Declarator() - Process a declarator.
@@ -1359,6 +1944,9 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                 SemanticError(&fDecl->loc, ERROR_S_VOID_TYPE_INVALID,
                               GetAtomString(atable, fDecl->name));
             }
+            if (GetCategory(&fDecl->type.type) != TYPE_CATEGORY_FUNCTION) {
+                lRejectPendingProfileSpecifier(&fDecl->loc);
+            }
             if (fDecl->type.type.properties & TYPE_MISC_TYPEDEF) {
                 lSymb = DefineTypedef(loc, CurrentScope, fDecl->name, lType);
                 if (semantics)
@@ -1376,9 +1964,12 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     lScope = NewScope();
                     params = AddFormalParamDecls(lScope, fDecl->params);
                     lSymb = DeclareFunc(&fDecl->loc, CurrentScope, NULL, fDecl->name, lType, lScope, params);
-                    // Programs may carry a return-value semantic; it is bound later
-                    // by BuildSemanticStructs() for profiles that accept it.
-                    lSymb->details.fun.semantics = semantics;
+                    lAttachPendingProfileSpecifier(lSymb);
+                    lValidateParameterDefaults(&fDecl->loc, lSymb);
+                    // Programs may carry a return-value semantic; it is bound
+                    // later by BuildSemanticStructs() for the selected entry.
+                    if (semantics)
+                        lSymb->details.fun.semantics = semantics;
                 } else {
                     if (fDecl->type.type.properties & TYPE_MISC_INTERNAL) {
                         SemanticError(&fDecl->loc, ERROR_S_INTERNAL_FOR_FUN,
@@ -1388,10 +1979,20 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                         SemanticError(&fDecl->loc, ERROR_S_INLINE_FOR_FUN,
                                       GetAtomString(atable, fDecl->name));
                     }
-                    if (IsUnsizedArray(lType)) {
+                    /* Unsized arrays are permitted where the language
+                     * gives them a dynamic shape: formal parameters are
+                     * handled above, and function locals can be assigned
+                     * from a sized array.  Globals and struct members
+                     * have no such context and stay invalid. */
+                    if (IsUnsizedArray(lType) &&
+                        (CurrentScope->level <= 1 || CurrentScope->IsStructScope))
+                    {
                         SemanticError(&fDecl->loc, ERROR_S_UNSIZED_ARRAY,
                                       GetAtomString(atable, fDecl->name));
                     }
+                    lCheckSamplerDeclaration(&fDecl->loc, CurrentScope,
+                                             fDecl->name, lType,
+                                             fDecl->type.storageClass == SC_STATIC);
                     if (IsCategory(lType, TYPE_CATEGORY_ARRAY) && !IsPacked(lType)) {
                         if (!Cg->theHAL->GetCapsBit(CAPS_INDEXED_ARRAYS)) {
                             // XYZZY - This test needs to be moved to later to support multiple profiles
@@ -1437,10 +2038,14 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                 lScope = NewScope();
                 params = AddFormalParamDecls(lScope, fDecl->params);
                 lSymb = DeclareFunc(&fDecl->loc, CurrentScope, lSymb, fDecl->name, lType, lScope, params);
+                lAttachPendingProfileSpecifier(lSymb);
+                lValidateParameterDefaults(&fDecl->loc, lSymb);
                 lSymb->storageClass = fDecl->type.storageClass;
                 // See the matching new-declaration path above.
-                lSymb->details.fun.semantics = semantics;
+                if (semantics)
+                    lSymb->details.fun.semantics = semantics;
             } else {
+                lRejectPendingProfileSpecifier(&fDecl->loc);
                 if (!IsTypeBase(&fDecl->type.type, TYPE_BASE_UNDEFINED_TYPE)) {
                     SemanticError(&fDecl->loc, ERROR_S_NAME_ALREADY_DEFINED,
                                   GetAtomString(atable, fDecl->name));
@@ -1506,7 +2111,11 @@ decl *Array_Declarator(SourceLoc *loc, decl *fDecl, int size, int Empty)
     int dims;
 
     lDtype = &fDecl->type;
-    if (size <= 0 && !Empty) {
+    if (Empty) {
+        /* An empty bracket pair declares a dynamically sized array; the
+         * explicit sentinel keeps 0 reserved for invalid/recovery types. */
+        size = CG_ARRAY_UNSIZED;
+    } else if (size <= 0) {
         SemanticError(loc, ERROR___DIMENSION_LT_1);
         size = 1;
     }
@@ -1514,6 +2123,7 @@ decl *Array_Declarator(SourceLoc *loc, decl *fDecl, int size, int Empty)
         SemanticError(loc, ERROR___ARRAY_OF_VOID);
     switch (GetCategory(&lDtype->type)) {
     case TYPE_CATEGORY_SCALAR:
+    case TYPE_CATEGORY_SAMPLER:
         lType = lDtype->basetype;
         SetTypeCategory(loc, 0, lDtype, TYPE_CATEGORY_ARRAY, 1);
         lDtype->type.arr.eltype = lType;
@@ -1576,6 +2186,18 @@ Symbol *AddFormalParamDecls(Scope *fScope, decl *params)
             if (IsCategory(lType, TYPE_CATEGORY_ARRAY) && !IsPacked(lType)) {
                 if (!Cg->theHAL->GetCapsBit(CAPS_INDEXED_ARRAYS)) {
                     SemanticError(&params->loc, ERROR_S_UNPACKED_ARRAY,
+                                  GetAtomString(atable, params->name));
+                }
+            }
+            /* Sampler formals must be plain samplers: aggregates of
+             * samplers have no language meaning in any profile. */
+            {
+                Type *element = lType;
+                while (element && IsArray(element))
+                    element = element->arr.eltype;
+                if (IsArray(lType) && element && IsSampler(element, NULL))
+                {
+                    SemanticError(&params->loc, ERROR_S_SAMPLER_DECLARATION,
                                   GetAtomString(atable, params->name));
                 }
             }
@@ -1673,6 +2295,284 @@ Type *StructHeader(SourceLoc *loc, Scope *fScope, int cType, int tag)
 } // StructOrConnectorHeader
 
 /*
+ * InterfaceHeader() - Process an interface header.  The interface analog
+ *         of StructHeader(): register or reuse the tag, whose type carries
+ *         TYPE_CATEGORY_INTERFACE and an initially empty member scope.
+ */
+
+Type *InterfaceHeader(SourceLoc *loc, Scope *fScope, int tag)
+{
+    Symbol *lSymb;
+    Type *lType;
+
+    if (tag) {
+        lSymb = LookUpTag(fScope, tag);
+        if (!lSymb) {
+            lSymb = AddTag(loc, fScope, tag, TYPE_CATEGORY_INTERFACE);
+            /* AddTag seeds str.unqualifiedtype, which aliases
+             * iface.members in the type union; interfaces never use
+             * unqualifiedtype, so clear the overlap before the member
+             * scope is attached at completion. */
+            lSymb->type->iface.members = NULL;
+            lSymb->type->iface.tag = tag;
+        }
+        lType = lSymb->type;
+        if (!IsCategory(lType, TYPE_CATEGORY_INTERFACE)) {
+            SemanticError(loc, ERROR_S_NAME_ALREADY_DEFINED,
+                          GetAtomString(atable, tag));
+            lType = UndefinedType;
+        }
+    } else {
+        lType = NewType(TYPE_CATEGORY_INTERFACE, 0);
+    }
+    return lType;
+} // InterfaceHeader
+
+/*
+ * SetStructInterface() - Interpret "struct Name : Type" where the
+ *         right-hand identifier resolved to a declared type name.  Only
+ *         interfaces may appear there; the connector-semantic form is
+ *         handled by a separate production before a type name is ever
+ *         consulted.  The implemented interface is recorded on the struct
+ *         type so completion can check conformance.
+ */
+
+Type *SetStructInterface(SourceLoc *loc, Scope *fScope, int tag, int interfaceAtom)
+{
+    Type *interfaceType;
+    Type *structType;
+
+    interfaceType = LookUpTypeSymbol(fScope, interfaceAtom);
+    if (!IsCategory(interfaceType, TYPE_CATEGORY_INTERFACE)) {
+        SemanticError(loc, ERROR_S_TAG_IS_NOT_AN_INTERFACE,
+                      GetAtomString(atable, interfaceAtom));
+        interfaceType = NULL;
+    }
+    structType = StructHeader(loc, fScope, 0, tag);
+    if (IsCategory(structType, TYPE_CATEGORY_STRUCT))
+        structType->str.implementedInterface = interfaceType;
+    return structType;
+} // SetStructInterface
+
+/*
+ * lMarkMethod() - Record that this member function belongs to "fOwner".
+ */
+
+static void lMarkMethod(Symbol *fSymb, Type *fOwner)
+{
+    fSymb->details.fun.ownerType = fOwner;
+    fSymb->details.fun.isMethod = 1;
+} // lMarkMethod
+
+/*
+ * lSynthesizeMethodReceiver() - Give a method an implicit leading formal
+ *         holding its receiver.  The receiver exists only inside the
+ *         compiler: call sites prepend the receiver expression as an
+ *         ordinary argument while source-level signatures keep the
+ *         declared formals alone.  Both the formal symbol and the front
+ *         of the function type's parameter list grow the owner type so
+ *         argument binding, inlining, and conformance matching stay
+ *         positionally consistent.
+ */
+
+static void lSynthesizeMethodReceiver(SourceLoc *loc, Symbol *fSymb, Type *fOwner)
+{
+    static int receiverAtom = 0;
+    Symbol *receiver;
+    TypeList *param;
+
+    if (receiverAtom == 0)
+        receiverAtom = LookUpAddString(atable, "$this");
+    /* The owner type is shared, not duplicated: the receiver slot must
+     * compare identical to the owning type at call sites. */
+    receiver = AddSymbol(loc, fSymb->details.fun.locals, receiverAtom,
+                         fOwner, VARIABLE_S);
+    receiver->properties |= SYMB_IS_PARAMETER;
+    receiver->next = fSymb->details.fun.params;
+    fSymb->details.fun.params = receiver;
+    param = (TypeList *) malloc(sizeof(TypeList));
+    param->type = fOwner;
+    param->next = fSymb->type->fun.paramtypes;
+    fSymb->type->fun.paramtypes = param;
+} // lSynthesizeMethodReceiver
+
+/*
+ * SetInterfaceMembers() - Complete an interface declaration: attach the
+ *         member scope, keep only method prototypes (data members are
+ *         rejected; bodies cannot be parsed inside an interface), mark
+ *         the methods, and publish the tag as a type name.
+ */
+
+Type *SetInterfaceMembers(SourceLoc *loc, Type *fType, Scope *members)
+{
+    Symbol *lSymb, *tSymb;
+
+    if (!fType || IsCategory(fType, TYPE_CATEGORY_INTERFACE) == 0)
+        return fType;
+    if (fType->iface.members) {
+        SemanticError(loc, ERROR_SSD_STRUCT_ALREADY_DEFINED,
+                      GetAtomString(atable, fType->iface.tag),
+                      GetAtomString(atable, fType->iface.loc.file),
+                      fType->iface.loc.line);
+        return fType;
+    }
+    lSymb = members->symbols;
+    while (lSymb) {
+        if (!IsFunction(lSymb)) {
+            SemanticError(&lSymb->loc, ERROR_S_INTERFACE_DATA_MEMBER,
+                          GetAtomString(atable, fType->iface.tag));
+        } else if (!lSymb->details.fun.isMethod) {
+            lMarkMethod(lSymb, fType);
+            lSynthesizeMethodReceiver(&lSymb->loc, lSymb, fType);
+        }
+        lSymb = lSymb->next;
+    }
+    fType->iface.members = members;
+    fType->iface.loc = *loc;
+    if (fType->iface.tag) {
+        tSymb = LookUpLocalSymbol(CurrentScope, fType->iface.tag);
+        if (!tSymb) {
+            DefineTypedef(loc, CurrentScope, fType->iface.tag, fType);
+        } else if (!IsTypedef(tSymb)) {
+            SemanticError(loc, ERROR_S_NAME_ALREADY_DEFINED,
+                          GetAtomString(atable, fType->iface.tag));
+        }
+    }
+    return fType;
+} // SetInterfaceMembers
+
+/*
+ * lSignatureHasPoison() - TRUE when a method's signature involves the
+ *         poison recovery type: its declaration already reported its
+ *         one diagnostic, so conformance checking must not report a
+ *         second one about the same broken type.
+ */
+
+static int lSignatureHasPoison(Symbol *fSymb)
+{
+    TypeList *param;
+
+    if (!fSymb->type)
+        return 0;
+    if (CgTypeIsPoison(fSymb->type->fun.rettype))
+        return 1;
+    for (param = fSymb->type->fun.paramtypes; param; param = param->next) {
+        if (CgTypeIsPoison(param->type))
+            return 1;
+    }
+    return 0;
+} // lSignatureHasPoison
+
+/*
+ * lSignatureMatches() - Compare an implementing method against an
+ *         interface method: same name is checked by the caller; here the
+ *         return type, parameter count, parameter directions, and
+ *         unqualified parameter types must agree.  The implicit receiver
+ *         parameter both sides carry is skipped.
+ */
+
+static int lSignatureMatches(Symbol *fImpl, Symbol *fDecl)
+{
+    TypeList *implParam, *declParam;
+
+    if (!IsSameUnqualifiedType(fImpl->type->fun.rettype,
+                               fDecl->type->fun.rettype))
+    {
+        return 0;
+    }
+    implParam = fImpl->type->fun.paramtypes;
+    declParam = fDecl->type->fun.paramtypes;
+    if (implParam)
+        implParam = implParam->next;
+    if (declParam)
+        declParam = declParam->next;
+    while (implParam && declParam) {
+        if ((GetQualifiers(implParam->type) & (TYPE_QUALIFIER_IN |
+             TYPE_QUALIFIER_OUT)) !=
+            (GetQualifiers(declParam->type) & (TYPE_QUALIFIER_IN |
+             TYPE_QUALIFIER_OUT)))
+        {
+            return 0;
+        }
+        if (!IsSameUnqualifiedType(implParam->type, declParam->type))
+            return 0;
+        implParam = implParam->next;
+        declParam = declParam->next;
+    }
+    return implParam == NULL && declParam == NULL;
+} // lSignatureMatches
+
+/*
+ * CheckInterfaceConformance() - Complete a struct definition and validate
+ *         it against the interface it implements, if any.  Completion
+ *     marks every member function as a method and synthesizes its
+ *         implicit receiver, so later phases see one uniform calling
+ *         convention regardless of inheritance.  Conformance requires
+ *         exactly one implementing method per interface method with a
+ *         matching signature; failures report at the struct with the
+ *         interface method's declaration as the note.
+ */
+
+void CheckInterfaceConformance(SourceLoc *loc, Type *fType)
+{
+    Type *interfaceType;
+    Symbol *member, *decl, *named, *impl;
+
+    if (!fType || !IsCategory(fType, TYPE_CATEGORY_STRUCT))
+        return;
+    for (member = fType->str.members ? fType->str.members->symbols : NULL;
+         member; member = member->next)
+    {
+        if (IsFunction(member) && !member->details.fun.isMethod) {
+            lMarkMethod(member, fType);
+            lSynthesizeMethodReceiver(&member->loc, member, fType);
+        }
+    }
+    interfaceType = fType->str.implementedInterface;
+    if (!interfaceType)
+        return;
+    for (decl = interfaceType->iface.members ?
+             interfaceType->iface.members->symbols : NULL;
+         decl; decl = decl->next)
+    {
+        if (!IsFunction(decl))
+            continue;
+        named = impl = NULL;
+        for (member = fType->str.members->symbols; member;
+             member = member->next)
+        {
+            if (!IsFunction(member) || member->name != decl->name)
+                continue;
+            named = member;
+            if (lSignatureMatches(member, decl)) {
+                impl = member;
+                break;
+            }
+        }
+        if (impl)
+            continue;
+        if (named && lSignatureHasPoison(named)) {
+            /* The mismatch is the poisoned signature itself; its
+             * declaration already reported, so stay silent here. */
+            continue;
+        }
+        if (named) {
+            SemanticError(loc, ERROR_SSSSD_INTERFACE_METHOD_SIGNATURE,
+                          GetAtomString(atable, decl->name),
+                          GetAtomString(atable, fType->str.tag),
+                          GetAtomString(atable, decl->loc.file),
+                          decl->loc.line);
+        } else {
+            SemanticError(loc, ERROR_SSSSD_INTERFACE_METHOD_MISSING,
+                          GetAtomString(atable, fType->str.tag),
+                          GetAtomString(atable, decl->name),
+                          GetAtomString(atable, decl->loc.file),
+                          decl->loc.line);
+        }
+    }
+} // CheckInterfaceConformance
+
+/*
  * DefineVar() - Define a new variable in the current scope.
  *
  */
@@ -1705,6 +2605,7 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                     Scope *locals, Symbol *params)
 {
     int DiffParamTypes, DiffParamQualifiers, DiffParamCount, DiffReturnType;
+    int DiffProfileSelector;
     TypeList *oldArgType, *newArgType;
     Symbol *lSymb;
     int index, group, OK;
@@ -1723,6 +2624,7 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                     return fSymb;
                 }
                 DiffParamTypes = DiffParamQualifiers = DiffParamCount = DiffReturnType = 0;
+                DiffProfileSelector = 0;
                 if (!IsSameUnqualifiedType(lSymb->type->fun.rettype, fType->fun.rettype))
                     DiffReturnType = 1;
                 oldArgType = lSymb->type->fun.paramtypes;
@@ -1751,12 +2653,24 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                         OK = 0;
                         break;
                     }
-                    break; // Found the matching function
+                    /* Profile qualifications distinguish same-signature
+                     * overloads: a declaration naming a different
+                     * profile than an existing candidate declares a new
+                     * one rather than redefining it. */
+                    if (lHavePendingProfileSpecifier &&
+                        (lSymb->details.fun.profileSelector.isOpen ||
+                         lSymb->details.fun.profileSelector.name !=
+                             lPendingProfileSelector.name))
+                    {
+                        DiffProfileSelector = 1;
+                    }
+                    if (!DiffProfileSelector)
+                        break; // Found the matching function
                 }
                 lSymb = lSymb->details.fun.overload;
             }
             if (OK) {
-                if (DiffParamCount || DiffParamTypes) {
+                if (DiffParamCount || DiffParamTypes || DiffProfileSelector) {
                     lSymb = NewSymbol(loc, fScope, atom, fType, FUNCTION_S);
                     lSymb->details.fun.params = params;
                     lSymb->details.fun.locals = locals;
@@ -1771,6 +2685,11 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
                     if (!(lSymb->properties & SYMB_IS_DEFINED)) {
                         // Overwrite previous definitions if this function is not yet defined.
                         // Prototype parameter names are ignored.
+                        /* A matching redeclaration may not change an
+                         * existing default argument; omitted defaults
+                         * carry forward unchanged. */
+                        lPreserveParameterDefaults(loc, lSymb,
+                                                   params, atom);
                         lSymb->details.fun.params = params;
                         lSymb->details.fun.locals = locals;
                     } else {
@@ -1793,7 +2712,11 @@ Symbol *DeclareFunc(SourceLoc *loc, Scope *fScope, Symbol *fSymb, int atom, Type
         }
     }
     if (lSymb->type->properties & TYPE_MISC_INTERNAL) {
-        {
+        if (lSymb->details.fun.intrinsic != NULL) {
+            /* Declarative catalog intrinsic: identity and validity are
+             * pinned at installation; no profile name-mapping here. */
+            lSymb->properties |= SYMB_IS_BUILTIN;
+        } else {
             int errorsBefore = GetErrorCount();
             index = Cg->theHAL->CheckInternalFunction(lSymb, &group);
             if (index) {
@@ -1933,6 +2856,7 @@ int IsConst(const expr *fExpr)
     }
 } // IsConst
 
+
 /*
  * IsArrayIndex() - Is this expression an array index expression?
  *
@@ -1948,47 +2872,101 @@ int IsArrayIndex(const expr *fExpr)
 } // IsArrayIndex
 
 /*
- * lIsBaseCastValid() - Is it O.K. to cast the base type fromBase to toBase?
+ * lIsNumericKind() - TRUE if a canonical scalar kind participates in
+ *                    arithmetic (integral or floating family, including the
+ *                    compile-time kinds).
  *
  */
 
-static int lIsBaseCastValid(int toBase, int fromBase, int Explicit)
+static int lIsNumericKind(CgScalarKind kind)
 {
-    if (toBase == TYPE_BASE_NO_TYPE || fromBase == TYPE_BASE_NO_TYPE)
-        return 0;
-    if (toBase == TYPE_BASE_VOID || fromBase == TYPE_BASE_VOID)
-        return 0;
-    if (toBase == fromBase)
-        return 1;
-    if (Cg->theHAL->IsValidScalarCast(toBase, fromBase, Explicit)) {
-        return 1;
-    } else {
-        return 0;
+    return CgScalarIsIntegral(kind) || CgScalarIsFloating(kind);
+} // lIsNumericKind
+
+/*
+ * lCastTargetType() - The canonical unqualified form of a cast target for
+ *                     scalar, vector, and matrix results so expression nodes
+ *                     carry interned types whose scalar kinds survive kinds
+ *                     above the four-bit legacy bases; other categories use
+ *                     the target type verbatim.
+ *
+ */
+
+static Type *lCastTargetType(Type *toType)
+{
+    switch (GetCategory(toType)) {
+    case TYPE_CATEGORY_SCALAR:
+        return GetStandardTypeKind(GetScalarKind(toType), 0, 0);
+    case TYPE_CATEGORY_ARRAY:
+        if (IsVector(toType, NULL)) {
+            return GetStandardTypeKind(GetScalarKind(toType),
+                                       toType->arr.numels, 0);
+        }
+        if (IsMatrix(toType, NULL, NULL)) {
+            return GetStandardTypeKind(GetScalarKind(toType),
+                                       toType->arr.numels,
+                                       toType->arr.eltype->arr.numels);
+        }
+        break;
+    default:
+        break;
     }
-} // lIsBaseCastValid
+    return toType;
+} // lCastTargetType
+
+/*
+ * lNewShapeCast() - Build a typed shape-conversion node.  The target type
+ *                   rides in the node's targetType field; no four-bit subop
+ *                   encoding is involved.
+ *
+ */
+
+static expr *lNewShapeCast(opcode op, expr *fExpr, Type *toType)
+{
+    unary *unnode = NewUnopSubNode(op, 0, fExpr);
+
+    unnode->type = toType;
+    unnode->targetType = toType;
+    return (expr *) unnode;
+} // lNewShapeCast
 
 /*
  * ConvertType() - Type cast fExpr from fromType to toType if needed.  Ignore qualifiers.
  *
  * If "result" is NULL just check validity of cast; don't allocate cast operator node.
  *
+ * AllowShapeConversions gates the conversions that introduce or collapse
+ * aggregate structure (scalar replication and first-element extraction):
+ * typed contexts such as assignments, initializers, returns, and casts
+ * enable them, while overload-resolution probing and argument binding pass
+ * 0 so function selection keeps its exact-shape rules until ranked
+ * conversion landing replaces it.
+ *
  */
 
-int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int IgnorePacked, int Explicit)
+int ConvertType(SourceLoc *loc, expr *fExpr, Type *toType, Type *fromType,
+                expr **result, int IgnorePacked, int Explicit,
+                int AllowShapeConversions)
 {
-    int fcategory, tcategory;
-    int fbase, tbase;
-    Type *feltype, *teltype;
+    CgConversionRank rank;
     unary *unnode;
+    Type *targetType;
     int ToPacked, FromPacked;
 
+    if (!toType || !fromType)
+        return 0;
+    if (CgTypeIsPoison(toType) || CgTypeIsPoison(fromType)) {
+        /* A poisoned operand already reported its one diagnostic;
+         * conversion layers return early instead of reporting again. */
+        return 0;
+    }
     ToPacked = (toType->properties & TYPE_MISC_PACKED) != 0;
     FromPacked = (fromType->properties & TYPE_MISC_PACKED) != 0;
     if (Explicit && IsSameUnqualifiedType(toType, fromType) &&
-        Cg->theHAL->IsTexobjBase(GetBase(toType)) &&
-        !Cg->theHAL->IsValidScalarCast(GetBase(toType),
-                                       GetBase(fromType), Explicit))
+        IsSampler(toType, NULL))
     {
+        /* Samplers are opaque: they cannot be cast, not even to their
+         * own type. */
         return 0;
     }
     if (IsSameUnqualifiedType(toType, fromType) &&
@@ -1997,59 +2975,104 @@ int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int Ig
         if (result)
             *result = fExpr;
         return 1;
-    } else {
-        fcategory = GetCategory(fromType);
-        tcategory = GetCategory(toType);
-        if (fcategory == tcategory) {
-            switch (fcategory) {
-            case TYPE_CATEGORY_SCALAR:
-                fbase = GetBase(fromType);
-                tbase = GetBase(toType);
-                if (lIsBaseCastValid(tbase, fbase, Explicit)) {
-                    if (result) {
-                        unnode = NewUnopSubNode(CAST_CS_OP, SUBOP_CS(tbase, fbase), fExpr);
-                        unnode->type = GetStandardType(tbase, 0, 0);
-                        unnode->HasSideEffects = fExpr->common.HasSideEffects;
-                        *result = (expr *) unnode;
-                    }
-                    return 1;
-                } else {
-                    return 0;
-                }
-                break;
-            case TYPE_CATEGORY_ARRAY:
-                if (toType->arr.numels != fromType->arr.numels)
-                    return 0;
-                if (toType->arr.numels > 4)
-                    return 0;
-                if (!IgnorePacked && (ToPacked != FromPacked))
-                    return 0;
-                feltype = fromType->arr.eltype;
-                teltype = toType->arr.eltype;
-                fcategory = GetCategory(feltype);
-                tcategory = GetCategory(teltype);
-                if (tcategory != TYPE_CATEGORY_SCALAR || fcategory != TYPE_CATEGORY_SCALAR)
-                    return 0;
-                fbase = GetBase(feltype);
-                tbase = GetBase(teltype);
-                if (lIsBaseCastValid(tbase, fbase, Explicit)) {
-                    if (result) {
-                        unnode = NewUnopSubNode(CAST_CV_OP, SUBOP_CV(tbase, toType->arr.numels, fbase), fExpr);
-                        unnode->type = GetStandardType(tbase, toType->arr.numels, 0);
-                        unnode->HasSideEffects = fExpr->common.HasSideEffects;
-                        *result = (expr *) unnode;
-                    }
-                    return 1;
-                } else {
-                    return 0;
-                }
-                break;
-            default:
-                return 0;
-            }
-        } else {
+    }
+    if (GetCategory(toType) == TYPE_CATEGORY_ARRAY &&
+        GetCategory(fromType) == TYPE_CATEGORY_ARRAY &&
+        IsUnsizedArray(toType) &&
+        IsPacked(toType) == IsPacked(fromType) &&
+        IsSameUnqualifiedType(toType->arr.eltype, fromType->arr.eltype))
+    {
+        /* A concrete array binds identically to an unsized array with the
+         * same element shape (parameter passing and whole-array copies):
+         * the runtime length travels with the value, so no conversion
+         * node exists and no shape information is lost.  This is exact-
+         * shape compatibility, not a scalar<->aggregate shape conversion,
+         * so it stays valid while probing overload resolution too. */
+        if (result)
+            *result = fExpr;
+        return 1;
+    }
+    if (!AllowShapeConversions &&
+        ((GetCategory(fromType) == TYPE_CATEGORY_SCALAR &&
+          GetCategory(toType) == TYPE_CATEGORY_ARRAY) ||
+         (GetCategory(fromType) == TYPE_CATEGORY_ARRAY &&
+          GetCategory(toType) == TYPE_CATEGORY_SCALAR)))
+    {
+        return 0;
+    }
+    rank = CgClassifyConversion(fromType, toType, Explicit);
+    if (rank == CG_CONVERSION_NONE)
+        return 0;
+    if (GetCategory(fromType) == TYPE_CATEGORY_ARRAY &&
+        GetCategory(toType) == TYPE_CATEGORY_ARRAY &&
+        !IgnorePacked && ToPacked != FromPacked)
+    {
+        /* Array-to-array conversions must agree on packedness. */
+        return 0;
+    }
+    if (!result)
+        return 1;
+    if (rank == CG_CONVERSION_IMPLICIT_WARN)
+        SemanticWarning(loc, WARNING___IMPLICIT_CONVERSION);
+    targetType = lCastTargetType(toType);
+    switch (GetCategory(fromType)) {
+    case TYPE_CATEGORY_SCALAR:
+        switch (GetCategory(toType)) {
+        case TYPE_CATEGORY_SCALAR:
+            unnode = NewUnopSubNode(CAST_CS_OP,
+                                    SUBOP_CS(CgScalarLegacyBase(GetScalarKind(toType)),
+                                             CgScalarLegacyBase(GetScalarKind(fromType))),
+                                    fExpr);
+            unnode->type = targetType;
+            unnode->targetType = targetType;
+            unnode->HasSideEffects = fExpr->common.HasSideEffects;
+            *result = (expr *) unnode;
+            return 1;
+        case TYPE_CATEGORY_ARRAY:
+            /* Scalar replication fills every element of the target. */
+            *result = lNewShapeCast(CAST_SHAPE_OP, fExpr, targetType);
+            return 1;
+        default:
             return 0;
         }
+        break;
+    case TYPE_CATEGORY_ARRAY:
+        switch (GetCategory(toType)) {
+        case TYPE_CATEGORY_SCALAR:
+            /* First-element extraction. */
+            *result = lNewShapeCast(CAST_SHAPE_OP, fExpr, targetType);
+            return 1;
+        case TYPE_CATEGORY_ARRAY:
+            if (fromType->arr.numels == toType->arr.numels &&
+                IsScalar(fromType->arr.eltype) && IsScalar(toType->arr.eltype))
+            {
+                /* Same-size element conversion keeps its legacy node. */
+                unnode = NewUnopSubNode(CAST_CV_OP,
+                                        SUBOP_CV(CgScalarLegacyBase(GetScalarKind(toType->arr.eltype)),
+                                                 toType->arr.numels,
+                                                 CgScalarLegacyBase(GetScalarKind(fromType->arr.eltype))),
+                                        fExpr);
+                unnode->type = targetType;
+                unnode->targetType = targetType;
+                unnode->HasSideEffects = fExpr->common.HasSideEffects;
+                *result = (expr *) unnode;
+            } else {
+                *result = lNewShapeCast(CAST_SHAPE_OP, fExpr, targetType);
+            }
+            return 1;
+        default:
+            return 0;
+        }
+        break;
+    case TYPE_CATEGORY_STRUCT:
+        *result = lNewShapeCast(CAST_STRUCT_OP, fExpr, targetType);
+        return 1;
+    default:
+        if (GetCategory(toType) == TYPE_CATEGORY_STRUCT) {
+            *result = lNewShapeCast(CAST_STRUCT_OP, fExpr, targetType);
+            return 1;
+        }
+        return 0;
     }
 } // ConvertType
 
@@ -2062,47 +3085,70 @@ int ConvertType(expr *fExpr, Type *toType, Type *fromType, expr **result, int Ig
  *
  * len = 1 means "float f[1]" not "float f"
  *
+ * The node type comes from the interned canonical registry so kinds above
+ * the four-bit legacy bases survive on expression nodes; the subop keeps
+ * the legacy bases purely as lowering information.
+ *
  */
 
-expr *CastScalarVectorMatrix(expr *fExpr, int fbase, int tbase, int len, int len2)
+expr *CastScalarVectorMatrix(expr *fExpr, CgScalarKind fkind, CgScalarKind tkind,
+                             int len, int len2)
 {
-    int op, subop;
-    expr *lExpr;
+    opcode op;
+    int subop;
+    unary *unnode;
+    Type *tType;
 
     if (len == 0) {
         op = CAST_CS_OP;
-        subop = SUBOP_CS(tbase, fbase);
+        subop = SUBOP_CS(CgScalarLegacyBase(tkind), CgScalarLegacyBase(fkind));
+        tType = GetStandardTypeKind(tkind, 0, 0);
     } else if (len2 == 0) {
         op = CAST_CV_OP;
-        subop = SUBOP_CV(tbase, len, fbase);
+        subop = SUBOP_CV(CgScalarLegacyBase(tkind), len, CgScalarLegacyBase(fkind));
+        tType = GetStandardTypeKind(tkind, len, 0);
     } else {
         op = CAST_CM_OP;
-        subop = SUBOP_CM(len2, tbase, len, fbase);
+        subop = SUBOP_CM(len2, CgScalarLegacyBase(tkind), len, CgScalarLegacyBase(fkind));
+        /* Same layout as GetStandardType(tbase, len, len2): [len2] of [len]. */
+        tType = GetStandardTypeKind(tkind, len2, len);
     }
-    lExpr = (expr *) NewUnopSubNode(op, subop, fExpr);
-    lExpr->common.type = GetStandardType(tbase, len, len2);
-    return lExpr;
+    unnode = NewUnopSubNode(op, subop, fExpr);
+    unnode->type = tType;
+    unnode->targetType = tType;
+    return (expr *) unnode;
 } // CastScalarVectorMatrix
 
 /*
  * ConvertNumericOperands() - Convert two scalar, vector, or matrix expressions to the same type
  *         for use in an expression.  Number of dimensions and lengths may differ.
  *
- * Returns: base type of resulting values.
+ * The common result kind is the language-level usual arithmetic conversion
+ * of the two operand element kinds.
+ *
+ * Returns: canonical scalar type of the resulting values, NULL if the
+ *          operands are not both numeric.
  *
  */
 
-int ConvertNumericOperands(int baseop, expr **lExpr, expr **rexpr, int lbase, int rbase,
-                           int llen, int rlen, int llen2, int rlen2)
+Type *ConvertNumericOperands(int baseop, expr **lexpr, expr **rexpr,
+                             Type *lType, Type *rType,
+                             int llen, int rlen, int llen2, int rlen2)
 {
-    int nbase;
+    Type *nType;
+    CgScalarKind lkind, rkind, nkind;
 
-    nbase = Cg->theHAL->GetBinOpBase(baseop, lbase, rbase, llen, rlen);
-    if (nbase != lbase)
-        *lExpr = CastScalarVectorMatrix(*lExpr, lbase, nbase, llen, llen2);
-    if (nbase != rbase)
-        *rexpr = CastScalarVectorMatrix(*rexpr, rbase, nbase, rlen, rlen2);
-    return nbase;
+    nType = CgUsualArithmeticType(lType, rType);
+    if (!nType)
+        return NULL;
+    lkind = GetScalarKind(lType);
+    rkind = GetScalarKind(rType);
+    nkind = GetScalarKind(nType);
+    if (nkind != lkind)
+        *lexpr = CastScalarVectorMatrix(*lexpr, lkind, nkind, llen, llen2);
+    if (nkind != rkind)
+        *rexpr = CastScalarVectorMatrix(*rexpr, rkind, nkind, rlen, rlen2);
+    return nType;
 } // ConvertNumericOperands
 
 /*
@@ -2162,7 +3208,7 @@ expr *CheckBooleanExpr(SourceLoc *loc, expr *fExpr, int AllowVector)
 expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int IntegralOnly)
 {
     int lop, subop = 0, HasError = 0, len = 0;
-    int lbase;
+    CgScalarKind lkind;
     Type *lType, *eltype;
     unary *result = NULL;
     int MustBeBoolean, OK = 0;
@@ -2170,7 +3216,7 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
     lop = fop;
     MustBeBoolean = fop == BNOT_OP ? 1 : 0;
     lType = eltype = fExpr->common.type;
-    if (IsScalar(lType)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
         subop = 0;
     } else if (IsVector(lType, &len)) {
         eltype = lType->arr.eltype;
@@ -2184,18 +3230,18 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
         if (len > 4) {
             SemanticError(loc, ERROR_S_VECTOR_OPERAND_GR_4, GetAtomString(atable, name));
         } else {
-            lbase = GetBase(lType);
-            SUBOP_SET_T(subop, lbase);
+            lkind = GetScalarKind(eltype);
+            SUBOP_SET_T(subop, CgScalarLegacyBase(lkind));
             if (MustBeBoolean) {
-                if (lbase == TYPE_BASE_BOOLEAN) {
+                if (lkind == CG_SCALAR_BOOL) {
                     OK = 1;
                 } else {
                     SemanticError(loc, ERROR___BOOL_EXPR_EXPECTED);
                 }
             } else {
-                if (Cg->theHAL->IsNumericBase(lbase)) {
+                if (lIsNumericKind(lkind)) {
                     if (IntegralOnly) {
-                        if (Cg->theHAL->IsIntegralBase(lbase)) {
+                        if (CgScalarIsIntegral(lkind)) {
                             OK = 1;
                         } else {
                             SemanticError(loc, ERROR_S_OPERANDS_NOT_INTEGRAL, GetAtomString(atable, name));
@@ -2209,7 +3255,7 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
             }
             if (OK) {
                 result = NewUnopSubNode(lop, subop, fExpr);
-                result->type = GetStandardType(lbase, len, 0);
+                result->type = GetStandardTypeKind(lkind, len, 0);
             }
         }
     }
@@ -2239,8 +3285,8 @@ expr *NewUnaryOperator(SourceLoc *loc, int fop, int name, expr *fExpr, int Integ
 expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *rexpr, int IntegralOnly)
 {
     int lop, subop = 0, HasError = 0, llen = 0, rlen = 0, nlen;
-    int lbase, rbase, nbase;
-    Type *lType, *rtype, *leltype, *reltype;
+    CgScalarKind nkind;
+    Type *lType, *rtype, *leltype, *reltype, *nType;
     binary *result = NULL;
     int CanSmear;
 
@@ -2248,8 +3294,8 @@ expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *re
     CanSmear = fop == MUL_OP || fop == DIV_OP || fop == ADD_OP || fop == SUB_OP ? 1 : 0;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    if (IsScalar(lType)) {
-        if (IsScalar(rtype)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             subop = 0;
         } else if (IsVector(rtype, &rlen)) {
             if (CanSmear) {
@@ -2266,7 +3312,7 @@ expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *re
         }
     } else if (IsVector(lType, &llen)) {
         leltype = lType->arr.eltype;
-        if (IsScalar(rtype)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             if (CanSmear) {
                 lop = fop + OFFSET_VS_OP;
                 subop = SUBOP_VS(llen, 0);
@@ -2296,15 +3342,17 @@ expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *re
         if (llen > 4 || rlen > 4) {
             SemanticError(loc, ERROR_S_VECTOR_OPERAND_GR_4, GetAtomString(atable, name));
         } else {
-            lbase = GetBase(lType);
-            rbase = GetBase(rtype);
-            if (Cg->theHAL->IsNumericBase(lbase) && Cg->theHAL->IsNumericBase(rbase)) {
-                nbase = ConvertNumericOperands(fop, &lExpr, &rexpr, lbase, rbase, llen, rlen, 0, 0);
-                SUBOP_SET_T(subop, nbase);
+            if (lIsNumericKind(GetScalarKind(leltype)) &&
+                lIsNumericKind(GetScalarKind(reltype)))
+            {
+                nType = ConvertNumericOperands(fop, &lExpr, &rexpr, leltype, reltype,
+                                               llen, rlen, 0, 0);
+                nkind = GetScalarKind(nType);
+                SUBOP_SET_T(subop, CgScalarLegacyBase(nkind));
                 nlen = llen > rlen ? llen : rlen;
                 result = NewBinopSubNode(lop, subop, lExpr, rexpr);
-                result->type = GetStandardType(nbase, nlen, 0);
-                if (IntegralOnly && !Cg->theHAL->IsIntegralBase(nbase)) {
+                result->type = GetStandardTypeKind(nkind, nlen, 0);
+                if (IntegralOnly && !CgScalarIsIntegral(nkind)) {
                     SemanticError(loc, ERROR_S_OPERANDS_NOT_INTEGRAL, GetAtomString(atable, name));
                 }
             } else {
@@ -2342,8 +3390,8 @@ expr *NewBinaryBooleanOperator(SourceLoc *loc, int fop, int name, expr *lExpr, e
     lop = fop;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    if (IsScalar(lType)) {
-        if (IsScalar(rtype)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             subop = SUBOP__(TYPE_BASE_BOOLEAN);
         } else {
             SemanticError(loc, ERROR_S_INVALID_OPERANDS, GetAtomString(atable, name));
@@ -2407,15 +3455,14 @@ expr *NewBinaryBooleanOperator(SourceLoc *loc, int fop, int name, expr *lExpr, e
 expr *NewBinaryComparisonOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *rexpr)
 {
     int lop, subop = 0, HasError = 0, llen = 0, rlen = 0, nlen = 0;
-    int lbase, rbase, nbase;
-    Type *lType, *rtype, *leltype, *reltype;
+    Type *lType, *rtype, *leltype, *reltype, *nType;
     binary *result = NULL;
 
     lop = fop;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    if (IsScalar(lType)) {
-        if (IsScalar(rtype)) {
+    if (IsScalar(lType) || IsSampler(lType, NULL)) {
+        if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             subop = 0;
         } else if (IsVector(rtype, &rlen)) {
             reltype = rtype->arr.eltype;
@@ -2451,15 +3498,17 @@ expr *NewBinaryComparisonOperator(SourceLoc *loc, int fop, int name, expr *lExpr
         if (nlen > 4) {
             SemanticError(loc, ERROR_S_VECTOR_OPERAND_GR_4, GetAtomString(atable, name));
         } else {
-            lbase = GetBase(lType);
-            rbase = GetBase(rtype);
-            if (Cg->theHAL->IsNumericBase(lbase) && Cg->theHAL->IsNumericBase(rbase)) {
-                nbase = ConvertNumericOperands(fop, &lExpr, &rexpr, lbase, rbase, llen, rlen, 0, 0);
-                SUBOP_SET_T(subop, nbase);
+            if (lIsNumericKind(GetScalarKind(lType)) &&
+                lIsNumericKind(GetScalarKind(rtype)))
+            {
+                nType = ConvertNumericOperands(fop, &lExpr, &rexpr, lType, rtype,
+                                               llen, rlen, 0, 0);
+                SUBOP_SET_T(subop, CgScalarLegacyBase(GetScalarKind(nType)));
                 nlen = llen > rlen ? llen : rlen;
                 result = NewBinopSubNode(lop, subop, lExpr, rexpr);
                 result->type = GetStandardType(TYPE_BASE_BOOLEAN, nlen, 0);
-            } else if (lbase == TYPE_BASE_BOOLEAN && rbase == TYPE_BASE_BOOLEAN) {
+            } else if (GetScalarKind(lType) == CG_SCALAR_BOOL &&
+                       GetScalarKind(rtype) == CG_SCALAR_BOOL) {
                 subop = SUBOP_V(nlen, TYPE_BASE_BOOLEAN);
                 result = NewBinopSubNode(lop, subop, lExpr, rexpr);
                 result->type = GetStandardType(TYPE_BASE_BOOLEAN, nlen, 0);
@@ -2493,8 +3542,9 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
 {
     int lop, subop, blen = 0, llen = 0, rlen = 0, nlen = 0;
     int HasError = 0, LIsNumeric, LIsBoolean, LIsSimple;
-    int lbase, rbase, nbase, category;
-    Type *btype, *lType, *rtype, *beltype, *leltype, *reltype;
+    int category;
+    CgScalarKind lkind, rkind, nkind;
+    Type *btype, *lType, *rtype, *beltype, *leltype, *reltype, *nType;
     Type *resulttype = UndefinedType;
     trinary *result = NULL;
 
@@ -2505,10 +3555,10 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
     btype = beltype = bexpr->common.type;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
-    lbase = GetBase(leltype);
-    rbase = GetBase(reltype);
-    LIsNumeric = Cg->theHAL->IsNumericBase(lbase) & Cg->theHAL->IsNumericBase(rbase);
-    LIsBoolean = (lbase == TYPE_BASE_BOOLEAN) & (rbase == TYPE_BASE_BOOLEAN);
+    lkind = GetScalarKind(leltype);
+    rkind = GetScalarKind(reltype);
+    LIsNumeric = lIsNumericKind(lkind) & lIsNumericKind(rkind);
+    LIsBoolean = (lkind == CG_SCALAR_BOOL) & (rkind == CG_SCALAR_BOOL);
     LIsSimple = LIsNumeric | LIsBoolean;
     if (LIsSimple) {
 
@@ -2532,8 +3582,8 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
                 leltype = lType->arr.eltype;
                 if (IsVector(rtype, &rlen)) {
                     reltype = rtype->arr.eltype;
-                    lbase = GetBase(leltype);
-                    rbase = GetBase(reltype);
+                    lkind = GetScalarKind(leltype);
+                    rkind = GetScalarKind(reltype);
                     lop = COND_SV_OP;
                     subop = SUBOP_SV(llen, 0);
                 } else {
@@ -2555,8 +3605,8 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
                 subop = SUBOP_SV(llen, 0);
                 leltype = lType->arr.eltype;
                 reltype = rtype->arr.eltype;
-                lbase = GetBase(leltype);
-                rbase = GetBase(reltype);
+                lkind = GetScalarKind(leltype);
+                rkind = GetScalarKind(reltype);
             } else {
                 SemanticError(loc, ERROR___QSTN_VECTOR_23_OPNDS_EXPECTED);
                 HasError = 1;
@@ -2588,22 +3638,48 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
             SemanticError(loc, ERROR_S_OPERANDS_HAVE_SIDE_EFFECTS, "?:");
         }
         if (LIsSimple) {
-            nbase = ConvertNumericOperands(COND_OP, &lExpr, &rexpr, lbase, rbase, llen, rlen, 0, 0);
-            if (llen == rlen && (blen == 0 || blen == llen)) {
-                SUBOP_SET_T(subop, nbase);
-                result = NewTriopSubNode(lop, subop, bexpr, lExpr, rexpr);
-                result->type = GetStandardType(nbase, llen, 0);
+            if (LIsBoolean) {
+                nType = GetStandardTypeKind(CG_SCALAR_BOOL, 0, 0);
+                if (llen == rlen && (blen == 0 || blen == llen)) {
+                    SUBOP_SET_T(subop, TYPE_BASE_BOOLEAN);
+                    result = NewTriopSubNode(lop, subop, bexpr, lExpr, rexpr);
+                    result->type = GetStandardType(TYPE_BASE_BOOLEAN, llen, 0);
+                } else {
+                    SemanticError(loc, ERROR_S_VECTOR_OPERANDS_DIFF_LEN, "\"? :\"");
+                    HasError = 1;
+                }
             } else {
-                SemanticError(loc, ERROR_S_VECTOR_OPERANDS_DIFF_LEN, "\"? :\"");
-                HasError = 1;
+                nType = ConvertNumericOperands(COND_OP, &lExpr, &rexpr, leltype, reltype,
+                                               llen, rlen, 0, 0);
+                if (!nType) {
+                    SemanticError(loc, ERROR___QSTN_23_OPNDS_INVALID);
+                    HasError = 1;
+                } else {
+                    nkind = GetScalarKind(nType);
+                    if (llen == rlen && (blen == 0 || blen == llen)) {
+                        SUBOP_SET_T(subop, CgScalarLegacyBase(nkind));
+                        result = NewTriopSubNode(lop, subop, bexpr, lExpr, rexpr);
+                        result->type = GetStandardTypeKind(nkind, llen, 0);
+                    } else {
+                        SemanticError(loc, ERROR_S_VECTOR_OPERANDS_DIFF_LEN, "\"? :\"");
+                        HasError = 1;
+                    }
+                }
             }
         } else {
             category = GetCategory(lType);
             if ((category == TYPE_CATEGORY_SCALAR ||
                  category == TYPE_CATEGORY_ARRAY ||
-                 category == TYPE_CATEGORY_STRUCT) &&
+                 category == TYPE_CATEGORY_STRUCT ||
+                 category == TYPE_CATEGORY_SAMPLER) &&
                 !IsVoid(lType))
             {
+                if (category == TYPE_CATEGORY_SAMPLER)
+                {
+                    /* Conditional selection would copy a sampler value. */
+                    SemanticError(loc, ERROR___SAMPLER_CONDITIONAL);
+                    HasError = 1;
+                }
                 result = NewTriopSubNode(lop, 0, bexpr, lExpr, rexpr);
                 result->type = lType;
             } else {
@@ -2734,16 +3810,30 @@ expr *NewMatrixSwizzleOperator(SourceLoc *loc, expr *fExpr, int ident)
 
 expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
 {
-    int len = 0, HasError = 0, size = 0, lbase, nbase, lNumeric, nNumeric, vlen, vlen2;
+    int len = 0, HasError = 0, size = 0, lNumeric, nNumeric, vlen, vlen2;
     int IsMatrixConstructor = 0;
     int MatrixRowSize = 0;
+    CgScalarKind lkind, nkind = CG_SCALAR_NONE;
     unary *result = NULL;
     expr *lExpr;
     Type *lType, *rType;
 
     if (fType) {
         rType = fType;
-        if (IsScalar(fType)) {
+        if (IsScalar(fType) || IsSampler(fType, NULL)) {
+            /* A scalar type applied to one scalar argument is a cast,
+             * not a length-one vector construction: */
+            if (fExpr && fExpr->common.kind == BINARY_N &&
+                fExpr->bin.op == EXPR_LIST_OP &&
+                fExpr->bin.right == NULL)
+            {
+                lkind = GetScalarKind(fExpr->bin.left->common.type);
+                if ((lIsNumericKind(lkind) || lkind == CG_SCALAR_BOOL) &&
+                    IsScalar(fExpr->bin.left->common.type))
+                {
+                    return NewCastOperator(loc, fExpr->bin.left, rType);
+                }
+            }
             size = 1;
         } else if (IsVector(fType, &vlen)) {
             size = vlen;
@@ -2764,9 +3854,9 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
     while (lExpr) {
         vlen = 0;
         lType = lExpr->common.type;
-        lbase = GetBase(lType);
-        lNumeric = Cg->theHAL->IsNumericBase(lbase);
-        if (!lNumeric && lbase != TYPE_BASE_BOOLEAN) {
+        lkind = GetScalarKind(lType);
+        lNumeric = lIsNumericKind(lkind);
+        if (!lNumeric && lkind != CG_SCALAR_BOOL) {
             SemanticError(loc, ERROR___VECTOR_CONSTR_NOT_NUM_BOOL);
             HasError = 1;
             break;
@@ -2790,12 +3880,14 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
             }
         }
         if (len == 0) {
-            nbase = lbase;
+            nkind = lkind;
             nNumeric = lNumeric;
         } else if (IsMatrixConstructor || len + vlen <= 4) {
             if (lNumeric == nNumeric) {
                 if (nNumeric) {
-                    nbase = Cg->theHAL->GetBinOpBase(VECTOR_V_OP, nbase, lbase, 0, 0);
+                    nkind = GetScalarKind(CgUsualArithmeticType(
+                        GetStandardTypeKind(nkind, 0, 0),
+                        GetStandardTypeKind(lkind, 0, 0)));
                 }
             } else {
                 SemanticError(loc, ERROR___MIXED_NUM_NONNUM_VECT_CNSTR);
@@ -2823,20 +3915,20 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
         lExpr = fExpr;
         while (lExpr) {
             lType = lExpr->common.type;
-            lbase = GetBase(lType);
-            if (lbase != nbase) {
+            lkind = GetScalarKind(lType);
+            if (lkind != nkind) {
                 vlen = 0;
                 IsVector(lType, &vlen);
                 lExpr->bin.left = CastScalarVectorMatrix(
-                    lExpr->bin.left, lbase, nbase, vlen, 0);
+                    lExpr->bin.left, lkind, nkind, vlen, 0);
             }
             lExpr = lExpr->bin.right;
         }
         /* VECTOR_V_OP has no room for a 16-component matrix length. */
         result = NewUnopSubNode(VECTOR_V_OP,
-            SUBOP_V(IsMatrixConstructor ? 0 : len, nbase), fExpr);
+            SUBOP_V(IsMatrixConstructor ? 0 : len, CgScalarLegacyBase(nkind)), fExpr);
         result->type = IsMatrixConstructor ? rType :
-            GetStandardType(nbase, len, 0);
+            GetStandardTypeKind(nkind, len, 0);
     }
     if (!result) {
         result = NewUnopSubNode(VECTOR_V_OP, 0, fExpr);
@@ -2854,7 +3946,9 @@ expr *NewCastOperator(SourceLoc *loc, expr *fExpr, Type *toType)
 {
     expr *lExpr;
 
-    if (ConvertType(fExpr, toType, fExpr->common.type, &lExpr, 0, 1)) {
+    if (CgTypeIsPoison(fExpr->common.type) || CgTypeIsPoison(toType))
+        return fExpr;
+    if (ConvertType(loc, fExpr, toType, fExpr->common.type, &lExpr, 0, 1, 1)) {
         lExpr->common.type = toType;
         return lExpr;
     } else {
@@ -2862,6 +3956,38 @@ expr *NewCastOperator(SourceLoc *loc, expr *fExpr, Type *toType)
         return fExpr;
     }
 } // NewCastOperator
+
+/*
+ * lNewArrayLengthOperator() - Build the ".length" query on an array.
+ *
+ * Sized arrays fold to a compile-time int constant; unsized arrays keep
+ * an explicit ARRAY_LENGTH_OP node of canonical int type so the length
+ * stays a runtime value.
+ *
+ */
+
+static expr *lNewArrayLengthOperator(SourceLoc *loc, expr *fExpr)
+{
+    Type *ftype = fExpr->common.type;
+    constant *cexpr;
+    unary *result;
+    CgNumericValue value;
+
+    if (ftype && GetCategory(ftype) == TYPE_CATEGORY_ARRAY &&
+        ftype->arr.numels != CG_ARRAY_UNSIZED)
+    {
+        CgNumericSetSigned(&value, CG_SCALAR_CINT, ftype->arr.numels);
+        cexpr = NewNumericConstNode(ICONST_OP, &value);
+        return (expr *) cexpr;
+    }
+    result = NewUnopSubNode(ARRAY_LENGTH_OP, 0, fExpr);
+    result->type = GetStandardTypeKind(CG_SCALAR_INT, 0, 0);
+    result->targetType = NULL;
+    result->IsLValue = 0;
+    result->IsConst = 0;
+    result->HasSideEffects = fExpr->common.HasSideEffects;
+    return (expr *) result;
+} // lNewArrayLengthOperator
 
 /*
  * NewMemberSelectorOrSwizzleOrWriteMaskOperator() - Construct either a struct member
@@ -2875,18 +4001,48 @@ expr *NewMemberSelectorOrSwizzleOrWriteMaskOperator(SourceLoc *loc, expr *fExpr,
     int len, len2;
     expr *lExpr, *mExpr;
     Symbol *lSymb;
+    static int lengthAtom = 0;
 
+    /* ".length" on an array is a typed length query, detected before any
+     * structure lookup; arrays are never structs, so member access on
+     * structures is unaffected. */
+    if (!lengthAtom)
+        lengthAtom = LookUpAddString(atable, "length");
+    if (ident == lengthAtom && IsArray(lType)) {
+        return lNewArrayLengthOperator(loc, fExpr);
+    }
     if (IsCategory(lType, TYPE_CATEGORY_STRUCT)) {
         lSymb = LookUpLocalSymbol(lType->str.members, ident);
         if (lSymb) {
             mExpr = (expr *) NewSymbNode(MEMBER_OP, lSymb);
             lExpr = (expr *) NewBinopNode(MEMBER_SELECTOR_OP, fExpr, mExpr);
-            lExpr->common.IsLValue = fExpr->common.IsLValue;
-            lExpr->common.IsConst = fExpr->common.IsConst;
+            if (IsFunction(lSymb)) {
+                /* Method selection keeps both the receiver expression and
+                 * the selected method symbol for the call operator; a
+                 * method by itself is not an l-value. */
+                lExpr->common.IsLValue = 0;
+            } else {
+                lExpr->common.IsLValue = fExpr->common.IsLValue;
+                lExpr->common.IsConst = fExpr->common.IsConst;
+            }
             lExpr->common.type = lSymb->type;
         } else {
             SemanticError(loc, ERROR_SS_NOT_A_MEMBER,
                           GetAtomString(atable, ident), GetAtomString(atable, lType->str.tag));
+            lExpr = fExpr;
+        }
+    } else if (IsCategory(lType, TYPE_CATEGORY_INTERFACE)) {
+        /* Interfaces carry methods only: data members are rejected when
+         * the interface body is completed. */
+        lSymb = LookUpLocalSymbol(lType->iface.members, ident);
+        if (lSymb && IsFunction(lSymb)) {
+            mExpr = (expr *) NewSymbNode(MEMBER_OP, lSymb);
+            lExpr = (expr *) NewBinopNode(MEMBER_SELECTOR_OP, fExpr, mExpr);
+            lExpr->common.IsLValue = 0;
+            lExpr->common.type = lSymb->type;
+        } else {
+            SemanticError(loc, ERROR_SS_NOT_A_MEMBER,
+                          GetAtomString(atable, ident), GetAtomString(atable, lType->iface.tag));
             lExpr = fExpr;
         }
     } else if (IsScalar(lType) || IsVector(lType, &len)) {
@@ -2922,131 +4078,221 @@ expr *NewIndexOperator(SourceLoc *loc, expr *fExpr, expr *ixexpr)
 } // NewIndexOperator
 
 /*
- * lResolveOverloadedFunction() - Resolve an overloaded function call.
- *
+ * lChainHasDefaults() - TRUE when any overload in the chain declares a
+ *         parameter default, so even a lone candidate must go through
+ *         resolution to have its defaults appended.
  */
 
-Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb, expr *actuals)
+static int lChainHasDefaults(Symbol *fSymb)
 {
-    const int NO_MATCH = 0;
-    const int EXACT_MATCH = 1;
-    const int VALID_MATCH = 2;
-    int paramno, numexact, numvalid, ii;
-    Symbol *lSymb, *lExact, *lValid;
-    TypeList *lFormals;
+    Symbol *formal;
 
-    lSymb = fSymb;
-    while (lSymb) {
-        lSymb->details.fun.flags = EXACT_MATCH;
-        lSymb = lSymb->details.fun.overload;
-    }
-    paramno = 0;
-    while (actuals) {
-        numexact = numvalid = 0;
-        lExact = lValid = fSymb;
-        lSymb = fSymb;
-        while (lSymb) {
-            if (lSymb->details.fun.flags) {
-                lFormals = lSymb->type->fun.paramtypes;
-                for (ii = 0; ii < paramno; ii++) {
-                    if (lFormals) {
-                        lFormals = lFormals->next;
-                    } else {
-                        // Ran out of formals -- kick it out.
-                        lSymb->details.fun.flags = NO_MATCH;
-                    }
-                }
-                if (lFormals) {
-                    if (IsSameUnqualifiedType(lFormals->type, actuals->common.type)) {
-                        lSymb->details.fun.flags = EXACT_MATCH;
-                        lExact = lSymb;
-                        numexact++;
-                    } else {
-                        if (ConvertType(NULL, lFormals->type, actuals->common.type, NULL, 0, 0)) {
-                            lSymb->details.fun.flags = VALID_MATCH;
-                            lValid = lSymb;
-                            numvalid++;
-                        } else {
-                            lSymb->details.fun.flags = NO_MATCH;
-                        }
-                    }
-                } else {
-                    lSymb->details.fun.flags = NO_MATCH;
-                }
-            }
-            lSymb = lSymb->details.fun.overload;
-        }
-        if (numexact == 1)
-            return lExact;
-        if (numvalid == 1)
-            return lValid;
-        if (numexact > 0) {
-            if (numvalid > 0) {
-                // Disqualify non-exact matches:
-                lSymb = fSymb;
-                while (lSymb) {
-                    if (lSymb->details.fun.flags == VALID_MATCH)
-                        lSymb->details.fun.flags = NO_MATCH;
-                    lSymb = lSymb->details.fun.overload;
-                }
-            }
-        } else {
-            if (numvalid == 0) {
-                // Nothing matches.
-                break;
+    for (; fSymb; fSymb = fSymb->details.fun.overload) {
+        for (formal = fSymb->details.fun.params; formal;
+             formal = formal->next)
+        {
+            if (formal->details.var.init) {
+                return 1;
             }
         }
-        actuals = actuals->bin.right;
-        paramno++;
     }
-    // If multiple matches still present check number of args:
-    if (numexact > 0 || numvalid > 0) {
-        numvalid = 0;
-        lSymb = lValid = fSymb;
-        while (lSymb) {
-            if (lSymb->details.fun.flags) {
-                lFormals = lSymb->type->fun.paramtypes;
-                for (ii = 0; ii < paramno; ii++) {
-                    if (lFormals) {
-                        lFormals = lFormals->next;
-                    } else {
-                        // Ran out of formals -- shouldn't happen.
-                        assert(0);
-                    }
-                }
-                if (lFormals) {
-                    lSymb->details.fun.flags = NO_MATCH;
-                } else {
-                    numvalid++;
-                    lValid = lSymb;
-                }
+    return 0;
+} // lChainHasDefaults
+
+/*
+ * lAppendDefaultArguments() - Clone the converted defaults of the last
+ *         "count" formals onto the call's actual list so every later
+ *         pass sees an ordinary, complete call.
+ */
+
+static expr *lAppendDefaultArguments(SourceLoc *loc, Symbol *fSymb,
+                                     expr *actuals, int count)
+{
+    Symbol *formal;
+    int total = 0;
+    int skip;
+
+    if (count <= 0) {
+        return actuals;
+    }
+    for (formal = fSymb->details.fun.params; formal; formal = formal->next) {
+        total++;
+    }
+    skip = total - count;
+    for (formal = fSymb->details.fun.params; formal && skip < total;
+         formal = formal->next)
+    {
+        if (skip > 0) {
+            skip--;
+            continue;
+        }
+        if (formal->details.var.init) {
+            expr *stored = formal->details.var.init;
+            expr *value = stored;
+
+            /* Stored defaults keep the initializer EXPR_LIST wrapper;
+             * argument lists carry the bare value expression. */
+            if (value->common.kind == BINARY_N &&
+                value->bin.op == EXPR_LIST_OP && !value->bin.right)
+            {
+                value = value->bin.left;
             }
-            lSymb = lSymb->details.fun.overload;
+            actuals = ArgumentList(loc, actuals, DupExpr(value));
         }
-        if (numvalid == 1)
-            return lValid;
     }
-    if (numvalid > 0) {
-        SemanticError(loc, ERROR_S_AMBIGUOUS_FUN_REFERENCE, GetAtomString(atable, fSymb->name));
-    } else {
-        SemanticError(loc, ERROR_S_NO_COMPAT_OVERLOADED_FUN, GetAtomString(atable, fSymb->name));
+    return actuals;
+} // lAppendDefaultArguments
+
+/*
+ * lFormatOverloadCandidate() - Render one candidate signature into
+ *         "out" as "rettype name(param, ...)", mirroring the type
+ *         formatting the tree dumps use.
+ */
+
+static void lFormatOverloadCandidate(Symbol *fSymb, char *out, int size)
+{
+    char tname[128], uname[128];
+    Symbol *param;
+
+    FormatTypeString(tname, sizeof tname, uname, sizeof uname,
+                     fSymb->type->fun.rettype);
+    strncpy(out, tname, size - 1);
+    out[size - 1] = '\0';
+    strncat(out, uname, size - strlen(out) - 1);
+    strncat(out, " ", size - strlen(out) - 1);
+    strncat(out, GetAtomString(atable, fSymb->name),
+            size - strlen(out) - 1);
+    strncat(out, "(", size - strlen(out) - 1);
+    for (param = fSymb->details.fun.params; param; param = param->next) {
+        FormatTypeString(tname, sizeof tname, uname, sizeof uname,
+                         param->type);
+        strncat(out, tname, size - strlen(out) - 1);
+        strncat(out, uname, size - strlen(out) - 1);
+        if (param->next)
+            strncat(out, ", ", size - strlen(out) - 1);
     }
-#if 1 // Detailed error messages - requires printing of types
-    lSymb = fSymb;
-    numvalid = 0;
-    while (lSymb) {
-        if (lSymb->details.fun.flags) {
-            printf("    #%d: ", ++numvalid);
-            PrintType(lSymb->type->fun.rettype, 0);
-            printf(" %s", GetAtomString(atable, lSymb->name));
-            PrintType(lSymb->type, 0);
-            printf("\n");
+    strncat(out, ")", size - strlen(out) - 1);
+} // lFormatOverloadCandidate
+
+/*
+ * lResolveOverloadedFunction() - Resolve an overloaded function call
+ *         through CgResolveOverload.  All candidate state and ranking
+ *         live inside the non-mutating resolver; this wrapper only
+ *         reports failures like the legacy path did and clones stored
+ *         default arguments into complete calls (*fActuals is updated
+ *         when defaults are appended).
+ */
+
+static Symbol *lResolveOverloadedFunction(SourceLoc *loc, Symbol *fSymb,
+                                          expr **fActuals)
+{
+    CgOverloadResult lResult;
+    Symbol *lSymb;
+    int numvalid = 0;
+    char candidate[512];
+
+    if (!CgResolveOverload(&Cg->theHAL->profileIdentity, fSymb, *fActuals,
+                           &lResult))
+    {
+        if (lResult.ambiguous) {
+            SemanticError(loc, ERROR_S_AMBIGUOUS_FUN_REFERENCE,
+                          GetAtomString(atable, fSymb->name));
+            /* Layered notes carry each candidate through the scanner
+             * diagnostic channel instead of raw stdout writes. */
+            lSymb = fSymb;
+            while (lSymb) {
+                lFormatOverloadCandidate(lSymb, candidate,
+                                         sizeof candidate);
+                SemanticNote(loc, NOTICE_S_OVERLOAD_CANDIDATE,
+                             ++numvalid, candidate);
+                lSymb = lSymb->details.fun.overload;
+            }
+            return fSymb;
         }
-        lSymb = lSymb->details.fun.overload;
+        /* No viable overload: fall back to ordinary argument binding
+         * against the first declaration so the call reports its one
+         * precise diagnostic (arity, parameter type, ...) exactly like
+         * a lone prototype would. */
+        return fSymb;
     }
-#endif
-    return fSymb;
+    lSymb = lResult.symbol;
+    if (lResult.usedDefaults > 0) {
+        *fActuals = lAppendDefaultArguments(loc, lSymb, *fActuals,
+                                            lResult.usedDefaults);
+    }
+    return lSymb;
 } // lResolveOverloadedFunction
+
+/*
+ * lNewMethodCallActuals() - Prepend the implicit receiver to a method
+ *         call's declared actuals.  The receiver is an internal argument
+ *         only; it is never exposed as a source-level formal.
+ */
+
+static expr *lNewMethodCallActuals(SourceLoc *loc, expr *fReceiver, expr *fActuals)
+{
+    expr *head, *tail;
+
+    head = ArgumentList(loc, NULL, fReceiver);
+    tail = head;
+    while (tail->bin.right)
+        tail = tail->bin.right;
+    tail->bin.right = fActuals;
+    return head;
+} // lNewMethodCallActuals
+
+/*
+ * lIsMethodSelection() - TRUE when a function-call callee is a member
+ *         selection naming a method symbol rather than an ordinary data
+ *         member or plain function reference.
+ */
+
+static int lIsMethodSelection(const expr *fExpr)
+{
+    return fExpr != NULL &&
+           fExpr->common.kind == BINARY_N &&
+           fExpr->bin.op == MEMBER_SELECTOR_OP &&
+           fExpr->bin.right != NULL &&
+           fExpr->bin.right->common.kind == SYMB_N &&
+           fExpr->bin.right->sym.op == MEMBER_OP &&
+           fExpr->bin.right->sym.symbol != NULL &&
+           IsFunction(fExpr->bin.right->sym.symbol) &&
+           fExpr->bin.right->sym.symbol->details.fun.isMethod;
+} // lIsMethodSelection
+
+/*
+ * lNewMethodCallOperator() - Build a method call.  The implicit receiver
+ *         becomes an internal first argument and ordinary argument
+ *         conversion applies to every slot including the receiver.  A
+ *         call through an interface receiver becomes INTERFACE_CALL_OP:
+ *         no implementing function is known at compile time, so dispatch
+ *         stays symbolic while the node preserves the interface's
+ *         declared result type.  A struct receiver produces an ordinary
+ *         direct call to the implementing method.
+ */
+
+static expr *lNewMethodCallOperator(SourceLoc *loc, expr *selection, expr *actuals)
+{
+    Symbol *method;
+    expr *receiver, *funExpr, *result;
+
+    method = selection->bin.right->sym.symbol;
+    receiver = selection->bin.left;
+    funExpr = (expr *) NewSymbNode(VARIABLE_OP, method);
+    result = NewFunctionCallOperator(loc, funExpr,
+                                     lNewMethodCallActuals(loc, receiver,
+                                                           actuals));
+    if (result->common.kind == BINARY_N &&
+        result->bin.op == FUN_CALL_OP &&
+        IsCategory(receiver->common.type, TYPE_CATEGORY_INTERFACE))
+    {
+        /* Keep the full selection expression so dumps show both the
+         * receiver and the selected interface method. */
+        result->bin.op = INTERFACE_CALL_OP;
+        result->bin.left = selection;
+    }
+    return result;
+} // lNewMethodCallOperator
 
 /*
  * NewFunctionCallOperator() - Construct a function call node.  Check types of parameters,
@@ -3061,8 +4307,12 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
     TypeList *lFormals;
     expr *lExpr, *lActuals;
     Symbol *lSymb;
+    CgSamplerKind formalKind, actualKind;
     int paramno, inout;
     int lop, lsubop = FUN_CALL_OP;
+
+    if (lIsMethodSelection(funExpr))
+        return lNewMethodCallOperator(loc, funExpr, actuals);
 
     funType = funExpr->common.type;
     if (IsCategory(funType, TYPE_CATEGORY_FUNCTION)) {
@@ -3071,14 +4321,27 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
         if (funExpr->common.kind == SYMB_N) {
             lSymb = funExpr->sym.symbol;
             if (lSymb->kind == FUNCTION_S) {
-                if (lSymb->details.fun.overload) {
-                    lSymb = lResolveOverloadedFunction(loc, lSymb, actuals);
+                /* Resolve whenever there is a real overload set or any
+                 * candidate declares parameter defaults; lone
+                 * default-free functions keep the direct binding path
+                 * and its diagnostics. */
+                if (lSymb->details.fun.overload ||
+                    lChainHasDefaults(lSymb))
+                {
+                    lSymb = lResolveOverloadedFunction(loc, lSymb,
+                                                       &actuals);
                     funExpr->sym.symbol = lSymb;
                     funType = funExpr->common.type = lSymb->type;
                 }
                 if (funType->properties & TYPE_MISC_INTERNAL) {
-                    lop = FUN_BUILTIN_OP;
-                    lsubop = (lSymb->details.fun.group << 16) | lSymb->details.fun.index;
+                    /* An intrinsic call carries its identity through
+                     * the selected symbol's immutable catalog
+                     * signature; a body attached by a portable
+                     * stdlib definition turns the call back into an
+                     * ordinary inlined call.  No packed group/index
+                     * encoding exists anymore. */
+                    if (lSymb->details.fun.statements == NULL)
+                        lop = FUN_INTRINSIC_OP;
                 }
             } else {
                 InternalError(loc, ERROR_S_SYMBOL_NOT_FUNCTION, GetAtomString(atable, lSymb->name));
@@ -3097,6 +4360,15 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                 inout |= 1;
             if (formalType->properties & TYPE_QUALIFIER_OUT) {
                 inout |= 2;
+                if (IsSampler(formalType, NULL)) {
+                    /* Samplers are read-only interface values: only in
+                     * parameter passing copies them. */
+                    lExpr = lActuals->bin.left;
+                    SemanticError(loc, ERROR_S_SAMPLER_OUT_PARAM,
+                        lExpr && lExpr->common.kind == SYMB_N &&
+                        lExpr->sym.op == VARIABLE_OP && lExpr->sym.symbol ?
+                        GetAtomString(atable, lExpr->sym.symbol->name) : "");
+                }
                 lExpr = lActuals->bin.left;
                 if (lExpr) {
                     if (lExpr->common.IsLValue) {
@@ -3105,7 +4377,8 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                                 IsPacked(formalType) == IsPacked(actualType))
                             {
                                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
-                            } else {
+                            } else if (!CgTypeIsPoison(actualType) &&
+                                       !CgTypeIsPoison(formalType)) {
                                 SemanticError(loc, ERROR_D_OUT_PARAM_NOT_SAME_TYPE, paramno);
                             }
                         } else {
@@ -3115,10 +4388,28 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                         SemanticError(loc, ERROR_D_OUT_PARAM_NOT_LVALUE, paramno);
                     }
                 }
-            } else if (ConvertType(lActuals->bin.left, formalType, actualType, &lExpr, 0, 0)) {
+                /* Boundary ruling (Task 7, revisited by Task 12):
+                 * argument binding keeps the exact-shape rules -- no
+                 * scalar<->aggregate shape conversions here.  The
+                 * ranked resolver in cg_overload.c applies the same
+                 * exclusion to its candidates (lIsShapeConversion), so
+                 * probing and binding agree; admitting replication
+                 * candidates would surface new ambiguities across
+                 * heavily overloaded names while single-candidate
+                 * calls still reject them at binding time. */
+            } else if (ConvertType(loc, lActuals->bin.left, formalType, actualType, &lExpr, 0, 0, 0)) {
                 lActuals->bin.left = lExpr;
                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
-            } else {
+            } else if (IsSampler(formalType, &formalKind) &&
+                       IsSampler(actualType, &actualKind) &&
+                       CgSamplerCompatible(formalKind, actualKind))
+            {
+                /* Any specific sampler binds directly to a deprecated
+                 * base-sampler formal; incompatible specific kinds fall
+                 * through to the error below. */
+                SUBOP_SET_MASK(lActuals->bin.subop, inout);
+            } else if (!CgTypeIsPoison(actualType) &&
+                       !CgTypeIsPoison(formalType)) {
                 SemanticError(loc, ERROR_D_INCOMPATIBLE_PARAMETER, paramno);
             }
             lFormals = lFormals->next;
@@ -3166,12 +4457,33 @@ expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
     //if ((vqualifiers & TYPE_QUALIFIER_CONST) && !InInit)
     if (fVar->common.IsConst && !InInit)
         SemanticError(loc, ERROR___ASSIGN_TO_CONST_VALUE);
+    if (IsSampler(vType, NULL) || IsSampler(eType, NULL))
+    {
+        /* Samplers are opaque language types: they may only be copied
+         * through parameter passing, never assigned or initialized. */
+        SemanticError(loc, ERROR___SAMPLER_ASSIGNMENT);
+    }
     if (vdomain == TYPE_DOMAIN_UNIFORM && edomain == TYPE_DOMAIN_VARYING)
         SemanticError(loc, ERROR___ASSIGN_VARYING_TO_UNIFORM);
-    if (ConvertType(fExpr, vType, eType, &lExpr, InInit, 0)) {
+    if (IsArray(vType) && IsUnsizedArray(vType) && IsArray(eType)) {
+        /* Dynamic-array assignment: the destination keeps its declared
+         * unsized canonical type object; the node carries the runtime
+         * shape of the source.  The element shapes must agree, and
+         * packedness must agree at every nesting layer. */
+        if (IsPacked(vType) == IsPacked(eType) &&
+            IsSameUnqualifiedType(vType->arr.eltype, eType->arr.eltype))
+        {
+            lExpr = (expr *) NewBinopSubNode(ASSIGN_DYN_OP,
+                                             SUBOP__(GetBase(vType)),
+                                             fVar, fExpr);
+            lExpr->common.type = IsUnsizedArray(eType) ? vType : eType;
+            return lExpr;
+        }
+        SemanticError(loc, ERROR___ASSIGN_INCOMPATIBLE_TYPES);
+    } else if (ConvertType(loc, fExpr, vType, eType, &lExpr, InInit, 0, 1)) {
         fExpr = lExpr;
     } else {
-        if (vType != UndefinedType && eType != UndefinedType)
+        if (!CgTypeIsPoison(vType) && !CgTypeIsPoison(eType))
             SemanticError(loc, ERROR___ASSIGN_INCOMPATIBLE_TYPES);
     }
     base = GetBase(vType);

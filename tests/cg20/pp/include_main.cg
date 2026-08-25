@@ -1,0 +1,10 @@
+// The #include directive opens its named file relative to the
+// compiler's working directory; this main fixture pulls in the shared
+// helper below and calls it.
+
+#include "included_header.cg"
+
+float4 main(float4 p : POSITION) : COLOR0
+{
+    return included_helper(p);
+}

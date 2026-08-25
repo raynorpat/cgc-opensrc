@@ -1,0 +1,47 @@
+#version 110
+// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+// cgc-bind varying cg_COLOR0 COLOR0
+// cgc-bind uniform source
+// cgc-bind builtin gl_Position POSITION0
+
+struct VertexOut
+{
+    vec4 position;
+    vec4 color;
+};
+
+attribute vec4 cg_ATTRIB0;
+varying vec4 cg_COLOR0;
+uniform mat3 source;
+
+void main()
+{
+    vec4 position;
+    VertexOut cg_output;
+    mat3 mixed;
+    mat4 fill;
+    position = cg_ATTRIB0;
+    mixed[0][0] = source[0][0];
+    mixed[1][0] = source[0][1];
+    mixed[0][2] = source[2][0];
+    fill[0][0] = 1.0;
+    fill[1][0] = 2.0;
+    fill[2][0] = 3.0;
+    fill[3][0] = 4.0;
+    fill[0][1] = 5.0;
+    fill[1][1] = 6.0;
+    fill[2][1] = 7.0;
+    fill[3][1] = 8.0;
+    fill[0][2] = 9.0;
+    fill[1][2] = 10.0;
+    fill[2][2] = 11.0;
+    fill[3][2] = 12.0;
+    fill[0][3] = 13.0;
+    fill[1][3] = 14.0;
+    fill[2][3] = 15.0;
+    fill[3][3] = 16.0;
+    cg_output.position = position + vec4(fill[3][3], fill[0][0], fill[1][2], fill[2][1]);
+    cg_output.color = vec4(mixed[0][0], mixed[1][0], mixed[0][2] + fill[0][0], 1.0);
+    gl_Position = cg_output.position;
+    cg_COLOR0 = cg_output.color;
+}

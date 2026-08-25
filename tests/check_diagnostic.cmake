@@ -43,20 +43,31 @@ if(DEFINED MESSAGE AND NOT diagnostics MATCHES "${MESSAGE}")
         "expected diagnostic text ${MESSAGE}:\n${diagnostics}")
 endif()
 
-if(NOT EXISTS "${ACTUAL}")
-    message(FATAL_ERROR "cgc did not create ${ACTUAL}")
+# NOTES pins layered notes in document order: each entry must appear
+# literally (quotes stripped from the diagnostics first) after the
+# previous one, so the call-path hop order is part of the contract.
+
+if(DEFINED NOTES)
+    string(REPLACE "\"" "" clean_diagnostic "${diagnostics}")
+    set(remaining_notes "${clean_diagnostic}")
+    foreach(note IN LISTS NOTES)
+        string(FIND "${remaining_notes}" "${note}" note_found)
+        if(note_found EQUAL -1)
+            message(FATAL_ERROR
+                "missing ordered note '${note}':\n${diagnostics}")
+        endif()
+        string(SUBSTRING "${remaining_notes}" ${note_found} -1
+            remaining_notes)
+    endforeach()
 endif()
-file(READ "${ACTUAL}" shader)
-string(REPLACE "\r\n" "\n" shader "${shader}")
-string(REPLACE "\r" "\n" shader "${shader}")
-if(NOT shader MATCHES "(^|\n)// End of program\n?$")
-    message(FATAL_ERROR "failed translation did not terminate normally")
+
+# Transactional output (Task 18): a failed translation publishes
+# nothing.  The compiler generates into a same-directory temporary and
+# aborts on failure, so the -o destination must not exist afterwards --
+# in particular no partial shader body can replace a previous program.
+
+if(EXISTS "${ACTUAL}")
+    file(READ "${ACTUAL}" published)
+    message(FATAL_ERROR
+        "failed compilation published an output file:\n${published}")
 endif()
-string(REGEX REPLACE "(^|\n)// cgc version [^\n]*\n" "\\1" shader "${shader}")
-string(REGEX REPLACE "(^|\n)// command line args:[^\n]*\n" "\\1" shader "${shader}")
-string(REGEX REPLACE "(^|\n)// End of program\n?$" "\\1" shader "${shader}")
-if(NOT shader STREQUAL "#version 110\n")
-    file(WRITE "${ACTUAL}.normalized" "${shader}")
-    message(FATAL_ERROR "failed translation emitted a partial shader body")
-endif()
-file(REMOVE "${ACTUAL}.normalized")

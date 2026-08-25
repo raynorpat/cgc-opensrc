@@ -131,6 +131,13 @@ int RegisterProfiles_arb(void)
 {
     RegisterProfile(InitHAL_arbvp1, PROFILE_ARBVP1_NAME, PROFILE_ARBVP1_ID);
     RegisterProfile(InitHAL_arbfp1, PROFILE_ARBFP1_NAME, PROFILE_ARBFP1_ID);
+    /* ARB profiles carry no wildcard family; their identities must be
+     * initialized like every other profile so overload-specifier
+     * validation never walks uninitialized selector tables. */
+    SetProfileIdentity(PROFILE_ARBVP1_NAME, CG_PROFILE_STAGE_VERTEX,
+                       NULL, 0);
+    SetProfileIdentity(PROFILE_ARBFP1_NAME, CG_PROFILE_STAGE_FRAGMENT,
+                       NULL, 0);
     return 1;
 } // RegisterProfiles_arb
 
@@ -206,15 +213,6 @@ static int FreeHAL_arb(slHAL *fHAL)
  *         base types.
  */
 
-static void RegisterSamplerType_arb(const char *name, int base)
-{
-    SourceLoc loc = { 0, 0 };
-    Type *type = NewType(TYPE_CATEGORY_SCALAR | base, 1);
-    int atom = LookUpAddString(atable, name);
-
-    SetScalarTypeName(base, atom, type);
-    AddSymbol(&loc, CurrentScope, atom, type, TYPEDEF_S);
-} // RegisterSamplerType_arb
 
 static int RegisterNames_arb(slHAL *fHAL)
 {
@@ -229,13 +227,10 @@ static int RegisterNames_arb(slHAL *fHAL)
             conn->registers[j].name = AddAtom(atable, conn->registers[j].sname);
     }
 
-    if (profile->stage == ARB_STAGE_FRAGMENT) {
-        RegisterSamplerType_arb("sampler1D", TYPE_BASE_SAMPLER1D);
-        RegisterSamplerType_arb("sampler2D", TYPE_BASE_SAMPLER2D);
-        RegisterSamplerType_arb("sampler3D", TYPE_BASE_SAMPLER3D);
-        RegisterSamplerType_arb("samplerCUBE", TYPE_BASE_SAMPLERCUBE);
-        RegisterSamplerType_arb("samplerRECT", TYPE_BASE_SAMPLERRECT);
-    }
+    /* Sampler base types are registered language-wide as canonical
+     * sampler typedefs (symbols.c); the ARB backends consume those
+     * canonical types through the texture-object-base adapter, so no
+     * profile-local sampler registration happens here. */
     return 1;
 } // RegisterNames_arb
 
