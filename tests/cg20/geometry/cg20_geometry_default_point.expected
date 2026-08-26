@@ -4,6 +4,9 @@
 //profile generic
 //program point_default
 //var float4 p : $vin.POSITION : POSITION : 0 : 1
+module point_default stage geometry
+geometry input point vertices 1
+geometry output points max_vertices unknown
 uniform struct $vin $vin;
 
 void point_default(varying float4 p : POSITION)

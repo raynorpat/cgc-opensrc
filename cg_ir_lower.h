@@ -64,6 +64,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 typedef struct CgIRLowerContext_Rec {
     CgIRModule *module;
     const CgReachGraph *reach;
+    /* Borrowed selected-program analysis state: resolved geometry
+     * configuration, attribute-array type views, and operation
+     * records.  NULL when no analysis ran or the profile is not
+     * geometry-enabled. */
+    const CgGeometryProgram *geometry;
     CgIRVerifyDiagnostic verifyDiagnostic;
 } CgIRLowerContext;
 
@@ -72,12 +77,19 @@ typedef struct CgIRLowerContext_Rec {
  *          into "context->module": globals in discovery order,
  *          functions headed by the entry.  Global initialization
  *          statements run as part of the entry body, matching the
- *          legacy prologue concatenation.  Returns nonzero when the
- *          module finished without allocation failure; the caller must
- *          still verify with CgIRVerifyModule before any other use.
+ *          legacy prologue concatenation.  The module's program stage
+ *          comes from "geometry"->config when one is supplied and from
+ *          the live profile identity otherwise; a supplied geometry
+ *          stage also installs the module-owned metadata copy before
+ *          any declaration lowers.  Geometry operation statements are
+ *          intercepted through "geometry"'s records, so the special
+ *          intrinsic calls never reach Cg IR.  Returns nonzero when
+ *          the module finished without allocation failure; the caller
+ *          must still verify with CgIRVerifyModule before any other
+ *          use.
  */
 
 int CgIRLowerProgram(CgIRLowerContext *context, Scope *globalScope,
-                     Symbol *entry);
+                     Symbol *entry, const CgGeometryProgram *geometry);
 
 #endif // !defined(__CG_IR_LOWER_H)

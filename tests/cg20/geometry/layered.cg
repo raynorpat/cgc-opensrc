@@ -1,0 +1,15 @@
+// Task 7 fixture: layer plus primitive ID -- the layered output
+// semantic and the primitive identifier ride one emit_vertex bundle,
+// with the primitive input semantic feeding the layer choice.
+
+void main(AttribArray<float4> p : POSITION,
+          int instance : INSTANCEID,
+          int primitiveId : PRIMITIVEID)
+{
+    int layer;
+
+    layer = instance + primitiveId;
+    emitVertex(p[0] : POSITION, layer : LAYER,
+               primitiveId : PRIMITIVEID);
+    restartStrip();
+}

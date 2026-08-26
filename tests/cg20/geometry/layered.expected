@@ -1,0 +1,22 @@
+# Generic output by Cg compiler
+//vendor NVIDIA Corporation
+//version 1.0.1
+//profile generic
+//program main
+// *** unknown category 0x00000080 ***
+//var int instance : $vin.<null atom> :  : 1 : 1
+//var int primitiveId : $vin.<null atom> :  : 2 : 1
+module main stage geometry
+geometry input point vertices 1
+geometry output points max_vertices 4
+void main(varying AttribArray<float4,1> p : POSITION, varying int instance : INSTANCEID, varying int primitiveId : PRIMITIVEID)
+{
+  int layer;
+  layer = (instance + primitiveId);
+  emit_vertex {
+    POSITION = %p[0]
+    LAYER = %layer
+    PRIMITIVEID = %primitiveId
+  }
+  restart_strip
+}

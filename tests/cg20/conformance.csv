@@ -300,3 +300,9 @@ GEOM-SEMANTIC-LAYER-TYPE-DIAG,invalid-language,cg20_geometry_semantic_layer_type
 GEOM-STAGE-VERTEX-DIAG,invalid-language,cg20_geometry_stage_vertex,Reachability
 GEOM-STAGE-FRAGMENT-DIAG,invalid-language,cg20_geometry_stage_fragment,Reachability
 GEOM-ENTRY-CALL-DIAG,invalid-language,cg20_geometry_entry_call,Geometry programs
+GEOM-LOWER-PASS-THROUGH,valid-generic,cg20_geometry_pass_through,Normalized generic output
+GEOM-LOWER-AMPLIFY,valid-generic,cg20_geometry_amplify,Normalized generic output
+GEOM-LOWER-RESTART,valid-generic,cg20_geometry_restart,Normalized generic output
+GEOM-LOWER-FLAT,valid-generic,cg20_geometry_flat,Normalized generic output
+GEOM-LOWER-ADJACENCY,valid-generic,cg20_geometry_adjacency,Normalized generic output
+GEOM-LOWER-LAYERED,valid-generic,cg20_geometry_layered,Normalized generic output

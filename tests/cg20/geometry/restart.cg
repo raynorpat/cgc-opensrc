@@ -1,0 +1,13 @@
+// Task 7 fixture: multiple strip restarts -- three emit/restart pairs
+// in one entry, pinning restart_strip between two emit_vertex
+// operations in source order.
+
+void main(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION);
+    restartStrip();
+    emitVertex(p[1] : POSITION);
+    restartStrip();
+    emitVertex(p[2] : POSITION);
+    restartStrip();
+}

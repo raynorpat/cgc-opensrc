@@ -1,0 +1,17 @@
+// Task 7 fixture: flat state -- a flat_attribute bundle carrying a
+// struct member with its declared semantic, plus an interpolated emit
+// bundle, so the golden shows both operation forms in one module.
+
+struct FlatState
+{
+    float4 tint : COLOR0;
+};
+
+uniform FlatState state;
+
+void main(AttribArray<float4> p : POSITION)
+{
+    flatAttrib(state.tint : COLOR0);
+    emitVertex(p[0] : POSITION, p[1] : TEXCOORD0);
+    restartStrip();
+}

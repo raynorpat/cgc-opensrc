@@ -957,6 +957,37 @@ add_cg20_geometry_failure(cg20_geometry_profile_option_missing_input generic
     tests/cg20/geometry/options_only.cg main
     6302 1 input.topology.is.required "Vertices=5")
 
+# Lowered geometry goldens (Task 7): each fixture compiles under the
+# generic profile with an explicit entry and its own literal -po list,
+# then pins the complete normalized output -- geometry header, resolved
+# attribute-array extents, and explicit emit/flat/restart operations.
+# Every registration states its own ENTRY and PROFILE_OPTIONS.
+
+add_cg20_geometry_success(cg20_geometry_pass_through generic
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/cg20/geometry/pass_through.expected
+    "TRIANGLE;Vertices=3")
+add_cg20_geometry_success(cg20_geometry_amplify generic
+    tests/cg20/geometry/amplify.cg main
+    ${PROJECT_SOURCE_DIR}/tests/cg20/geometry/amplify.expected
+    "POINT;Vertices=8")
+add_cg20_geometry_success(cg20_geometry_restart generic
+    tests/cg20/geometry/restart.cg main
+    ${PROJECT_SOURCE_DIR}/tests/cg20/geometry/restart.expected
+    "TRIANGLE;Vertices=12")
+add_cg20_geometry_success(cg20_geometry_flat generic
+    tests/cg20/geometry/flat.cg main
+    ${PROJECT_SOURCE_DIR}/tests/cg20/geometry/flat.expected
+    "TRIANGLE;Vertices=6")
+add_cg20_geometry_success(cg20_geometry_adjacency generic
+    tests/cg20/geometry/adjacency.cg main
+    ${PROJECT_SOURCE_DIR}/tests/cg20/geometry/adjacency.expected
+    "LINE_ADJ;Vertices=4")
+add_cg20_geometry_success(cg20_geometry_layered generic
+    tests/cg20/geometry/layered.cg main
+    ${PROJECT_SOURCE_DIR}/tests/cg20/geometry/layered.expected
+    "POINT;Vertices=4")
+
 # Geometry semantic negatives (Step 7): one fixture per wrong direction,
 # type, or shape, each pinning exact code and line.
 
@@ -1288,6 +1319,9 @@ add_executable(cg_ir_unit
     ${PROJECT_SOURCE_DIR}/cg_reach.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    # Lowering maps every module's program stage through the shared
+    # profile-stage conversion helper.
+    ${PROJECT_SOURCE_DIR}/hal.c
     ${PROJECT_SOURCE_DIR}/language.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c

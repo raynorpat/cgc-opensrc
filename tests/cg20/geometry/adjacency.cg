@@ -1,0 +1,10 @@
+// Task 7 fixture: adjacency indexing -- a line-adjacency input whose
+// four-vertex extent is used directly, including the adjacency-only
+// indices outside the core primitive.
+
+void main(AttribArray<float4> p : POSITION)
+{
+    emitVertex((p[1] + p[2]) * 0.5 : POSITION);
+    emitVertex(p[2] - p[1] : POSITION);
+    restartStrip();
+}

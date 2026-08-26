@@ -1,4 +1,4 @@
-﻿/****************************************************************************\
+/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -183,16 +183,16 @@ static void TestInputCountsAndDefaults(void)
         assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
     }
     assert(!strcmp(CgGeometryInputName(CG_GEOMETRY_INPUT_TRIANGLE),
-                   "TRIANGLE"));
+                   "triangle"));
     assert(!strcmp(CgGeometryInputName(
                CG_GEOMETRY_INPUT_TRIANGLE_ADJACENCY),
-               "TRIANGLE_ADJACENCY"));
+               "triangle_adjacency"));
     assert(!strcmp(CgGeometryOutputName(CG_GEOMETRY_OUTPUT_POINTS),
-                   "POINTS"));
+                   "points"));
     assert(!strcmp(CgGeometryOutputName(CG_GEOMETRY_OUTPUT_LINE_STRIP),
-                   "LINE_STRIP"));
+                   "line_strip"));
     assert(!strcmp(CgGeometryOutputName(
-               CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP), "TRIANGLE_STRIP"));
+               CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP), "triangle_strip"));
 }
 
 static void TestNonGeometryStageCopy(void)

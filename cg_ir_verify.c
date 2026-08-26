@@ -393,8 +393,8 @@ static int lGeometryTypeViolation(const Type *type, int geometryStage,
  *          canonical Type: rejects attribute arrays outside geometry
  *          modules and wrong extents inside them, anchored at the
  *          owning node.  Placement rules bind only once the stage is
- *          resolved; UNKNOWN modules are still under construction and
- *          lowering assigns their stages.
+ *          resolved; module verification already rejected UNKNOWN
+ *          stages before any type walk runs.
  */
 
 static int lCheckGeometryTypes(CgIRVerifyContext *ctx, const Type *type,
@@ -1301,58 +1301,65 @@ static int lScanExprCalls(CgIRVerifyContext *ctx, const CgIRExpr *expr)
     return changed;
 } /* lScanExprCalls */
 
+/*
+ * lScanStmtCalls() - Collect call identities across one statement list:
+ *          every sibling statement and every nested branch contributes,
+ *          including the value bundles of geometry operations, so the
+ *          reachable set matches exactly what lowered bodies contain.
+ */
+
 static int lScanStmtCalls(CgIRVerifyContext *ctx, const CgIRStmt *stmt)
 {
     const CgIRGeometryValue *value;
     int changed;
 
-    if (stmt == NULL)
-        return 0;
     changed = 0;
-    switch (stmt->kind) {
-    case CGIR_STMT_BLOCK:
-        changed |= lScanStmtCalls(ctx, stmt->u.block);
-        break;
-    case CGIR_STMT_DECL:
-        if (stmt->u.decl != NULL)
-            changed |= lScanExprCalls(ctx, stmt->u.decl->initializer);
-        break;
-    case CGIR_STMT_EXPR:
-        changed |= lScanExprCalls(ctx, stmt->u.expression);
-        break;
-    case CGIR_STMT_IF:
-        changed |= lScanExprCalls(ctx, stmt->u.ifStmt.condition);
-        changed |= lScanStmtCalls(ctx, stmt->u.ifStmt.trueBranch);
-        changed |= lScanStmtCalls(ctx, stmt->u.ifStmt.falseBranch);
-        break;
-    case CGIR_STMT_WHILE:
-    case CGIR_STMT_DO:
-        changed |= lScanExprCalls(ctx, stmt->u.loop.condition);
-        changed |= lScanStmtCalls(ctx, stmt->u.loop.body);
-        break;
-    case CGIR_STMT_FOR:
-        changed |= lScanStmtCalls(ctx, stmt->u.forStmt.init);
-        changed |= lScanExprCalls(ctx, stmt->u.forStmt.condition);
-        changed |= lScanExprCalls(ctx, stmt->u.forStmt.step);
-        changed |= lScanStmtCalls(ctx, stmt->u.forStmt.body);
-        break;
-    case CGIR_STMT_RETURN:
-        changed |= lScanExprCalls(ctx, stmt->u.returnExpr);
-        break;
-    case CGIR_STMT_DISCARD:
-        changed |= lScanExprCalls(ctx, stmt->u.discard.condition);
-        break;
-    case CGIR_STMT_GEOMETRY_EMIT:
-    case CGIR_STMT_GEOMETRY_FLAT:
-        for (value = stmt->u.geometry.values; value != NULL;
-             value = value->next)
-        {
-            changed |= lScanExprCalls(ctx, value->value);
+    for (; stmt != NULL; stmt = stmt->next) {
+        switch (stmt->kind) {
+        case CGIR_STMT_BLOCK:
+            changed |= lScanStmtCalls(ctx, stmt->u.block);
+            break;
+        case CGIR_STMT_DECL:
+            if (stmt->u.decl != NULL)
+                changed |= lScanExprCalls(ctx, stmt->u.decl->initializer);
+            break;
+        case CGIR_STMT_EXPR:
+            changed |= lScanExprCalls(ctx, stmt->u.expression);
+            break;
+        case CGIR_STMT_IF:
+            changed |= lScanExprCalls(ctx, stmt->u.ifStmt.condition);
+            changed |= lScanStmtCalls(ctx, stmt->u.ifStmt.trueBranch);
+            changed |= lScanStmtCalls(ctx, stmt->u.ifStmt.falseBranch);
+            break;
+        case CGIR_STMT_WHILE:
+        case CGIR_STMT_DO:
+            changed |= lScanExprCalls(ctx, stmt->u.loop.condition);
+            changed |= lScanStmtCalls(ctx, stmt->u.loop.body);
+            break;
+        case CGIR_STMT_FOR:
+            changed |= lScanStmtCalls(ctx, stmt->u.forStmt.init);
+            changed |= lScanExprCalls(ctx, stmt->u.forStmt.condition);
+            changed |= lScanExprCalls(ctx, stmt->u.forStmt.step);
+            changed |= lScanStmtCalls(ctx, stmt->u.forStmt.body);
+            break;
+        case CGIR_STMT_RETURN:
+            changed |= lScanExprCalls(ctx, stmt->u.returnExpr);
+            break;
+        case CGIR_STMT_DISCARD:
+            changed |= lScanExprCalls(ctx, stmt->u.discard.condition);
+            break;
+        case CGIR_STMT_GEOMETRY_EMIT:
+        case CGIR_STMT_GEOMETRY_FLAT:
+            for (value = stmt->u.geometry.values; value != NULL;
+                 value = value->next)
+            {
+                changed |= lScanExprCalls(ctx, value->value);
+            }
+            break;
+        case CGIR_STMT_GEOMETRY_RESTART:
+        default:
+            break;
         }
-        break;
-    case CGIR_STMT_GEOMETRY_RESTART:
-    default:
-        break;
     }
     return changed;
 } /* lScanStmtCalls */
@@ -1803,11 +1810,12 @@ int CgIRVerifyModule(const CgIRModule *module,
     if (CgIRModuleFailed(module))
         return CgIRFail(&ctx, CGIR_VERIFY_OWNER, emptyLoc, module);
 
-    /* Stage and geometry-metadata pairing: the stage must be a known
-     * enum value, geometry metadata exists exactly on a geometry
-     * module, and an unresolved stage carrying resolved geometry state
-     * is construction garbage. */
-    if ((int) module->stage < (int) CGIR_STAGE_UNKNOWN ||
+    /* Stage assignment is mandatory: every production lowering path
+     * records one resolved stage (geometry from the analyzed program,
+     * everything else from the profile-stage mapping), so UNKNOWN is
+     * construction state only and can never survive verification.
+     * Geometry metadata exists exactly on a geometry module. */
+    if ((int) module->stage <= (int) CGIR_STAGE_UNKNOWN ||
         (int) module->stage > (int) CGIR_STAGE_FRAGMENT)
     {
         return CgIRFail(&ctx, CGIR_VERIFY_GEOMETRY, emptyLoc, module);

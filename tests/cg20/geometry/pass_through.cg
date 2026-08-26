@@ -1,0 +1,9 @@
+// Task 7 fixture: pass-through -- the smallest complete geometry
+// program.  One triangle vertex re-emitted as one strip vertex; the
+// normalized golden pins the geometry header, the resolved
+// AttribArray extent, and the explicit emit_vertex operation.
+
+void main(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION);
+}

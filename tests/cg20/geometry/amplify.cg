@@ -1,0 +1,15 @@
+// Task 7 fixture: amplification inside a loop -- one point input fans
+// out into several emitted strip vertices whose positions come from
+// uniform-scaled arithmetic over the resolved attribute array.
+
+uniform float4 scale;
+
+void main(AttribArray<float4> p : POSITION)
+{
+    int i;
+
+    for (i = 1; i < 4; i++) {
+        emitVertex(p[0] * scale * (float)i : POSITION);
+    }
+    restartStrip();
+}

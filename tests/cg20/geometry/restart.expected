@@ -1,0 +1,24 @@
+# Generic output by Cg compiler
+//vendor NVIDIA Corporation
+//version 1.0.1
+//profile generic
+//program main
+// *** unknown category 0x00000080 ***
+module main stage geometry
+geometry input triangle vertices 3
+geometry output triangle_strip max_vertices 12
+void main(varying AttribArray<float4,3> p : POSITION)
+{
+  emit_vertex {
+    POSITION = %p[0]
+  }
+  restart_strip
+  emit_vertex {
+    POSITION = %p[1]
+  }
+  restart_strip
+  emit_vertex {
+    POSITION = %p[2]
+  }
+  restart_strip
+}

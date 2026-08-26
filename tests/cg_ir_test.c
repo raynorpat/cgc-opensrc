@@ -1346,6 +1346,10 @@ int main(int argc, char **argv)
 
     CgIRInitModule(&verifyModule, TestAlloc, NULL);
     verifyModule.profile = &genericIdentity;
+    /* Stage assignment is mandatory: every production lowering path
+     * records one resolved stage, so every module fixture built by
+     * hand declares its own neutral intent here. */
+    assert(CgIRSetStage(&verifyModule, CGIR_STAGE_NEUTRAL));
 
     vTexDecl = CgIRNewDecl(&verifyModule, texSymb, texSymb->name,
                            sampler2DType, CGIR_STORAGE_UNIFORM,
@@ -1609,6 +1613,7 @@ int main(int argc, char **argv)
      * accepts any caller-supplied result type, so float + float typed
      * as float2 reaches the verifier unchanged. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
     assert(rFn != NULL);
     rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
@@ -1635,6 +1640,7 @@ int main(int argc, char **argv)
     /* R2: assignment to a non-lvalue - builders leave the lvalue flag
      * clear, so an unadorned symbol reference is the non-lvalue. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rDecl = CgIRNewDecl(&rejectModule, tmpSymb, tmpSymb->name, float4Type,
                         CGIR_STORAGE_UNIFORM, CGIR_DOMAIN_UNIFORM, 0, NULL,
                         &paramLoc);
@@ -1661,6 +1667,7 @@ int main(int argc, char **argv)
     /* R3: wrong-arity call - the callee declares one formal, the call
      * site passes two arguments. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rCalleeFn = CgIRNewFunction(&rejectModule, shadeSymb, floatType,
                                 &fnALoc);
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnBLoc);
@@ -1695,6 +1702,7 @@ int main(int argc, char **argv)
     /* R4a: intrinsic arity disagrees with the signature's parameter
      * list (one argument against dot(float, float)). */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
     assert(rFn != NULL);
     rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
@@ -1719,6 +1727,7 @@ int main(int argc, char **argv)
      * assert identity agreement, so this state is only reachable by
      * overwriting the opcode after construction. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
     assert(rFn != NULL);
     rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vZero);
@@ -1745,6 +1754,7 @@ int main(int argc, char **argv)
     /* R5: return value cannot convert to the function result - a
      * sampler never converts to float4. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rDecl = CgIRNewDecl(&rejectModule, texSymb, texSymb->name,
                         sampler2DType, CGIR_STORAGE_UNIFORM,
                         CGIR_DOMAIN_UNIFORM, 0, NULL, &paramLoc);
@@ -1770,6 +1780,7 @@ int main(int argc, char **argv)
 
     /* R6: break outside any loop. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
     assert(rFn != NULL);
     breakStmt = CgIRNewBreakStmt(&rejectModule, &ctorLoc);
@@ -1785,6 +1796,7 @@ int main(int argc, char **argv)
 
     /* R7: discard carrying a non-Boolean predicate. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
     assert(rFn != NULL);
     rLeft = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
@@ -1803,6 +1815,7 @@ int main(int argc, char **argv)
     /* R8: interface call whose receiver has the wrong interface - the
      * method implements ifaceB while the receiver is an ifaceA. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rDecl = CgIRNewDecl(&rejectModule, objSymb, objSymb->name, &ifaceAType,
                         CGIR_STORAGE_UNIFORM, CGIR_DOMAIN_UNIFORM, 0, NULL,
                         &paramLoc);
@@ -1833,6 +1846,7 @@ int main(int argc, char **argv)
      * encoding cannot honor.  Builders never set the flag, so the test
      * writes it directly. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
     assert(rFn != NULL);
     rValue = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
@@ -1855,6 +1869,7 @@ int main(int argc, char **argv)
     /* Twin of R9: the same statement with the flag left clear stays
      * conventionally synthesized and must verify. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, float4Type, &fnALoc);
     assert(rFn != NULL);
     rValue = CgIRNewConstant(&rejectModule, floatType, &constLoc, &vHalf);
@@ -1884,6 +1899,7 @@ int main(int argc, char **argv)
     connVarSymb = lMakeSymbol(VARIABLE_S, "$conn", &connType);
 
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rDecl = CgIRNewDecl(&rejectModule, connVarSymb, connVarSymb->name,
                         &connType, CGIR_STORAGE_NONE, CGIR_DOMAIN_UNIFORM,
                         0, NULL, &paramLoc);
@@ -1924,6 +1940,7 @@ int main(int argc, char **argv)
     array3Type.arr.scalarKind = CG_SCALAR_FLOAT;
 
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, VoidType, &fnALoc);
     assert(rFn != NULL);
     rArgs = NULL;
@@ -1949,6 +1966,7 @@ int main(int argc, char **argv)
 
     /* Short fill: two scalars cannot build a three-element array. */
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rFn = CgIRNewFunction(&rejectModule, mainSymb, VoidType, &fnALoc);
     assert(rFn != NULL);
     rArgs = NULL;
@@ -1998,6 +2016,7 @@ int main(int argc, char **argv)
     prodEvalSymb->details.fun.params = prodReceiverSymb;
 
     CgIRInitModule(&rejectModule, TestAlloc, NULL);
+    assert(CgIRSetStage(&rejectModule, CGIR_STAGE_NEUTRAL));
     rDecl = CgIRNewDecl(&rejectModule, objSymb, objSymb->name, &ifaceAType,
                         CGIR_STORAGE_UNIFORM, CGIR_DOMAIN_UNIFORM, 0, NULL,
                         &paramLoc);
@@ -2226,7 +2245,8 @@ int main(int argc, char **argv)
         context.reach = &reach;
         memset(&context.verifyDiagnostic, 0,
                sizeof(context.verifyDiagnostic));
-        assert(CgIRLowerProgram(&context, GlobalScope, lowerMainSymb));
+        assert(CgIRLowerProgram(&context, GlobalScope, lowerMainSymb,
+                                NULL));
 
         entry = module.entry;
         assert(entry != NULL && entry->symbol == lowerMainSymb);
@@ -2367,7 +2387,7 @@ int main(int argc, char **argv)
             memset(&pureContext.verifyDiagnostic, 0,
                    sizeof(pureContext.verifyDiagnostic));
             assert(CgIRLowerProgram(&pureContext, GlobalScope,
-                                    pureMainSymb));
+                                    pureMainSymb, NULL));
 
             pureEntry = pureModule.entry;
             assert(pureEntry != NULL &&
@@ -2419,16 +2439,25 @@ int main(int argc, char **argv)
      * One uniform, one struct instance read through a member
      * selection, one interface object dispatched by method identity,
      * one helper reached by its resolved callee, one intrinsic, an if
-     * with both arms, and a loop carrying a break.  CgIRPrintModule
-     * must refuse an unverified module without writing a byte, and
-     * otherwise emit the literal golden text below byte-for-byte.
+     * with both arms, and a loop carrying a break.  Task 7 turns the
+     * golden module into a geometry program: the normalized text opens
+     * with the resolved geometry header and main's body carries one
+     * emit_vertex bundle, one flat_attribute bundle, and a bare
+     * restart_strip.  CgIRPrintModule must refuse an unverified module
+     * without writing a byte, and otherwise emit the literal golden
+     * text below byte-for-byte.
      */
 
     {
         static const char *lGoldenText =
+            "module main stage geometry\n"
+            "geometry input triangle vertices 3\n"
+            "geometry output triangle_strip max_vertices 6\n"
             "uniform float4 tint : COLOR;\n"
             "uniform struct Material surface;\n"
             "uniform interface Evaluator obj;\n"
+            "uniform float2 uv;\n"
+            "uniform float4 color;\n"
             "\n"
             "float4 main(varying float4 position : POSITION)\n"
             "{\n"
@@ -2453,6 +2482,14 @@ int main(int argc, char **argv)
             "  acc = float4(dot(acc.xy, acc.xy), 0.000000, 0.000000, "
                                                             "1.000000);\n"
             "  scale(acc.x);\n"
+            "  emit_vertex {\n"
+            "    POSITION = %position\n"
+            "    TEXCOORD0 = %uv\n"
+            "  }\n"
+            "  flat_attribute {\n"
+            "    COLOR0 = %color\n"
+            "  }\n"
+            "  restart_strip\n"
             "  return acc;\n"
             "}\n"
             "\n"
@@ -2504,6 +2541,20 @@ int main(int argc, char **argv)
         CgIRStmt *goldThenBlock;
         CgIRStmt *goldElseBlock;
         CgIRStmt *goldLoopBody;
+        CgIRGeometryInfo goldGeometryInfo;
+        Symbol *goldUvSymb;
+        Symbol *goldColorSymb;
+        CgIRDecl *goldUvDecl;
+        CgIRDecl *goldColorDecl;
+        CgIRExpr *goldPosRef;
+        CgIRExpr *goldUvRef;
+        CgIRExpr *goldColorRef;
+        CgIRGeometryValue *goldVPos;
+        CgIRGeometryValue *goldVUv;
+        CgIRGeometryValue *goldVCol;
+        CgIRStmt *goldEmitStmt;
+        CgIRStmt *goldFlatStmt;
+        CgIRStmt *goldRestartStmt;
         FILE *goldFile;
         char *goldText;
         long goldLength;
@@ -2577,8 +2628,23 @@ int main(int argc, char **argv)
         CgIRInitModule(&goldModule, TestAlloc, NULL);
         goldModule.profile = &genericIdentity;
 
+        /* Task 7: the golden module is a geometry program with a
+         * fully resolved configuration. */
+        assert(CgIRSetStage(&goldModule, CGIR_STAGE_GEOMETRY));
+        memset(&goldGeometryInfo, 0, sizeof(goldGeometryInfo));
+        goldGeometryInfo.inputTopology = CG_GEOMETRY_INPUT_TRIANGLE;
+        goldGeometryInfo.outputTopology =
+            CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP;
+        goldGeometryInfo.inputVertexCount = 3;
+        goldGeometryInfo.maxOutputVertices = 6;
+        goldGeometryInfo.hasMaxOutputVertices = 1;
+        assert(CgIRSetGeometryInfo(&goldModule, &goldGeometryInfo));
+
         /* Globals in source order: a bound uniform, a struct instance,
-         * and an interface object. */
+         * an interface object, and the two geometry bundle sources. */
+        goldUvSymb = lMakeSymbol(VARIABLE_S, "uv", float2Type);
+        goldColorSymb = lMakeSymbol(VARIABLE_S, "color", float4Type);
+        assert(goldUvSymb != NULL && goldColorSymb != NULL);
         goldTintDecl = CgIRNewDecl(&goldModule, goldTintSymb,
                                    goldTintSymb->name, float4Type,
                                    CGIR_STORAGE_UNIFORM,
@@ -2594,11 +2660,22 @@ int main(int argc, char **argv)
                                   goldObjSymb->name, &goldIfaceType,
                                   CGIR_STORAGE_UNIFORM,
                                   CGIR_DOMAIN_UNIFORM, 0, NULL, &paramLoc);
+        goldUvDecl = CgIRNewDecl(&goldModule, goldUvSymb, goldUvSymb->name,
+                                 float2Type, CGIR_STORAGE_UNIFORM,
+                                 CGIR_DOMAIN_UNIFORM, 0, NULL, &paramLoc);
+        goldColorDecl = CgIRNewDecl(&goldModule, goldColorSymb,
+                                    goldColorSymb->name, float4Type,
+                                    CGIR_STORAGE_UNIFORM,
+                                    CGIR_DOMAIN_UNIFORM, 0, NULL,
+                                    &paramLoc);
         assert(goldTintDecl != NULL && goldSurfaceDecl != NULL);
         assert(goldObjDecl != NULL);
+        assert(goldUvDecl != NULL && goldColorDecl != NULL);
         CgIRAppendDecl(&goldModule.globals, goldTintDecl);
         CgIRAppendDecl(&goldModule.globals, goldSurfaceDecl);
         CgIRAppendDecl(&goldModule.globals, goldObjDecl);
+        CgIRAppendDecl(&goldModule.globals, goldUvDecl);
+        CgIRAppendDecl(&goldModule.globals, goldColorDecl);
 
         /* Entry first, then the helper -- production lowering order. */
         goldMainFn = CgIRNewFunction(&goldModule, mainSymb, float4Type,
@@ -2858,6 +2935,44 @@ int main(int argc, char **argv)
         assert(goldStmt != NULL);
         CgIRAppendStmt(&goldList, goldStmt);
 
+        /* emit_vertex { POSITION = position; TEXCOORD0 = uv; } with a
+         * flat_attribute { COLOR0 = color; } and a bare restart_strip
+         * right before the return: one of every geometry operation,
+         * all reachable from the entry. */
+        goldPosRef = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                   positionSymb);
+        goldUvRef = CgIRNewSymbol(&goldModule, float2Type, &constLoc,
+                                  goldUvSymb);
+        goldColorRef = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
+                                     goldColorSymb);
+        assert(goldPosRef != NULL && goldUvRef != NULL);
+        assert(goldColorRef != NULL);
+        goldPosRef->isLvalue = 1;
+        goldUvRef->isLvalue = 1;
+        goldColorRef->isLvalue = 1;
+        goldVPos = CgIRNewGeometryValue(&goldModule,
+                                        LookUpAddString(atable, "POSITION"),
+                                        LookUpAddString(atable, "POSITION"),
+                                        float4Type, goldPosRef, ctorLoc);
+        goldVUv = CgIRNewGeometryValue(
+            &goldModule, LookUpAddString(atable, "TEXCOORD0"),
+            LookUpAddString(atable, "TEXCOORD0"), float2Type, goldUvRef,
+            ctorLoc);
+        goldVCol = CgIRNewGeometryValue(
+            &goldModule, LookUpAddString(atable, "COLOR0"),
+            LookUpAddString(atable, "COLOR0"), float4Type, goldColorRef,
+            ctorLoc);
+        assert(goldVPos != NULL && goldVUv != NULL && goldVCol != NULL);
+        goldVPos->next = goldVUv;
+        goldEmitStmt = CgIRNewGeometryEmit(&goldModule, goldVPos, retLoc);
+        goldFlatStmt = CgIRNewGeometryFlat(&goldModule, goldVCol, retLoc);
+        goldRestartStmt = CgIRNewGeometryRestart(&goldModule, retLoc);
+        assert(goldEmitStmt != NULL && goldFlatStmt != NULL);
+        assert(goldRestartStmt != NULL);
+        CgIRAppendStmt(&goldList, goldEmitStmt);
+        CgIRAppendStmt(&goldList, goldFlatStmt);
+        CgIRAppendStmt(&goldList, goldRestartStmt);
+
         /* return acc; */
         goldValue = CgIRNewSymbol(&goldModule, float4Type, &constLoc,
                                   goldAccSymb);
@@ -2904,6 +3019,9 @@ int main(int argc, char **argv)
          * defined function without entry selection fails OWNER
          * verification before any text is produced. */
         CgIRInitModule(&goldBadModule, TestAlloc, NULL);
+        /* Neutral stage keeps this fixture's documented OWNER failure:
+         * one defined function without entry selection. */
+        assert(CgIRSetStage(&goldBadModule, CGIR_STAGE_NEUTRAL));
         goldBadFn = CgIRNewFunction(&goldBadModule, shadeSymb,
                                     float4Type, &fnALoc);
         assert(goldBadFn != NULL);
@@ -2978,6 +3096,16 @@ int main(int argc, char **argv)
         assert(scratchModule.stage == CGIR_STAGE_UNKNOWN);
         assert(CgIRSetStage(&scratchModule, CGIR_STAGE_VERTEX));
         assert(scratchModule.stage == CGIR_STAGE_VERTEX);
+
+        /* M0: a bare UNKNOWN stage is construction state only.  Every
+         * production lowering path records one resolved stage (geometry
+         * from the analyzed program, everything else from the profile
+         * mapping), so a left-UNKNOWN module can never verify. */
+        CgIRInitModule(&scratchModule, TestAlloc, NULL);
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&scratchModule, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == &scratchModule);
 
         lBuildGeometryFixture(&geo, TestAlloc, 1);
 

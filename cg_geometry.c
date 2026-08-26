@@ -87,20 +87,26 @@ static const CgGeometryOutputSpelling outputSpellings[] = {
     { "TRIANGLE_OUT", CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP }
 };
 
+/*
+ * Canonical spellings for the resolved topologies: the normalized Cg
+ * IR printer and every diagnostic that names a topology share this
+ * one table, so no second spelling authority can drift.
+ */
+
 static const char *inputNames[] = {
     "unknown",
-    "POINT",
-    "LINE",
-    "LINE_ADJACENCY",
-    "TRIANGLE",
-    "TRIANGLE_ADJACENCY"
+    "point",
+    "line",
+    "line_adjacency",
+    "triangle",
+    "triangle_adjacency"
 };
 
 static const char *outputNames[] = {
     "unknown",
-    "POINTS",
-    "LINE_STRIP",
-    "TRIANGLE_STRIP"
+    "points",
+    "line_strip",
+    "triangle_strip"
 };
 
 /*

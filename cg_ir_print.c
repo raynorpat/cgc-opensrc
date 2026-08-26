@@ -254,6 +254,14 @@ static void lPrintType(PrintBuf *buf, const Type *type)
         else
             lBufAppend(buf, "<sampler>", 9);
         break;
+    case TYPE_CATEGORY_ATTRIB_ARRAY:
+        /* Resolved attribute arrays spell their canonical element and
+         * extent; the unresolved extent-zero source shape never
+         * reaches a verified module. */
+        lBufAppend(buf, "AttribArray<", 12);
+        lPrintType(buf, CgAttribArrayElement(type));
+        lBufPrint(buf, ",%u>", CgAttribArrayExtent(type));
+        break;
     default:
         lBufAppend(buf, "<type>", 6);
         break;
@@ -765,6 +773,42 @@ static void lPrintStmt(PrintBuf *buf, const CgIRStmt *stmt, int depth)
             lBufAppend(buf, "discard;\n", 9);
         }
         break;
+    case CGIR_STMT_GEOMETRY_EMIT:
+    case CGIR_STMT_GEOMETRY_FLAT:
+        /* Operation bundles print every resolved value in stored
+         * order: canonical semantic, then the lowered value behind a
+         * "%" reference mark.  Source pointers and source semantic
+         * spellings stay internal. */
+        lPrintIndent(buf, depth);
+        if (stmt->kind == CGIR_STMT_GEOMETRY_EMIT)
+            lBufAppend(buf, "emit_vertex {\n", 14);
+        else
+            lBufAppend(buf, "flat_attribute {\n", 17);
+        {
+            const CgIRGeometryValue *value;
+
+            for (value = stmt->u.geometry.values; value != NULL;
+                 value = value->next)
+            {
+                lPrintIndent(buf, depth + 1);
+                if (value->canonicalSemantic)
+                    lBufPrint(buf, "%s",
+                              GetAtomString(atable,
+                                            value->canonicalSemantic));
+                else
+                    lBufAppend(buf, "<semantic>", 10);
+                lBufAppend(buf, " = %", 4);
+                lPrintExpr(buf, value->value);
+                lBufAppend(buf, "\n", 1);
+            }
+        }
+        lPrintIndent(buf, depth);
+        lBufAppend(buf, "}\n", 2);
+        break;
+    case CGIR_STMT_GEOMETRY_RESTART:
+        lPrintIndent(buf, depth);
+        lBufAppend(buf, "restart_strip\n", 14);
+        break;
     default:
         lPrintIndent(buf, depth);
         lBufAppend(buf, "<bad-stmt>;\n", 12);
@@ -781,6 +825,40 @@ static void lPrintStmtList(PrintBuf *buf, const CgIRStmt *stmts, int depth)
 } // lPrintStmtList
 
 ///////////////////////////// Module printing /////////////////////////////
+
+/*
+ * lPrintGeometryHeader() - The three-line geometry header ahead of
+ *          every declaration, printed for geometry modules only.
+ *          Topologies use the canonical CgGeometryInputName and
+ *          CgGeometryOutputName tokens; an absent maximum prints as
+ *          "unknown" instead of a number.  Everything comes from the
+ *          resolved metadata record, never from source pointers or
+ *          traversal order.
+ */
+
+static void lPrintGeometryHeader(PrintBuf *buf, const CgIRModule *module)
+{
+    const char *name;
+
+    if (module->stage != CGIR_STAGE_GEOMETRY || ! module->geometry)
+        return;
+    if (module->entry && module->entry->symbol &&
+        module->entry->symbol->name)
+        name = GetAtomString(atable, module->entry->symbol->name);
+    else
+        name = "<unnamed>";
+    lBufPrint(buf, "module %s stage geometry\n", name);
+    lBufPrint(buf, "geometry input %s vertices %u\n",
+              CgGeometryInputName(module->geometry->inputTopology),
+              module->geometry->inputVertexCount);
+    lBufAppend(buf, "geometry output ", 16);
+    lBufPrint(buf, "%s max_vertices ",
+              CgGeometryOutputName(module->geometry->outputTopology));
+    if (module->geometry->hasMaxOutputVertices)
+        lBufPrint(buf, "%u\n", module->geometry->maxOutputVertices);
+    else
+        lBufAppend(buf, "unknown\n", 8);
+} // lPrintGeometryHeader
 
 static void lPrintFunction(PrintBuf *buf, const CgIRFunction *function)
 {
@@ -813,6 +891,7 @@ static void lPrintModuleText(PrintBuf *buf, const CgIRModule *module)
     const CgIRFunction *function;
     int printedFunction;
 
+    lPrintGeometryHeader(buf, module);
     for (global = module->globals; global != NULL; global = global->next) {
         lPrintDeclHead(buf, global);
         if (global->initializer) {

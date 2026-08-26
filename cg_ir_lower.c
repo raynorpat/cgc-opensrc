@@ -73,6 +73,7 @@ typedef struct CgIRLowerRec_ {
     CgIRModule *module;
     Scope *globalScope;
     Symbol *entry;
+    const CgGeometryProgram *geometry;
     SourceLoc loc;    // provenance: enclosing statement or function
     Symbol *function;      // function being lowered
     Scope *funScope;       // its formal/local scope
@@ -104,6 +105,25 @@ static void lUnlowerable(CgIRLower *L, const char *what)
 } // lUnlowerable
 
 //////////////////////////////// Declarations ////////////////////////////////
+
+/*
+ * lResolvedAttribType() - The canonical type an attribute-array
+ *          declaration stores in Cg IR: selected-program analysis
+ *          records one resolved view (element plus input-vertex-count
+ *          extent) per distinct source array, and the unresolved
+ *          extent-zero source shape never reaches the IR.  Types
+ *          without a recorded view pass through unchanged.
+ */
+
+static Type *lResolvedAttribType(CgIRLower *L, Type *fType)
+{
+    Type *resolved;
+
+    if (L->geometry == NULL || !CgIsAttribArray(fType))
+        return fType;
+    resolved = CgGeometryFindResolvedType(L->geometry, fType);
+    return resolved ? resolved : fType;
+} // lResolvedAttribType
 
 /*
  * lDefaultDomain() - Program-interface role: entry formals join the
@@ -163,6 +183,7 @@ static CgIRStorage lMapStorage(Type *fType)
 static CgIRDecl *lNewDecl(CgIRLower *L, Symbol *symbol, Type *fType,
                           CgIRDomain defaultDomain, CgIRExpr *initializer)
 {
+    fType = lResolvedAttribType(L, fType);
     if (CgTypeIsPoison(fType)) {
         L->module->failed = 1;
         return NULL;
@@ -685,9 +706,11 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
                                    &named);
         }
         {
-            /* Type-view installation may have resolved a declared
-             * attribute-array formal after this reference was parsed;
-             * the live declared type is the authoritative shape. */
+            /* A declared attribute-array formal stores its resolved
+             * view in the IR: the reference's parsed type and the
+             * symbol's live declared type both stay unresolved source
+             * shapes (extent zero), so lowering resolves them through
+             * the analysis-recorded type views. */
             Type *referenceType = fExpr->common.type;
 
             if (CgIsAttribArray(referenceType) &&
@@ -696,6 +719,7 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
             {
                 referenceType = fExpr->sym.symbol->type;
             }
+            referenceType = lResolvedAttribType(L, referenceType);
             result = CgIRNewSymbol(L->module, referenceType, &L->loc,
                                    fExpr->sym.symbol);
         }
@@ -990,6 +1014,60 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
 static int lLowerStmtList(CgIRLower *L, stmt *fStmt, CgIRStmt **list);
 
 /*
+ * CgIRLowerGeometryStatement() - One classified frontend geometry
+ *          operation becomes exactly one emit, flat, or restart Cg IR
+ *          statement.  Every resolved bundle value lowers through the
+ *          normal typed expression path; the record's already resolved
+ *          semantic atoms, canonical type, and location are copied as
+ *          recorded and no semantic is re-inferred here.  The special
+ *          intrinsic call itself never reaches Cg IR.  Returns the
+ *          newly built statement or NULL on module failure.
+ */
+
+static CgIRStmt *CgIRLowerGeometryStatement(CgIRLower *L,
+                                        const CgGeometryOperation *operation)
+{
+    CgIRGeometryValue *values;
+    CgIRGeometryValue **tail;
+    const CgGeometryValue *sourceValue;
+
+    values = NULL;
+    tail = &values;
+    for (sourceValue = operation->values; sourceValue != NULL;
+         sourceValue = sourceValue->next)
+    {
+        CgIRExpr *lowered;
+        CgIRGeometryValue *copy;
+
+        L->loc = sourceValue->loc;
+        lowered = lLowerExpr(L, sourceValue->value);
+        if (lowered == NULL)
+            return NULL;
+        copy = CgIRNewGeometryValue(L->module,
+                                    sourceValue->canonicalSemantic,
+                                    sourceValue->sourceSemantic,
+                                    lResolvedAttribType(L,
+                                                        sourceValue->type),
+                                    lowered, sourceValue->loc);
+        if (copy == NULL)
+            return NULL;
+        *tail = copy;
+        tail = &copy->next;
+    }
+    switch (operation->kind) {
+    case CG_GEOMETRY_OPERATION_EMIT:
+        return CgIRNewGeometryEmit(L->module, values, operation->loc);
+    case CG_GEOMETRY_OPERATION_FLAT:
+        return CgIRNewGeometryFlat(L->module, values, operation->loc);
+    case CG_GEOMETRY_OPERATION_RESTART:
+        return CgIRNewGeometryRestart(L->module, operation->loc);
+    default:
+        lUnlowerable(L, "geometry operation kind");
+        return NULL;
+    }
+} // CgIRLowerGeometryStatement
+
+/*
  * lEmptyBlock() - A synthesized empty block under the documented
  *          zero-location encoding (clear synthesized flag).
  */
@@ -1248,11 +1326,29 @@ static int lLowerStmt(CgIRLower *L, stmt *fStmt, CgIRStmt **list)
 {
     CgIRExpr *condition;
     CgIRStmt *stmt, *body;
+    CgIRStmt *geometryStmt;
+    const CgGeometryOperation *operation;
     expr *sourceCond;
 
     if (fStmt == NULL)
         return 1;
     L->loc = fStmt->commonst.loc;
+
+    /* Selected-program analysis classified every reachable geometry
+     * operation statement before lowering ran; intercepted statements
+     * become their explicit IR operations instead of ordinary
+     * expression statements. */
+    if (L->geometry != NULL) {
+        operation = CgGeometryFindOperation(L->geometry, fStmt);
+        if (operation != NULL) {
+            geometryStmt = CgIRLowerGeometryStatement(L, operation);
+            if (geometryStmt == NULL)
+                return 0;
+            CgIRAppendStmt(list, geometryStmt);
+            return 1;
+        }
+    }
+
     switch (fStmt->commonst.kind) {
     case EXPR_STMT:
         if (fStmt->exprst.exp == NULL)
@@ -1701,9 +1797,10 @@ static int lLowerGlobal(CgIRLower *L, Symbol *symbol)
 /////////////////////////////// Program entry ////////////////////////////////
 
 int CgIRLowerProgram(CgIRLowerContext *context, Scope *globalScope,
-                     Symbol *entry)
+                     Symbol *entry, const CgGeometryProgram *geometry)
 {
     CgIRLower L;
+    CgIRStage stage;
     int index;
 
     if (context == NULL || context->module == NULL ||
@@ -1715,9 +1812,41 @@ int CgIRLowerProgram(CgIRLowerContext *context, Scope *globalScope,
      * every module built during one compilation. */
     context->module->profile = &Cg->theHAL->profileIdentity;
 
+    /* Every module records its resolved program stage: a supplied
+     * selected program answers from its resolved configuration (which
+     * copies the profile stage through for non-geometry programs), and
+     * every other program maps the live profile identity's own stage.
+     * A geometry-stage program also installs its module-owned
+     * metadata copy here, before any declaration lowers. */
+    if (geometry != NULL &&
+        geometry->config.stage != CGIR_STAGE_UNKNOWN)
+        stage = geometry->config.stage;
+    else
+        stage = CgProfileProgramStage(&Cg->theHAL->profileIdentity);
+    if (!CgIRSetStage(context->module, stage))
+        return 0;
+    if (context->module->stage == CGIR_STAGE_GEOMETRY &&
+        geometry != NULL)
+    {
+        CgIRGeometryInfo info;
+
+        memset(&info, 0, sizeof(info));
+        info.inputTopology = geometry->config.inputTopology;
+        info.outputTopology = geometry->config.outputTopology;
+        info.inputVertexCount = geometry->config.inputVertexCount;
+        info.maxOutputVertices = geometry->config.maxOutputVertices;
+        info.hasMaxOutputVertices = geometry->config.hasMaxOutputVertices;
+        info.inputLoc = geometry->config.inputLoc;
+        info.outputLoc = geometry->config.outputLoc;
+        info.maxVerticesLoc = geometry->config.maxVerticesLoc;
+        if (!CgIRSetGeometryInfo(context->module, &info))
+            return 0;
+    }
+
     L.module = context->module;
     L.globalScope = globalScope;
     L.entry = entry;
+    L.geometry = geometry;
     L.function = NULL;
     L.funScope = NULL;
     L.irFunction = NULL;

@@ -101,6 +101,14 @@ if(DEFINED EXPECTED)
     # file(WRITE) emits CRLF on Windows, so round-trip both sides
     # through it to make the byte comparison ending-agnostic while the
     # checked-in expectation stays LF.
+    # Controlled regeneration: UPDATE_EXPECTED=ON writes the freshly
+    # normalized text over the checked-in expectation and stops;
+    # normal CTest registrations never set it.
+    if(DEFINED UPDATE_EXPECTED AND UPDATE_EXPECTED)
+        file(WRITE "${EXPECTED}" "${actual_text}")
+        return()
+    endif()
+
     file(READ "${EXPECTED}" expected_text)
     string(REPLACE "\r\n" "\n" expected_text "${expected_text}")
     string(REPLACE "\r" "\n" expected_text "${expected_text}")

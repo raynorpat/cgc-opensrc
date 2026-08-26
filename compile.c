@@ -85,45 +85,6 @@ static void *CgGeometryPoolAlloc(void *arg, size_t size)
     return mem_Calloc((MemoryPool *) arg, size, 1);
 } // CgGeometryPoolAlloc
 
-/*
- * lInstallGeometryTypeViews() - Hand the analyzed program's resolved
- *          attribute-array types to the lowering pipeline: every
- *          reachable function's array formal adopts its resolved view
- *          (element plus selected input-vertex-count extent) so the
- *          old lowering call sees canonical shapes.  Task 6/7 replace
- *          this seam with real geometry metadata in the IR.
- */
-
-static void lInstallGeometryTypeViews(const CgGeometryProgram *geometry,
-                                      const CgReachGraph *reach)
-{
-    const CgReachNode *node;
-    Symbol *function;
-    Symbol *formal;
-    Type *resolved;
-    int ii;
-
-    for (ii = 0; ii < reach->nodeCount; ii++) {
-        node = &reach->nodes[ii];
-        function = node->symbol;
-        if (!function || function->kind != FUNCTION_S) {
-            continue;
-        }
-        for (formal = function->details.fun.params; formal != NULL;
-             formal = formal->next)
-        {
-            if (!CgIsAttribArray(formal->type)) {
-                continue;
-            }
-            resolved = CgGeometryFindResolvedType(geometry,
-                                                  formal->type);
-            if (resolved) {
-                formal->type = resolved;
-            }
-        }
-    }
-} // lInstallGeometryTypeViews
-
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////// Global geometry operation classification: ///////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -344,15 +305,35 @@ static void lSweepStrayAttribArrays(Symbol *fSymb, Symbol *entry)
  * Returns nonzero when the program lowered AND verified.
  */
 
+/*
+ * ReportCgIRFailure() - The base plan's one controlled internal IR
+ *          diagnostic, emitted at the failing node's own location with
+ *          the verifier's stable reason name, then zero so compilation
+ *          stops before any profile validation or generation runs.
+ *          Both normal generation and -nocode lower and verify, so a
+ *          broken module never reaches either path.
+ */
+
+static int ReportCgIRFailure(const CgIRVerifyDiagnostic *diagnostic)
+{
+    /* InternalError predates const discipline and only reads the
+     * location; the cast keeps this wrapper's contract const. */
+    InternalError((SourceLoc *) &diagnostic->loc, ERROR_S_CG_IR_INVARIANT,
+                  CgIRVerifyReasonName(diagnostic->reason));
+    return 0;
+} // ReportCgIRFailure
+
 static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
                              CgIRModule *moduleOut, CgReachGraph *reach)
 {
     CgGeometryProgram geometry;
+    const CgGeometryProgram *analyzedGeometry;
     CgGeometryDiagnostic geometryDiagnostic;
     CgIRStage profileStage;
     CgIRLowerContext context;
     int OK;
 
+    analyzedGeometry = NULL;
     memset(reach, 0, sizeof(*reach));
     if (!CgReachBuild(program, reach)) {
         InternalError(loc, ERROR_S_CG_IR_INVARIANT, "reachability build");
@@ -382,15 +363,19 @@ static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
                 return 0;
             }
         }
-        lInstallGeometryTypeViews(&geometry, reach);
+        /* Lowering consumes the analysis state directly: resolved
+         * type views and operation records come from the program
+         * record instead of mutating the frontend tree. */
+        analyzedGeometry = &geometry;
     }
 
     CgIRInitModule(moduleOut, lIRPoolAlloc, fScope->pool);
     context.module = moduleOut;
     context.reach = reach;
+    context.geometry = analyzedGeometry;
     memset(&context.verifyDiagnostic, 0,
            sizeof(context.verifyDiagnostic));
-    OK = CgIRLowerProgram(&context, fScope, program);
+    OK = CgIRLowerProgram(&context, fScope, program, analyzedGeometry);
     if (!OK && GetErrorCount() == 0) {
 
         // A silent lowering failure is the sticky module allocation
@@ -400,13 +385,8 @@ static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
         InternalError(loc, ERROR_S_CG_IR_INVARIANT, "Cg IR lowering");
     }
     if (OK) {
-        OK = CgIRVerifyModule(moduleOut, &context.verifyDiagnostic);
-        if (!OK) {
-            InternalError(&context.verifyDiagnostic.loc,
-                          ERROR_S_CG_IR_INVARIANT,
-                          CgIRVerifyReasonName(
-                              context.verifyDiagnostic.reason));
-        }
+        if (!CgIRVerifyModule(moduleOut, &context.verifyDiagnostic))
+            return ReportCgIRFailure(&context.verifyDiagnostic);
     }
     return OK;
 } // lLowerAndVerifyIR

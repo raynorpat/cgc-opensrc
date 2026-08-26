@@ -4,6 +4,9 @@
 //profile generic
 //program triangle_adj_default
 //var float4 p : $vin.POSITION : POSITION : 0 : 1
+module triangle_adj_default stage geometry
+geometry input triangle_adjacency vertices 6
+geometry output triangle_strip max_vertices unknown
 uniform struct $vin $vin;
 
 void triangle_adj_default(varying float4 p : POSITION)

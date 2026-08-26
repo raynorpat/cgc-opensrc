@@ -1,0 +1,24 @@
+# Generic output by Cg compiler
+//vendor NVIDIA Corporation
+//version 1.0.1
+//profile generic
+//program main
+//semantic scale
+//var float4 scale :  :  : -1 : 1
+// *** unknown category 0x00000080 ***
+module main stage geometry
+geometry input point vertices 1
+geometry output points max_vertices 8
+uniform float4 scale;
+
+void main(varying AttribArray<float4,1> p : POSITION)
+{
+  int i;
+  for (i = (int)1; i < (int)4; i++)
+  {
+    emit_vertex {
+      POSITION = %(p[0] * scale) * (float)i
+    }
+  }
+  restart_strip
+}
