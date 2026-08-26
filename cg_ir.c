@@ -136,6 +136,156 @@ int CgIRModuleFailed(const CgIRModule *module)
     return module->failed;
 } // CgIRModuleFailed
 
+/*
+ * Geometry metadata and operations.
+ */
+
+/*
+ * lCopyGeometryValues() - Module-owned deep copy of one ordered bundle
+ *          list: every node is duplicated through the module
+ *          allocator while each copy retains the original semantic
+ *          atoms, canonical type, expression reference, and location.
+ *          Returns NULL after marking the module failed; partial
+ *          copies stay in the failed module's arena.
+ */
+
+static CgIRGeometryValue *lCopyGeometryValues(CgIRModule *module,
+                                              const CgIRGeometryValue *values)
+{
+    CgIRGeometryValue *head;
+    CgIRGeometryValue *tail;
+    const CgIRGeometryValue *cursor;
+
+    assert(module != NULL);
+    head = NULL;
+    tail = NULL;
+    for (cursor = values; cursor != NULL; cursor = cursor->next) {
+        CgIRGeometryValue *copy;
+
+        copy = (CgIRGeometryValue *)
+               CgIRAllocate(module, sizeof(CgIRGeometryValue));
+        if (copy == NULL) {
+            return NULL;
+        }
+        copy->next = NULL;
+        copy->canonicalSemantic = cursor->canonicalSemantic;
+        copy->sourceSemantic = cursor->sourceSemantic;
+        copy->value = cursor->value;
+        copy->type = cursor->type;
+        copy->loc = cursor->loc;
+        if (tail == NULL) {
+            head = copy;
+        } else {
+            tail->next = copy;
+        }
+        tail = copy;
+    }
+    return head;
+} /* lCopyGeometryValues */
+
+int CgIRSetStage(CgIRModule *module, CgIRStage stage)
+{
+    assert(module != NULL);
+    if ((int) stage < (int) CGIR_STAGE_UNKNOWN ||
+        (int) stage > (int) CGIR_STAGE_FRAGMENT)
+    {
+        return 0;
+    }
+    if (module->failed)
+        return 0;
+    module->stage = stage;
+    return 1;
+} /* CgIRSetStage */
+
+int CgIRSetGeometryInfo(CgIRModule *module,
+                        const CgIRGeometryInfo *geometry)
+{
+    CgIRGeometryInfo *copy;
+
+    assert(module != NULL);
+    assert(geometry != NULL);
+    if (module->failed)
+        return 0;
+    copy = (CgIRGeometryInfo *)
+           CgIRAllocate(module, sizeof(CgIRGeometryInfo));
+    if (copy == NULL)
+        return 0;
+    *copy = *geometry;
+    module->geometry = copy;
+    return 1;
+} /* CgIRSetGeometryInfo */
+
+CgIRGeometryValue *CgIRNewGeometryValue(CgIRModule *module,
+                        int canonicalSemantic, int sourceSemantic,
+                        Type *type, CgIRExpr *value, SourceLoc loc)
+{
+    CgIRGeometryValue *node;
+
+    assert(module != NULL);
+    assert(type != NULL);
+    if (module->failed)
+        return NULL;
+    node = (CgIRGeometryValue *)
+           CgIRAllocate(module, sizeof(CgIRGeometryValue));
+    if (node == NULL)
+        return NULL;
+    node->next = NULL;
+    node->canonicalSemantic = canonicalSemantic;
+    node->sourceSemantic = sourceSemantic;
+    node->value = value;
+    node->type = type;
+    node->loc = loc;
+    return node;
+} /* CgIRNewGeometryValue */
+
+static CgIRStmt *CgIRNewGeometryBundleStmt(CgIRModule *module,
+                                           CgIRStmtKind kind,
+                                           CgIRGeometryValue *values,
+                                           SourceLoc loc)
+{
+    CgIRStmt *stmt;
+    CgIRGeometryValue *copy;
+
+    assert(module != NULL);
+    assert(values != NULL);
+    if (module->failed)
+        return NULL;
+    copy = lCopyGeometryValues(module, values);
+    if (copy == NULL)
+        return NULL;
+    stmt = CgIRNewStmtNode(module, kind, &loc);
+    if (stmt == NULL)
+        return NULL;
+    stmt->u.geometry.values = copy;
+    return stmt;
+} /* CgIRNewGeometryBundleStmt */
+
+CgIRStmt *CgIRNewGeometryEmit(CgIRModule *module,
+                              CgIRGeometryValue *values, SourceLoc loc)
+{
+    return CgIRNewGeometryBundleStmt(module, CGIR_STMT_GEOMETRY_EMIT,
+                                     values, loc);
+} /* CgIRNewGeometryEmit */
+
+CgIRStmt *CgIRNewGeometryFlat(CgIRModule *module,
+                              CgIRGeometryValue *values, SourceLoc loc)
+{
+    return CgIRNewGeometryBundleStmt(module, CGIR_STMT_GEOMETRY_FLAT,
+                                     values, loc);
+} /* CgIRNewGeometryFlat */
+
+CgIRStmt *CgIRNewGeometryRestart(CgIRModule *module, SourceLoc loc)
+{
+    CgIRStmt *stmt;
+
+    assert(module != NULL);
+    stmt = CgIRNewStmtNode(module, CGIR_STMT_GEOMETRY_RESTART, &loc);
+    if (stmt == NULL)
+        return NULL;
+    assert(stmt->u.geometry.values == NULL);
+    return stmt;
+} /* CgIRNewGeometryRestart */
+
 ///////////////////// Declarations and functions ///////////////////////
 
 CgIRDecl *CgIRNewDecl(CgIRModule *module, Symbol *symbol, int name,

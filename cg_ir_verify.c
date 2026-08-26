@@ -75,6 +75,17 @@ typedef struct CgIRBinding_Rec {
     int depth;
 } CgIRBinding;
 
+/*
+ * One geometry-reachability mark per module function, pre-populated
+ * before the walk and flipped from the entry outward along resolved
+ * call edges.
+ */
+
+typedef struct CgIRReachMark_Rec {
+    const CgIRFunction *fn;
+    int reachable;
+} CgIRReachMark;
+
 typedef struct CgIRVerifyContext_Rec {
     const CgIRModule *module;
     CgIRVerifyDiagnostic *diagnostic;
@@ -83,6 +94,8 @@ typedef struct CgIRVerifyContext_Rec {
     int scopeDepth;
     int bindingCount;
     CgIRBinding bindings[CG_IR_MAX_BINDINGS];
+    CgIRReachMark reachMarks[CG_IR_MAX_BINDINGS];
+    int reachCount;
 } CgIRVerifyContext;
 
 /*
@@ -132,6 +145,8 @@ const char *CgIRVerifyReasonName(CgIRVerifyReason reason)
         return "interface";
     case CGIR_VERIFY_LOCATION:
         return "location";
+    case CGIR_VERIFY_GEOMETRY:
+        return "geometry";
     default:
         return "<invalid>";
     }
@@ -331,6 +346,80 @@ static int lCanonicalType(const Type *type)
     }
 } // lCanonicalType
 
+/*
+ * Geometry type placement.  Attribute arrays live only in geometry-
+ * stage modules, and there each one carries exactly the resolved input
+ * extent.  The scan recurses through array element and struct/connector
+ * member types so no nested placement slips past the direct checks.
+ */
+
+static int lGeometryTypeViolation(const Type *type, int geometryStage,
+                                  unsigned int extent)
+{
+    Symbol *member;
+
+    if (type == NULL || type == UndefinedType)
+        return 0;
+    if (CgIsAttribArray(type)) {
+        if (!geometryStage)
+            return 1;
+        return CgAttribArrayExtent(type) != extent;
+    }
+    switch (GetCategory(type)) {
+    case TYPE_CATEGORY_ARRAY:
+        return lGeometryTypeViolation(type->arr.eltype, geometryStage,
+                                      extent);
+    case TYPE_CATEGORY_STRUCT:
+    case TYPE_CATEGORY_CONNECTOR:
+        if (type->str.members == NULL)
+            return 0;
+        for (member = type->str.members->params; member != NULL;
+             member = member->next)
+        {
+            if (lGeometryTypeViolation(member->type, geometryStage,
+                                       extent))
+            {
+                return 1;
+            }
+        }
+        return 0;
+    default:
+        return 0;
+    }
+} /* lGeometryTypeViolation */
+
+/*
+ * lCheckGeometryTypes() - Shared gate for every node that owns a
+ *          canonical Type: rejects attribute arrays outside geometry
+ *          modules and wrong extents inside them, anchored at the
+ *          owning node.  Placement rules bind only once the stage is
+ *          resolved; UNKNOWN modules are still under construction and
+ *          lowering assigns their stages.
+ */
+
+static int lCheckGeometryTypes(CgIRVerifyContext *ctx, const Type *type,
+                               SourceLoc loc, const void *node)
+{
+    const CgIRModule *module = ctx->module;
+
+    if (module->stage != CGIR_STAGE_GEOMETRY &&
+        module->stage != CGIR_STAGE_NEUTRAL &&
+        module->stage != CGIR_STAGE_VERTEX &&
+        module->stage != CGIR_STAGE_FRAGMENT)
+    {
+        return 1;
+    }
+    if (!lGeometryTypeViolation(type,
+                                module->stage == CGIR_STAGE_GEOMETRY,
+                                module->geometry != NULL
+                                    ? module->geometry->inputVertexCount
+                                    : 0))
+    {
+        return 1;
+    }
+    return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, loc, node);
+} /* lCheckGeometryTypes */
+
 ///////////////////////////////// Walk state //////////////////////////////////
 
 static int lScopeMark(const CgIRVerifyContext *ctx)
@@ -424,6 +513,8 @@ static int lRequireNodeBasics(CgIRVerifyContext *ctx, const CgIRExpr *expr)
 {
     if (!lCanonicalType(expr->type))
         return CgIRFail(ctx, CGIR_VERIFY_TYPE, expr->loc, expr);
+    if (!lCheckGeometryTypes(ctx, expr->type, expr->loc, expr))
+        return 0;
     if (expr->synthesized && expr->loc.file == 0 && expr->loc.line == 0)
         return CgIRFail(ctx, CGIR_VERIFY_LOCATION, expr->loc, expr);
     return 1;
@@ -1099,6 +1190,375 @@ static int lRequireScalarBoolean(CgIRVerifyContext *ctx,
     return 1;
 } // lRequireScalarBoolean
 
+/*
+ * Geometry reachability.  Geometry operations may appear only in
+ * functions the entry reaches through resolved ordinary calls.  Marks
+ * are computed once before the walk: every function starts unmarked,
+ * the entry seeds the set, and a fixpoint sweep flips any function
+ * called from a reached body until nothing changes.
+ */
+
+static const CgIRFunction *lFindModuleFunction(const CgIRModule *module,
+                                               const Symbol *callee)
+{
+    const CgIRFunction *fn;
+
+    if (callee == NULL)
+        return NULL;
+    for (fn = module->functions; fn != NULL; fn = fn->next) {
+        if (fn->symbol == callee)
+            return fn;
+    }
+    return NULL;
+} /* lFindModuleFunction */
+
+/*
+ * lFlipReach() - Mark one listed function reachable; answers whether
+ *          the set grew.  Unlisted functions cannot occur because the
+ *          builder pre-populates every module function.
+ */
+
+static int lFlipReach(CgIRVerifyContext *ctx, const CgIRFunction *fn)
+{
+    int index;
+
+    for (index = 0; index < ctx->reachCount; index++) {
+        if (ctx->reachMarks[index].fn == fn) {
+            if (ctx->reachMarks[index].reachable)
+                return 0;
+            ctx->reachMarks[index].reachable = 1;
+            return 1;
+        }
+    }
+    return 0;
+} /* lFlipReach */
+
+static int lScanExprCalls(CgIRVerifyContext *ctx, const CgIRExpr *expr)
+{
+    const CgIRExpr *cursor;
+    const CgIRFunction *target;
+    int changed;
+
+    changed = 0;
+    for (cursor = expr; cursor != NULL; cursor = cursor->next) {
+        switch (cursor->kind) {
+        case CGIR_EXPR_CALL:
+            target = lFindModuleFunction(ctx->module,
+                                         cursor->u.call.callee);
+            if (target != NULL)
+                changed |= lFlipReach(ctx, target);
+            changed |= lScanExprCalls(ctx, cursor->u.call.arguments);
+            break;
+        case CGIR_EXPR_MEMBER:
+            changed |= lScanExprCalls(ctx, cursor->u.member.object);
+            break;
+        case CGIR_EXPR_INDEX:
+            changed |= lScanExprCalls(ctx, cursor->u.index.object);
+            changed |= lScanExprCalls(ctx, cursor->u.index.index);
+            break;
+        case CGIR_EXPR_LENGTH:
+            changed |= lScanExprCalls(ctx, cursor->u.length.object);
+            break;
+        case CGIR_EXPR_SWIZZLE:
+            changed |= lScanExprCalls(ctx, cursor->u.swizzle.object);
+            break;
+        case CGIR_EXPR_CONSTRUCT:
+            changed |= lScanExprCalls(ctx, cursor->u.construct.arguments);
+            break;
+        case CGIR_EXPR_CAST:
+            changed |= lScanExprCalls(ctx, cursor->u.cast.operand);
+            break;
+        case CGIR_EXPR_UNARY:
+            changed |= lScanExprCalls(ctx, cursor->u.unary.operand);
+            break;
+        case CGIR_EXPR_BINARY:
+            changed |= lScanExprCalls(ctx, cursor->u.binary.left);
+            changed |= lScanExprCalls(ctx, cursor->u.binary.right);
+            break;
+        case CGIR_EXPR_ASSIGN:
+            changed |= lScanExprCalls(ctx, cursor->u.assign.target);
+            changed |= lScanExprCalls(ctx, cursor->u.assign.value);
+            break;
+        case CGIR_EXPR_CONDITIONAL:
+            changed |= lScanExprCalls(ctx, cursor->u.conditional.condition);
+            changed |= lScanExprCalls(ctx, cursor->u.conditional.trueExpr);
+            changed |= lScanExprCalls(ctx, cursor->u.conditional.falseExpr);
+            break;
+        case CGIR_EXPR_INTERFACE_CALL:
+            changed |= lScanExprCalls(ctx,
+                                      cursor->u.interfaceCall.receiver);
+            changed |= lScanExprCalls(ctx,
+                                      cursor->u.interfaceCall.arguments);
+            break;
+        case CGIR_EXPR_INTRINSIC:
+            changed |= lScanExprCalls(ctx,
+                                      cursor->u.intrinsicCall.arguments);
+            break;
+        default:
+            break;
+        }
+    }
+    return changed;
+} /* lScanExprCalls */
+
+static int lScanStmtCalls(CgIRVerifyContext *ctx, const CgIRStmt *stmt)
+{
+    const CgIRGeometryValue *value;
+    int changed;
+
+    if (stmt == NULL)
+        return 0;
+    changed = 0;
+    switch (stmt->kind) {
+    case CGIR_STMT_BLOCK:
+        changed |= lScanStmtCalls(ctx, stmt->u.block);
+        break;
+    case CGIR_STMT_DECL:
+        if (stmt->u.decl != NULL)
+            changed |= lScanExprCalls(ctx, stmt->u.decl->initializer);
+        break;
+    case CGIR_STMT_EXPR:
+        changed |= lScanExprCalls(ctx, stmt->u.expression);
+        break;
+    case CGIR_STMT_IF:
+        changed |= lScanExprCalls(ctx, stmt->u.ifStmt.condition);
+        changed |= lScanStmtCalls(ctx, stmt->u.ifStmt.trueBranch);
+        changed |= lScanStmtCalls(ctx, stmt->u.ifStmt.falseBranch);
+        break;
+    case CGIR_STMT_WHILE:
+    case CGIR_STMT_DO:
+        changed |= lScanExprCalls(ctx, stmt->u.loop.condition);
+        changed |= lScanStmtCalls(ctx, stmt->u.loop.body);
+        break;
+    case CGIR_STMT_FOR:
+        changed |= lScanStmtCalls(ctx, stmt->u.forStmt.init);
+        changed |= lScanExprCalls(ctx, stmt->u.forStmt.condition);
+        changed |= lScanExprCalls(ctx, stmt->u.forStmt.step);
+        changed |= lScanStmtCalls(ctx, stmt->u.forStmt.body);
+        break;
+    case CGIR_STMT_RETURN:
+        changed |= lScanExprCalls(ctx, stmt->u.returnExpr);
+        break;
+    case CGIR_STMT_DISCARD:
+        changed |= lScanExprCalls(ctx, stmt->u.discard.condition);
+        break;
+    case CGIR_STMT_GEOMETRY_EMIT:
+    case CGIR_STMT_GEOMETRY_FLAT:
+        for (value = stmt->u.geometry.values; value != NULL;
+             value = value->next)
+        {
+            changed |= lScanExprCalls(ctx, value->value);
+        }
+        break;
+    case CGIR_STMT_GEOMETRY_RESTART:
+    default:
+        break;
+    }
+    return changed;
+} /* lScanStmtCalls */
+
+/*
+ * lBuildGeometryReach() - Pre-populate one mark per module function,
+ *          seed the entry, and sweep reached bodies until the set
+ *          stops growing.  Exhausting the mark table is an ownership
+ *          failure like binding-stack exhaustion.
+ */
+
+static int lBuildGeometryReach(CgIRVerifyContext *ctx)
+{
+    const CgIRFunction *fn;
+    const CgIRDecl *decl;
+    int index;
+    int changed;
+
+    ctx->reachCount = 0;
+    for (fn = ctx->module->functions; fn != NULL; fn = fn->next) {
+        if (ctx->reachCount >= CG_IR_MAX_BINDINGS)
+            return CgIRFail(ctx, CGIR_VERIFY_OWNER, fn->loc, fn);
+        ctx->reachMarks[ctx->reachCount].fn = fn;
+        ctx->reachMarks[ctx->reachCount].reachable = 0;
+        ctx->reachCount++;
+    }
+    if (ctx->module->entry != NULL)
+        lFlipReach(ctx, ctx->module->entry);
+    do {
+        changed = 0;
+        for (index = 0; index < ctx->reachCount; index++) {
+            if (!ctx->reachMarks[index].reachable)
+                continue;
+            fn = ctx->reachMarks[index].fn;
+            for (decl = fn->parameters; decl != NULL; decl = decl->next)
+                changed |= lScanExprCalls(ctx, decl->initializer);
+            for (decl = fn->locals; decl != NULL; decl = decl->next)
+                changed |= lScanExprCalls(ctx, decl->initializer);
+            changed |= lScanStmtCalls(ctx, fn->body);
+        }
+    } while (changed);
+    return 1;
+} /* lBuildGeometryReach */
+
+static int lFunctionReachable(CgIRVerifyContext *ctx,
+                              const CgIRFunction *fn)
+{
+    int index;
+
+    for (index = 0; index < ctx->reachCount; index++) {
+        if (ctx->reachMarks[index].fn == fn)
+            return ctx->reachMarks[index].reachable;
+    }
+    return 0;
+} /* lFunctionReachable */
+
+/*
+ * lVerifyGeometryValues() - One emit or flat bundle: every item
+ *          carries canonical semantic and source atoms, a canonical
+ *          type, a verified retained value expression, and a real
+ *          source location; canonical semantics stay unique within the
+ *          bundle; input-only semantics never ride an output bundle;
+ *          output-legal special semantics are scalar ints; flat
+ *          bundles never carry POSITION.
+ */
+
+static int lVerifyGeometryValues(CgIRVerifyContext *ctx,
+                                 const CgIRStmt *stmt)
+{
+    const CgIRGeometryValue *cursor;
+    const CgIRGeometryValue *prior;
+    CgGeometrySemanticClass cls;
+    int flat;
+    int positionAtom;
+
+    flat = stmt->kind == CGIR_STMT_GEOMETRY_FLAT;
+    positionAtom = LookUpAddString(atable, "POSITION");
+    for (cursor = stmt->u.geometry.values; cursor != NULL;
+         cursor = cursor->next)
+    {
+        if (cursor->canonicalSemantic == 0 || cursor->sourceSemantic == 0)
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                            cursor);
+        }
+        if (cursor->loc.file == 0 && cursor->loc.line == 0)
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                            cursor);
+        }
+        if (cursor->type == NULL || !lCanonicalType(cursor->type))
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                            cursor);
+        }
+        if (cursor->value == NULL)
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                            cursor);
+        }
+        if (!lVerifyExpr(ctx, cursor->value))
+            return 0;
+        for (prior = stmt->u.geometry.values; prior != cursor;
+             prior = prior->next)
+        {
+            if (prior->canonicalSemantic == cursor->canonicalSemantic)
+            {
+                return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                                cursor);
+            }
+        }
+        cls = CgGeometryClassifySemantic(cursor->canonicalSemantic);
+        if (cls == CG_GEOMETRY_SEMANTIC_PRIMITIVE_INPUT ||
+            cls == CG_GEOMETRY_SEMANTIC_VERTEX_INPUT)
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                            cursor);
+        }
+        if ((cls == CG_GEOMETRY_SEMANTIC_PRIMITIVE_ID ||
+             cls == CG_GEOMETRY_SEMANTIC_OUTPUT) &&
+            (!IsScalar(cursor->type) ||
+             GetScalarKind(cursor->type) != CG_SCALAR_INT))
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                            cursor);
+        }
+        if (flat && cursor->canonicalSemantic == positionAtom)
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, cursor->loc,
+                            cursor);
+        }
+    }
+    return 1;
+} /* lVerifyGeometryValues */
+
+/*
+ * lVerifyGeometryInfo() - The resolved metadata record itself: valid
+ *          input and output topology enums, an inputVertexCount equal
+ *          to the exact topology mapping, and a positive value behind
+ *          every known maximum.  Each failure anchors at its own
+ *          location on the record.
+ */
+
+static int lVerifyGeometryInfo(CgIRVerifyContext *ctx,
+                               const CgIRGeometryInfo *info)
+{
+    assert(info != NULL);
+    if ((int) info->inputTopology < (int) CG_GEOMETRY_INPUT_POINT ||
+        (int) info->inputTopology >
+            (int) CG_GEOMETRY_INPUT_TRIANGLE_ADJACENCY)
+    {
+        return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, info->inputLoc, info);
+    }
+    if ((int) info->outputTopology < (int) CG_GEOMETRY_OUTPUT_POINTS ||
+        (int) info->outputTopology >
+            (int) CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP)
+    {
+        return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, info->outputLoc, info);
+    }
+    if (CgGeometryInputVertexCount(info->inputTopology) !=
+        info->inputVertexCount)
+    {
+        return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, info->inputLoc, info);
+    }
+    if (info->hasMaxOutputVertices && info->maxOutputVertices == 0)
+    {
+        return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY,
+                        info->maxVerticesLoc, info);
+    }
+    return 1;
+} /* lVerifyGeometryInfo */
+
+/*
+ * lVerifyGeometryStmt() - Stage gate first: operations demand a
+ *          resolved geometry stage.  Reachability gate second: only
+ *          functions the entry calls may hold operations.  Restart
+ *          stays operand-free; emit and flat validate their bundles.
+ */
+
+static int lVerifyGeometryStmt(CgIRVerifyContext *ctx, const CgIRStmt *stmt)
+{
+    assert(stmt != NULL);
+    assert(ctx->function != NULL);
+    if (ctx->module->stage != CGIR_STAGE_GEOMETRY)
+    {
+        return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, stmt->loc, stmt);
+    }
+    if (!lFunctionReachable(ctx, ctx->function))
+    {
+        return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, stmt->loc, stmt);
+    }
+    if (stmt->kind == CGIR_STMT_GEOMETRY_RESTART)
+    {
+        if (stmt->u.geometry.values != NULL)
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, stmt->loc, stmt);
+        }
+        return 1;
+    }
+    if (stmt->u.geometry.values == NULL)
+    {
+        return CgIRFail(ctx, CGIR_VERIFY_GEOMETRY, stmt->loc, stmt);
+    }
+    return lVerifyGeometryValues(ctx, stmt);
+} /* lVerifyGeometryStmt */
+
 static int lVerifyStmt(CgIRVerifyContext *ctx, const CgIRStmt *stmt)
 {
     const CgIRExpr *predicate;
@@ -1219,6 +1679,12 @@ static int lVerifyStmt(CgIRVerifyContext *ctx, const CgIRStmt *stmt)
                 return CgIRFail(ctx, CGIR_VERIFY_OPERAND, stmt->loc, stmt);
         }
         break;
+    case CGIR_STMT_GEOMETRY_EMIT:
+    case CGIR_STMT_GEOMETRY_FLAT:
+    case CGIR_STMT_GEOMETRY_RESTART:
+        if (!lVerifyGeometryStmt(ctx, stmt))
+            return 0;
+        break;
     default:
         return CgIRFail(ctx, CGIR_VERIFY_OPERAND, stmt->loc, stmt);
     }
@@ -1254,6 +1720,8 @@ static int lVerifyDecl(CgIRVerifyContext *ctx, const CgIRDecl *decl,
     assert(decl != NULL);
     if (!lCanonicalType(decl->type))
         return CgIRFail(ctx, CGIR_VERIFY_TYPE, decl->loc, decl);
+    if (!lCheckGeometryTypes(ctx, decl->type, decl->loc, decl))
+        return 0;
     if ((int) decl->storage < (int) CGIR_STORAGE_NONE ||
         (int) decl->storage > CGIR_STORAGE_LIMIT ||
         (int) decl->domain < (int) CGIR_DOMAIN_NONE ||
@@ -1284,6 +1752,8 @@ static int lVerifyFunction(CgIRVerifyContext *ctx, const CgIRFunction *fn)
     assert(fn != NULL);
     if (!lCanonicalType(fn->resultType))
         return CgIRFail(ctx, CGIR_VERIFY_TYPE, fn->loc, fn);
+    if (!lCheckGeometryTypes(ctx, fn->resultType, fn->loc, fn))
+        return 0;
     if (fn->body == NULL)
         return CgIRFail(ctx, CGIR_VERIFY_OWNER, fn->loc, fn);
     ctx->function = fn;
@@ -1332,6 +1802,39 @@ int CgIRVerifyModule(const CgIRModule *module,
      * construction; report ownership about the module itself. */
     if (CgIRModuleFailed(module))
         return CgIRFail(&ctx, CGIR_VERIFY_OWNER, emptyLoc, module);
+
+    /* Stage and geometry-metadata pairing: the stage must be a known
+     * enum value, geometry metadata exists exactly on a geometry
+     * module, and an unresolved stage carrying resolved geometry state
+     * is construction garbage. */
+    if ((int) module->stage < (int) CGIR_STAGE_UNKNOWN ||
+        (int) module->stage > (int) CGIR_STAGE_FRAGMENT)
+    {
+        return CgIRFail(&ctx, CGIR_VERIFY_GEOMETRY, emptyLoc, module);
+    }
+    if (module->geometry != NULL && module->stage != CGIR_STAGE_GEOMETRY)
+    {
+        return CgIRFail(&ctx, CGIR_VERIFY_GEOMETRY,
+                        module->entry != NULL ? module->entry->loc
+                                              : emptyLoc,
+                        module);
+    }
+    if (module->stage == CGIR_STAGE_GEOMETRY && module->geometry == NULL)
+    {
+        return CgIRFail(&ctx, CGIR_VERIFY_GEOMETRY,
+                        module->entry != NULL ? module->entry->loc
+                                              : emptyLoc,
+                        module);
+    }
+
+    /* Geometry operations demand the entry-reachable function set,
+     * and the metadata record itself must be internally consistent. */
+    if (module->stage == CGIR_STAGE_GEOMETRY) {
+        if (!lVerifyGeometryInfo(&ctx, module->geometry))
+            return 0;
+        if (!lBuildGeometryReach(&ctx))
+            return 0;
+    }
 
     for (decl = module->globals; decl != NULL; decl = decl->next) {
         if (!lVerifyDecl(&ctx, decl, 1))

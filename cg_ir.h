@@ -76,6 +76,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 
 #include "cg_stdlib.h"
+#include "cg_geometry.h"    /* CgIRStage, CgGeometryInput, CgGeometryOutput */
 
 /*
  * Stable expression kinds, in lowering order.  One builder per kind
@@ -118,7 +119,13 @@ typedef enum CgIRStmtKind_Rec {
     CGIR_STMT_RETURN,
     CGIR_STMT_BREAK,
     CGIR_STMT_CONTINUE,
-    CGIR_STMT_DISCARD
+    CGIR_STMT_DISCARD,
+    /* Geometry operations, appended without renumbering the kinds
+     * above.  EMIT and FLAT own an ordered value bundle; RESTART has
+     * no operands. */
+    CGIR_STMT_GEOMETRY_EMIT,
+    CGIR_STMT_GEOMETRY_FLAT,
+    CGIR_STMT_GEOMETRY_RESTART
 } CgIRStmtKind;
 
 /*
@@ -198,6 +205,42 @@ typedef struct CgIRExpr_Rec CgIRExpr;
 typedef struct CgIRStmt_Rec CgIRStmt;
 typedef struct CgIRDecl_Rec CgIRDecl;
 typedef struct CgIRFunction_Rec CgIRFunction;
+
+/*
+ * CgIRGeometryInfo - the resolved geometry configuration owned by a
+ *          geometry-stage module.  Topologies and counts arrive fully
+ *          resolved by selected-program analysis; "hasMaxOutputVertices"
+ *          gates "maxOutputVertices", and each location anchors its
+ *          setting at its source or command-line origin.
+ */
+
+typedef struct CgIRGeometryInfo_Rec {
+    CgGeometryInput inputTopology;
+    CgGeometryOutput outputTopology;
+    unsigned int inputVertexCount;
+    unsigned int maxOutputVertices;
+    int hasMaxOutputVertices;
+    SourceLoc inputLoc;
+    SourceLoc outputLoc;
+    SourceLoc maxVerticesLoc;
+} CgIRGeometryInfo;
+
+/*
+ * CgIRGeometryValue - one resolved output value of an emit or flat
+ *          bundle.  "canonicalSemantic" is the equality atom (root
+ *          case-folded to upper case, numeric suffix canonicalized),
+ *          "sourceSemantic" preserves the binding's source spelling,
+ *          and "type"/"value" retain verified canonical IR references.
+ */
+
+typedef struct CgIRGeometryValue_Rec {
+    struct CgIRGeometryValue_Rec *next;
+    int canonicalSemantic;
+    int sourceSemantic;
+    CgIRExpr *value;
+    Type *type;
+    SourceLoc loc;
+} CgIRGeometryValue;
 
 /*
  * CgIRModule is forward-declared by hal.h (reached through slglobals.h)
@@ -335,7 +378,9 @@ struct CgIRExpr_Rec {
  * CgIRStmt - structured statement node.  WHILE and DO share u.loop;
  * FOR keeps its init as a statement (declaration or expression) and
  * its step as an expression; DISCARD carries an optional Boolean
- * predicate (NULL for bare discard).
+ * predicate (NULL for bare discard).  The geometry operations share
+ * u.geometry: EMIT and FLAT own a nonempty ordered CgIRGeometryValue
+ * list; RESTART keeps it NULL.
  */
 
 struct CgIRStmt_Rec {
@@ -366,22 +411,32 @@ struct CgIRStmt_Rec {
         struct {
             CgIRExpr *condition;
         } discard;
+        struct {
+            CgIRGeometryValue *values;
+        } geometry;
     } u;
 };
 
 /*
  * CgIRModule - single owner of one IR graph: allocator callback pair,
- * sticky failed flag, selected entry, ordered globals, ordered
- * functions, and the profile identity being compiled.
+ * sticky failed flag, resolved program stage, selected entry, ordered
+ * globals, ordered functions, optional geometry metadata, and the
+ * profile identity being compiled.
  */
 
 struct CgIRModule_Rec {
     void *(*alloc)(void *arg, size_t size);
     void *allocArg;
     int failed;
+    /* Resolved program stage; UNKNOWN is construction state only and
+     * never survives entry resolution. */
+    CgIRStage stage;
     CgIRFunction *entry;
     CgIRDecl *globals;
     CgIRFunction *functions;
+    /* Module-owned geometry metadata, allocated through this module's
+     * allocator; non-NULL exactly for geometry-stage modules. */
+    CgIRGeometryInfo *geometry;
     /* Borrowed pointer: the pointed-to profile identity must outlive
      * the module. */
     const CgProfileIdentity *profile;
@@ -553,6 +608,67 @@ CgIRStmt *CgIRNewContinueStmt(CgIRModule *module, const SourceLoc *loc);
 CgIRStmt *CgIRNewDiscardStmt(CgIRModule *module, const SourceLoc *loc,
                              CgIRExpr *condition);
 
+/*                    Geometry metadata and operations                  */
+
+/*
+ * Stage and geometry-metadata setters plus one value builder and the
+ * three operation-statement builders.  Allocation failure follows the
+ * base module-failed contract: the failing call returns NULL (or zero)
+ * after marking the module failed, later calls refuse without
+ * allocating, and no partially initialized node escapes.
+ */
+
+/*
+ * CgIRSetStage() - Record "module"'s resolved program stage.  Rejects
+ *          values outside the CgIRStage range; accepts UNKNOWN as a
+ *          construction state the verifier polices.  Never allocates.
+ */
+
+int CgIRSetStage(CgIRModule *module, CgIRStage stage);
+
+/*
+ * CgIRSetGeometryInfo() - Install a module-owned deep copy of
+ *          "*geometry" as the module's geometry metadata.  The caller's
+ *          record stays caller-owned; locations are copied by value.
+ */
+
+int CgIRSetGeometryInfo(CgIRModule *module,
+                        const CgIRGeometryInfo *geometry);
+
+/*
+ * CgIRNewGeometryValue() - Build one bundle value carrying the resolved
+ *          canonical and source semantic atoms, the verified canonical
+ *          type, the retained value expression reference, and its
+ *          source location.
+ */
+
+CgIRGeometryValue *CgIRNewGeometryValue(CgIRModule *module,
+                        int canonicalSemantic, int sourceSemantic,
+                        Type *type, CgIRExpr *value, SourceLoc loc);
+
+/*
+ * CgIRNewGeometryEmit() / CgIRNewGeometryFlat() - Build one EMIT or
+ *          FLAT statement owning a deep copy of the ordered "values"
+ *          list: every list node is duplicated through this module's
+ *          allocator while each copy retains the original canonical
+ *          type, semantic atoms, expression reference, and location.
+ *          The caller's list remains caller-owned and unmodified.
+ *          "values" must be nonempty; the verifier rejects empty
+ *          bundles.
+ */
+
+CgIRStmt *CgIRNewGeometryEmit(CgIRModule *module,
+                              CgIRGeometryValue *values, SourceLoc loc);
+CgIRStmt *CgIRNewGeometryFlat(CgIRModule *module,
+                              CgIRGeometryValue *values, SourceLoc loc);
+
+/*
+ * CgIRNewGeometryRestart() - Build one operand-free RESTART statement;
+ *          its bundle stays NULL.
+ */
+
+CgIRStmt *CgIRNewGeometryRestart(CgIRModule *module, SourceLoc loc);
+
 ////////////////////////// Module verification /////////////////////////
 
 /*
@@ -581,6 +697,15 @@ CgIRStmt *CgIRNewDiscardStmt(CgIRModule *module, const SourceLoc *loc,
  *               method arguments, or method result type.
  *   LOCATION  - a node claims provenance its location cannot honor: a
  *               set synthesized flag over an all-zero location.
+ *   GEOMETRY  - stage and geometry invariants: unresolved or
+ *               out-of-range stage, geometry metadata present exactly
+ *               on a geometry module, valid topology enums with the
+ *               exact vertex count, a positive known maximum,
+ *               attribute-array placement and resolved extent,
+ *               operations reachable from the geometry entry only,
+ *               nonempty duplicate-free bundles with real locations
+ *               and legal special-semantic types/directions, POSITION
+ *               absent from flat bundles, and operand-free restarts.
  */
 
 typedef enum CgIRVerifyReason_Rec {
@@ -593,7 +718,8 @@ typedef enum CgIRVerifyReason_Rec {
     CGIR_VERIFY_INTRINSIC,
     CGIR_VERIFY_CONTROL,
     CGIR_VERIFY_INTERFACE,
-    CGIR_VERIFY_LOCATION
+    CGIR_VERIFY_LOCATION,
+    CGIR_VERIFY_GEOMETRY
 } CgIRVerifyReason;
 
 /*
@@ -617,12 +743,15 @@ typedef struct CgIRVerifyDiagnostic_Rec {
  *          unique write-mask components, call arity/directions/
  *          signatures, intrinsic identity/signature agreement, return
  *          compatibility, control placement, interface compatibility,
- *          and required source locations.  Returns nonzero when the
- *          module verifies; returns zero at the FIRST invariant failure
- *          and fills "diagnostic" (when non-NULL) so release builds get
- *          one controlled internal diagnostic.  Verifying a module with
- *          a sticky allocation failure reports CGIR_VERIFY_OWNER about
- *          the module itself.
+ *          required source locations, and the stage/geometry rules
+ *          (metadata pairing, topology-to-count mapping, positive known
+ *          maximum, attribute-array placement and extent, operation
+ *          reachability, bundle shape, and special-semantic legality).
+ *          Returns nonzero when the module verifies; returns zero at
+ *          the FIRST invariant failure and fills "diagnostic" (when
+ *          non-NULL) so release builds get one controlled internal
+ *          diagnostic.  Verifying a module with a sticky allocation
+ *          failure reports CGIR_VERIFY_OWNER about the module itself.
  *
  * Visibility authority: module globals, function parameters, and DECL
  * statements.  A function's "locals" list is emission metadata checked

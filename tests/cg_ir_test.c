@@ -369,6 +369,233 @@ static expr *lAssignNode(expr *fLeft, expr *fRight, Type *fType)
     return (expr *) node;
 }
 
+/* ============================ Geometry fixtures ============================ */
+
+/*
+ * CgGeoFixture - One complete geometry module plus handles onto every
+ *          node the geometry scenarios poke.  "emitValues" and
+ *          "flatValues" point into the STATEMENT-OWNED deep copies, so
+ *          malformed-case mutations reach what the verifier walks;
+ *          "callerValues"/"callerSecond" keep the builder's input list
+ *          for ownership assertions.
+ */
+
+typedef struct CgGeoFixture_Rec {
+    CgIRModule module;
+    CgIRFunction *entryFn;
+    CgIRFunction *flatFn;
+    CgIRDecl *arrayFormal;
+    CgIRDecl *globalUv;
+    CgIRDecl *globalColor;
+    CgIRExpr *posIndex;
+    CgIRExpr *uvRef;
+    CgIRExpr *colorRef;
+    CgIRStmt *callFlat;
+    CgIRStmt *emit;
+    CgIRStmt *restart;
+    CgIRGeometryValue *callerValues;
+    CgIRGeometryValue *callerSecond;
+    CgIRGeometryValue *emitValues;
+    CgIRGeometryValue *flatValues;
+    int atomPosition;
+    int atomTexcoord0;
+    int atomTexCoordSource;
+    int atomColor0;
+    int atomInstanceid;
+    int atomLayer;
+    SourceLoc fnLoc;
+    SourceLoc infoInputLoc;
+    SourceLoc infoOutputLoc;
+    SourceLoc infoMaxLoc;
+    SourceLoc opLoc;
+    SourceLoc valueLoc;
+} CgGeoFixture;
+
+/*
+ * lBuildGeometryFixture() - A verified-clean geometry module: triangle
+ *          input, triangle-strip output, maximum six, one resolved
+ *          AttribArray<float4,3> entry formal, an emit bundle carrying
+ *          POSITION then TEXCOORD0, a flat COLOR0 held by a REACHABLE
+ *          helper the entry calls, and one restart.
+ *          "fWithArrayFormal" drops the attribute-array formal for the
+ *          operation-placement cases that would otherwise trip the
+ *          array-placement invariant first.
+ */
+
+static void lBuildGeometryFixture(CgGeoFixture *fx,
+                                  void *(*alloc)(void *, size_t),
+                                  int fWithArrayFormal)
+{
+    CgIRGeometryInfo info;
+    Type *attribType;
+    Type *float4Local;
+    Type *float2Type;
+    Type *intLocal;
+    CgNumericValue vIndexZero;
+    Symbol *entrySymb;
+    Symbol *flatSymb;
+    Symbol *arraySymb;
+    Symbol *uvSymb;
+    Symbol *colorSymb;
+    CgIRExpr *arrayRef;
+    CgIRExpr *indexConst;
+    CgIRGeometryValue *vPos;
+    CgIRGeometryValue *vUv;
+    CgIRGeometryValue *vCol;
+    CgIRExpr *flatCall;
+    CgIRStmt *entryBody;
+    CgIRStmt *flatBody;
+    SourceLoc declLoc;
+
+    memset(fx, 0, sizeof(*fx));
+    float4Local = GetStandardTypeKind(CG_SCALAR_FLOAT, 4, 0);
+    float2Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 2, 0);
+    intLocal = GetStandardTypeKind(CG_SCALAR_INT, 0, 0);
+    attribType = CgGetAttribArrayType(float4Local, 3);
+    assert(float4Local != UndefinedType);
+    assert(float2Type != UndefinedType);
+    assert(intLocal != UndefinedType);
+    assert(attribType != UndefinedType);
+    memset(&vIndexZero, 0, sizeof(vIndexZero));
+    vIndexZero.kind = CG_SCALAR_INT;
+
+    fx->atomPosition = LookUpAddString(atable, "POSITION");
+    fx->atomTexcoord0 = LookUpAddString(atable, "TEXCOORD0");
+    fx->atomTexCoordSource = LookUpAddString(atable, "texcoord0");
+    fx->atomColor0 = LookUpAddString(atable, "COLOR0");
+    fx->atomInstanceid = LookUpAddString(atable, "INSTANCEID");
+    fx->atomLayer = LookUpAddString(atable, "LAYER");
+
+    memset(&fx->infoInputLoc, 0, sizeof(fx->infoInputLoc));
+    fx->infoInputLoc.file = 7; fx->infoInputLoc.line = 10;
+    memset(&fx->infoOutputLoc, 0, sizeof(fx->infoOutputLoc));
+    fx->infoOutputLoc.file = 7; fx->infoOutputLoc.line = 11;
+    memset(&fx->infoMaxLoc, 0, sizeof(fx->infoMaxLoc));
+    fx->infoMaxLoc.file = 7; fx->infoMaxLoc.line = 12;
+    memset(&fx->opLoc, 0, sizeof(fx->opLoc));
+    fx->opLoc.file = 8; fx->opLoc.line = 20;
+    memset(&fx->valueLoc, 0, sizeof(fx->valueLoc));
+    fx->valueLoc.file = 8; fx->valueLoc.line = 21;
+    memset(&declLoc, 0, sizeof(declLoc));
+    declLoc.file = 6; declLoc.line = 5;
+    fx->fnLoc = declLoc;
+
+    CgIRInitModule(&fx->module, alloc, NULL);
+    assert(CgIRSetStage(&fx->module, CGIR_STAGE_GEOMETRY));
+
+    memset(&info, 0, sizeof(info));
+    info.inputTopology = CG_GEOMETRY_INPUT_TRIANGLE;
+    info.outputTopology = CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP;
+    info.inputVertexCount = 3;
+    info.maxOutputVertices = 6;
+    info.hasMaxOutputVertices = 1;
+    info.inputLoc = fx->infoInputLoc;
+    info.outputLoc = fx->infoOutputLoc;
+    info.maxVerticesLoc = fx->infoMaxLoc;
+    assert(CgIRSetGeometryInfo(&fx->module, &info));
+
+    uvSymb = lMakeSymbol(VARIABLE_S, "g_uv", float2Type);
+    colorSymb = lMakeSymbol(VARIABLE_S, "g_color", float4Local);
+    entrySymb = lMakeSymbol(FUNCTION_S, "geoMain", VoidType);
+    flatSymb = lMakeSymbol(FUNCTION_S, "geoFlat", VoidType);
+    arraySymb = lMakeSymbol(VARIABLE_S, "tri", attribType);
+
+    fx->globalUv = CgIRNewDecl(&fx->module, uvSymb, uvSymb->name,
+                               float2Type, CGIR_STORAGE_UNIFORM,
+                               CGIR_DOMAIN_UNIFORM, 0, NULL, &declLoc);
+    fx->globalColor = CgIRNewDecl(&fx->module, colorSymb, colorSymb->name,
+                                  float4Local, CGIR_STORAGE_UNIFORM,
+                                  CGIR_DOMAIN_UNIFORM, 0, NULL, &declLoc);
+    assert(fx->globalUv != NULL && fx->globalColor != NULL);
+    CgIRAppendDecl(&fx->module.globals, fx->globalUv);
+    CgIRAppendDecl(&fx->module.globals, fx->globalColor);
+
+    fx->entryFn = CgIRNewFunction(&fx->module, entrySymb, VoidType,
+                                  &declLoc);
+    fx->flatFn = CgIRNewFunction(&fx->module, flatSymb, VoidType,
+                                 &declLoc);
+    assert(fx->entryFn != NULL && fx->flatFn != NULL);
+
+    if (fWithArrayFormal) {
+        fx->arrayFormal = CgIRNewDecl(&fx->module, arraySymb,
+                                      arraySymb->name, attribType,
+                                      CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE,
+                                      0, NULL, &declLoc);
+        assert(fx->arrayFormal != NULL);
+        CgIRAppendDecl(&fx->entryFn->parameters, fx->arrayFormal);
+        arrayRef = CgIRNewSymbol(&fx->module, attribType, &fx->valueLoc,
+                                 arraySymb);
+        assert(arrayRef != NULL);
+        indexConst = CgIRNewConstant(&fx->module, intLocal, &fx->valueLoc,
+                                     &vIndexZero);
+        assert(indexConst != NULL);
+        fx->posIndex = CgIRNewIndex(&fx->module, float4Local,
+                                    &fx->valueLoc, arrayRef, indexConst);
+    } else {
+        fx->posIndex = CgIRNewSymbol(&fx->module, float4Local,
+                                     &fx->valueLoc, colorSymb);
+    }
+    assert(fx->posIndex != NULL);
+    fx->uvRef = CgIRNewSymbol(&fx->module, float2Type, &fx->valueLoc,
+                              uvSymb);
+    fx->colorRef = CgIRNewSymbol(&fx->module, float4Local, &fx->valueLoc,
+                                 colorSymb);
+    assert(fx->uvRef != NULL && fx->colorRef != NULL);
+
+    /* Caller-side bundle lists: the builders must deep-copy these. */
+    vPos = CgIRNewGeometryValue(&fx->module, fx->atomPosition,
+                                fx->atomPosition, float4Local,
+                                fx->posIndex, fx->valueLoc);
+    vUv = CgIRNewGeometryValue(&fx->module, fx->atomTexcoord0,
+                               fx->atomTexCoordSource, float2Type,
+                               fx->uvRef, fx->valueLoc);
+    vCol = CgIRNewGeometryValue(&fx->module, fx->atomColor0,
+                                fx->atomColor0, float4Local,
+                                fx->colorRef, fx->valueLoc);
+    assert(vPos != NULL && vUv != NULL && vCol != NULL);
+    vPos->next = vUv;
+    fx->callerValues = vPos;
+    fx->callerSecond = vUv;
+
+    fx->emit = CgIRNewGeometryEmit(&fx->module, vPos, fx->opLoc);
+    fx->restart = CgIRNewGeometryRestart(&fx->module, fx->opLoc);
+    assert(fx->emit != NULL && fx->restart != NULL);
+    fx->emitValues = fx->emit->u.geometry.values;
+    assert(fx->emitValues != NULL);
+
+    flatCall = CgIRNewCall(&fx->module, VoidType, &fx->opLoc, flatSymb,
+                           NULL);
+    assert(flatCall != NULL);
+    fx->callFlat = CgIRNewExprStmt(&fx->module, &fx->opLoc, flatCall);
+    assert(fx->callFlat != NULL);
+
+    /* Flat operation lives in the reachable helper. */
+    {
+        CgIRStmt *flatStmt;
+
+        flatStmt = CgIRNewGeometryFlat(&fx->module, vCol, fx->opLoc);
+        assert(flatStmt != NULL);
+        fx->flatValues = flatStmt->u.geometry.values;
+        assert(fx->flatValues != NULL);
+        flatBody = CgIRNewBlockStmt(&fx->module, &fx->opLoc);
+        assert(flatBody != NULL);
+        CgIRAppendStmt(&flatBody->u.block, flatStmt);
+        fx->flatFn->body = flatBody;
+    }
+
+    entryBody = CgIRNewBlockStmt(&fx->module, &fx->opLoc);
+    assert(entryBody != NULL);
+    CgIRAppendStmt(&entryBody->u.block, fx->callFlat);
+    CgIRAppendStmt(&entryBody->u.block, fx->emit);
+    CgIRAppendStmt(&entryBody->u.block, fx->restart);
+    fx->entryFn->body = entryBody;
+
+    fx->entryFn->isEntry = 1;
+    fx->module.entry = fx->entryFn;
+    CgIRAppendFunction(&fx->module.functions, fx->entryFn);
+    CgIRAppendFunction(&fx->module.functions, fx->flatFn);
+} /* lBuildGeometryFixture */
+
 int main(int argc, char **argv)
 {
     CgStruct cg;
@@ -2712,6 +2939,341 @@ int main(int argc, char **argv)
         assert(goldLength == (long) strlen(lGoldenText));
         assert(strcmp(goldText, lGoldenText) == 0);
         fclose(goldFile);
+    }
+
+    /*
+     * Scenario 9: geometry IR.
+     *
+     * Geometry modules carry a resolved stage, one owned metadata
+     * record, and explicit emit/flat/restart statements whose bundles
+     * the builders deep-copy while retaining the verified canonical
+     * type/semantic/expression references.  The verifier enforces the
+     * stage/metadata pairing, exact topology-to-count mapping, positive
+     * known maximum, attribute-array placement and extent, reachability
+     * of every operation from the entry, nonempty duplicate-free
+     * bundles with valid locations, the geometry-only semantic
+     * direction/type rules, POSITION's flat ban, and operand-free
+     * restarts -- each reported as CGIR_VERIFY_GEOMETRY about the
+     * offending node.
+     */
+
+    {
+        CgGeoFixture geo;
+        CgGeoFixture dirtyGeo;
+        CgGeoFixture badGeo;
+        CgIRModule scratchModule;
+        CgIRModule budgetGeoModule;
+        Type *wrongExtentType;
+        Symbol *straySymb;
+        CgIRFunction *strayFn;
+        CgIRStmt *strayBody;
+        CgIRStmt *strayRestart;
+        CgIRGeometryValue *dupValue;
+        CgIRVerifyDiagnostic geoDiag;
+        CgIRGeometryInfo geoInfo;
+
+        /* Builder contract: out-of-range stages are refused in place. */
+        CgIRInitModule(&scratchModule, TestAlloc, NULL);
+        assert(!CgIRSetStage(&scratchModule, (CgIRStage) 99));
+        assert(scratchModule.stage == CGIR_STAGE_UNKNOWN);
+        assert(CgIRSetStage(&scratchModule, CGIR_STAGE_VERTEX));
+        assert(scratchModule.stage == CGIR_STAGE_VERTEX);
+
+        lBuildGeometryFixture(&geo, TestAlloc, 1);
+
+        /* Stage and metadata ownership: the record is a module-owned
+         * deep copy, distinct from the caller's storage. */
+        assert(geo.module.stage == CGIR_STAGE_GEOMETRY);
+        assert(geo.module.geometry != NULL);
+        assert(geo.module.geometry->inputTopology ==
+               CG_GEOMETRY_INPUT_TRIANGLE);
+        assert(geo.module.geometry->outputTopology ==
+               CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP);
+        assert(geo.module.geometry->inputVertexCount == 3);
+        assert(geo.module.geometry->maxOutputVertices == 6);
+        assert(geo.module.geometry->hasMaxOutputVertices == 1);
+        assert(geo.module.geometry->inputLoc.file ==
+               geo.infoInputLoc.file);
+        assert(geo.module.geometry->inputLoc.line ==
+               geo.infoInputLoc.line);
+        assert(geo.module.geometry->outputLoc.line ==
+               geo.infoOutputLoc.line);
+        assert(geo.module.geometry->maxVerticesLoc.line ==
+               geo.infoMaxLoc.line);
+
+        /* Bundle ownership: statement-owned copies, ordered, retaining
+         * the original type/expression references; the caller list is
+         * untouched and stays separately linked. */
+        assert(geo.emitValues != geo.callerValues);
+        assert(geo.emitValues->next != geo.callerSecond);
+        assert(geo.emitValues->next->next == NULL);
+        assert(geo.emitValues->canonicalSemantic == geo.atomPosition);
+        assert(geo.emitValues->sourceSemantic == geo.atomPosition);
+        assert(geo.emitValues->type == float4Type);
+        assert(geo.emitValues->value == geo.posIndex);
+        assert(geo.emitValues->loc.file == geo.valueLoc.file);
+        assert(geo.emitValues->loc.line == geo.valueLoc.line);
+        assert(geo.emitValues->next->canonicalSemantic ==
+               geo.atomTexcoord0);
+        assert(geo.emitValues->next->sourceSemantic ==
+               geo.atomTexCoordSource);
+        assert(geo.emitValues->next->type == float2Type);
+        assert(geo.emitValues->next->value == geo.uvRef);
+        assert(geo.flatValues->canonicalSemantic == geo.atomColor0);
+        assert(geo.flatValues->type == float4Type);
+        assert(geo.flatValues->value == geo.colorRef);
+        assert(geo.flatValues->next == NULL);
+        assert(geo.callerValues->next == geo.callerSecond);
+        assert(geo.callerSecond->next == NULL);
+
+        /* Statement kinds, order, locations, and operand-free restart. */
+        assert(geo.emit->kind == CGIR_STMT_GEOMETRY_EMIT);
+        assert(geo.emit->loc.file == geo.opLoc.file);
+        assert(geo.emit->loc.line == geo.opLoc.line);
+        assert(geo.restart->kind == CGIR_STMT_GEOMETRY_RESTART);
+        assert(geo.restart->u.geometry.values == NULL);
+        assert(geo.entryFn->body->u.block == geo.callFlat);
+        assert(geo.callFlat->next == geo.emit);
+        assert(geo.emit->next == geo.restart);
+        assert(geo.restart->next == NULL);
+
+        /* Clean allocator module verifies... */
+        lVerifyAccept(&geo.module);
+
+        /* ...and the identical construction over a dirty allocator
+         * verifies too: every node byte is builder-initialized. */
+        lBuildGeometryFixture(&dirtyGeo, DirtyAlloc, 1);
+        lVerifyAccept(&dirtyGeo.module);
+
+        /* M1: an unknown stage carrying geometry metadata is
+         * construction garbage. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.module.stage = CGIR_STAGE_UNKNOWN;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == &badGeo.module);
+
+        /* M2: missing geometry metadata on a geometry module reports
+         * the module itself anchored at the entry location. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.module.geometry = NULL;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == &badGeo.module);
+        assert(geoDiag.loc.file == badGeo.fnLoc.file);
+        assert(geoDiag.loc.line == badGeo.fnLoc.line);
+        assert(!CgIRVerifyModule(&badGeo.module, NULL));
+
+        /* M3: extra geometry metadata on a neutral module. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.module.stage = CGIR_STAGE_NEUTRAL;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == &badGeo.module);
+
+        /* M4a: input topology enum outside the valid range. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.module.geometry->inputTopology =
+            CG_GEOMETRY_INPUT_UNKNOWN;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == (const void *) badGeo.module.geometry);
+        assert(geoDiag.loc.line == badGeo.infoInputLoc.line);
+
+        /* M4b: output topology enum outside the valid range. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.module.geometry->outputTopology = (CgGeometryOutput) 99;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == (const void *) badGeo.module.geometry);
+        assert(geoDiag.loc.line == badGeo.infoOutputLoc.line);
+
+        /* M4c: the vertex count must match the input topology
+         * exactly (triangle means three). */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.module.geometry->inputVertexCount = 4;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == (const void *) badGeo.module.geometry);
+        assert(geoDiag.loc.line == badGeo.infoInputLoc.line);
+
+        /* M5: a declared maximum of zero is never valid. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.module.geometry->maxOutputVertices = 0;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == (const void *) badGeo.module.geometry);
+        assert(geoDiag.loc.line == badGeo.infoMaxLoc.line);
+
+        /* M6: attribute arrays live only in geometry modules -- here a
+         * vertex-stage module keeps its array formal. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        assert(CgIRSetStage(&badGeo.module, CGIR_STAGE_VERTEX));
+        badGeo.module.geometry = NULL;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.arrayFormal);
+
+        /* M7: attribute arrays carry the resolved module extent;
+         * triangle input demands three, not six. */
+        wrongExtentType = CgGetAttribArrayType(float4Type, 6);
+        assert(wrongExtentType != UndefinedType);
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.arrayFormal->type = wrongExtentType;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.arrayFormal);
+
+        /* M8a: a geometry operation inside a function no call reaches
+         * is rejected at the stray operation itself. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        straySymb = lMakeSymbol(FUNCTION_S, "geoStray", VoidType);
+        strayFn = CgIRNewFunction(&badGeo.module, straySymb, VoidType,
+                                  &badGeo.opLoc);
+        assert(strayFn != NULL);
+        strayRestart = CgIRNewGeometryRestart(&badGeo.module,
+                                              badGeo.opLoc);
+        assert(strayRestart != NULL);
+        strayBody = CgIRNewBlockStmt(&badGeo.module, &badGeo.opLoc);
+        assert(strayBody != NULL);
+        CgIRAppendStmt(&strayBody->u.block, strayRestart);
+        strayFn->body = strayBody;
+        CgIRAppendFunction(&badGeo.module.functions, strayFn);
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == strayRestart);
+
+        /* M8b: a geometry operation under a fragment stage is rejected
+         * at the operation; the attribute-array formal yields to a
+         * plain float4 so placement of the OPERATION is isolated. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        assert(CgIRSetStage(&badGeo.module, CGIR_STAGE_FRAGMENT));
+        badGeo.module.geometry = NULL;
+        badGeo.arrayFormal->type = float4Type;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.emit);
+
+        /* M9: an emit bundle cannot be empty. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.emit->u.geometry.values = NULL;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.emit);
+
+        /* M10: canonical semantics are unique within one bundle. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        dupValue = CgIRNewGeometryValue(&badGeo.module,
+                                        badGeo.atomPosition,
+                                        badGeo.atomPosition, float4Type,
+                                        badGeo.colorRef, badGeo.valueLoc);
+        assert(dupValue != NULL && dupValue->next == NULL);
+        badGeo.emitValues->next->next = dupValue;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == dupValue);
+
+        /* M11a: input-only semantics cannot ride an output bundle. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.emitValues->canonicalSemantic = badGeo.atomInstanceid;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.emitValues);
+
+        /* M11b: output-only semantics demand scalar int; LAYER over a
+         * float4 value is a type violation. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.emitValues->canonicalSemantic = badGeo.atomLayer;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.emitValues);
+
+        /* M12: flatAttrib never carries POSITION. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.flatValues->canonicalSemantic = badGeo.atomPosition;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.flatValues);
+
+        /* M13: restartStrip takes no operands. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        badGeo.restart->u.geometry.values = badGeo.flatValues;
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.restart);
+
+        /* M14: every bundle item anchors at a real source location. */
+        lBuildGeometryFixture(&badGeo, TestAlloc, 1);
+        memset(&badGeo.emitValues->loc, 0, sizeof(badGeo.emitValues->loc));
+        memset(&geoDiag, 0, sizeof(geoDiag));
+        assert(!CgIRVerifyModule(&badGeo.module, &geoDiag));
+        assert(geoDiag.reason == CGIR_VERIFY_GEOMETRY);
+        assert(geoDiag.node == badGeo.emitValues);
+
+        /* Allocation failure follows the base module-failed contract:
+         * the failing builder returns NULL, marks the module failed,
+         * and later calls refuse without allocating. */
+
+        memset(&geoInfo, 0, sizeof(geoInfo));
+        geoInfo.inputTopology = CG_GEOMETRY_INPUT_TRIANGLE;
+        geoInfo.outputTopology = CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP;
+        geoInfo.inputVertexCount = 3;
+        geoInfo.maxOutputVertices = 6;
+        geoInfo.hasMaxOutputVertices = 1;
+
+        CgIRInitModule(&budgetGeoModule, FailingAlloc, NULL);
+        assert(CgIRSetStage(&budgetGeoModule, CGIR_STAGE_GEOMETRY));
+        assert(!CgIRSetGeometryInfo(&budgetGeoModule, &geoInfo));
+        assert(CgIRModuleFailed(&budgetGeoModule));
+        assert(budgetGeoModule.geometry == NULL);
+        assert(CgIRNewGeometryValue(&budgetGeoModule, 1, 1, float4Type,
+                                    NULL, constLoc) == NULL);
+        assert(CgIRModuleFailed(&budgetGeoModule));
+
+        allocationBudget = 4;
+        CgIRInitModule(&budgetGeoModule, BudgetAlloc, NULL);
+        assert(CgIRSetStage(&budgetGeoModule, CGIR_STAGE_GEOMETRY));
+        {
+            CgIRGeometryValue *budgetV0;
+            CgIRGeometryValue *budgetV1;
+            CgIRStmt *budgetEmit;
+
+            assert(CgIRSetGeometryInfo(&budgetGeoModule, &geoInfo));
+            budgetV0 = CgIRNewGeometryValue(&budgetGeoModule, 10, 11,
+                                            float4Type, NULL, constLoc);
+            budgetV1 = CgIRNewGeometryValue(&budgetGeoModule, 12, 12,
+                                            float4Type, NULL, constLoc);
+            assert(budgetV0 != NULL && budgetV1 != NULL);
+            budgetV0->next = budgetV1;
+            /* Info plus two value nodes exhaust four allocations; the
+             * emit's deep copy fails mid-list and nothing partial
+             * escapes. */
+            budgetEmit = CgIRNewGeometryEmit(&budgetGeoModule, budgetV0,
+                                             constLoc);
+            assert(budgetEmit == NULL);
+            assert(CgIRModuleFailed(&budgetGeoModule));
+            assert(allocationBudget == -1);
+            assert(CgIRNewGeometryRestart(&budgetGeoModule,
+                                          constLoc) == NULL);
+            assert(allocationBudget == -1);
+        }
     }
 
     FreeSymbolTable(Cg);
