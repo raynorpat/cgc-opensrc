@@ -1,0 +1,8 @@
+// Task 3 negative: indexing yields the element type as a read-only
+// rvalue, so an element store fails with the reserved read-only
+// diagnostic (C6308), not the generic l-value error.
+
+TRIANGLE void triangle_write(AttribArray<float4> p : POSITION)
+{
+    p[0] = float4(0, 0, 0, 0);
+}

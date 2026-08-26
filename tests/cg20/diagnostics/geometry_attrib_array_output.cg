@@ -1,0 +1,5 @@
+// Task 3 negative: geometry outputs are produced by explicit
+// emitVertex bundles, never by out formals, so an out AttribArray
+// formal is rejected with C6306 even on a topology-qualified entry.
+
+TRIANGLE void triangle_out(out AttribArray<float4> o : POSITION);

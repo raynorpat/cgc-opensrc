@@ -1,0 +1,4 @@
+// Task 3 negative: void is not a legal AttribArray element; the
+// element rule rejects the type before any placement rule (C6307).
+
+AttribArray<void> bad;

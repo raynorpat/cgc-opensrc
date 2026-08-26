@@ -1,0 +1,9 @@
+// Task 3 negative: attribute arrays are never uniforms; the uniform
+// domain does not rescue the declarator (C6306).
+
+uniform AttribArray<float4> uniformInput;
+
+void main(float4 p : POSITION)
+{
+    float4 c = p;
+}

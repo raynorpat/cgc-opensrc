@@ -136,8 +136,28 @@ typedef enum CgGeometryDiagnosticReason_Rec {
     CG_GEOMETRY_DIAGNOSTIC_FLAT_POSITION,
     CG_GEOMETRY_DIAGNOSTIC_ENTRY_CALL,
     CG_GEOMETRY_DIAGNOSTIC_REACHABLE_STAGE,
-    CG_GEOMETRY_DIAGNOSTIC_ALLOCATION
+    CG_GEOMETRY_DIAGNOSTIC_ALLOCATION,
+    CG_GEOMETRY_DIAGNOSTIC_ATTRIB_PLACEMENT,
+    CG_GEOMETRY_DIAGNOSTIC_ATTRIB_ELEMENT,
+    CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE
 } CgGeometryDiagnosticReason;
+
+/*
+ * Where one declaration sits when its type is an AttribArray.  The
+ * two input uses name formals of a geometry entry and of a helper it
+ * reaches; every other use is a prohibited placement.
+ */
+
+typedef enum CgGeometryDeclarationUse_Rec {
+    CG_GEOMETRY_DECL_ENTRY_INPUT,
+    CG_GEOMETRY_DECL_HELPER_INPUT,
+    CG_GEOMETRY_DECL_GLOBAL,
+    CG_GEOMETRY_DECL_UNIFORM,
+    CG_GEOMETRY_DECL_OUTPUT,
+    CG_GEOMETRY_DECL_RETURN,
+    CG_GEOMETRY_DECL_MEMBER,
+    CG_GEOMETRY_DECL_LOCAL
+} CgGeometryDeclarationUse;
 
 typedef struct CgGeometryDiagnostic_Rec {
     CgGeometryDiagnosticReason reason;
@@ -145,6 +165,77 @@ typedef struct CgGeometryDiagnostic_Rec {
     int optionOrdinal;
     const char *optionText;
 } CgGeometryDiagnostic;
+
+/*
+ * Geometry program records.  One CgGeometryProgram accumulates the
+ * selected entry and its resolution state; every later extension adds
+ * fields here instead of parallel side tables.  Allocation goes
+ * through the caller-supplied allocator pair so resolution state can
+ * live in a caller-chosen arena.
+ */
+
+typedef void *(*CgGeometryAllocFn)(void *arg, size_t size);
+
+typedef struct CgGeometryTypeView_Rec {
+    struct CgGeometryTypeView_Rec *next;
+    const Type *sourceType;
+    const Type *resolvedType;
+} CgGeometryTypeView;
+
+typedef struct CgGeometryProgram_Rec {
+    CgGeometryAllocFn alloc;
+    void *allocArg;
+    CgGeometryConfig config;
+    const Symbol *entry;
+    CgGeometryTypeView *typeViews;
+    int failed;
+} CgGeometryProgram;
+
+void CgGeometryInitProgram(CgGeometryProgram *program,
+                           CgGeometryAllocFn alloc, void *allocArg);
+
+/*
+ * The shared AttribArray<T> element rule: numeric scalars, vectors,
+ * matrices, ordinary arrays, and structs are legal elements; void,
+ * undefined recovery types, functions, samplers, interfaces,
+ * connectors, and everything else are not.  Placement validation on
+ * top of this rule arrives with declaration checking.
+ */
+
+int CgGeometryAcceptsAttribArrayElement(const Type *type);
+
+/*
+ * Declaration placement of one AttribArray symbol.  "program" is the
+ * selected geometry program when one has been resolved and NULL while
+ * only source-level facts are known.  Entry inputs are admitted on
+ * the strength of their own declaration; helper inputs additionally
+ * require a resolved geometry program, since reachability is proven
+ * only by selected-program analysis.  Every other use fails with a
+ * structured placement reason, an illegal element outranks any
+ * placement rule, and symbols whose type is not an attribute array
+ * always validate.  On failure "diagnostic" names the reason at the
+ * symbol's location.
+ */
+
+int CgGeometryValidateAttribArrayDeclaration(
+    const CgGeometryProgram *program, const Symbol *symbol,
+    CgGeometryDeclarationUse use, CgGeometryDiagnostic *diagnostic);
+
+/*
+ * Fold every attribute-array .length query in the selected program's
+ * reachable function bodies into an int constant equal to
+ * config.inputVertexCount, recording one resolved type view
+ * (source Type *, resolved Type *) per distinct source array in
+ * program->typeViews.  The canonical source types are never mutated:
+ * only statement-tree nodes change.  Fails with a structured stage
+ * reason when no resolved geometry program is supplied -- such uses
+ * are rejected outright instead of folding to zero -- and with the
+ * allocation reason when the program's allocator refuses storage.
+ */
+
+int CgGeometryResolveLengths(CgGeometryProgram *program,
+                             const CgReachGraph *reach,
+                             CgGeometryDiagnostic *diagnostic);
 
 void CgGeometryInitModifiers(CgGeometryModifiers *modifiers);
 int CgGeometryApplyInputModifier(CgGeometryModifiers *modifiers,

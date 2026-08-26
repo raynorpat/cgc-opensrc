@@ -238,6 +238,24 @@ int main(void)
         }
     }
 
+    /* Canonical read-only attribute arrays: interning shares one Type
+     * per (element, extent) pair for the symbol-table lifetime, and
+     * ordinary IsArray helpers never accept them. */
+    {
+        Type *unresolved;
+        Type *resolved;
+
+        unresolved = CgGetAttribArrayType(Float4Type, 0);
+        resolved = CgGetAttribArrayType(Float4Type, 3);
+        assert(CgIsAttribArray(unresolved));
+        assert(CgAttribArrayElement(unresolved) == Float4Type);
+        assert(CgAttribArrayExtent(unresolved) == 0);
+        assert(CgAttribArrayExtent(resolved) == 3);
+        assert(resolved == CgGetAttribArrayType(Float4Type, 3));
+        assert(resolved != CgGetAttribArrayType(Float4Type, 6));
+        assert(!IsArray(resolved));
+    }
+
     {
         CgNumericValue input;
         CgNumericValue output;

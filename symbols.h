@@ -80,6 +80,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TYPE_CATEGORY_CONNECTOR     0x00000050
 #define TYPE_CATEGORY_SAMPLER       0x00000060
 #define TYPE_CATEGORY_INTERFACE     0x00000070
+#define TYPE_CATEGORY_ATTRIB_ARRAY  0x00000080
 
 #define TYPE_DOMAIN_MASK            0x00000f00
 #define TYPE_DOMAIN_SHIFT           8
@@ -145,6 +146,7 @@ typedef struct TypeStruct_Rec TypeStruct;
 typedef struct TypeInterface_Rec TypeInterface;
 typedef struct TypeFunction_Rec TypeFunction;
 typedef struct TypeSampler_Rec TypeSampler;
+typedef struct TypeAttribArray_Rec TypeAttribArray;
 
 typedef struct SymbolList_Rec {
     struct SymbolList_Rec *next;
@@ -239,6 +241,20 @@ struct TypeSampler_Rec {
     CgSamplerKind samplerKind;
 };
 
+/*
+ * Canonical read-only attribute arrays.  The common prefix stops at
+ * "size": the payload is the interned element pointer plus the source
+ * (0) or resolved topology extent, so no scalar kind is defined for
+ * an attribute array and none may be written through this view.
+ */
+
+struct TypeAttribArray_Rec {
+    int properties;
+    int size;
+    Type *eltype;
+    int extent;
+};
+
 union Type_Rec {
     int properties;
     TypeCommon co;
@@ -248,6 +264,7 @@ union Type_Rec {
     TypeInterface iface;
     TypeFunction fun;
     TypeSampler samp;
+    TypeAttribArray attrarr;
 };
 
 // Symbol table is a simple binary tree.

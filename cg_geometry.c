@@ -53,6 +53,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "cg_geometry.h"
+#include "cg_reach.h"
 
 #define CG_GEOMETRY_VERTICES_PREFIX "Vertices="
 
@@ -487,3 +488,339 @@ const char *CgGeometryOutputName(CgGeometryOutput output)
     }
     return outputNames[CG_GEOMETRY_OUTPUT_UNKNOWN];
 } // CgGeometryOutputName
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// Geometry programs and attrib arrays: ////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * CgGeometryInitProgram() - Prepare one program record: zero every
+ *         field, then store the caller-supplied allocator pair so
+ *         later resolution stages allocate their state through it.
+ */
+
+void CgGeometryInitProgram(CgGeometryProgram *program,
+                           CgGeometryAllocFn alloc, void *allocArg)
+{
+    if (!program) {
+        return;
+    }
+    memset(program, 0, sizeof(*program));
+    program->alloc = alloc;
+    program->allocArg = allocArg;
+} // CgGeometryInitProgram
+
+/*
+ * CgGeometryAcceptsAttribArrayElement() - The shared AttribArray<T>
+ *         element rule.  Property bits are read directly so the rule
+ *         holds wherever geometry parsing runs, including unit tests
+ *         with no symbol table; the category and base macros it uses
+ *         are the single source of those encodings.  Undefined
+ *         recovery types carry a scalar category, so the base check is
+ *         what keeps poison out of attribute arrays.
+ */
+
+int CgGeometryAcceptsAttribArrayElement(const Type *type)
+{
+    int category;
+    int base;
+
+    if (!type) {
+        return 0;
+    }
+    if (type->properties & TYPE_MISC_VOID) {
+        return 0;
+    }
+    category = type->properties & TYPE_CATEGORY_MASK;
+    base = type->properties & TYPE_BASE_MASK;
+    switch (category) {
+    case TYPE_CATEGORY_SCALAR:
+        return base == TYPE_BASE_CFLOAT || base == TYPE_BASE_CINT ||
+               base == TYPE_BASE_FLOAT || base == TYPE_BASE_INT ||
+               base == TYPE_BASE_BOOLEAN;
+    case TYPE_CATEGORY_ARRAY:
+    case TYPE_CATEGORY_STRUCT:
+        return 1;
+    default:
+        return 0;
+    }
+} // CgGeometryAcceptsAttribArrayElement
+
+/*
+ * CgGeometryValidateAttribArrayDeclaration() - Judge one declaration
+ *         whose type is an AttribArray.  The element rule fires first
+ *         because it is intrinsic to the type; then the use decides:
+ *         entry inputs stand on their own source modifiers (selected-
+ *         program analysis re-checks them against the resolved config
+ *         later), helper inputs need a resolved geometry program, and
+ *         every remaining placement is rejected outright.  Symbols of
+ *         any other type always validate so callers can apply this to
+ *         whole formal and member chains without pre-filtering.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryValidateAttribArrayDeclaration(
+    const CgGeometryProgram *program, const Symbol *symbol,
+    CgGeometryDeclarationUse use, CgGeometryDiagnostic *diagnostic)
+{
+    const Type *type;
+
+    ClearDiagnostic(diagnostic);
+    if (!symbol) {
+        return 1;
+    }
+    type = symbol->type;
+    if (!CgIsAttribArray(type)) {
+        return 1;
+    }
+    if (!CgGeometryAcceptsAttribArrayElement(
+            CgAttribArrayElement(type))) {
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ATTRIB_ELEMENT;
+        diagnostic->loc = symbol->loc;
+        return 0;
+    }
+    switch (use) {
+    case CG_GEOMETRY_DECL_ENTRY_INPUT:
+        if (program &&
+            program->config.stage != CGIR_STAGE_GEOMETRY) {
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE;
+            diagnostic->loc = symbol->loc;
+            return 0;
+        }
+        return 1;
+    case CG_GEOMETRY_DECL_HELPER_INPUT:
+        if (!program ||
+            program->config.stage != CGIR_STAGE_GEOMETRY) {
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE;
+            diagnostic->loc = symbol->loc;
+            return 0;
+        }
+        return 1;
+    case CG_GEOMETRY_DECL_GLOBAL:
+    case CG_GEOMETRY_DECL_UNIFORM:
+    case CG_GEOMETRY_DECL_OUTPUT:
+    case CG_GEOMETRY_DECL_RETURN:
+    case CG_GEOMETRY_DECL_MEMBER:
+    case CG_GEOMETRY_DECL_LOCAL:
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ATTRIB_PLACEMENT;
+        diagnostic->loc = symbol->loc;
+        return 0;
+    default:
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ATTRIB_PLACEMENT;
+        diagnostic->loc = symbol->loc;
+        return 0;
+    }
+} // CgGeometryValidateAttribArrayDeclaration
+
+/*
+ * lNewResolvedLengthConstant() - The folded replacement for one
+ *         attribute-array .length query: an int constant node of the
+ *         selected topology's vertex count, allocated from the
+ *         program's own arena.  Node shape mirrors the parser's
+ *         numeric constants exactly.
+ */
+
+static expr *lNewResolvedLengthConstant(CgGeometryProgram *program,
+                                        int *failed)
+{
+    constant *node;
+    CgNumericValue value;
+
+    node = (constant *) program->alloc(program->allocArg,
+                                       sizeof(*node));
+    if (!node) {
+        *failed = 1;
+        return NULL;
+    }
+    memset(node, 0, sizeof(*node));
+    node->kind = CONST_N;
+    node->op = ICONST_OP;
+    node->type = GetStandardTypeKind(CG_SCALAR_CINT, 0, 0);
+    node->subop = SUBOP__(CgScalarLegacyBase(CG_SCALAR_CINT));
+    CgNumericSetSigned(&value, CG_SCALAR_CINT,
+                       (CgInt64) program->config.inputVertexCount);
+    node->val[0] = value;
+    return (expr *) node;
+} // lNewResolvedLengthConstant
+
+/*
+ * lFoldLengthExpr() - Replace every ARRAY_LENGTH_OP whose operand is
+ *         an attribute array with the resolved int constant,
+ *         recursing through the expression shapes statements carry.
+ *         Ordinary arrays keep their parse-time handling untouched.
+ */
+
+static expr *lFoldLengthExpr(CgGeometryProgram *program, expr *fExpr,
+                             int *failed)
+{
+    if (!fExpr || *failed) {
+        return fExpr;
+    }
+    switch (fExpr->common.kind) {
+    case UNARY_N:
+        fExpr->un.arg = lFoldLengthExpr(program, fExpr->un.arg, failed);
+        if (!*failed && fExpr->un.op == ARRAY_LENGTH_OP &&
+            CgIsAttribArray(fExpr->un.arg ?
+                            fExpr->un.arg->common.type : NULL))
+        {
+            return lNewResolvedLengthConstant(program, failed);
+        }
+        break;
+    case BINARY_N:
+        fExpr->bin.left = lFoldLengthExpr(program, fExpr->bin.left,
+                                          failed);
+        fExpr->bin.right = lFoldLengthExpr(program, fExpr->bin.right,
+                                           failed);
+        break;
+    case TRINARY_N:
+        fExpr->tri.arg1 = lFoldLengthExpr(program, fExpr->tri.arg1,
+                                          failed);
+        fExpr->tri.arg2 = lFoldLengthExpr(program, fExpr->tri.arg2,
+                                          failed);
+        fExpr->tri.arg3 = lFoldLengthExpr(program, fExpr->tri.arg3,
+                                          failed);
+        break;
+    case SYMB_N:
+    case CONST_N:
+    default:
+        break;
+    }
+    return fExpr;
+} // lFoldLengthExpr
+
+/*
+ * lFoldLengthStmt() - Walk one statement chain, folding length
+ *         queries inside every statement kind that carries
+ *         expressions or nested bodies.
+ */
+
+static void lFoldLengthStmt(CgGeometryProgram *program, stmt *fStmt,
+                            int *failed)
+{
+    for (; fStmt && !*failed; fStmt = fStmt->commonst.next) {
+        switch (fStmt->commonst.kind) {
+        case EXPR_STMT:
+            fStmt->exprst.exp =
+                lFoldLengthExpr(program, fStmt->exprst.exp, failed);
+            break;
+        case IF_STMT:
+            fStmt->ifst.cond =
+                lFoldLengthExpr(program, fStmt->ifst.cond, failed);
+            lFoldLengthStmt(program, fStmt->ifst.thenstmt, failed);
+            lFoldLengthStmt(program, fStmt->ifst.elsestmt, failed);
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            fStmt->whilest.cond =
+                lFoldLengthExpr(program, fStmt->whilest.cond, failed);
+            lFoldLengthStmt(program, fStmt->whilest.body, failed);
+            break;
+        case FOR_STMT:
+            lFoldLengthStmt(program, fStmt->forst.init, failed);
+            fStmt->forst.cond =
+                lFoldLengthExpr(program, fStmt->forst.cond, failed);
+            lFoldLengthStmt(program, fStmt->forst.step, failed);
+            lFoldLengthStmt(program, fStmt->forst.body, failed);
+            break;
+        case BLOCK_STMT:
+            lFoldLengthStmt(program, fStmt->blockst.body, failed);
+            break;
+        case RETURN_STMT:
+            fStmt->returnst.exp =
+                lFoldLengthExpr(program, fStmt->returnst.exp, failed);
+            break;
+        case DISCARD_STMT:
+            fStmt->discardst.cond =
+                lFoldLengthExpr(program, fStmt->discardst.cond, failed);
+            break;
+        case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+        default:
+            break;
+        }
+    }
+} // lFoldLengthStmt
+
+/*
+ * CgGeometryResolveLengths() - Fold attribute-array .length queries
+ *         across the selected reachability graph and record the
+ *         resolved type views.  Each reachable function contributes
+ *         its attrib-array formals as deduplicated views and gets its
+ *         body folded; allocation goes through the program's arena
+ *         and any refusal marks the whole program failed.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryResolveLengths(CgGeometryProgram *program,
+                             const CgReachGraph *reach,
+                             CgGeometryDiagnostic *diagnostic)
+{
+    const CgReachNode *node;
+    CgGeometryTypeView *view;
+    CgGeometryTypeView **tail;
+    Symbol *formal;
+    Symbol *function;
+    int ii;
+    int failed;
+
+    ClearDiagnostic(diagnostic);
+    if (!program || !reach ||
+        program->config.stage != CGIR_STAGE_GEOMETRY) {
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE;
+        return 0;
+    }
+    failed = 0;
+    for (ii = 0; ii < reach->nodeCount && !failed; ii++) {
+        node = &reach->nodes[ii];
+        function = node->symbol;
+        if (!function || function->kind != FUNCTION_S) {
+            continue;
+        }
+        for (formal = function->details.fun.params;
+             formal && !failed; formal = formal->next)
+        {
+            if (!CgIsAttribArray(formal->type)) {
+                continue;
+            }
+            view = program->typeViews;
+            while (view && view->sourceType != formal->type) {
+                view = view->next;
+            }
+            if (view) {
+                continue;
+            }
+            view = (CgGeometryTypeView *)
+                program->alloc(program->allocArg, sizeof(*view));
+            if (!view) {
+                failed = 1;
+                break;
+            }
+            view->sourceType = formal->type;
+            view->resolvedType =
+                CgGetAttribArrayType(
+                    CgAttribArrayElement(formal->type),
+                    program->config.inputVertexCount);
+            view->next = NULL;
+            tail = &program->typeViews;
+            while (*tail != NULL) {
+                tail = &(*tail)->next;
+            }
+            *tail = view;
+        }
+        if (!failed && function->details.fun.statements) {
+            lFoldLengthStmt(program,
+                            function->details.fun.statements, &failed);
+        }
+    }
+    if (failed) {
+        program->failed = 1;
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ALLOCATION;
+        return 0;
+    }
+    return 1;
+} // CgGeometryResolveLengths

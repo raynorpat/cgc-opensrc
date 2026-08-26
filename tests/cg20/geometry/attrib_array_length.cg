@@ -1,0 +1,30 @@
+// Task 3 positive fixture: every resolved topology folds .length to
+// its exact input vertex count -- points 1, lines 2, line adjacency 4,
+// triangles 3, and triangle adjacency 6.  Folding happens during
+// selected-program analysis, so registration stays DISABLED until
+// Task 5 integrates CgGeometryAnalyzeProgram into CompileProgram.
+
+POINT void point_length(AttribArray<float4> p : POSITION)
+{
+    int n = p.length;
+}
+
+LINE void line_length(AttribArray<float4> p : POSITION)
+{
+    int n = p.length;
+}
+
+LINE_ADJ void line_adj_length(AttribArray<float4> p : POSITION)
+{
+    int n = p.length;
+}
+
+TRIANGLE void triangle_length(AttribArray<float4> p : POSITION)
+{
+    int n = p.length;
+}
+
+TRIANGLE_ADJ void triangle_adj_length(AttribArray<float4> p : POSITION)
+{
+    int n = p.length;
+}

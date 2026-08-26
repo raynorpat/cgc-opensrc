@@ -1,0 +1,9 @@
+// Task 3 negative: attribute arrays are never globals; the placement
+// rule rejects the declarator with C6306 at the declaration.
+
+AttribArray<float4> globalInput;
+
+void main(float4 p : POSITION)
+{
+    float4 c = p;
+}

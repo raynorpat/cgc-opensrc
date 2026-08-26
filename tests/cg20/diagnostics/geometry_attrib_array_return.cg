@@ -1,0 +1,9 @@
+// Task 3 negative: functions cannot return attribute arrays; the
+// return type is a prohibited home (C6306).
+
+AttribArray<float4> BadValue();
+
+void main(float4 p : POSITION)
+{
+    float4 c = p;
+}

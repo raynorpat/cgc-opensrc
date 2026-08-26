@@ -152,4 +152,23 @@ CgConversionRank CgClassifyScalarConversion(CgScalarKind from,
                                             int explicitCast);
 Type *CgUsualArithmeticType(const Type *left, const Type *right);
 
+/*
+ * Canonical read-only attribute arrays.  AttribArray<T> is its own
+ * type category (TYPE_CATEGORY_ATTRIB_ARRAY in symbols.h), interned on
+ * the canonical element pointer plus extent so identical (element,
+ * extent) pairs share one Type for the whole symbol-table lifetime.
+ * Extent zero marks the unresolved source shape the parser writes;
+ * extents 1, 2, 3, 4, and 6 are the resolved topology shapes installed
+ * by later geometry resolution.  Anything else, a NULL element, or an
+ * element that is already poison maps to UndefinedType instead of a
+ * new identity.  Attribute arrays never satisfy the ordinary IsArray
+ * helpers, and they compare equal only to their own interned pointer.
+ */
+
+Type *CgGetAttribArrayType(Type *element, unsigned int extent);
+int CgIsAttribArray(const Type *type);
+Type *CgAttribArrayElement(const Type *type);
+unsigned int CgAttribArrayExtent(const Type *type);
+void FreeCgAttribArrayTypes(void);
+
 #endif

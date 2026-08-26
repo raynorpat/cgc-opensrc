@@ -1,0 +1,21 @@
+// Task 3 positive fixture: a nested struct element keeps member
+// semantics through indexing -- p[0] is a read-only Vertex rvalue and
+// member selection chains off it.  Registration stays DISABLED until
+// Task 5 integrates selected-program analysis into CompileProgram.
+
+struct Inner
+{
+    float value;
+};
+
+struct Vertex
+{
+    float4 position : POSITION;
+    Inner data;
+};
+
+TRIANGLE void triangle_agg(AttribArray<Vertex> p : POSITION)
+{
+    float4 pos = p[0].position;
+    float value = p[0].data.value;
+}

@@ -57,6 +57,11 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "cg_geometry.h"
+#include "cg_types.h"
+#include "cg_reach.h"
+
+CgStruct *Cg;
+Scope *CurrentScope;
 
 /*
  * OptionChain() - Terminate one manually built option node.
@@ -532,8 +537,493 @@ static void TestApplyOutputModifier(void)
     assert(modifiers.output == CG_GEOMETRY_OUTPUT_LINE_STRIP);
 }
 
+/*
+ * StackType() - A zero-initialized type header for predicate tests:
+ *         every field starts at zero, exactly like InitType leaves a
+ *         Type, so only the assigned properties and payload differ
+ *         from an untouched header.
+ */
+
+static void StackType(Type *type)
+{
+    memset(type, 0, sizeof(*type));
+}
+
+/*
+ * TestAttribArrayElementTypePredicate() - The shared AttribArray<T>
+ *         element rule accepts scalar, vector, matrix, ordinary
+ *         array, and nested struct headers; it rejects void,
+ *         undefined recovery types, functions, samplers, and
+ *         interfaces.
+ */
+
+static void TestAttribArrayElementTypePredicate(void)
+{
+    Type scalar;
+    Type vector;
+    Type matrix;
+    Type ordinaryArray;
+    Type inner;
+    Type outer;
+    Type voidType;
+    Type undefinedType;
+    Type function;
+    Type sampler2D;
+    Type interfaceType;
+
+    StackType(&scalar);
+    scalar.properties = TYPE_BASE_FLOAT | TYPE_CATEGORY_SCALAR;
+    scalar.co.scalarKind = CG_SCALAR_FLOAT;
+
+    StackType(&vector);
+    vector.properties = TYPE_BASE_FLOAT | TYPE_CATEGORY_ARRAY |
+                        TYPE_MISC_PACKED;
+    vector.arr.eltype = &scalar;
+    vector.arr.numels = 4;
+
+    StackType(&matrix);
+    matrix.properties = TYPE_BASE_FLOAT | TYPE_CATEGORY_ARRAY |
+                        TYPE_MISC_PACKED;
+    matrix.arr.eltype = &vector;
+    matrix.arr.numels = 4;
+
+    StackType(&ordinaryArray);
+    ordinaryArray.properties = TYPE_BASE_FLOAT | TYPE_CATEGORY_ARRAY;
+    ordinaryArray.arr.eltype = &scalar;
+    ordinaryArray.arr.numels = 2;
+
+    /* Two struct headers where Outer models a body holding one Inner
+     * member: the element rule judges the declared header category,
+     * not the member bodies. */
+    StackType(&inner);
+    inner.properties = TYPE_CATEGORY_STRUCT;
+    inner.str.tag = 1;
+    inner.str.unqualifiedtype = &inner;
+
+    StackType(&outer);
+    outer.properties = TYPE_CATEGORY_STRUCT;
+    outer.str.tag = 2;
+    outer.str.unqualifiedtype = &outer;
+
+    StackType(&voidType);
+    voidType.properties = TYPE_BASE_VOID | TYPE_CATEGORY_SCALAR |
+                          TYPE_MISC_VOID;
+
+    StackType(&undefinedType);
+    undefinedType.properties = TYPE_BASE_UNDEFINED_TYPE |
+                               TYPE_CATEGORY_SCALAR;
+
+    StackType(&function);
+    function.properties = TYPE_CATEGORY_FUNCTION;
+    function.fun.rettype = &scalar;
+
+    StackType(&sampler2D);
+    sampler2D.properties = TYPE_CATEGORY_SAMPLER | TYPE_BASE_FIRST_USER;
+    sampler2D.samp.samplerKind = CG_SAMPLER_2D;
+
+    StackType(&interfaceType);
+    interfaceType.properties = TYPE_CATEGORY_INTERFACE;
+    interfaceType.iface.tag = 3;
+
+    assert(CgGeometryAcceptsAttribArrayElement(&scalar));
+    assert(CgGeometryAcceptsAttribArrayElement(&vector));
+    assert(CgGeometryAcceptsAttribArrayElement(&matrix));
+    assert(CgGeometryAcceptsAttribArrayElement(&ordinaryArray));
+    assert(CgGeometryAcceptsAttribArrayElement(&inner));
+    assert(CgGeometryAcceptsAttribArrayElement(&outer));
+
+    assert(!CgGeometryAcceptsAttribArrayElement(NULL));
+    assert(!CgGeometryAcceptsAttribArrayElement(&voidType));
+    assert(!CgGeometryAcceptsAttribArrayElement(&undefinedType));
+    assert(!CgGeometryAcceptsAttribArrayElement(&function));
+    assert(!CgGeometryAcceptsAttribArrayElement(&sampler2D));
+    assert(!CgGeometryAcceptsAttribArrayElement(&interfaceType));
+}
+
+/*
+ * FakeAlloc() - A recognizable allocator identity for the program
+ *         record's stored allocator.
+ */
+
+static void *FakeAlloc(void *arg, size_t size)
+{
+    (void) arg;
+    (void) size;
+    return NULL;
+}
+
+/*
+ * TestInitProgramStoresAllocator() - CgGeometryInitProgram zeroes the
+ *         whole record (no stale stage, views, entry, or failure
+ *         state) and stores the allocator pair verbatim.
+ */
+
+static void TestInitProgramStoresAllocator(void)
+{
+    CgGeometryProgram program;
+    int cookie;
+
+    cookie = 0;
+    memset(&program, 0xa7, sizeof(program));
+    CgGeometryInitProgram(&program, FakeAlloc, &cookie);
+    assert(program.alloc == FakeAlloc);
+    assert(program.allocArg == &cookie);
+    assert(program.entry == NULL);
+    assert(program.typeViews == NULL);
+    assert(!program.failed);
+    assert(program.config.stage == CGIR_STAGE_UNKNOWN);
+    assert(program.config.inputTopology == CG_GEOMETRY_INPUT_UNKNOWN);
+}
+
+/*
+ * TestRegisterNames() - Stub HAL name registration for InitSymbolTable.
+ */
+
+static int TestRegisterNames(slHAL *fHAL)
+{
+    (void) fHAL;
+    return 1;
+}
+
+/*
+ * TestGetSizeof() - Minimal size query mirroring GetSizeof_HAL.
+ */
+
+static int TestGetSizeof(Type *fType)
+{
+    if (!fType) {
+        return 0;
+    }
+    return fType->co.size;
+}
+
+/*
+ * ArenaAlloc() - Bounded bump allocator so resolution state allocated
+ *         through a program record never leaks and never depends on
+ *         malloc failure timing.
+ */
+
+static unsigned char lViewArena[8192];
+static size_t lViewArenaUsed;
+
+static void *ArenaAlloc(void *arg, size_t size)
+{
+    void *block;
+
+    (void) arg;
+    if (lViewArenaUsed + size > sizeof(lViewArena)) {
+        return NULL;
+    }
+    block = &lViewArena[lViewArenaUsed];
+    lViewArenaUsed += size;
+    return block;
+}
+
+/*
+ * StackSymbol() - A zero-initialized variable symbol whose only
+ *         assigned fields are the kind, name atom, location, and type
+ *         under test.
+ */
+
+static Symbol *StackSymbol(Symbol *symbol, Type *type, int line)
+{
+    memset(symbol, 0, sizeof(*symbol));
+    symbol->kind = VARIABLE_S;
+    symbol->name = 1;
+    symbol->loc.file = 3;
+    symbol->loc.line = line;
+    symbol->type = type;
+    return symbol;
+}
+
+/*
+ * MakeGeometryProgram() - One initialized program record whose stage
+ *         and input vertex count are set for validation tests; every
+ *         other field keeps its cleared state.
+ */
+
+static void MakeGeometryProgram(CgGeometryProgram *program, CgIRStage stage)
+{
+    CgGeometryInitProgram(program, ArenaAlloc, NULL);
+    program->config.stage = stage;
+    program->config.inputTopology = CG_GEOMETRY_INPUT_TRIANGLE;
+    program->config.outputTopology = CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP;
+    program->config.inputVertexCount = 3;
+}
+
+/*
+ * TestAttribArrayDeclarationValidation() - Placement rules: entry
+ *         inputs are admitted on the strength of their own source
+ *         modifiers (selected-program analysis confirms them later),
+ *         helper inputs need a resolved geometry program, every other
+ *         use is rejected with one structured reason, and illegal
+ *         elements are intrinsic failures that outrank placement.
+ */
+
+static void TestAttribArrayDeclarationValidation(void)
+{
+    const CgGeometryDeclarationUse placements[6] = {
+        CG_GEOMETRY_DECL_GLOBAL,
+        CG_GEOMETRY_DECL_UNIFORM,
+        CG_GEOMETRY_DECL_OUTPUT,
+        CG_GEOMETRY_DECL_RETURN,
+        CG_GEOMETRY_DECL_MEMBER,
+        CG_GEOMETRY_DECL_LOCAL
+    };
+    CgGeometryProgram geometry;
+    CgGeometryProgram neutral;
+    CgGeometryDiagnostic diagnostic;
+    Type *array4;
+    Type *badVoid;
+    Type *badSampler;
+    Type *ordinary;
+    Symbol formal;
+    int ii;
+
+    array4 = CgGetAttribArrayType(Float4Type, 0);
+    badVoid = CgGetAttribArrayType(VoidType, 0);
+    badSampler = CgGetAttribArrayType(GetSamplerType(CG_SAMPLER_2D), 0);
+    ordinary = Float4Type;
+    assert(CgIsAttribArray(array4));
+
+    /* Entry inputs self-certify; resolved geometry admits helpers. */
+    StackSymbol(&formal, array4, 9);
+    MakeGeometryProgram(&geometry, CGIR_STAGE_GEOMETRY);
+    MakeGeometryProgram(&neutral, CGIR_STAGE_NEUTRAL);
+
+    assert(CgGeometryValidateAttribArrayDeclaration(NULL, &formal,
+           CG_GEOMETRY_DECL_ENTRY_INPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+    assert(CgGeometryValidateAttribArrayDeclaration(&geometry, &formal,
+           CG_GEOMETRY_DECL_ENTRY_INPUT, &diagnostic));
+    assert(CgGeometryValidateAttribArrayDeclaration(&geometry, &formal,
+           CG_GEOMETRY_DECL_HELPER_INPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+
+    /* Helper inputs without a resolved geometry program are rejected:
+       reachability is proven only by selected-program analysis. */
+    assert(!CgGeometryValidateAttribArrayDeclaration(NULL, &formal,
+           CG_GEOMETRY_DECL_HELPER_INPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE);
+    assert(diagnostic.loc.line == 9);
+    assert(!CgGeometryValidateAttribArrayDeclaration(&neutral, &formal,
+           CG_GEOMETRY_DECL_HELPER_INPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE);
+    assert(!CgGeometryValidateAttribArrayDeclaration(&neutral, &formal,
+           CG_GEOMETRY_DECL_ENTRY_INPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE);
+
+    /* Every non-input placement fails with its own structured reason,
+       whether or not a program has been resolved. */
+    for (ii = 0; ii < 6; ii++) {
+        assert(!CgGeometryValidateAttribArrayDeclaration(&geometry,
+               &formal, placements[ii], &diagnostic));
+        assert(diagnostic.reason ==
+               CG_GEOMETRY_DIAGNOSTIC_ATTRIB_PLACEMENT);
+        assert(diagnostic.loc.line == 9);
+        assert(!CgGeometryValidateAttribArrayDeclaration(NULL,
+               &formal, placements[ii], &diagnostic));
+        assert(diagnostic.reason ==
+               CG_GEOMETRY_DIAGNOSTIC_ATTRIB_PLACEMENT);
+    }
+
+    /* Illegal elements are intrinsic failures that fire before any
+     * placement rule, so recovery names the type problem first. */
+    StackSymbol(&formal, badVoid, 4);
+    assert(!CgGeometryValidateAttribArrayDeclaration(NULL, &formal,
+           CG_GEOMETRY_DECL_ENTRY_INPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_ELEMENT);
+    assert(!CgGeometryValidateAttribArrayDeclaration(NULL, &formal,
+           CG_GEOMETRY_DECL_LOCAL, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_ELEMENT);
+
+    StackSymbol(&formal, badSampler, 5);
+    assert(!CgGeometryValidateAttribArrayDeclaration(&geometry, &formal,
+           CG_GEOMETRY_DECL_ENTRY_INPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_ELEMENT);
+
+    /* Non-attribute-array declarations are never validated. */
+    StackSymbol(&formal, ordinary, 7);
+    assert(CgGeometryValidateAttribArrayDeclaration(NULL, &formal,
+           CG_GEOMETRY_DECL_LOCAL, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+    assert(CgGeometryValidateAttribArrayDeclaration(NULL, NULL,
+           CG_GEOMETRY_DECL_GLOBAL, &diagnostic));
+}
+
+/*
+ * InitSymbNode() - A hand-built variable reference of "type": the
+ *         minimal SYMB_N shape every walker must leave alone.
+ */
+
+static void InitSymbNode(symb *node, Type *type)
+{
+    memset(node, 0, sizeof(*node));
+    node->kind = SYMB_N;
+    node->op = VARIABLE_OP;
+    node->type = type;
+    node->IsLValue = 1;
+}
+
+/*
+ * InitLengthNode() - A hand-built ARRAY_LENGTH_OP query over "arg"
+ *         with the canonical int type the parser writes.
+ */
+
+static void InitLengthNode(unary *node, expr *arg)
+{
+    memset(node, 0, sizeof(*node));
+    node->kind = UNARY_N;
+    node->op = ARRAY_LENGTH_OP;
+    node->type = GetStandardTypeKind(CG_SCALAR_INT, 0, 0);
+    node->arg = arg;
+}
+
+/*
+ * InitExprStmt() - A hand-built expression statement holding "exp".
+ */
+
+static void InitExprStmt(expr_stmt *statement, expr *exp)
+{
+    memset(statement, 0, sizeof(*statement));
+    statement->kind = EXPR_STMT;
+    statement->exp = exp;
+}
+
+/*
+ * StackFunction() - A zero-initialized function symbol whose body is
+ *         "body" and whose single formal chain starts at "params".
+ */
+
+static Symbol *StackFunction(Symbol *function, stmt *body, Symbol *params)
+{
+    memset(function, 0, sizeof(*function));
+    function->kind = FUNCTION_S;
+    function->name = 2;
+    function->loc.file = 3;
+    function->loc.line = 12;
+    function->details.fun.statements = body;
+    function->details.fun.params = params;
+    return function;
+}
+
+/*
+ * TestResolveLengths() - Folding: a resolved geometry program replaces
+ *         every attribute-array .length node in its reachable set
+ *         with an int constant equal to config.inputVertexCount,
+ *         records one resolved type view per source array, never
+ *         mutates the unresolved canonical type, leaves unreachable
+ *         bodies untouched, and rejects use outside a resolved
+ *         geometry program.
+ */
+
+static void TestResolveLengths(void)
+{
+    CgGeometryProgram geometry;
+    CgGeometryDiagnostic diagnostic;
+    CgReachGraph graph;
+    CgReachNode nodes[2];
+    Type *unresolved;
+    Type *resolved;
+    Symbol entryFunction;
+    Symbol helperFunction;
+    Symbol formalP;
+    Symbol formalQ;
+    expr_stmt firstStatement;
+    expr_stmt secondStatement;
+    expr_stmt helperStatement;
+    unary firstLength;
+    unary secondLength;
+    symb firstVar;
+    symb secondVar;
+    const constant *folded;
+
+    lViewArenaUsed = 0;
+    unresolved = CgGetAttribArrayType(Float4Type, 0);
+    resolved = CgGetAttribArrayType(Float4Type, 3);
+
+    /* Entry body: two chained length queries over two formals. */
+    StackSymbol(&formalP, unresolved, 13);
+    formalP.next = &formalQ;
+    StackSymbol(&formalQ, unresolved, 14);
+    formalQ.next = NULL;
+    InitSymbNode(&firstVar, unresolved);
+    InitSymbNode(&secondVar, unresolved);
+    InitLengthNode(&firstLength, (expr *) &firstVar);
+    InitLengthNode(&secondLength, (expr *) &secondVar);
+    InitExprStmt(&firstStatement, (expr *) &firstLength);
+    InitExprStmt(&secondStatement, (expr *) &secondLength);
+    firstStatement.next = (stmt *) &secondStatement;
+
+    StackFunction(&entryFunction, (stmt *) &firstStatement, &formalP);
+    StackFunction(&helperFunction, NULL, NULL);
+
+    nodes[0].symbol = &entryFunction;
+    nodes[0].witness.from = NULL;
+    nodes[0].witness.to = &entryFunction;
+    nodes[0].expanded = 1;
+    graph.nodes = nodes;
+    graph.nodeCount = 1;
+    graph.capacity = 1;
+    graph.failed = 0;
+
+    MakeGeometryProgram(&geometry, CGIR_STAGE_GEOMETRY);
+    geometry.entry = &entryFunction;
+    assert(CgGeometryResolveLengths(&geometry, &graph, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+
+    /* Both length nodes became int constants of the input count. */
+    folded = (const constant *) firstStatement.exp;
+    assert(folded->kind == CONST_N);
+    assert(folded->op == ICONST_OP);
+    assert(folded->val[0].value.i == 3);
+    assert(GetScalarKind(folded->type) == CG_SCALAR_CINT);
+    folded = (const constant *) secondStatement.exp;
+    assert(folded->kind == CONST_N);
+    assert(folded->val[0].value.i == 3);
+
+    /* One deduplicated resolved view per source array; the canonical
+     * source type itself stays unresolved. */
+    assert(geometry.typeViews != NULL);
+    assert(geometry.typeViews->sourceType == unresolved);
+    assert(geometry.typeViews->resolvedType == resolved);
+    assert(geometry.typeViews->next == NULL);
+    assert(CgAttribArrayExtent(unresolved) == 0);
+    assert(CgIsAttribArray(unresolved));
+    assert(CgAttribArrayElement(resolved) == Float4Type);
+
+    /* An unreachable helper keeps its length node untouched. */
+    InitSymbNode(&firstVar, unresolved);
+    InitLengthNode(&firstLength, (expr *) &firstVar);
+    InitExprStmt(&helperStatement, (expr *) &firstLength);
+    StackFunction(&helperFunction, (stmt *) &helperStatement, &formalQ);
+    assert(CgGeometryResolveLengths(&geometry, &graph, &diagnostic));
+    assert(helperStatement.exp == (expr *) &firstLength);
+
+    /* Use outside a resolved geometry program is rejected, not
+     * silently folded to zero. */
+    MakeGeometryProgram(&geometry, CGIR_STAGE_VERTEX);
+    assert(!CgGeometryResolveLengths(&geometry, &graph, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE);
+    assert(!CgGeometryResolveLengths(NULL, &graph, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE);
+}
+
 int main(void)
 {
+    CgStruct cg;
+    slHAL hal;
+
+    memset(&cg, 0, sizeof(cg));
+    memset(&hal, 0, sizeof(hal));
+    hal.GetSizeof = TestGetSizeof;
+    hal.RegisterNames = TestRegisterNames;
+    cg.theHAL = &hal;
+    Cg = &cg;
+
+    assert(InitAtomTable(atable, 0));
+    assert(InitSymbolTable(Cg));
+
     TestInitializedState();
     TestTopologyDefaults();
     TestGeometryOptions();
@@ -552,5 +1042,34 @@ int main(void)
     TestGeometryStageRequiresInput();
     TestApplyInputModifier();
     TestApplyOutputModifier();
+    TestAttribArrayElementTypePredicate();
+    TestInitProgramStoresAllocator();
+    TestAttribArrayDeclarationValidation();
+    TestResolveLengths();
     return 0;
+}
+
+void SemanticError(SourceLoc *loc, int num, const char *mess, ...)
+{
+    (void) loc;
+    (void) num;
+    (void) mess;
+}
+
+void InternalError(SourceLoc *loc, int num, const char *mess, ...)
+{
+    (void) loc;
+    (void) num;
+    (void) mess;
+}
+
+dtype CurrentDeclTypeSpecs = { 0, };
+
+Symbol *DefineTypedef(SourceLoc *loc, Scope *fScope, int atom, Type *fType)
+{
+    (void) loc;
+    (void) fScope;
+    (void) atom;
+    (void) fType;
+    return NULL;
 }

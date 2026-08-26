@@ -557,6 +557,7 @@ int SetGeometryInputModifier(SourceLoc *loc, dtype *specifiers,
                              CgGeometryInput input);
 int SetGeometryOutputModifier(SourceLoc *loc, dtype *specifiers,
                               CgGeometryOutput output);
+Type *SetAttribArrayType(SourceLoc *loc, Type *element);
 
 /********************************** Parser Semantic Rules: ***********************************/
 

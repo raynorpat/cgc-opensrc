@@ -1,0 +1,9 @@
+// Task 3 negative: function types are never legal AttribArray
+// elements.  The grammar cannot name a function type in element
+// position -- the typedef spelling stays an ordinary identifier there
+// -- so the parse rejects the element token with C501; the
+// FUNCTION-category element rule is pinned by cg_geometry_unit.
+
+typedef void Fun(float4);
+
+AttribArray<Fun> bad;

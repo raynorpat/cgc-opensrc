@@ -390,6 +390,7 @@ int FreeSymbolTable(CgStruct *Cg)
     }
     FreeCgStandardTypes();
     FreeCgSamplerTypes();
+    FreeCgAttribArrayTypes();
     return 1;
 } // FreeSymbolTable
 
@@ -939,6 +940,12 @@ int IsSameUnqualifiedType(const Type *aType, const Type *bType)
                 break;
             case TYPE_CATEGORY_INTERFACE:
                 // Interface identity is the declared type itself.
+                return aType == bType;
+            case TYPE_CATEGORY_ATTRIB_ARRAY:
+                /* Attribute-array identity is the interned
+                 * (element, extent) Type: nothing else compares equal,
+                 * so a resolved view never silently binds as another
+                 * shape or an unresolved one. */
                 return aType == bType;
             default:
                 break;

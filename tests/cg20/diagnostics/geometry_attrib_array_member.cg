@@ -1,0 +1,12 @@
+// Task 3 negative: struct members cannot store attribute arrays; the
+// placement rule rejects the member declarator (C6306).
+
+struct Payload
+{
+    AttribArray<float4> items;
+};
+
+void main(float4 p : POSITION)
+{
+    float4 c = p;
+}

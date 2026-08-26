@@ -141,10 +141,10 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> UNSIGNED_SY 322
 %token <sc_token> RESERVED_SY 323
 
-/* Geometry topology modifiers: appended after the last fixed token with
- * explicit increasing values; FIRST_USER_TOKEN_SY stays the final
- * declaration and no prior token was renumbered (stdlib.c embeds token
- * values). */
+/* Geometry topology modifiers and the Cg 2.0 AttribArray reserved
+ * word: appended after the last fixed token with explicit increasing
+ * values; FIRST_USER_TOKEN_SY stays the final declaration and no prior
+ * token was renumbered (stdlib.c embeds token values). */
 %token <sc_token> POINT_SY 325
 %token <sc_token> LINE_SY 326
 %token <sc_token> LINE_ADJ_SY 327
@@ -153,7 +153,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> POINT_OUT_SY 330
 %token <sc_token> LINE_OUT_SY 331
 %token <sc_token> TRIANGLE_OUT_SY 332
-%token <sc_token> FIRST_USER_TOKEN_SY 333  /* Must be last token declaration */
+%token <sc_token> ATTRIBARRAY_SY 334
+%token <sc_token> FIRST_USER_TOKEN_SY 335  /* Must be last token declaration */
 
 /*************<<<<<<<<<<<<<<<<<<<********************
 %type <dummy> abstract_parameter_declaration
@@ -416,6 +417,8 @@ type_specifier:           INT_SY
                               { $$ = $1; }
                         | interface_specifier
                               { $$ = $1; }
+                        | ATTRIBARRAY_SY '<' type_specifier '>'
+                              { $$ = SetAttribArrayType(Cg->tokenLoc, $3); }
                         | type_identifier
                               { $$ = LookUpTypeSymbol(NULL, $1); }
                         | error

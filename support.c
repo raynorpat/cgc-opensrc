@@ -849,13 +849,34 @@ int SetGeometryOutputModifier(SourceLoc *loc, dtype *specifiers, CgGeometryOutpu
 } // SetGeometryOutputModifier
 
 /*
+ * SetAttribArrayType() - Parser-facing construction of one unresolved
+ *         AttribArray source type.  Like the topology-modifier
+ *         wrappers, the version gate reports the stable Cg 2.0
+ *         language diagnostic at the token; the pure interner in
+ *         cg_types.c then builds the canonical identity at extent
+ *         zero.  Element legality is checked later by declaration
+ *         validation, not here.
+ *
+ * Returns: The interned unresolved attribute-array type.
+ *
+ */
+
+Type *SetAttribArrayType(SourceLoc *loc, Type *element)
+{
+    if (!CgLanguageAllowsGeometry(Cg->options.languageVersion)) {
+        SemanticError(loc, ERROR___REQUIRES_CG_20_LANGUAGE);
+        return UndefinedType;
+    }
+    return CgGetAttribArrayType(element, 0);
+} // SetAttribArrayType
+
+/*
  * lMergeGeometryModifiers() - Carry a declaration's source modifiers
  *         onto a function symbol.  Fields the newer record leaves
  *         unknown keep their previous values, so a definition may
  *         restate or extend its prototype's modifiers without losing
  *         any.
  */
-
 static void lMergeGeometryModifiers(CgGeometryModifiers *dst,
                                     const CgGeometryModifiers *src)
 {
@@ -1766,6 +1787,163 @@ static void lCheckSamplerDeclaration(SourceLoc *loc, Scope *fScope,
     }
 } // lCheckSamplerDeclaration
 
+/*
+ * lAttribArrayUseNoun() - The placement phrase one rejected use names
+ *         in its diagnostic.
+ */
+
+static const char *lAttribArrayUseNoun(CgGeometryDeclarationUse use)
+{
+    switch (use) {
+    case CG_GEOMETRY_DECL_GLOBAL:
+        return "a global variable";
+    case CG_GEOMETRY_DECL_UNIFORM:
+        return "a uniform variable";
+    case CG_GEOMETRY_DECL_OUTPUT:
+        return "an output parameter";
+    case CG_GEOMETRY_DECL_RETURN:
+        return "a function return value";
+    case CG_GEOMETRY_DECL_MEMBER:
+        return "a struct member";
+    case CG_GEOMETRY_DECL_LOCAL:
+        return "a local variable";
+    case CG_GEOMETRY_DECL_ENTRY_INPUT:
+    case CG_GEOMETRY_DECL_HELPER_INPUT:
+    default:
+        return "this declaration";
+    }
+} // lAttribArrayUseNoun
+
+/*
+ * lReportAttribArrayFailure() - Map one structured attribute-array
+ *         validation reason onto its stable reserved diagnostic:
+ *         illegal elements name the element type, unresolved helper
+ *         inputs report the stage rule, and every other failure is a
+ *         prohibited placement naming its use.
+ */
+
+static void lReportAttribArrayFailure(SourceLoc *loc, const Symbol *symbol,
+                                      CgGeometryDeclarationUse use,
+                                      const CgGeometryDiagnostic *diagnostic)
+{
+    char tname[128], uname[128], ename[256];
+
+    if (diagnostic->reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_ELEMENT) {
+        FormatTypeString(tname, sizeof tname, uname, sizeof uname,
+                         CgAttribArrayElement(symbol->type));
+        strncpy(ename, tname, sizeof ename - 1);
+        ename[sizeof ename - 1] = '\0';
+        strncat(ename, uname, sizeof ename - strlen(ename) - 1);
+        SemanticError(loc, ERROR_S_GEOMETRY_ATTRIB_ELEMENT, ename);
+    } else if (diagnostic->reason ==
+               CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE) {
+        SemanticError(loc, ERROR___GEOMETRY_ATTRIB_STAGE);
+    } else {
+        SemanticError(loc, ERROR_S_GEOMETRY_ATTRIB_PLACEMENT,
+                      lAttribArrayUseNoun(use));
+    }
+} // lReportAttribArrayFailure
+
+/*
+ * lValidateAttribArraySymbol() - Validate one declaration through the
+ *         shared geometry rule and report exactly one reserved
+ *         diagnostic on failure.  Callers pass program NULL while
+ *         only source-level facts exist.
+ */
+
+static void lValidateAttribArraySymbol(SourceLoc *loc, const Symbol *symbol,
+                                       CgGeometryDeclarationUse use)
+{
+    CgGeometryDiagnostic diagnostic;
+
+    if (CgGeometryValidateAttribArrayDeclaration(NULL, symbol, use,
+                                                 &diagnostic)) {
+        return;
+    }
+    lReportAttribArrayFailure(loc, symbol, use, &diagnostic);
+} // lValidateAttribArraySymbol
+
+/*
+ * lCheckAttribArrayVariable() - Placement rules for one variable
+ *         declarator: struct members, uniforms, globals, and locals
+ *         are all prohibited homes for an AttribArray.  Runs beside
+ *         the sampler declaration rules before the symbol is defined.
+ */
+
+static void lCheckAttribArrayVariable(SourceLoc *loc, Scope *fScope,
+                                      int name, Type *fType)
+{
+    Symbol stack;
+
+    if (!CgIsAttribArray(fType)) {
+        return;
+    }
+    memset(&stack, 0, sizeof(stack));
+    stack.kind = VARIABLE_S;
+    stack.name = name;
+    stack.loc = *loc;
+    stack.type = fType;
+    if (fScope->IsStructScope) {
+        lValidateAttribArraySymbol(loc, &stack, CG_GEOMETRY_DECL_MEMBER);
+    } else if (GetDomain(fType) == TYPE_DOMAIN_UNIFORM) {
+        lValidateAttribArraySymbol(loc, &stack, CG_GEOMETRY_DECL_UNIFORM);
+    } else if (fScope->level <= 1) {
+        lValidateAttribArraySymbol(loc, &stack, CG_GEOMETRY_DECL_GLOBAL);
+    } else {
+        lValidateAttribArraySymbol(loc, &stack, CG_GEOMETRY_DECL_LOCAL);
+    }
+} // lCheckAttribArrayVariable
+
+/*
+ * lCheckAttribArrayFunction() - Attribute-array rules for one function
+ *         declarator: the return type is always a prohibited home, and
+ *         formals qualify only as entry inputs when their own
+ *         declaration carries topology modifiers -- any other function
+ *         is a helper whose reachability is proven only by
+ *         selected-program analysis, so its array formals fail the
+ *         stage rule for now.  Out and uniform formals are prohibited
+ *         regardless of the enclosing function.
+ */
+
+static void lCheckAttribArrayFunction(SourceLoc *loc, decl *fDecl,
+                                      Symbol *fSymb)
+{
+    CgGeometryDeclarationUse use;
+    CgGeometryModifiers *geometry;
+    Symbol stack;
+    Symbol *formal;
+    int isGeometryEntry;
+
+    if (CgIsAttribArray(fSymb->type->fun.rettype)) {
+        memset(&stack, 0, sizeof(stack));
+        stack.kind = VARIABLE_S;
+        stack.name = fDecl->name;
+        stack.loc = *loc;
+        stack.type = fSymb->type->fun.rettype;
+        lValidateAttribArraySymbol(loc, &stack, CG_GEOMETRY_DECL_RETURN);
+    }
+    geometry = &fDecl->type.geometry;
+    isGeometryEntry = geometry->input != CG_GEOMETRY_INPUT_UNKNOWN ||
+                      geometry->output != CG_GEOMETRY_OUTPUT_UNKNOWN;
+    for (formal = fSymb->details.fun.params; formal;
+         formal = formal->next)
+    {
+        if (!CgIsAttribArray(formal->type)) {
+            continue;
+        }
+        if (GetQualifiers(formal->type) & TYPE_QUALIFIER_OUT) {
+            use = CG_GEOMETRY_DECL_OUTPUT;
+        } else if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM) {
+            use = CG_GEOMETRY_DECL_UNIFORM;
+        } else if (isGeometryEntry) {
+            use = CG_GEOMETRY_DECL_ENTRY_INPUT;
+        } else {
+            use = CG_GEOMETRY_DECL_HELPER_INPUT;
+        }
+        lValidateAttribArraySymbol(&formal->loc, formal, use);
+    }
+} // lCheckAttribArrayFunction
+
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////// Profile specifiers and parameter defaults: ///////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -2106,6 +2284,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     lAttachPendingProfileSpecifier(lSymb);
                     lMergeGeometryModifiers(&lSymb->details.fun.geometry,
                                             &fDecl->type.geometry);
+                    lCheckAttribArrayFunction(&fDecl->loc, fDecl, lSymb);
                     lValidateParameterDefaults(&fDecl->loc, lSymb);
                     // Programs may carry a return-value semantic; it is bound
                     // later by BuildSemanticStructs() for the selected entry.
@@ -2134,6 +2313,8 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     lCheckSamplerDeclaration(&fDecl->loc, CurrentScope,
                                              fDecl->name, lType,
                                              fDecl->type.storageClass == SC_STATIC);
+                    lCheckAttribArrayVariable(&fDecl->loc, CurrentScope,
+                                              fDecl->name, lType);
                     if (IsCategory(lType, TYPE_CATEGORY_ARRAY) && !IsPacked(lType)) {
                         if (!Cg->theHAL->GetCapsBit(CAPS_INDEXED_ARRAYS)) {
                             // XYZZY - This test needs to be moved to later to support multiple profiles
@@ -2185,6 +2366,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                  * keep the original values. */
                 lMergeGeometryModifiers(&lSymb->details.fun.geometry,
                                         &fDecl->type.geometry);
+                lCheckAttribArrayFunction(&fDecl->loc, fDecl, lSymb);
                 lValidateParameterDefaults(&fDecl->loc, lSymb);
                 lSymb->storageClass = fDecl->type.storageClass;
                 // See the matching new-declaration path above.
@@ -2285,6 +2467,12 @@ decl *Array_Declarator(SourceLoc *loc, decl *fDecl, int size, int Empty)
         break;
     case TYPE_CATEGORY_FUNCTION:
         SemanticError(loc, ERROR___ARRAY_OF_FUNS);
+        break;
+    case TYPE_CATEGORY_ATTRIB_ARRAY:
+        /* Attribute arrays are canonical read-only inputs; they are
+         * never arrayed further. */
+        SemanticError(loc, ERROR_S_GEOMETRY_ATTRIB_PLACEMENT,
+                      "a derived attribute-array shape");
         break;
     case TYPE_CATEGORY_STRUCT:
         lType = GetTypePointer(loc, lDtype);
@@ -4113,7 +4301,10 @@ expr *NewCastOperator(SourceLoc *loc, expr *fExpr, Type *toType)
  *
  * Sized arrays fold to a compile-time int constant; unsized arrays keep
  * an explicit ARRAY_LENGTH_OP node of canonical int type so the length
- * stays a runtime value.
+ * stays a runtime value.  Attribute arrays never demand a source
+ * extent: their canonical source type is always unresolved (extent 0),
+ * so they always build the explicit node and CgGeometryResolveLengths
+ * folds it to the selected topology's vertex count after resolution.
  *
  */
 
@@ -4156,10 +4347,11 @@ expr *NewMemberSelectorOrSwizzleOrWriteMaskOperator(SourceLoc *loc, expr *fExpr,
 
     /* ".length" on an array is a typed length query, detected before any
      * structure lookup; arrays are never structs, so member access on
-     * structures is unaffected. */
+     * structures is unaffected.  Attribute arrays take the same typed
+     * query without demanding a source extent. */
     if (!lengthAtom)
         lengthAtom = LookUpAddString(atable, "length");
-    if (ident == lengthAtom && IsArray(lType)) {
+    if (ident == lengthAtom && (IsArray(lType) || CgIsAttribArray(lType))) {
         return lNewArrayLengthOperator(loc, fExpr);
     }
     if (IsCategory(lType, TYPE_CATEGORY_STRUCT)) {
@@ -4221,6 +4413,14 @@ expr *NewIndexOperator(SourceLoc *loc, expr *fExpr, expr *ixexpr)
         lExpr->common.IsLValue = fExpr->common.IsLValue;
         lExpr->common.IsConst = fExpr->common.IsConst;
         lExpr->common.type = GetElementType(fExpr->common.type);
+    } else if (CgIsAttribArray(fExpr->common.type)) {
+        /* Indexing an attribute array reads one element of the
+         * read-only input: the element type results, but the result
+         * is never an l-value, so element writes fail below. */
+        lExpr = (expr *) NewBinopNode(ARRAY_INDEX_OP, fExpr, ixexpr);
+        lExpr->common.IsLValue = 0;
+        lExpr->common.IsConst = fExpr->common.IsConst;
+        lExpr->common.type = CgAttribArrayElement(fExpr->common.type);
     } else {
         SemanticError(loc, ERROR___INDEX_OF_NON_ARRAY);
         lExpr = fExpr;
@@ -4592,6 +4792,35 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
  *
  */
 
+/*
+ * lTargetsAttribArray() - TRUE when the target expression reads
+ *         through an attribute array: the array itself, an indexed
+ *         element, or a member of either.  Whole-array and element
+ *         writes are both rejected as read-only uses.
+ */
+
+static int lTargetsAttribArray(const expr *fExpr)
+{
+    if (!fExpr) {
+        return 0;
+    }
+    if (CgIsAttribArray(fExpr->common.type)) {
+        return 1;
+    }
+    if (fExpr->common.kind == BINARY_N &&
+        (fExpr->bin.op == ARRAY_INDEX_OP ||
+         fExpr->bin.op == MEMBER_SELECTOR_OP))
+    {
+        return lTargetsAttribArray(fExpr->bin.left);
+    }
+    return 0;
+} // lTargetsAttribArray
+
+/*
+ * NewSimpleAssignment() - Build a new simple assignment expression.
+ *
+ */
+
 expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
 {
     int lop, subop, base, len, vqualifiers, vdomain, edomain;
@@ -4603,8 +4832,14 @@ expr *NewSimpleAssignment(SourceLoc *loc, expr *fVar, expr *fExpr, int InInit)
     vqualifiers = GetQualifiers(vType);
     vdomain = GetDomain(vType);
     edomain = GetDomain(eType);
-    if (!fVar->common.IsLValue)
+    if (lTargetsAttribArray(fVar)) {
+        /* Attribute arrays are read-only geometry inputs: whole-array
+         * assignment and element stores both fail with the reserved
+         * read-only diagnostic instead of the generic l-value rule. */
+        SemanticError(loc, ERROR___GEOMETRY_ATTRIB_READ_ONLY);
+    } else if (!fVar->common.IsLValue) {
         SemanticError(loc, ERROR___ASSIGN_TO_NON_LVALUE);
+    }
     //if ((vqualifiers & TYPE_QUALIFIER_CONST) && !InInit)
     if (fVar->common.IsConst && !InInit)
         SemanticError(loc, ERROR___ASSIGN_TO_CONST_VALUE);

@@ -1,0 +1,8 @@
+// Task 3 negative: attribute arrays are never locals; only in formals
+// of geometry entries and reachable helpers may hold them (C6306).
+
+void main(float4 p : POSITION)
+{
+    AttribArray<float4> local;
+    float4 c = p;
+}

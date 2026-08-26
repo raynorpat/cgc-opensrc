@@ -1,0 +1,8 @@
+// Task 3 negative: AttribArray is Cg 2.0 syntax; explicit -version 1.1
+// rejects the reserved word at its token with the stable language gate
+// diagnostic (C1400).
+
+POINT void cg11_entry(AttribArray<float4> p : POSITION)
+{
+    float4 c = p[0];
+}

@@ -72,6 +72,7 @@ static const struct {
     ASSIGNSLASH_SY, "/=",
     ASSIGNSTAR_SY,  "*=",
     ASM_SY,         "asm",
+    ATTRIBARRAY_SY, "AttribArray",
     BOOLEAN_SY,     "bool",
     BREAK_SY,       "break",
     CASE_SY,        "case",

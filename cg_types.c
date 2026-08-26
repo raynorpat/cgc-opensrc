@@ -975,3 +975,132 @@ void FreeCgSamplerTypes(void)
 {
     memset(samplerTypes, 0, sizeof(samplerTypes));
 } // FreeCgSamplerTypes
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Attrib Array Type Registry: ////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * The interned attribute-array identities, most recent first.  Entries
+ * live as long as the registry; the Type structs themselves stay
+ * allocated for the symbol-table lifetime like every other type here.
+ */
+
+typedef struct CgAttribArrayEntry_Rec {
+    struct CgAttribArrayEntry_Rec *next;
+    Type *type;
+} CgAttribArrayEntry;
+
+static CgAttribArrayEntry *attribArrayEntries;
+
+/*
+ * lValidAttribArrayExtent() - TRUE for the unresolved source shape (0)
+ *         and the resolved topology shapes (1, 2, 3, 4, 6); no other
+ *         count names a canonical identity.
+ */
+
+static int lValidAttribArrayExtent(unsigned int extent)
+{
+    return extent == 0 || extent == 1 || extent == 2 ||
+           extent == 3 || extent == 4 || extent == 6;
+} // lValidAttribArrayExtent
+
+/*
+ * CgGetAttribArrayType() - Return the interned AttribArray type for an
+ *          element pointer and extent, creating it on first use.
+ *          Identical (element, extent) pairs return the same Type, so
+ *          pointer equality is the whole equality story downstream.
+ */
+
+Type *CgGetAttribArrayType(Type *element, unsigned int extent)
+{
+    CgAttribArrayEntry *entry;
+    Type *type;
+
+    if (!element || CgTypeIsPoison(element) ||
+        !lValidAttribArrayExtent(extent))
+    {
+        return UndefinedType;
+    }
+    for (entry = attribArrayEntries; entry; entry = entry->next) {
+        if (entry->type->attrarr.eltype == element &&
+            entry->type->attrarr.extent == (int)extent)
+        {
+            return entry->type;
+        }
+    }
+    /* NewType stamps a legacy scalar kind from the base bits into the
+     * first payload word; assigning eltype afterwards overwrites that
+     * slot with the real payload, and nothing may write scalarKind on
+     * an attribute array again. */
+    type = NewType(TYPE_CATEGORY_ATTRIB_ARRAY | GetBase(element), 0);
+    type->attrarr.eltype = element;
+    type->attrarr.extent = (int)extent;
+    entry = (CgAttribArrayEntry *) malloc(sizeof(CgAttribArrayEntry));
+    entry->type = type;
+    entry->next = attribArrayEntries;
+    attribArrayEntries = entry;
+    return type;
+} // CgGetAttribArrayType
+
+/*
+ * CgIsAttribArray() - TRUE if "type" is a canonical attribute array;
+ *          never true for ordinary arrays of any shape.
+ */
+
+int CgIsAttribArray(const Type *type)
+{
+    if (type && GetCategory(type) == TYPE_CATEGORY_ATTRIB_ARRAY) {
+        return 1;
+    } else {
+        return 0;
+    }
+} // CgIsAttribArray
+
+/*
+ * CgAttribArrayElement() - The interned element type of an attribute
+ *          array, or NULL for anything else.
+ */
+
+Type *CgAttribArrayElement(const Type *type)
+{
+    if (!CgIsAttribArray(type)) {
+        return NULL;
+    }
+    return type->attrarr.eltype;
+} // CgAttribArrayElement
+
+/*
+ * CgAttribArrayExtent() - The source (0) or resolved topology extent
+ *          of an attribute array; 0 for anything else.
+ */
+
+unsigned int CgAttribArrayExtent(const Type *type)
+{
+    if (!CgIsAttribArray(type)) {
+        return 0;
+    }
+    return (unsigned int) type->attrarr.extent;
+} // CgAttribArrayExtent
+
+/*
+ * FreeCgAttribArrayTypes() - Reset the interned attribute-array
+ *                            registry.  The interned Type structs stay
+ *                            allocated; only the registry entries are
+ *                            freed so a later symbol table rebuilds
+ *                            cleanly.
+ */
+
+void FreeCgAttribArrayTypes(void)
+{
+    CgAttribArrayEntry *entry;
+    CgAttribArrayEntry *next;
+
+    entry = attribArrayEntries;
+    while (entry) {
+        next = entry->next;
+        free(entry);
+        entry = next;
+    }
+    attribArrayEntries = NULL;
+} // FreeCgAttribArrayTypes

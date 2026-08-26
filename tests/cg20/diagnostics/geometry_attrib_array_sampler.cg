@@ -1,0 +1,4 @@
+// Task 3 negative: samplers are opaque interface values and are not
+// legal AttribArray elements (C6307).
+
+AttribArray<sampler2D> bad;

@@ -672,6 +672,131 @@ add_cg20_failure(cg20_geometry_cg11
     "-DMESSAGE=requires.the.Cg.2.0.language"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
+# Attribute arrays (Task 3): canonical read-only AttribArray<T> types.
+# The four positive fixtures need selected-program analysis (resolved
+# type views plus .length folding), which Task 5 wires into
+# CompileProgram -- exactly like Task 4's operation positives they stay
+# registered DISABLED TRUE until then.  Every negative fixture fires at
+# declaration or expression checking and is enabled now.
+
+add_cg20_success(cg20_geometry_attrib_array
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+set_tests_properties(cg20_geometry_attrib_array PROPERTIES DISABLED TRUE)
+
+add_cg20_success(cg20_geometry_attrib_array_aggregate
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array_aggregate.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+set_tests_properties(cg20_geometry_attrib_array_aggregate PROPERTIES DISABLED TRUE)
+
+add_cg20_success(cg20_geometry_attrib_array_helper
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array_helper.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+set_tests_properties(cg20_geometry_attrib_array_helper PROPERTIES DISABLED TRUE)
+
+function(add_cg20_geometry_attrib_array_length name entry)
+    add_cg20_success(${name}
+        -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+        "-DEXTRA_ARGS=-entry\;${entry}"
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array_length.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+    set_tests_properties(${name} PROPERTIES DISABLED TRUE)
+endfunction()
+add_cg20_geometry_attrib_array_length(cg20_geometry_attrib_array_length_point point_length)
+add_cg20_geometry_attrib_array_length(cg20_geometry_attrib_array_length_line line_length)
+add_cg20_geometry_attrib_array_length(cg20_geometry_attrib_array_length_line_adj line_adj_length)
+add_cg20_geometry_attrib_array_length(cg20_geometry_attrib_array_length_triangle triangle_length)
+add_cg20_geometry_attrib_array_length(cg20_geometry_attrib_array_length_triangle_adj triangle_adj_length)
+
+add_cg20_failure(cg20_geometry_attrib_array_global
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_global.cg
+    -DCODE=6306 -DEXPECTED_LINE=4
+    "-DMESSAGE=not.permitted.on.a.global.variable"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_uniform
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_uniform.cg
+    -DCODE=6306 -DEXPECTED_LINE=4
+    "-DMESSAGE=not.permitted.on.a.uniform.variable"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_output
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_output.cg
+    -DCODE=6306 -DEXPECTED_LINE=5
+    "-DMESSAGE=not.permitted.on.an.output.parameter"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_return
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_return.cg
+    -DCODE=6306 -DEXPECTED_LINE=4
+    "-DMESSAGE=not.permitted.on.a.function.return.value"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_local
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_local.cg
+    -DCODE=6306 -DEXPECTED_LINE=6
+    "-DMESSAGE=not.permitted.on.a.local.variable"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_member
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_member.cg
+    -DCODE=6306 -DEXPECTED_LINE=6
+    "-DMESSAGE=not.permitted.on.a.struct.member"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_non_geometry
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_non_geometry.cg
+    -DCODE=6309 -DEXPECTED_LINE=6
+    "-DMESSAGE=requires.a.geometry.program"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_void
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_void.cg
+    -DCODE=6307 -DEXPECTED_LINE=4
+    "-DMESSAGE=invalid.AttribArray.element.type..void"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_sampler
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_sampler.cg
+    -DCODE=6307 -DEXPECTED_LINE=4
+    "-DMESSAGE=invalid.AttribArray.element.type"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_function
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_function.cg
+    -DCODE=501 -DEXPECTED_LINE=9
+    "-DMESSAGE=type.name.expected"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_interface
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_interface.cg
+    -DCODE=6307 -DEXPECTED_LINE=9
+    "-DMESSAGE=invalid.AttribArray.element.type"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_write_whole
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_write_whole.cg
+    -DCODE=6308 -DEXPECTED_LINE=6
+    "-DMESSAGE=values.are.read-only"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_write_element
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_write_element.cg
+    -DCODE=6308 -DEXPECTED_LINE=7
+    "-DMESSAGE=values.are.read-only"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_attrib_array_cg11
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-version\;1.1"
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_attrib_array_cg11.cg
+    -DCODE=1400 -DEXPECTED_LINE=5
+    "-DMESSAGE=requires.the.Cg.2.0.language"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
 # Parser regeneration determinism: regenerating from parser.y must
 # reproduce both checked-in artifacts byte-for-byte without warnings or
 # grammar conflicts.  Skipped (return code 77) where bison is absent.
@@ -908,7 +1033,13 @@ add_test(
 )
 
 add_executable(cg_geometry_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/cg_geometry.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
     cg_geometry_test.c
 )
 target_include_directories(cg_geometry_unit PRIVATE

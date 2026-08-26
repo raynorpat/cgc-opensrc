@@ -1,0 +1,7 @@
+// Task 3 negative: whole-array assignment writes through an attribute
+// array, which is read-only (C6308) even between two identical arrays.
+
+TRIANGLE void triangle_write(AttribArray<float4> p : POSITION)
+{
+    p = p;
+}

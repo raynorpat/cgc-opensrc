@@ -1,0 +1,12 @@
+// Task 3 positive fixture: index an AttribArray input and query its
+// length.  Indexing yields the element type as a read-only rvalue and
+// .length builds the typed length query without demanding a source
+// extent.  Folding requires selected-program analysis plus resolved
+// type views, so registration stays DISABLED until Task 5 integrates
+// CgGeometryAnalyzeProgram into CompileProgram.
+
+TRIANGLE void triangle_main(AttribArray<float4> p : POSITION)
+{
+    float4 first = p[0];
+    int count = p.length;
+}

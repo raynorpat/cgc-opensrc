@@ -1,0 +1,16 @@
+// Task 3 positive fixture: passing an attribute array to an equivalent
+// reachable helper formal is valid -- the interned (element, extent)
+// identity binds exactly.  Helper-formal admission additionally needs
+// proven reachability from the selected geometry entry, so
+// registration stays DISABLED until Task 5 integrates
+// CgGeometryAnalyzeProgram into CompileProgram.
+
+float4 TakeFirst(AttribArray<float4> p)
+{
+    return p[0];
+}
+
+TRIANGLE void triangle_helper(AttribArray<float4> p : POSITION)
+{
+    float4 first = TakeFirst(p);
+}

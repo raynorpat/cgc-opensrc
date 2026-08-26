@@ -483,7 +483,7 @@ static const char *lTypeNameString(const Type *fType, int base)
 
 void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
 {
-    int qualifiers, category, base, cid;
+    int qualifiers, category, base, cid, len;
     char tname[32];
 
     strcpy(name2, "");
@@ -520,6 +520,17 @@ void FormatTypeString(char *name, int size, char *name2, int size2, Type *fType)
             else
                 sprintf(tname, "[%d]", fType->arr.numels);
             strcat(name2, tname);
+            break;
+        case TYPE_CATEGORY_ATTRIB_ARRAY:
+            /* Canonical attribute arrays print as
+             * "AttribArray<element,extent>": the element keeps its
+             * own spelling and subscript chain inside the brackets. */
+            FormatTypeString(name, size, name2, size2, fType->attrarr.eltype);
+            sprintf(tname, ",%u>", CgAttribArrayExtent(fType));
+            strcat(name2, tname);
+            len = strlen(name);
+            memmove(name + 12, name, len + 1);
+            memcpy(name, "AttribArray<", 12);
             break;
         case TYPE_CATEGORY_FUNCTION:
             strcat(name, "FUNCTION");
@@ -608,6 +619,18 @@ void FormatTypeStringRT(char *name, int size, char *name2, int size2, Type *fTyp
                 strcat(name2, tname);
             }
             break;
+        case TYPE_CATEGORY_ATTRIB_ARRAY:
+            /* Same canonical spelling as FormatTypeString, with the
+             * element rendered through the run-time resolver so
+             * vector and matrix elements keep their floatN names. */
+            FormatTypeStringRT(name, size, name2, size2,
+                               fType->attrarr.eltype, Unqualified);
+            sprintf(tname, ",%u>", CgAttribArrayExtent(fType));
+            strcat(name2, tname);
+            len = strlen(name);
+            memmove(name + 12, name, len + 1);
+            memcpy(name, "AttribArray<", 12);
+            break;
         case TYPE_CATEGORY_FUNCTION:
             strcat(name, "FUNCTION");
             break;
@@ -684,6 +707,11 @@ void PrintType(Type *fType, int level)
                 printf("[]");
             else
                 printf("[%d]", fType->arr.numels);
+            break;
+        case TYPE_CATEGORY_ATTRIB_ARRAY:
+            printf("AttribArray<");
+            PrintType(fType->attrarr.eltype, level);
+            printf(",%u>", CgAttribArrayExtent(fType));
             break;
         case TYPE_CATEGORY_FUNCTION:
             printf("(");

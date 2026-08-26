@@ -1,0 +1,14 @@
+// Task 3 negative: a function without topology modifiers is not a
+// geometry entry, and its helper formals stay unproven until
+// selected-program analysis runs -- so the array formal is rejected
+// with the stage rule (C6309), never folded to a default.
+
+void helper(AttribArray<float4> p)
+{
+    float4 c = p[0];
+}
+
+void main(float4 q : POSITION)
+{
+    float4 c = q;
+}

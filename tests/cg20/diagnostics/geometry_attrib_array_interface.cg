@@ -1,0 +1,9 @@
+// Task 3 negative: interfaces are method-only aggregates and are not
+// legal AttribArray elements (C6307).
+
+interface IFace
+{
+    float Get();
+};
+
+AttribArray<IFace> bad;
