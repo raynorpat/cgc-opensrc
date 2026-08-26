@@ -1,0 +1,7 @@
+// Task 4 fixture: an annotated geometry argument is unreachable under
+// explicit Cg 1.1 -- the topology syntax gates first.
+
+TRIANGLE void cg11_annotation(AttribArray<float4> p : POSITION)
+{
+    abs(p[0] : COLOR0);
+}

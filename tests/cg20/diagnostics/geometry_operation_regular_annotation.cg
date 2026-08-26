@@ -1,0 +1,7 @@
+// Task 4 fixture: an inline annotation on an ordinary call is
+// rejected; only geometry operations accept them.
+
+TRIANGLE void regular_call(AttribArray<float4> p : POSITION)
+{
+    abs(p[0] : COLOR0);
+}

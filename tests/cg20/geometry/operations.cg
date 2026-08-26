@@ -1,0 +1,17 @@
+// Task 4 fixture: all three geometry operations in one triangle entry
+// plus a reachable helper that emits on its own.  Registered DISABLED
+// until Task 5 connects selected-program analysis.
+
+TRIANGLE void emit_helper(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION);
+}
+
+TRIANGLE void operation_main(AttribArray<float4> p : POSITION,
+                             uniform float4 flatColor)
+{
+    flatAttrib(flatColor : COLOR0);
+    emit_helper(p);
+    emitVertex(p[0] : POSITION);
+    restartStrip();
+}

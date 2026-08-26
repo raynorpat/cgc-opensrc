@@ -354,6 +354,11 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define ERROR_SS_GEOMETRY_ARGUMENT_ANNOTATION 6320, "binding semantic \"%s\" is not allowed on an argument to \"%s\""
 
+// Extends the geometry family further: an operation argument whose
+// type can never serve as a geometry output value.
+
+#define ERROR___GEOMETRY_VALUE_TYPE 6321, "geometry operation argument has an invalid value type"
+
 // Warnings:
 
 #define WARNING___QUALIFIER_SPECIFIED_TWICE 7001, "qualifier specified twice"

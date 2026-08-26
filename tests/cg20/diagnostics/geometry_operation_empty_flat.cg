@@ -1,0 +1,6 @@
+// Task 4 fixture: flatAttrib needs at least one output value.
+
+TRIANGLE void empty_flat(AttribArray<float4> p : POSITION)
+{
+    flatAttrib();
+}

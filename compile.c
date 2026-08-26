@@ -73,6 +73,138 @@ static void *lIRPoolAlloc(void *arg, size_t size)
     return mem_Calloc((MemoryPool *) arg, size, 1);
 } // lIRPoolAlloc
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////// Global geometry operation classification: ///////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * lReportGeometryDiagnostic() - Map one structured geometry reason to
+ *          its stable diagnostic at the reason's own location.  The
+ *          optionText slot carries the operation or semantic spelling
+ *          where the message takes one.
+ */
+
+static void lReportGeometryDiagnostic(
+    const CgGeometryDiagnostic *diagnostic)
+{
+    switch (diagnostic->reason) {
+    case CG_GEOMETRY_DIAGNOSTIC_OPERATION_ARITY:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_OPERATION_ARITY,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_OPERATION_CONTEXT:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_OPERATION_CONTEXT,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_OUTPUT_SEMANTIC:
+        SemanticError(&diagnostic->loc,
+                      ERROR___GEOMETRY_OUTPUT_SEMANTIC);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_DUPLICATE_SEMANTIC:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_DUPLICATE_SEMANTIC,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_FLAT_POSITION:
+        SemanticError(&diagnostic->loc,
+                      ERROR___GEOMETRY_FLAT_POSITION);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE:
+        SemanticError(&diagnostic->loc,
+                      ERROR___GEOMETRY_VALUE_TYPE);
+        break;
+    default:
+        InternalError(&diagnostic->loc, ERROR_S_CG_IR_INVARIANT,
+                      "geometry operation classification");
+        break;
+    }
+} // lReportGeometryDiagnostic
+
+/*
+ * lClassifyStatementChain() - Classify every statement of one body,
+ *          recursing into the nested statement chains so malformed
+ *          dead code is diagnosed exactly like reachable code.
+ */
+
+static void lClassifyStatementChain(stmt *fStmt,
+                                    CgGeometryProgram *program)
+{
+    CgGeometryDiagnostic diagnostic;
+
+    for (; fStmt != NULL; fStmt = fStmt->commonst.next) {
+        if (!CgGeometryClassifyOperationStatement(program, fStmt,
+                                                  &diagnostic)) {
+            lReportGeometryDiagnostic(&diagnostic);
+        }
+        switch (fStmt->commonst.kind) {
+        case IF_STMT:
+            lClassifyStatementChain(fStmt->ifst.thenstmt, program);
+            lClassifyStatementChain(fStmt->ifst.elsestmt, program);
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            lClassifyStatementChain(fStmt->whilest.body, program);
+            break;
+        case FOR_STMT:
+            lClassifyStatementChain(fStmt->forst.init, program);
+            lClassifyStatementChain(fStmt->forst.step, program);
+            lClassifyStatementChain(fStmt->forst.body, program);
+            break;
+        case BLOCK_STMT:
+            lClassifyStatementChain(fStmt->blockst.body, program);
+            break;
+        default:
+            break;
+        }
+    }
+} // lClassifyStatementChain
+
+/*
+ * lWalkFunctionTree() - Visit every defined function of one scope's
+ *          symbol tree; helpers are classified too, not just the
+ *          selected entry.
+ */
+
+static void lWalkFunctionTree(Symbol *fSymb, CgGeometryProgram *program)
+{
+    if (!fSymb) {
+        return;
+    }
+    lWalkFunctionTree(fSymb->left, program);
+    if (fSymb->kind == FUNCTION_S && fSymb->details.fun.statements) {
+        lClassifyStatementChain(fSymb->details.fun.statements,
+                                program);
+    }
+    lWalkFunctionTree(fSymb->right, program);
+} // lWalkFunctionTree
+
+/*
+ * lClassifyGeometryOperations() - Global post-parse sweep: every
+ *          function body in the compilation is classified for
+ *          geometry operations -- arity, argument syntax, value
+ *          bundles, and expression context -- regardless of which
+ *          entry was selected and regardless of reachability.
+ *          Selected-entry legality (stage, placement) stays with Task
+ *          5's selected-program analysis.  Runs before the ordinary
+ *          error gate so operation problems surface even when an
+ *          earlier standard diagnostic already fired for the same
+ *          statement.
+ */
+
+static void lClassifyGeometryOperations(SourceLoc *loc, Scope *fScope)
+{
+    CgGeometryProgram geometry;
+
+    (void) loc;
+    if (!CgLanguageAllowsGeometry(Cg->options.languageVersion)) {
+        return;
+    }
+    CgGeometryInitProgram(&geometry, lIRPoolAlloc, fScope->pool);
+    lWalkFunctionTree(fScope->symbols, &geometry);
+} // lClassifyGeometryOperations
+
 /*
  * lLowerAndVerifyIR() - Cg 2.0 seam: after entry selection and language
  *          checking, compute the reachable set, lower the typed tree,
@@ -2932,6 +3064,13 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
 
     memset(&reachGraph, 0, sizeof(reachGraph));
     CgReachSetActiveGraph(&reachGraph);
+
+    // Geometry operation classification is global and post-parse: it
+    // runs before the ordinary error gate so every special call in
+    // every function body -- reachable or not, under any entry --
+    // answers for its arity, arguments, bundle, and context.
+
+    lClassifyGeometryOperations(loc, fScope);
     if (GetErrorCount() == 0) {
         if (fScope->programs) {
             theHAL->globalScope = fScope;

@@ -1,0 +1,8 @@
+// Task 4 fixture: output semantics compare case-insensitively, so the
+// second binding duplicates COLOR0 at its own declaration line.
+
+TRIANGLE void duplicate_emit(float4 first : COLOR0,
+                             float4 second : color0)
+{
+    emitVertex(first, second);
+}

@@ -1,0 +1,24 @@
+// Task 4 fixture: aggregate arguments flatten recursively in source
+// declaration order -- Bundle carries a nested struct plus one direct
+// semantic member.  Registered DISABLED until Task 5 connects
+// selected-program analysis.
+
+struct InnerBundle
+{
+    float4 position : POSITION;
+    float4 tint : COLOR0;
+};
+
+struct Bundle
+{
+    InnerBundle part;
+    float2 uv : TEXCOORD0;
+};
+
+TRIANGLE void aggregate_main(AttribArray<float4> p : POSITION,
+                             uniform Bundle data)
+{
+    flatAttrib(data.uv);
+    emitVertex(data);
+    restartStrip();
+}

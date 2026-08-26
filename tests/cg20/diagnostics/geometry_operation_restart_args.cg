@@ -1,0 +1,6 @@
+// Task 4 fixture: restartStrip takes no arguments at all.
+
+TRIANGLE void restart_args(AttribArray<float4> p : POSITION)
+{
+    restartStrip(p[0] : POSITION);
+}

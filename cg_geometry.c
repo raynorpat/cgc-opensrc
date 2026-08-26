@@ -54,6 +54,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "cg_geometry.h"
 #include "cg_reach.h"
+#include "cg_stdlib.h"
 
 #define CG_GEOMETRY_VERTICES_PREFIX "Vertices="
 
@@ -824,3 +825,715 @@ int CgGeometryResolveLengths(CgGeometryProgram *program,
     }
     return 1;
 } // CgGeometryResolveLengths
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////// Geometry operation records and bundles: //////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Canonical semantic spellings are rebuilt into a bounded local
+ * buffer; anything longer falls back to its source atom, which only
+ * weakens cross-case equality for absurdly long identifiers.
+ */
+
+#define CG_GEOMETRY_CANONICAL_MAX 508
+
+/*
+ * lCanonicalSemanticAtom() - The equality atom of one binding
+ *         semantic: the root is upper-cased and a trailing numeric
+ *         suffix is reprinted without leading zeros, so "color0",
+ *         "COLOR00", and "COLOR0" all answer the same atom while each
+ *         source spelling stays available on the record.  An atom
+ *         whose text cannot fit, or an empty or absent atom, answers
+ *         itself.
+ */
+
+static int lCanonicalSemanticAtom(int atom)
+{
+    char canonical[CG_GEOMETRY_CANONICAL_MAX + 4];
+    const char *text;
+    const char *digits;
+    const char *digitScan;
+    size_t length;
+    size_t rootLength;
+    unsigned int value;
+    unsigned int digit;
+    int overflowed;
+    size_t ii;
+
+    if (atom == 0) {
+        return 0;
+    }
+    text = GetAtomString(atable, atom);
+    length = strlen(text);
+    if (length == 0 || length > CG_GEOMETRY_CANONICAL_MAX) {
+        return atom;
+    }
+    digits = text + length;
+    while (digits > text && digits[-1] >= '0' && digits[-1] <= '9') {
+        digits--;
+    }
+    rootLength = (size_t) (digits - text);
+    for (ii = 0; ii < rootLength; ii++) {
+        char ch = text[ii];
+
+        canonical[ii] = (ch >= 'a' && ch <= 'z') ?
+                        (char) (ch - 'a' + 'A') : ch;
+    }
+    if (*digits == '\0') {
+        canonical[rootLength] = '\0';
+    } else {
+        value = 0;
+        overflowed = 0;
+        for (digitScan = digits; *digitScan != '\0'; digitScan++) {
+            digit = (unsigned int) (*digitScan - '0');
+            if (value > (UINT_MAX - digit) / 10) {
+                overflowed = 1;
+                break;
+            }
+            value = value * 10 + digit;
+        }
+        if (overflowed) {
+            /* A suffix beyond unsigned range cannot alias anything:
+             * keep the source digits so equality stays exact. */
+            memcpy(&canonical[rootLength], digits,
+                   length - rootLength + 1);
+        } else {
+            sprintf(&canonical[rootLength], "%u", value);
+        }
+    }
+    return AddAtom(atable, canonical);
+} // lCanonicalSemanticAtom
+
+/*
+ * lSemanticIsPosition() - True when the canonical atom's spelling is
+ *         exactly POSITION, the one semantic flatAttrib forbids.
+ */
+
+static int lSemanticIsPosition(int canonical)
+{
+    return !strcmp(GetAtomString(atable, canonical), "POSITION");
+} // lSemanticIsPosition
+
+/*
+ * lLegalBundleLeafType() - The output-value rule: numeric scalars and
+ *         packed vectors/matrices may flow to emitVertex/flatAttrib;
+ *         void, samplers, interfaces, functions, attribute arrays,
+ *         ordinary arrays, structs, and everything else may not.
+ */
+
+static int lLegalBundleLeafType(const Type *type)
+{
+    int category;
+    int base;
+
+    if (!type) {
+        return 0;
+    }
+    category = type->properties & TYPE_CATEGORY_MASK;
+    base = type->properties & TYPE_BASE_MASK;
+    switch (category) {
+    case TYPE_CATEGORY_SCALAR:
+        return base == TYPE_BASE_CFLOAT || base == TYPE_BASE_CINT ||
+               base == TYPE_BASE_FLOAT || base == TYPE_BASE_INT ||
+               base == TYPE_BASE_BOOLEAN;
+    case TYPE_CATEGORY_ARRAY:
+        return (type->properties & TYPE_MISC_PACKED) != 0;
+    default:
+        return 0;
+    }
+} // lLegalBundleLeafType
+
+/*
+ * lDirectDeclarator() - The declaration an argument expression names
+ *         directly, per the selection order: a variable reference, the
+ *         member of a selection, or the parameter indexed by "[...]".
+ *         "isAttribIndex" reports the third shape so the caller can
+ *         take the array's element type.  Only variable symbols carry
+ *         binding semantics; function references never inherit.
+ */
+
+static Symbol *lDirectDeclarator(const expr *value, int *isAttribIndex)
+{
+    const Symbol *symbol;
+
+    *isAttribIndex = 0;
+    if (!value) {
+        return NULL;
+    }
+    switch (value->common.kind) {
+    case SYMB_N:
+        symbol = value->sym.symbol;
+        if (value->sym.op == VARIABLE_OP && symbol &&
+            symbol->kind == VARIABLE_S) {
+            return (Symbol *) symbol;
+        }
+        return NULL;
+    case BINARY_N:
+        if (value->bin.op == MEMBER_SELECTOR_OP &&
+            value->bin.right != NULL &&
+            value->bin.right->common.kind == SYMB_N &&
+            (value->bin.right->sym.op == MEMBER_OP ||
+             value->bin.right->sym.op == VARIABLE_OP) &&
+            value->bin.right->sym.symbol != NULL)
+        {
+            return value->bin.right->sym.symbol;
+        }
+        if (value->bin.op == ARRAY_INDEX_OP &&
+            value->bin.left != NULL &&
+            value->bin.left->common.kind == SYMB_N &&
+            value->bin.left->sym.op == VARIABLE_OP &&
+            value->bin.left->sym.symbol != NULL &&
+            value->bin.left->sym.symbol->kind == VARIABLE_S &&
+            CgIsAttribArray(value->bin.left->sym.symbol->type))
+        {
+            *isAttribIndex = 1;
+            return value->bin.left->sym.symbol;
+        }
+        return NULL;
+    default:
+        return NULL;
+    }
+} // lDirectDeclarator
+
+/*
+ * lNewMemberReference() - One flattened member access node pair,
+ *         allocated through the program's arena in exactly the shape
+ *         GenMemberReference writes: a MEMBER_OP name under a
+ *         MEMBER_SELECTOR_OP over "base".
+ */
+
+static expr *lNewMemberReference(CgGeometryProgram *program, expr *base,
+                                 const Symbol *member, Type *type,
+                                 CgGeometryDiagnostic *diagnostic)
+{
+    symb *name;
+    binary *select;
+
+    name = (symb *) program->alloc(program->allocArg, sizeof(*name));
+    select = name ? (binary *) program->alloc(program->allocArg,
+                                              sizeof(*select)) : NULL;
+    if (!select) {
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ALLOCATION;
+        return NULL;
+    }
+    memset(name, 0, sizeof(*name));
+    name->kind = SYMB_N;
+    name->op = MEMBER_OP;
+    name->symbol = (Symbol *) member;
+    name->type = type;
+    name->IsLValue = 1;
+    memset(select, 0, sizeof(*select));
+    select->kind = BINARY_N;
+    select->op = MEMBER_SELECTOR_OP;
+    select->left = base;
+    select->right = (expr *) name;
+    select->type = type;
+    select->IsLValue = 1;
+    return (expr *) select;
+} // lNewMemberReference
+
+/*
+ * lAppendLeafValue() - Record one resolved leaf after the equality
+ *         rules fire: duplicates reject at the second occurrence with
+ *         that occurrence's spelling and origin, and flatAttrib
+ *         rejects a canonical POSITION.  Records chain onto "*tail"
+ *         in collection order.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+static int lAppendLeafValue(CgGeometryProgram *program,
+                            CgGeometryOperationKind kind,
+                            expr *value, Type *leafType,
+                            int sourceSemantic, SourceLoc loc,
+                            CgGeometryValue **head,
+                            CgGeometryValue **tail,
+                            CgGeometryDiagnostic *diagnostic)
+{
+    const CgGeometryValue *scan;
+    CgGeometryValue *leaf;
+    int canonical;
+
+    canonical = lCanonicalSemanticAtom(sourceSemantic);
+    for (scan = *head; scan != NULL; scan = scan->next) {
+        if (scan->canonicalSemantic == canonical) {
+            diagnostic->reason =
+                CG_GEOMETRY_DIAGNOSTIC_DUPLICATE_SEMANTIC;
+            diagnostic->loc = loc;
+            diagnostic->optionText =
+                GetAtomString(atable, sourceSemantic);
+            return 0;
+        }
+    }
+    if (kind == CG_GEOMETRY_OPERATION_FLAT &&
+        lSemanticIsPosition(canonical))
+    {
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_FLAT_POSITION;
+        diagnostic->loc = loc;
+        return 0;
+    }
+    leaf = (CgGeometryValue *)
+        program->alloc(program->allocArg, sizeof(*leaf));
+    if (!leaf) {
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ALLOCATION;
+        return 0;
+    }
+    leaf->next = NULL;
+    leaf->canonicalSemantic = canonical;
+    leaf->sourceSemantic = sourceSemantic;
+    leaf->type = leafType;
+    leaf->value = value;
+    leaf->loc = loc;
+    if (*tail) {
+        (*tail)->next = leaf;
+    } else {
+        *head = leaf;
+    }
+    *tail = leaf;
+    return 1;
+} // lAppendLeafValue
+
+/*
+ * lCollectLeaves() - Flatten one argument recursively.  The inline
+ *         annotation wins first; otherwise the directly named
+ *         declaration binds the leaf.  Unbound aggregates recurse
+ *         through their members in declaration order, synthesizing
+ *         member references through the arena; unbound leaves of any
+ *         other shape fail as unresolved at their anchor.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+static int lCollectLeaves(CgGeometryProgram *program,
+                          CgGeometryOperationKind kind,
+                          expr *value, int inlineSemantic,
+                          SourceLoc inlineLoc, SourceLoc anchor,
+                          CgGeometryValue **head,
+                          CgGeometryValue **tail,
+                          CgGeometryDiagnostic *diagnostic)
+{
+    static const SourceLoc noLoc = { 0, 0 };
+    Symbol *decl;
+    Scope *members;
+    Symbol *member;
+    Type *declType;
+    Type *leafType;
+    SourceLoc declLoc;
+    SourceLoc leafLoc;
+    expr *child;
+    int isAttribIndex;
+    int effective;
+
+    effective = inlineSemantic;
+    declLoc = anchor;
+    decl = lDirectDeclarator(value, &isAttribIndex);
+    if (decl && !effective) {
+        effective = decl->details.var.semantics;
+        declLoc = decl->loc;
+    }
+    if (effective) {
+        if (isAttribIndex) {
+            leafType = CgAttribArrayElement(decl->type);
+        } else if (decl) {
+            leafType = decl->type;
+        } else {
+            leafType = value ? value->common.type : NULL;
+        }
+        leafLoc = inlineSemantic ? inlineLoc : declLoc;
+        if (!lLegalBundleLeafType(leafType)) {
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE;
+            diagnostic->loc = leafLoc;
+            return 0;
+        }
+        return lAppendLeafValue(program, kind, value, leafType,
+                                effective, leafLoc, head, tail,
+                                diagnostic);
+    }
+    declType = value ? value->common.type : NULL;
+    if (declType &&
+        (declType->properties & TYPE_CATEGORY_MASK) ==
+        TYPE_CATEGORY_STRUCT)
+    {
+        members = declType->str.members;
+        for (member = members ? members->params : NULL; member != NULL;
+             member = member->next)
+        {
+            child = lNewMemberReference(program, value, member,
+                                        member->type, diagnostic);
+            if (!child) {
+                program->failed = 1;
+                return 0;
+            }
+            if (!lCollectLeaves(program, kind, child, 0, noLoc,
+                                member->loc, head, tail, diagnostic)) {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_OUTPUT_SEMANTIC;
+    diagnostic->loc = anchor;
+    return 0;
+} // lCollectLeaves
+
+/*
+ * CgGeometryResolveBundle() - See cg_geometry.h.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryResolveBundle(CgGeometryProgram *program,
+                            CgGeometryOperationKind kind,
+                            expr *arguments,
+                            CgGeometryValue **values,
+                            CgGeometryDiagnostic *diagnostic)
+{
+    CgGeometryValue *head;
+    CgGeometryValue *tail;
+    expr *link;
+    expr *arg;
+    SourceLoc argLoc;
+    int annotation;
+
+    ClearDiagnostic(diagnostic);
+    if (values) {
+        *values = NULL;
+    }
+    if (!program || !values || !program->alloc) {
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ALLOCATION;
+        return 0;
+    }
+    head = NULL;
+    tail = NULL;
+    for (link = arguments; link != NULL &&
+                           link->common.kind == BINARY_N &&
+                           link->bin.op == FUN_ARG_OP;
+         link = link->bin.right)
+    {
+        arg = link->bin.left;
+        annotation = 0;
+        argLoc.file = 0;
+        argLoc.line = 0;
+        if (arg != NULL && arg->common.kind == BINARY_N &&
+            arg->bin.op == GEOMETRY_ARGUMENT_OP)
+        {
+            /* The wrapper layout is header-visible, so reading the
+             * annotation needs no link to the constructor's object. */
+            annotation =
+                ((const struct geometry_arg_rec *) arg)->semantic;
+            argLoc = ((const struct geometry_arg_rec *) arg)->loc;
+            arg = arg->bin.left;
+        }
+        if (!lCollectLeaves(program, kind, arg, annotation, argLoc,
+                            argLoc, &head, &tail, diagnostic)) {
+            if (diagnostic->reason ==
+                CG_GEOMETRY_DIAGNOSTIC_ALLOCATION) {
+                program->failed = 1;
+            }
+            return 0;
+        }
+    }
+    if (!head) {
+        /* No argument survives flattening: an empty bundle is an
+         * arity failure even when reached through this API. */
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_OPERATION_ARITY;
+        return 0;
+    }
+    *values = head;
+    return 1;
+} // CgGeometryResolveBundle
+
+/*
+ * lSpecialSignature() - The immutable catalog signature behind a call
+ *         node, but only when it carries the geometry-special flag:
+ *         identity decides, never the callee's spelling.
+ */
+
+static const CgIntrinsicSignature *lSpecialSignature(const expr *fExpr)
+{
+    const Symbol *callee;
+    const CgIntrinsicSignature *signature;
+
+    if (!fExpr ||
+        fExpr->common.kind != BINARY_N ||
+        fExpr->bin.op != FUN_CALL_OP ||
+        fExpr->bin.left == NULL ||
+        fExpr->bin.left->common.kind != SYMB_N)
+    {
+        return NULL;
+    }
+    callee = fExpr->bin.left->sym.symbol;
+    if (!callee || callee->kind != FUNCTION_S) {
+        return NULL;
+    }
+    signature = CgIntrinsicSignatureForSymbol(callee);
+    if (signature &&
+        CgIntrinsicIsGeometrySpecial(signature->intrinsic)) {
+        return signature;
+    }
+    return NULL;
+} // lSpecialSignature
+
+/*
+ * lKindForIntrinsic() - The operation record kind of one geometry
+ *         special identity.
+ */
+
+static CgGeometryOperationKind lKindForIntrinsic(
+    CgIntrinsic intrinsic)
+{
+    switch (intrinsic) {
+    case CG_INTRINSIC_EMIT_VERTEX:
+        return CG_GEOMETRY_OPERATION_EMIT;
+    case CG_INTRINSIC_FLAT_ATTRIB:
+        return CG_GEOMETRY_OPERATION_FLAT;
+    case CG_INTRINSIC_RESTART_STRIP:
+    default:
+        return CG_GEOMETRY_OPERATION_RESTART;
+    }
+} // lKindForIntrinsic
+
+/*
+ * lCountArguments() - Walk a FUN_ARG_OP chain without unwrapping it.
+ */
+
+static int lCountArguments(const expr *arguments)
+{
+    const expr *link;
+    int count = 0;
+
+    for (link = arguments; link != NULL &&
+                           link->common.kind == BINARY_N &&
+                           link->bin.op == FUN_ARG_OP;
+         link = link->bin.right)
+    {
+        count++;
+    }
+    return count;
+} // lCountArguments
+
+/*
+ * lFindSpecialCall() - The first geometry-special call nested anywhere
+ *         inside an expression tree, wrappers included.
+ */
+
+static const expr *lFindSpecialCall(const expr *fExpr)
+{
+    const expr *found;
+
+    if (!fExpr) {
+        return NULL;
+    }
+    switch (fExpr->common.kind) {
+    case UNARY_N:
+        return lFindSpecialCall(fExpr->un.arg);
+    case BINARY_N:
+        if (lSpecialSignature(fExpr)) {
+            return fExpr;
+        }
+        found = lFindSpecialCall(fExpr->bin.left);
+        if (!found) {
+            found = lFindSpecialCall(fExpr->bin.right);
+        }
+        return found;
+    case TRINARY_N:
+        found = lFindSpecialCall(fExpr->tri.arg1);
+        if (!found) {
+            found = lFindSpecialCall(fExpr->tri.arg2);
+        }
+        if (!found) {
+            found = lFindSpecialCall(fExpr->tri.arg3);
+        }
+        return found;
+    case SYMB_N:
+    case CONST_N:
+    default:
+        return NULL;
+    }
+} // lFindSpecialCall
+
+/*
+ * lContextFailure() - Report one nested placement with the operation's
+ *         catalog name at the statement's own location.
+ */
+
+static void lContextFailure(CgGeometryDiagnostic *diagnostic,
+                            const CgIntrinsicSignature *signature,
+                            SourceLoc loc)
+{
+    diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_OPERATION_CONTEXT;
+    diagnostic->loc = loc;
+    diagnostic->optionText = signature->name;
+} // lContextFailure
+
+/*
+ * lAppendOperation() - Chain one classified operation record onto the
+ *         program in statement order; allocation refusal marks the
+ *         whole program failed.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+static int lAppendOperation(CgGeometryProgram *program,
+                            CgGeometryOperationKind kind,
+                            stmt *statement, CgGeometryValue *values,
+                            SourceLoc loc,
+                            CgGeometryDiagnostic *diagnostic)
+{
+    CgGeometryOperation *operation;
+    CgGeometryOperation *tail;
+
+    operation = (CgGeometryOperation *)
+        program->alloc(program->allocArg, sizeof(*operation));
+    if (!operation) {
+        program->failed = 1;
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ALLOCATION;
+        return 0;
+    }
+    operation->next = NULL;
+    operation->kind = kind;
+    operation->statement = statement;
+    operation->values = values;
+    operation->loc = loc;
+    if (!program->operations) {
+        program->operations = operation;
+    } else {
+        tail = program->operations;
+        while (tail->next != NULL) {
+            tail = tail->next;
+        }
+        tail->next = operation;
+    }
+    return 1;
+} // lAppendOperation
+
+CgGeometryOperation *CgGeometryFindOperation(
+                           const CgGeometryProgram *program,
+                           const stmt *statement)
+{
+    CgGeometryOperation *operation;
+
+    if (!program || !statement) {
+        return NULL;
+    }
+    for (operation = program->operations; operation != NULL;
+         operation = operation->next)
+    {
+        if (operation->statement == statement) {
+            return operation;
+        }
+    }
+    return NULL;
+} // CgGeometryFindOperation
+
+Type *CgGeometryFindResolvedType(const CgGeometryProgram *program,
+                                 const Type *sourceType)
+{
+    CgGeometryTypeView *view;
+
+    if (!program || !sourceType) {
+        return NULL;
+    }
+    for (view = program->typeViews; view != NULL; view = view->next) {
+        if (view->sourceType == sourceType) {
+            return (Type *) view->resolvedType;
+        }
+    }
+    return NULL;
+} // CgGeometryFindResolvedType
+
+int CgGeometryClassifyOperationStatement(CgGeometryProgram *program,
+                                         stmt *statement,
+                                         CgGeometryDiagnostic *diagnostic)
+{
+    const CgIntrinsicSignature *signature;
+    const expr *stray;
+    expr *exp;
+    CgGeometryValue *values;
+    SourceLoc loc;
+    int argc;
+
+    ClearDiagnostic(diagnostic);
+    if (!statement) {
+        return 1;
+    }
+    loc = statement->commonst.loc;
+    switch (statement->commonst.kind) {
+    case EXPR_STMT:
+        exp = statement->exprst.exp;
+        signature = exp ? lSpecialSignature(exp) : NULL;
+        if (signature) {
+            argc = lCountArguments(exp->bin.right);
+            if (signature->intrinsic == CG_INTRINSIC_RESTART_STRIP ?
+                    argc != 0 : argc < 1)
+            {
+                diagnostic->reason =
+                    CG_GEOMETRY_DIAGNOSTIC_OPERATION_ARITY;
+                diagnostic->loc = loc;
+                diagnostic->optionText = signature->name;
+                return 0;
+            }
+            if (program) {
+                values = NULL;
+                if (signature->intrinsic !=
+                    CG_INTRINSIC_RESTART_STRIP &&
+                    !CgGeometryResolveBundle(program,
+                        lKindForIntrinsic(signature->intrinsic),
+                        exp->bin.right, &values, diagnostic)) {
+                    /* Plain arguments lost their wrappers to call
+                     * resolution, so a failure with no better anchor
+                     * points at the statement itself. */
+                    if (diagnostic->loc.file == 0 &&
+                        diagnostic->loc.line == 0) {
+                        diagnostic->loc = loc;
+                    }
+                    return 0;
+                }
+                if (!lAppendOperation(program,
+                        lKindForIntrinsic(signature->intrinsic),
+                        statement, values, loc, diagnostic)) {
+                    return 0;
+                }
+            }
+            return 1;
+        }
+        stray = exp ? lFindSpecialCall(exp) : NULL;
+        if (stray) {
+            lContextFailure(diagnostic, lSpecialSignature(stray), loc);
+            return 0;
+        }
+        return 1;
+    case IF_STMT:
+        stray = lFindSpecialCall(statement->ifst.cond);
+        break;
+    case WHILE_STMT:
+    case DO_STMT:
+        stray = lFindSpecialCall(statement->whilest.cond);
+        break;
+    case FOR_STMT:
+        stray = lFindSpecialCall(statement->forst.cond);
+        break;
+    case RETURN_STMT:
+        stray = lFindSpecialCall(statement->returnst.exp);
+        break;
+    case DISCARD_STMT:
+        stray = lFindSpecialCall(statement->discardst.cond);
+        break;
+    case BLOCK_STMT:
+    case COMMENT_STMT:
+    case BREAK_STMT:
+    case CONTINUE_STMT:
+    default:
+        return 1;
+    }
+    if (stray) {
+        lContextFailure(diagnostic, lSpecialSignature(stray), loc);
+        return 0;
+    }
+    return 1;
+} // CgGeometryClassifyOperationStatement

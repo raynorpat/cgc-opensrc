@@ -1,0 +1,8 @@
+// Task 4 fixture: an emit value without any binding semantic fails,
+// and arithmetic never inherits a semantic from its operands.
+
+TRIANGLE void unresolved_emit(AttribArray<float4> p : POSITION)
+{
+    float4 local = p[0];
+    emitVertex(local * 2.0);
+}

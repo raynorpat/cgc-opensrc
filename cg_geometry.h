@@ -139,7 +139,8 @@ typedef enum CgGeometryDiagnosticReason_Rec {
     CG_GEOMETRY_DIAGNOSTIC_ALLOCATION,
     CG_GEOMETRY_DIAGNOSTIC_ATTRIB_PLACEMENT,
     CG_GEOMETRY_DIAGNOSTIC_ATTRIB_ELEMENT,
-    CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE
+    CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE,
+    CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE
 } CgGeometryDiagnosticReason;
 
 /*
@@ -182,17 +183,121 @@ typedef struct CgGeometryTypeView_Rec {
     const Type *resolvedType;
 } CgGeometryTypeView;
 
+/*
+ * The three geometry operations, identified by intrinsic identity:
+ * emitVertex writes output values, flatAttrib marks constant outputs,
+ * and restartStrip ends one instance with no values at all.
+ */
+
+typedef enum CgGeometryOperationKind_Rec {
+    CG_GEOMETRY_OPERATION_EMIT,
+    CG_GEOMETRY_OPERATION_FLAT,
+    CG_GEOMETRY_OPERATION_RESTART
+} CgGeometryOperationKind;
+
+/*
+ * One resolved output value of an operation: "canonicalSemantic" is
+ * the equality atom (root case-folded to upper case, numeric suffix
+ * canonicalized), "sourceSemantic" preserves the binding's source
+ * spelling, and "loc" anchors the semantic at its origin -- an inline
+ * annotation site or the declaration that carries the semantic.
+ */
+
+typedef struct CgGeometryValue_Rec {
+    struct CgGeometryValue_Rec *next;
+    int canonicalSemantic;
+    int sourceSemantic;
+    Type *type;
+    expr *value;
+    SourceLoc loc;
+} CgGeometryValue;
+
+/*
+ * One classified geometry operation statement.  Records append in
+ * source order to program->operations; "statement" back-links the
+ * expression statement so later passes can find a record from the
+ * tree and vice versa.
+ */
+
+typedef struct CgGeometryOperation_Rec {
+    struct CgGeometryOperation_Rec *next;
+    CgGeometryOperationKind kind;
+    stmt *statement;
+    CgGeometryValue *values;
+    SourceLoc loc;
+} CgGeometryOperation;
+
 typedef struct CgGeometryProgram_Rec {
     CgGeometryAllocFn alloc;
     void *allocArg;
     CgGeometryConfig config;
     const Symbol *entry;
     CgGeometryTypeView *typeViews;
+    CgGeometryOperation *operations;
     int failed;
 } CgGeometryProgram;
 
 void CgGeometryInitProgram(CgGeometryProgram *program,
                            CgGeometryAllocFn alloc, void *allocArg);
+
+/*
+ * Lookup helpers over a program's accumulated resolution state: the
+ * operation record classified for "statement", and the resolved view
+ * recorded for "sourceType".  Both answer NULL when nothing matches.
+ */
+
+CgGeometryOperation *CgGeometryFindOperation(
+                           const CgGeometryProgram *program,
+                           const stmt *statement);
+Type *CgGeometryFindResolvedType(const CgGeometryProgram *program,
+                                 const Type *sourceType);
+
+/*
+ * Resolve one operation's argument bundle into an ordered value list.
+ * Arguments flatten recursively in declaration order; each leaf picks
+ * its semantic by this exact order: inline annotation, directly
+ * referenced declaration, selected aggregate member, then direct
+ * indexing of an attribute-array parameter.  Arithmetic and
+ * constructors never inherit.  Canonical root case plus numeric
+ * suffix decide equality while the source spelling atom is preserved.
+ * Failures name structured reasons: unresolved leaf, empty bundle,
+ * illegal leaf value type, duplicate canonical semantic, and, for
+ * flatAttrib only, a canonical POSITION.  All records allocate
+ * through program->alloc; allocation refusal marks program->failed.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryResolveBundle(CgGeometryProgram *program,
+                            CgGeometryOperationKind kind,
+                            expr *arguments,
+                            CgGeometryValue **values,
+                            CgGeometryDiagnostic *diagnostic);
+
+/*
+ * Classify one statement of a typed function body.  A complete
+ * expression statement whose call selects a geometry-special
+ * intrinsic identity validates arity (emitVertex/flatAttrib need at
+ * least one argument, restartStrip none) and -- given a non-NULL
+ * initialized program -- resolves its bundle and appends the
+ * operation record.  A special call nested anywhere else (assignment,
+ * constructor, conditional, return, argument, or arithmetic node)
+ * fails with the context reason; conditions and return expressions
+ * are scanned directly.  With program == NULL only syntax-level
+ * checks run and no records are built, so global classification can
+ * diagnose malformed dead code consistently before any selected-
+ * program analysis exists.  Bundle failures that carry no better
+ * anchor (a plain argument whose wrapper call resolution removed)
+ * are reported at the statement's own location.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryClassifyOperationStatement(CgGeometryProgram *program,
+                                         stmt *statement,
+                                         CgGeometryDiagnostic *diagnostic);
 
 /*
  * The shared AttribArray<T> element rule: numeric scalars, vectors,

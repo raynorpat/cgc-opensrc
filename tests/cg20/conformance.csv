@@ -262,3 +262,21 @@ CGFX-TECHNIQUES,out-of-scope,cg20_manifest,CgFX exclusion
 CGFX-PASSES,out-of-scope,cg20_manifest,CgFX exclusion
 CGFX-ANNOTATIONS,out-of-scope,cg20_manifest,CgFX exclusion
 CGFX-STATE-EXECUTION,out-of-scope,cg20_manifest,CgFX exclusion
+GEOM-OPERATION-SYNTAX,valid-generic,cg20_geometry_operations,Geometry programs
+GEOM-OPERATION-AGGREGATES,valid-generic,cg20_geometry_aggregate_bundles,Geometry programs
+GEOM-OPERATION-SEMANTIC-SOURCES,valid-generic,cg20_geometry_semantic_sources,Geometry programs
+GEOM-OPERATION-EMIT-EMPTY-DIAG,invalid-language,cg20_geometry_operation_empty_emit,Geometry programs
+GEOM-OPERATION-FLAT-EMPTY-DIAG,invalid-language,cg20_geometry_operation_empty_flat,Geometry programs
+GEOM-OPERATION-RESTART-ARGS-DIAG,invalid-language,cg20_geometry_operation_restart_args,Geometry programs
+GEOM-OPERATION-UNRESOLVED-DIAG,invalid-language,cg20_geometry_operation_unresolved_semantic,Geometry programs
+GEOM-OPERATION-DUPLICATE-DIAG,invalid-language,cg20_geometry_operation_duplicate_semantic,Geometry programs
+GEOM-OPERATION-FLAT-POSITION-DIAG,invalid-language,cg20_geometry_operation_flat_position,Geometry programs
+GEOM-OPERATION-REGULAR-ANNOTATION-DIAG,invalid-language,cg20_geometry_operation_regular_annotation,Geometry programs
+GEOM-OPERATION-ASSIGN-DIAG,invalid-language,cg20_geometry_operation_nested_assignment,Geometry programs
+GEOM-OPERATION-CONSTRUCTOR-DIAG,invalid-language,cg20_geometry_operation_nested_constructor,Geometry programs
+GEOM-OPERATION-CONDITIONAL-DIAG,invalid-language,cg20_geometry_operation_nested_conditional,Geometry programs
+GEOM-OPERATION-RETURN-DIAG,invalid-language,cg20_geometry_operation_nested_return,Geometry programs
+GEOM-OPERATION-ARGUMENT-DIAG,invalid-language,cg20_geometry_operation_nested_argument,Geometry programs
+GEOM-OPERATION-ARITHMETIC-DIAG,invalid-language,cg20_geometry_operation_nested_arithmetic,Geometry programs
+GEOM-OPERATION-LEGACY-REJECT,invalid-language,cg20_geometry_operation_cg11,Cg language policy
+GEOM-OPERATION-ANNOTATION-LEGACY-REJECT,invalid-language,cg20_geometry_operation_annotation_cg11,Cg language policy

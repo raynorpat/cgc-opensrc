@@ -797,6 +797,75 @@ add_cg20_failure(cg20_geometry_attrib_array_cg11
     "-DMESSAGE=requires.the.Cg.2.0.language"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
+# Geometry operations (Task 4): the three positive fixtures need
+# selected-program analysis to compile end-to-end, so they stay
+# registered DISABLED TRUE until Task 5 wires it in -- exactly like
+# Task 3's positives.  Every negative fixture is diagnosed by global
+# operation classification and is enabled now.
+
+add_cg20_success(cg20_geometry_operations
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/operations.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+set_tests_properties(cg20_geometry_operations PROPERTIES DISABLED TRUE)
+
+add_cg20_success(cg20_geometry_aggregate_bundles
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/aggregate_bundles.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+set_tests_properties(cg20_geometry_aggregate_bundles PROPERTIES DISABLED TRUE)
+
+add_cg20_success(cg20_geometry_semantic_sources
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/semantic_sources.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+set_tests_properties(cg20_geometry_semantic_sources PROPERTIES DISABLED TRUE)
+
+function(add_cg20_geometry_operation_negative name code line message)
+    string(REPLACE "cg20_" "" source_name "${name}")
+    add_cg20_failure(${name}
+        -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/${source_name}.cg
+        -DCODE=${code} -DEXPECTED_LINE=${line}
+        "-DMESSAGE=${message}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+endfunction()
+
+add_cg20_geometry_operation_negative(cg20_geometry_operation_empty_emit
+    6310 5 invalid.arguments.to.geometry.operation)
+add_cg20_geometry_operation_negative(cg20_geometry_operation_empty_flat
+    6310 5 invalid.arguments.to.geometry.operation)
+add_cg20_geometry_operation_negative(cg20_geometry_operation_restart_args
+    6310 5 invalid.arguments.to.geometry.operation)
+add_cg20_geometry_operation_negative(cg20_geometry_operation_unresolved_semantic
+    6312 7 has.no.binding.semantic)
+add_cg20_geometry_operation_negative(cg20_geometry_operation_duplicate_semantic
+    6313 5 duplicate.geometry.output.semantic)
+add_cg20_geometry_operation_negative(cg20_geometry_operation_flat_position
+    6315 4 POSITION.cannot.be.passed.to.flatAttrib)
+add_cg20_geometry_operation_negative(cg20_geometry_operation_regular_annotation
+    6320 6 binding.semantic)
+foreach(context assignment constructor conditional return argument arithmetic)
+    add_cg20_geometry_operation_negative(
+        cg20_geometry_operation_nested_${context}
+        6311 7 must.be.a.complete.statement)
+endforeach()
+
+add_cg20_failure(cg20_geometry_operation_cg11
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-version\;1.1"
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_operation_cg11.cg
+    -DCODE=1400 -DEXPECTED_LINE=4
+    "-DMESSAGE=requires.the.Cg.2.0.language"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_operation_annotation_cg11
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-version\;1.1"
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_operation_annotation_cg11.cg
+    -DCODE=1400 -DEXPECTED_LINE=4
+    "-DMESSAGE=requires.the.Cg.2.0.language"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
 # Parser regeneration determinism: regenerating from parser.y must
 # reproduce both checked-in artifacts byte-for-byte without warnings or
 # grammar conflicts.  Skipped (return code 77) where bison is absent.

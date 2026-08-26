@@ -1,0 +1,8 @@
+// Task 4 fixture: an operation inside a conditional expression is not
+// a complete statement.
+
+TRIANGLE void nested_conditional(AttribArray<float4> p : POSITION)
+{
+    float4 v = p[0];
+    v.x > 0 ? emitVertex(p[0] : POSITION) : v;
+}

@@ -1,0 +1,7 @@
+// Task 4 fixture: geometry operations are unreachable under explicit
+// Cg 1.1 -- the topology syntax gates first, exactly like Task 2.
+
+TRIANGLE void cg11_operation(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION);
+}

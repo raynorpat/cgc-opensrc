@@ -1,0 +1,8 @@
+// Task 4 fixture: an operation inside a return statement is not a
+// complete statement.
+
+TRIANGLE void nested_return(AttribArray<float4> p : POSITION)
+{
+    float4 v = p[0];
+    return emitVertex(p[0] : POSITION);
+}

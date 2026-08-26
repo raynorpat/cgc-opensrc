@@ -1,0 +1,6 @@
+// Task 4 fixture: emitVertex needs at least one output value.
+
+TRIANGLE void empty_emit(AttribArray<float4> p : POSITION)
+{
+    emitVertex();
+}

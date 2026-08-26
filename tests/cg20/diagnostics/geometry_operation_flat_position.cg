@@ -1,0 +1,7 @@
+// Task 4 fixture: POSITION cannot feed flatAttrib, even inherited
+// from an attribute-array parameter's own binding.
+
+TRIANGLE void flat_position(AttribArray<float4> p : POSITION)
+{
+    flatAttrib(p[0]);
+}

@@ -1,0 +1,8 @@
+// Task 4 fixture: an operation inside a call argument is not a
+// complete statement.
+
+TRIANGLE void nested_argument(AttribArray<float4> p : POSITION)
+{
+    float4 v = p[0];
+    sin(emitVertex(p[0] : POSITION));
+}

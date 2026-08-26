@@ -1,0 +1,22 @@
+// Task 4 fixture: one operation per semantic source -- inline
+// annotation, directly referenced declaration, selected aggregate
+// member, and direct attribute-array index inheritance.  Registered
+// DISABLED until Task 5 connects selected-program analysis.
+
+struct TwoColors
+{
+    float4 first : COLOR0;
+    float4 second : COLOR1;
+};
+
+TRIANGLE void sources_main(AttribArray<float4> p : POSITION,
+                           float4 declared : COLOR0,
+                           uniform TwoColors pair,
+                           uniform float4 marked)
+{
+    flatAttrib(marked : TEXCOORD0);
+    emitVertex(declared);
+    emitVertex(pair.second);
+    emitVertex(p[0]);
+    restartStrip();
+}

@@ -1,0 +1,8 @@
+// Task 4 fixture: an operation inside a constructor is not a
+// complete statement.
+
+TRIANGLE void nested_construct(AttribArray<float4> p : POSITION)
+{
+    float4 v = p[0];
+    float4(v.x, emitVertex(p[0] : POSITION), 0.0, 1.0);
+}
