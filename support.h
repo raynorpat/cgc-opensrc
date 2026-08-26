@@ -221,7 +221,8 @@ typedef enum subopkind {
     PICK( ASSIGN_COND_OP,     "assc",    '@', TRINARY_N, SUB_S    ), \
     PICK( ASSIGN_COND_V_OP,   "asscv",   '@', TRINARY_N, SUB_V    ), \
     PICK( ASSIGN_COND_SV_OP,  "asscsc",  '@', TRINARY_N, SUB_VS   ), \
-    PICK( ASSIGN_COND_GEN_OP, "asscgen", '@', TRINARY_N, SUB_NONE ),
+    PICK( ASSIGN_COND_GEN_OP, "asscgen", '@', TRINARY_N, SUB_NONE ), \
+    PICK( GEOMETRY_ARGUMENT_OP, "geomarg", 0, BINARY_N, SUB_NONE ),
 
 
 // Description of opcode classes:
@@ -416,6 +417,28 @@ typedef struct trinary_rec {
     expr *arg1, *arg2, *arg3;
 } trinary;
 
+/*
+ * Geometry argument wrapper: one typed actual argument plus its
+ * optional inline binding-semantic atom and source location.  The
+ * leading fields mirror binary_rec so kind-based walkers treat the
+ * node transparently; the wrapped value lives in left.
+ */
+
+struct geometry_arg_rec {
+    nodekind kind;
+    Type *type;
+    int IsLValue;
+    int IsConst;
+    int HasSideEffects;
+    void *tempptr[4];
+    opcode op;
+    int subop;
+    expr *left, *right;
+    expr *unused;
+    int semantic;       /* Binding-semantic atom, or 0 */
+    SourceLoc loc;
+};
+
 union expr_rec {
     exprhead common;
     symb sym;
@@ -423,6 +446,7 @@ union expr_rec {
     unary un;
     binary bin;
     trinary tri;
+    struct geometry_arg_rec geomarg;
 };
 
 
@@ -568,6 +592,10 @@ expr *Initializer(SourceLoc *loc, expr *fExpr);
 expr *InitializerList(SourceLoc *loc, expr *list, expr *fExpr);
 expr *ArgumentList(SourceLoc *loc, expr *flist, expr *fExpr);
 expr *ExpressionList(SourceLoc *loc, expr *flist, expr *fExpr);
+expr *NewGeometryArgument(SourceLoc *loc, expr *value, int semantic);
+int IsGeometryArgument(const expr *value);
+expr *GetGeometryArgumentValue(expr *value);
+int GetGeometryArgumentSemantic(const expr *value);
 decl *AddDecl(decl *first, decl *last);
 stmt *AddStmt(stmt *first, stmt *last);
 stmt *CheckStmt(stmt *fStmt);

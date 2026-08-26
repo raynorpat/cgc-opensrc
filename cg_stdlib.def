@@ -142,6 +142,21 @@ CG_INTRINSIC(X4TEXRECT,    "x4texRECT",    CG_INTRINSIC_TEXTURE)
 CG_INTRINSIC(H4TEXRECTPROJ, "h4texRECTproj", CG_INTRINSIC_TEXTURE)
 CG_INTRINSIC(X4TEXRECTPROJ, "x4texRECTproj", CG_INTRINSIC_TEXTURE)
 
+/*
+ * Geometry operation identities.  Their names are reserved and their
+ * symbols installed by the standard library only under the Cg 2.0
+ * language gate, but they never expand into fixed overload families:
+ * the semantic special-call path owns arity, argument annotations,
+ * types, and placement.
+ */
+
+CG_STDLIB_SPECIAL(CG_INTRINSIC_EMIT_VERTEX,  "emitVertex",
+                  CG_INTRINSIC_FLAG_SIDE_EFFECT | CG_INTRINSIC_FLAG_GEOMETRY)
+CG_STDLIB_SPECIAL(CG_INTRINSIC_FLAT_ATTRIB,  "flatAttrib",
+                  CG_INTRINSIC_FLAG_SIDE_EFFECT | CG_INTRINSIC_FLAG_GEOMETRY)
+CG_STDLIB_SPECIAL(CG_INTRINSIC_RESTART_STRIP, "restartStrip",
+                  CG_INTRINSIC_FLAG_SIDE_EFFECT | CG_INTRINSIC_FLAG_GEOMETRY)
+
 #ifdef CG_STDLIB_HELPERS
 
 // Predefined output helper structures: declarative type rows selected

@@ -233,6 +233,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <sc_expr> logical_AND_expression
 %type <sc_expr> logical_OR_expression
 %type <sc_expr> multiplicative_expression
+%type <sc_expr> actual_argument
 %type <sc_expr> non_empty_argument_list
 %type <sc_expr> postfix_expression
 %type <sc_expr> primary_expression
@@ -766,10 +767,22 @@ actual_argument_list:     /* empty */
                         | non_empty_argument_list
 ;
 
-non_empty_argument_list:  expression
+non_empty_argument_list:  actual_argument
                               { $$ = ArgumentList(Cg->tokenLoc, NULL, $1); }
-                        | non_empty_argument_list ',' expression
+                        | non_empty_argument_list ',' actual_argument
                               { $$ = ArgumentList(Cg->tokenLoc, $1, $3); }
+;
+
+/* One call argument: a plain expression, or the geometry-operation
+ * spelling with an inline binding semantic.  The wrapper keeps the
+ * annotation until the selected function decides whether the syntax
+ * is legal there; ordinary calls unwrap semantic-zero arguments
+ * unchanged. */
+
+actual_argument:          expression
+                              { $$ = NewGeometryArgument(Cg->tokenLoc, $1, 0); }
+                        | expression ':' semantics_identifier
+                              { $$ = NewGeometryArgument(Cg->tokenLoc, $1, $3); }
 ;
 
 expression_list:          expression

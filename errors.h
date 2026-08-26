@@ -349,6 +349,11 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_SS_GLSL_PROFILE_STAGE           6318, "%s profile cannot compile a %s program"
 #define ERROR___GLSL_GEOMETRY_MAX_REQUIRED    6319, "glslg requires -po Vertices=N"
 
+// Extends the geometry family: an inline argument annotation bound to
+// any callee without the geometry-special flag.
+
+#define ERROR_SS_GEOMETRY_ARGUMENT_ANNOTATION 6320, "binding semantic \"%s\" is not allowed on an argument to \"%s\""
+
 // Warnings:
 
 #define WARNING___QUALIFIER_SPECIFIED_TWICE 7001, "qualifier specified twice"

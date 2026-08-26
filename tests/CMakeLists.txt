@@ -922,6 +922,7 @@ add_executable(glsl_lower_ir_unit
     ${PROJECT_SOURCE_DIR}/cg_ir.c
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/language.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
     ${PROJECT_SOURCE_DIR}/glsl_hal.c
@@ -970,6 +971,7 @@ add_executable(cg_types_unit
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/language.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
     cg_types_test.c
@@ -993,6 +995,7 @@ add_executable(cg_overload_unit
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_overload.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/language.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
     cg_overload_test.c
@@ -1015,6 +1018,7 @@ add_executable(cg_stdlib_unit
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/language.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
     cg_stdlib_test.c
@@ -1038,6 +1042,7 @@ add_executable(cg_geometry_unit
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/language.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
     cg_geometry_test.c
@@ -1065,6 +1070,7 @@ add_executable(cg_ir_unit
     ${PROJECT_SOURCE_DIR}/cg_reach.c
     ${PROJECT_SOURCE_DIR}/cg_types.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/language.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
     cg_ir_test.c
@@ -1644,6 +1650,10 @@ add_glsl_fixture(glslv_uniform_struct_nested glslv
 # Updated again by "Parse geometry topology modifiers": the eight new
 # keyword atoms shift the same tie-break; re-verified as order-only
 # against the pre-change build with the identical member/addition swap.
+# Updated again by "Resolve Cg geometry operations": the three new
+# intrinsic-name atoms (emitVertex/flatAttrib/restartStrip) shift the
+# same tie-break once more; re-verified as order-only with the identical
+# member/addition swap against the pre-change build.
 add_glsl_fixture(glslv_uniform_struct_collision glslv
     tests/glsl/uniforms/vp_uniform_struct_collision.cg
     tests/glsl/uniforms/vp_uniform_struct_collision.expected)

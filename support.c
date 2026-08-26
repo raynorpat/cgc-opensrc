@@ -54,6 +54,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "glsl_hal.h"
 #include "language.h"
+#include "cg_stdlib.h"
 
 dtype CurrentDeclTypeSpecs = { 0, };
 
@@ -1267,6 +1268,68 @@ expr *ExpressionList(SourceLoc *loc, expr *fList, expr *fExpr)
         return nExpr;
     }
 } // ExpressionList
+
+/*
+ * NewGeometryArgument() - Wrap one typed actual argument with its
+ *          optional inline binding-semantic atom (0 when unannotated)
+ *          and the argument's source location.  The wrapper mirrors
+ *          the binary layout so generic walkers pass through it; only
+ *          call resolution and the geometry special-call path look
+ *          inside.
+ */
+
+expr *NewGeometryArgument(SourceLoc *loc, expr *value, int semantic)
+{
+    struct geometry_arg_rec *parg;
+
+    assert(NodeKind[GEOMETRY_ARGUMENT_OP] == BINARY_N);
+    parg = (struct geometry_arg_rec *)
+        malloc(sizeof(struct geometry_arg_rec));
+    parg->kind = BINARY_N;
+    parg->type = value ? value->common.type : UndefinedType;
+    parg->IsLValue = 0;
+    parg->IsConst = 0;
+    parg->HasSideEffects = 0;
+    if (value) {
+        parg->IsLValue = IsLValue(value);
+        parg->IsConst = value->common.IsConst;
+        parg->HasSideEffects = value->common.HasSideEffects;
+    }
+    parg->op = GEOMETRY_ARGUMENT_OP;
+    parg->subop = 0;
+    parg->left = value;
+    parg->right = NULL;
+    parg->unused = NULL;
+    parg->semantic = semantic;
+    if (loc) {
+        parg->loc = *loc;
+    } else {
+        parg->loc.file = 0;
+        parg->loc.line = 0;
+    }
+    parg->tempptr[0] = 0;
+    parg->tempptr[1] = 0;
+    return (expr *) parg;
+} // NewGeometryArgument
+
+int IsGeometryArgument(const expr *value)
+{
+    return value != NULL &&
+           value->common.kind == BINARY_N &&
+           value->bin.op == GEOMETRY_ARGUMENT_OP;
+} // IsGeometryArgument
+
+expr *GetGeometryArgumentValue(expr *value)
+{
+    assert(IsGeometryArgument(value));
+    return value->bin.left;
+} // GetGeometryArgumentValue
+
+int GetGeometryArgumentSemantic(const expr *value)
+{
+    assert(IsGeometryArgument(value));
+    return ((const struct geometry_arg_rec *) value)->semantic;
+} // GetGeometryArgumentSemantic
 
 /*
  * AddDecl() - Add a declaration to a list of declarations.  Either can be NULL.
@@ -4646,6 +4709,59 @@ static expr *lNewMethodCallOperator(SourceLoc *loc, expr *selection, expr *actua
 } // lNewMethodCallOperator
 
 /*
+ * lUnwrapPlainGeometryArguments() - Replace every unannotated geometry
+ *          argument wrapper in a FUN_ARG_OP chain with its wrapped
+ *          value, in place.  Ordinary call resolution and every later
+ *          pass keep seeing exactly the argument trees they always
+ *          saw; only annotated arguments stay wrapped until the call's
+ *         selected function decides whether annotations are legal.
+ */
+
+static void lUnwrapPlainGeometryArguments(expr *fActuals)
+{
+    expr *link;
+
+    for (link = fActuals; link != NULL && link->common.kind == BINARY_N &&
+                          link->bin.op == FUN_ARG_OP;
+         link = link->bin.right)
+    {
+        if (IsGeometryArgument(link->bin.left) &&
+            GetGeometryArgumentSemantic(link->bin.left) == 0)
+        {
+            link->bin.left = GetGeometryArgumentValue(link->bin.left);
+        }
+    }
+} // lUnwrapPlainGeometryArguments
+
+/*
+ * lRejectStrayGeometryArguments() - Diagnose and unwrap annotated
+ *          geometry arguments bound to any callee without the geometry
+ *          special flag: inline binding semantics exist only for the
+ *          geometry operations.
+ */
+
+static void lRejectStrayGeometryArguments(SourceLoc *loc, expr *fActuals,
+                                          const char *callee)
+{
+    expr *link;
+
+    for (link = fActuals; link != NULL && link->common.kind == BINARY_N &&
+                          link->bin.op == FUN_ARG_OP;
+         link = link->bin.right)
+    {
+        if (IsGeometryArgument(link->bin.left)) {
+            SemanticError(loc,
+                          ERROR_SS_GEOMETRY_ARGUMENT_ANNOTATION,
+                          GetAtomString(atable,
+                              GetGeometryArgumentSemantic(
+                                  link->bin.left)),
+                          callee);
+            link->bin.left = GetGeometryArgumentValue(link->bin.left);
+        }
+    }
+} // lRejectStrayGeometryArguments
+
+/*
  * NewFunctionCallOperator() - Construct a function call node.  Check types of parameters,
  *         resolve overloaded function, etc.
  *
@@ -4664,6 +4780,8 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
 
     if (lIsMethodSelection(funExpr))
         return lNewMethodCallOperator(loc, funExpr, actuals);
+
+    lUnwrapPlainGeometryArguments(actuals);
 
     funType = funExpr->common.type;
     if (IsCategory(funType, TYPE_CATEGORY_FUNCTION)) {
@@ -4697,6 +4815,34 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
             } else {
                 InternalError(loc, ERROR_S_SYMBOL_NOT_FUNCTION, GetAtomString(atable, lSymb->name));
             }
+        }
+        if (lop == FUN_INTRINSIC_OP &&
+            lSymb != NULL &&
+            lSymb->details.fun.intrinsic != NULL &&
+            CgIntrinsicIsGeometrySpecial(
+                lSymb->details.fun.intrinsic->intrinsic))
+        {
+            /* A selected geometry operation owns its argument syntax:
+             * annotated arguments stay wrapped for the statement
+             * classifier, and arity, types, and placement are checked
+             * there -- never against the placeholder empty parameter
+             * list. */
+            result = NewBinopSubNode(FUN_CALL_OP, 0, funExpr, actuals);
+            result->IsLValue = 0;
+            result->IsConst = 0;
+            result->HasSideEffects = 1;
+            result->type = VoidType;
+            return (expr *) result;
+        }
+        {
+            const char *lCallee = "";
+
+            if (funExpr->common.kind == SYMB_N &&
+                lSymb != NULL && lSymb->kind == FUNCTION_S)
+            {
+                lCallee = GetAtomString(atable, lSymb->name);
+            }
+            lRejectStrayGeometryArguments(loc, actuals, lCallee);
         }
         lFormals = funType->fun.paramtypes;
         lActuals = actuals;

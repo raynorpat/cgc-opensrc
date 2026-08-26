@@ -70,10 +70,22 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CG_INTRINSIC_OUT_PARAMS    0x00000010
 #define CG_INTRINSIC_SIDE_EFFECTS  0x00000020
 
+/*
+ * The geometry catalog rows spell their behavior with the FLAG_ names:
+ * the side-effect bit is shared with the ordinary row spelling, and
+ * the geometry bit marks the signature-less special identities whose
+ * calls the frontend parses and validates outside overload resolution.
+ */
+
+#define CG_INTRINSIC_FLAG_SIDE_EFFECT  CG_INTRINSIC_SIDE_EFFECTS
+#define CG_INTRINSIC_FLAG_GEOMETRY     0x00000040
+
 typedef enum CgIntrinsic_Rec {
     CG_INTRINSIC_NONE = 0,
 #define CG_INTRINSIC(id, name, flags) CG_INTRINSIC_##id,
+#define CG_STDLIB_SPECIAL(intrinsic, name, flags) intrinsic,
 #include "cg_stdlib.def"
+#undef CG_STDLIB_SPECIAL
 #undef CG_INTRINSIC
     CG_INTRINSIC_COUNT
 } CgIntrinsic;
@@ -125,5 +137,21 @@ const char *CgStdlibCatalogName(int index);
 int CgStdlibHelperCount(void);
 const char *CgStdlibHelperName(int index);
 CgProfileStage CgStdlibHelperStage(int index);
+
+/*
+ * CgFindIntrinsicByName() - The stable intrinsic identity carrying the
+ *          exact catalog spelling, spanning ordinary rows and geometry
+ *          special rows; CG_INTRINSIC_NONE when the name is absent.
+ */
+
+int CgFindIntrinsicByName(const char *name);
+
+/*
+ * CgIntrinsicIsGeometrySpecial() - True when the identity is one of
+ *          the catalog's signature-less geometry operations.  Decided
+ *          from the immutable row flags, never from runtime state.
+ */
+
+int CgIntrinsicIsGeometrySpecial(CgIntrinsic intrinsic);
 
 #endif // !defined(__CG_STDLIB_H)

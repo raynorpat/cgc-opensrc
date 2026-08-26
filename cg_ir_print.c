@@ -73,7 +73,9 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static const char * const lIntrinsicNames[] = {
     "<no-intrinsic>",
 #define CG_INTRINSIC(id, name, flags) name,
+#define CG_STDLIB_SPECIAL(intrinsic, name, flags) name,
 #include "cg_stdlib.def"
+#undef CG_STDLIB_SPECIAL
 #undef CG_INTRINSIC
 };
 

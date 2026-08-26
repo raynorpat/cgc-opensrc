@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -57,6 +57,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "cg_stdlib.h"
+#include "language.h"
 
 CgStruct *Cg;
 Scope *CurrentScope;
@@ -315,14 +316,19 @@ int main(void)
         counts[sig->intrinsic]++;
     }
 
-    /* Every catalog row expanded at least one signature. */
+    /* Every catalog row expanded at least one signature.  Geometry
+     * special rows never expand overload families, so their absence
+     * here is the contract, not a defect. */
     for (i = 1; i < CG_INTRINSIC_COUNT; i++) {
         if (counts[i] < 1) {
+            if (CgIntrinsicIsGeometrySpecial((CgIntrinsic) i))
+                continue;
             printf("row with no signatures: %s\n",
                    CgStdlibCatalogName(i - 1));
             fflush(stdout);
         }
-        assert(counts[i] >= 1);
+        assert(counts[i] >= 1 ||
+               CgIntrinsicIsGeometrySpecial((CgIntrinsic) i));
     }
 
     /* Unique (name, signature) identity across the whole expansion,
@@ -522,6 +528,78 @@ int main(void)
                                     LookUpAddString(atable, "fragout_float"));
         assert(fragout != NULL);
         assert(IsCategory(fragout->type, TYPE_CATEGORY_STRUCT));
+    }
+
+    /* ---- Audit 5: geometry special identities. ---- */
+
+    /* Name lookup spans ordinary and special rows, is exact, and
+     * misses cleanly. */
+    assert(CgFindIntrinsicByName("abs") == CG_INTRINSIC_ABS);
+    assert(CgFindIntrinsicByName("emitVertex") ==
+           CG_INTRINSIC_EMIT_VERTEX);
+    assert(CgFindIntrinsicByName("flatAttrib") ==
+           CG_INTRINSIC_FLAT_ATTRIB);
+    assert(CgFindIntrinsicByName("restartStrip") ==
+           CG_INTRINSIC_RESTART_STRIP);
+    assert(CgFindIntrinsicByName("emitvertex") == CG_INTRINSIC_NONE);
+    assert(CgFindIntrinsicByName("nosuch") == CG_INTRINSIC_NONE);
+    assert(CgFindIntrinsicByName("") == CG_INTRINSIC_NONE);
+
+    /* The geometry flag sits exactly on the three special identities. */
+    assert(CgIntrinsicIsGeometrySpecial(CG_INTRINSIC_EMIT_VERTEX));
+    assert(CgIntrinsicIsGeometrySpecial(CG_INTRINSIC_FLAT_ATTRIB));
+    assert(CgIntrinsicIsGeometrySpecial(CG_INTRINSIC_RESTART_STRIP));
+    assert(!CgIntrinsicIsGeometrySpecial(CG_INTRINSIC_ABS));
+    assert(!CgIntrinsicIsGeometrySpecial(CG_INTRINSIC_DEBUG));
+    assert(!CgIntrinsicIsGeometrySpecial(CG_INTRINSIC_NONE));
+
+    /* Cg 2.0 installs one reserved symbol per special identity with a
+     * minimal void signature; explicit Cg 1.1 installs none. */
+    {
+        Scope *geomScope = NewScopeInPool(mem_CreatePool(0, 0));
+        Symbol *op;
+
+        cg.options.languageVersion = CG_LANGUAGE_2_0;
+        hal.profileIdentity.stage = CG_PROFILE_STAGE_NEUTRAL;
+        assert(InitCgStdlib(geomScope));
+        op = LookUpLocalSymbol(geomScope,
+                               LookUpAddString(atable, "emitVertex"));
+        assert(op != NULL && op->kind == FUNCTION_S);
+        assert(op->details.fun.intrinsic != NULL);
+        assert(op->details.fun.intrinsic->intrinsic ==
+               CG_INTRINSIC_EMIT_VERTEX);
+        assert((op->details.fun.intrinsic->flags &
+                CG_INTRINSIC_FLAG_GEOMETRY) != 0);
+        assert(IsVoid(op->details.fun.intrinsic->result));
+        assert(op->details.fun.intrinsic->parameters == NULL);
+        assert(LookUpLocalSymbol(
+                   geomScope,
+                   LookUpAddString(atable, "flatAttrib")) != NULL);
+        assert(LookUpLocalSymbol(
+                   geomScope,
+                   LookUpAddString(atable, "restartStrip")) != NULL);
+        assert(LookUpLocalSymbol(geomScope,
+                                 LookUpAddString(atable, "abs")) != NULL);
+
+        cg.options.languageVersion = CG_LANGUAGE_1_1;
+        {
+            Scope *legacyScope = NewScopeInPool(mem_CreatePool(0, 0));
+
+            assert(InitCgStdlib(legacyScope));
+            assert(LookUpLocalSymbol(
+                       legacyScope,
+                       LookUpAddString(atable, "emitVertex")) == NULL);
+            assert(LookUpLocalSymbol(
+                       legacyScope,
+                       LookUpAddString(atable, "flatAttrib")) == NULL);
+            assert(LookUpLocalSymbol(
+                       legacyScope,
+                       LookUpAddString(atable, "restartStrip")) == NULL);
+            assert(LookUpLocalSymbol(
+                       legacyScope,
+                       LookUpAddString(atable, "abs")) != NULL);
+        }
+        (void) 0;
     }
 
     FreeSymbolTable(Cg);

@@ -56,12 +56,15 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "cg_stdlib.h"
+#include "language.h"
 
 ////////////////////////////// Catalog name table //////////////////////////////
 
 static const char *catalogNames[] = {
 #define CG_INTRINSIC(id, name, flags) name,
+#define CG_STDLIB_SPECIAL(intrinsic, name, flags) name,
 #include "cg_stdlib.def"
+#undef CG_STDLIB_SPECIAL
 #undef CG_INTRINSIC
 };
 
@@ -832,9 +835,11 @@ static const struct {
     CgProfileStage stage;
 } helperRows[] = {
 #define CG_INTRINSIC(id, name, flags)
+#define CG_STDLIB_SPECIAL(intrinsic, name, flags)
 #define CG_STDLIB_HELPER(id, name, stage) { name, stage },
 #include "cg_stdlib.def"
 #undef CG_STDLIB_HELPER
+#undef CG_STDLIB_SPECIAL
 #undef CG_INTRINSIC
 };
 #undef CG_STDLIB_HELPERS
@@ -860,6 +865,83 @@ CgProfileStage CgStdlibHelperStage(int index)
         return CG_PROFILE_STAGE_NEUTRAL;
     return helperRows[index].stage;
 } // CgStdlibHelperStage
+
+////////////////////////////// Geometry special rows ///////////////////////////
+
+/*
+ * The signature-less geometry operations.  Their rows carry immutable
+ * flags like every catalog entry, but they expand into exactly one
+ * installed symbol each -- never into an overload family -- so the
+ * frontend's special-call path can own arity, argument annotations,
+ * types, and placement.
+ */
+
+typedef struct CgStdlibSpecial_Rec {
+    CgIntrinsic intrinsic;
+    const char *name;
+    unsigned flags;
+} CgStdlibSpecial;
+
+#define CG_INTRINSIC(id, name, flags)
+#define CG_STDLIB_SPECIAL(intrinsic, name, flags) \
+    { intrinsic, name, flags },
+static const CgStdlibSpecial specialRows[] = {
+#include "cg_stdlib.def"
+};
+#undef CG_STDLIB_SPECIAL
+#undef CG_INTRINSIC
+
+#define SPECIAL_ROW_COUNT \
+    ((int) (sizeof(specialRows) / sizeof(specialRows[0])))
+
+/* One immutable minimal signature per special row, built once beside
+ * the catalog so every installed symbol carries a uniform
+ * details.fun.intrinsic pointer. */
+
+static CgIntrinsicSignature specialSigs[SPECIAL_ROW_COUNT];
+
+static void lBuildSpecialSignatures(void)
+{
+    int i;
+
+    for (i = 0; i < SPECIAL_ROW_COUNT; i++) {
+        specialSigs[i].intrinsic = specialRows[i].intrinsic;
+        specialSigs[i].name = specialRows[i].name;
+        specialSigs[i].result = VoidType;
+        specialSigs[i].parameters = NULL;
+        specialSigs[i].flags = specialRows[i].flags;
+    }
+} // lBuildSpecialSignatures
+
+/*
+ * lInstallSpecialSymbol() - Create the reserved function symbol for
+ *          one geometry operation.  The empty parameter list is a
+ *          placeholder: ordinary parameter binding never runs for a
+ *          selected special call.
+ */
+
+static void lInstallSpecialSymbol(Scope *scope, SourceLoc *loc,
+                                  const CgStdlibSpecial *row)
+{
+    Symbol *symbol;
+    Type *funType;
+    int atom;
+
+    atom = LookUpAddString(atable, row->name);
+    if (LookUpLocalSymbol(scope, atom) != NULL)
+        return; /* Idempotent re-installation. */
+    funType = NewType(TYPE_CATEGORY_FUNCTION | TYPE_MISC_INTERNAL, 0);
+    funType->fun.rettype = VoidType;
+    funType->fun.paramtypes = NULL;
+    symbol = AddSymbol(loc, scope, atom, funType, FUNCTION_S);
+    symbol->properties |= SYMB_IS_BUILTIN;
+    symbol->details.fun.profileSelector.name = 0;
+    symbol->details.fun.profileSelector.specificity =
+        CG_PROFILE_OPEN_SPECIFICITY;
+    symbol->details.fun.profileSelector.isOpen = 1;
+    symbol->details.fun.intrinsic =
+        &specialSigs[(int) (row - specialRows)];
+} // lInstallSpecialSymbol
 
 /*
  * lHelperMemberType() - fragout carries a float4 color member and
@@ -903,10 +985,19 @@ int InitCgStdlib(Scope *scope)
         return 0;
     if (!catalogBuilt) {
         lBuildCatalog();
+        lBuildSpecialSignatures();
         catalogBuilt = 1;
     }
     for (i = 0; i < catalogSigCount; i++)
         lInstallSignature(scope, &dummyLoc, &catalogSigs[i]);
+
+    /* Geometry operation symbols exist only under the Cg 2.0 language
+     * gate: explicit Cg 1.1 can never resolve a geometry intrinsic
+     * through the catalog. */
+    if (CgLanguageAllowsGeometry(Cg->options.languageVersion)) {
+        for (i = 0; i < SPECIAL_ROW_COUNT; i++)
+            lInstallSpecialSymbol(scope, &dummyLoc, &specialRows[i]);
+    }
 
     /* Helper structures follow the current profile family; profiles
      * outside a row's stage simply never see that type, and any use is
@@ -943,3 +1034,32 @@ const char *CgStdlibCatalogName(int index)
         return NULL;
     return catalogNames[index];
 } // CgStdlibCatalogName
+
+int CgFindIntrinsicByName(const char *name)
+{
+    int i;
+
+    if (name == NULL)
+        return CG_INTRINSIC_NONE;
+    for (i = 0; i < CATALOG_NAME_COUNT; i++) {
+        if (!strcmp(catalogNames[i], name))
+            return i + 1;
+    }
+    for (i = 0; i < SPECIAL_ROW_COUNT; i++) {
+        if (!strcmp(specialRows[i].name, name))
+            return specialRows[i].intrinsic;
+    }
+    return CG_INTRINSIC_NONE;
+} // CgFindIntrinsicByName
+
+int CgIntrinsicIsGeometrySpecial(CgIntrinsic intrinsic)
+{
+    int i;
+
+    for (i = 0; i < SPECIAL_ROW_COUNT; i++) {
+        if (specialRows[i].intrinsic == intrinsic)
+            return (specialRows[i].flags &
+                    CG_INTRINSIC_FLAG_GEOMETRY) != 0;
+    }
+    return 0;
+} // CgIntrinsicIsGeometrySpecial

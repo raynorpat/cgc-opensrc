@@ -1013,6 +1013,7 @@ void lPrintExpr(expr *fexpr)
             break;
         case FUN_ARG_OP:
         case EXPR_LIST_OP:
+        case GEOMETRY_ARGUMENT_OP:
             if (fexpr->bin.right)
                 printf(", ");
             break;
