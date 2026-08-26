@@ -1,0 +1,13 @@
+/* Task 5 fixture: a valid geometry operation inside a helper that the
+   selected vertex entry never calls must not poison the compilation --
+   the unreachable geometry-only helper stays valid here. */
+
+POINT void unused_geometry_helper(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION);
+}
+
+void main(float4 p : POSITION)
+{
+    float4 c = p;
+}

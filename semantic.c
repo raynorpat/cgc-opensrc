@@ -641,6 +641,42 @@ static void lBindGlobalVaryingTree(Symbol *lSymb, Symbol *vinVar,
 } // lBindGlobalVaryingTree
 
 /*
+ * lEntryResolvesToGeometry() - Silent pre-check of the same topology
+ *         resolution selected-program analysis performs: should this
+ *         compilation's entry keep its geometry-interface formals out
+ *         of the $vin/$vout binder?  Resolution failures never bind
+ *         here -- option and configuration problems are analysis
+ *         diagnostics with their own anchors -- so any compilation
+ *         whose raw options or modifiers express geometry intent
+ *         answers yes and lets analysis report precisely.
+ */
+
+static int lEntryResolvesToGeometry(Symbol *program)
+{
+    CgGeometryModifiers source;
+    CgGeometryOptions options;
+    CgGeometryConfig config;
+    CgGeometryDiagnostic diagnostic;
+
+    if (!CgLanguageAllowsGeometry(Cg->options.languageVersion)) {
+        return 0;
+    }
+    source = program->details.fun.geometry;
+    CgGeometryInitOptions(&options);
+    if (!CgGeometryParseOptions(Cg->options.profileOptions, &options,
+                                &diagnostic)) {
+        return 1;
+    }
+    if (!CgGeometryResolveConfig(&source, &options,
+                                 CgProfileProgramStage(
+                                     &Cg->theHAL->profileIdentity),
+                                 &config, &diagnostic)) {
+        return 1;
+    }
+    return config.stage == CGIR_STAGE_GEOMETRY;
+} // lEntryResolvesToGeometry
+
+/*
  * BuildSemanticStructs() - Build the three global semantic type structure,  Check main for
  *         type errors in its arguments.
  */
@@ -648,6 +684,7 @@ static void lBindGlobalVaryingTree(Symbol *lSymb, Symbol *vinVar,
 void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
 {
     int category, domain, qualifiers, len, rlen;
+    int isGeometryProgram;
     Scope *vinScope, *voutScope, *lScope;
     Type *vinType, *voutType;
     Symbol *vinVar, *voutVar;
@@ -664,6 +701,7 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
     // One program interface per compilation: reset the output map.
 
     lOutputSemantics = NULL;
+    isGeometryProgram = lEntryResolvesToGeometry(program);
 
     // Define pseudo type structs for semantics:
 
@@ -720,6 +758,20 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
             SemanticError(&formal->loc, ERROR_S_MAIN_PARAMS_CANT_BE_INOUT,
                           GetAtomString(atable, formal->name));
         entryDomain = EffectiveProgramDomain(formal, 1);
+        if (isGeometryProgram && entryDomain != TYPE_DOMAIN_UNIFORM &&
+            (category == TYPE_CATEGORY_ATTRIB_ARRAY ||
+             CgGeometryClassifySemantic(formal->details.var.semantics) !=
+                 CG_GEOMETRY_SEMANTIC_ORDINARY))
+        {
+            /* A geometry program's vertex/primitive interface --
+             * attribute arrays and geometry-special bindings alike --
+             * publishes through Cg IR geometry metadata, not the
+             * $vin/$vout connector: no varying binding exists for it,
+             * so the formal passes through untouched and selected-
+             * program analysis owns its rules. */
+            formal = formal->next;
+            continue;
+        }
         if (entryDomain == TYPE_DOMAIN_UNIFORM) {
             if (qualifiers & TYPE_QUALIFIER_OUT) {
                 SemanticError(&formal->loc, ERROR_S_UNIFORM_ARG_CANT_BE_OUT,

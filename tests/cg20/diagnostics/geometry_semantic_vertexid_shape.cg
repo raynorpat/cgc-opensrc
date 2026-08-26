@@ -1,0 +1,8 @@
+/* Task 5 negative: VERTEXID must be an AttribArray<int> input; a bare
+   int fails the shape rule at the declaration (C6321). */
+
+POINT void bad_vertexid_shape(AttribArray<float4> p : POSITION,
+                              int ids : VERTEXID)
+{
+    emitVertex(p[0] : POSITION);
+}

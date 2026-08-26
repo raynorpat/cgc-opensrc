@@ -549,6 +549,54 @@ static CgIRExpr *lLowerCallArguments(CgIRLower *L, expr *chain,
 } // lLowerCallArguments
 
 /*
+ * lGeometryArgumentValue() - The value inside one annotation wrapper;
+ *          any other node answers itself.  The wrapper layout is
+ *          header-visible, so lowering needs no support-layer link.
+ */
+
+static expr *lGeometryArgumentValue(expr *node)
+{
+    if (node != NULL && node->common.kind == BINARY_N &&
+        node->bin.op == GEOMETRY_ARGUMENT_OP)
+    {
+        return ((struct geometry_arg_rec *) node)->left;
+    }
+    return node;
+} // lGeometryArgumentValue
+
+/*
+ * lLowerGeometryCallArguments() - Argument lists of the three geometry
+ *          operations keep their annotation wrappers through resolution
+ *          by design; lowering carries only the wrapped values, so the
+ *          module sees plain calls until Task 6/7 give the operations
+ *          real IR identities.
+ */
+
+static CgIRExpr *lLowerGeometryCallArguments(CgIRLower *L, expr *chain)
+{
+    CgIRExpr *list;
+
+    list = NULL;
+    while (chain != NULL && !L->module->failed) {
+        CgIRExpr *argument;
+
+        if (chain->common.kind != BINARY_N ||
+            chain->bin.op != FUN_ARG_OP)
+        {
+            lUnlowerable(L, "call argument list");
+            return NULL;
+        }
+        argument = lLowerExpr(L,
+            lGeometryArgumentValue(chain->bin.left));
+        if (argument == NULL)
+            return NULL;
+        lAppendExpr(&list, argument);
+        chain = chain->bin.right;
+    }
+    return list;
+} // lLowerGeometryCallArguments
+
+/*
  * lNormalizeAssignValue() - Constant folding can replace a converted
  *          initializer with a same-shape value whose type no longer
  *          carries an implicit classification.  When the language still
@@ -636,8 +684,21 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
             return CgIRNewConstant(L->module, fExpr->common.type, &L->loc,
                                    &named);
         }
-        result = CgIRNewSymbol(L->module, fExpr->common.type, &L->loc,
-                               fExpr->sym.symbol);
+        {
+            /* Type-view installation may have resolved a declared
+             * attribute-array formal after this reference was parsed;
+             * the live declared type is the authoritative shape. */
+            Type *referenceType = fExpr->common.type;
+
+            if (CgIsAttribArray(referenceType) &&
+                fExpr->sym.symbol != NULL &&
+                CgIsAttribArray(fExpr->sym.symbol->type))
+            {
+                referenceType = fExpr->sym.symbol->type;
+            }
+            result = CgIRNewSymbol(L->module, referenceType, &L->loc,
+                                   fExpr->sym.symbol);
+        }
         break;
     case CONST_N:
         return lLowerConstant(L, fExpr);
@@ -750,7 +811,9 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
             {
                 /* Frontend index nodes stamp legacy four-bit bases
                  * that cannot hold half/fixed; rederive the canonical
-                 * element type the way the verifier will. */
+                 * element type the way the verifier will.  Attribute
+                 * arrays are their own category: indexing yields the
+                 * resolved array's element, never the array. */
                 Type *objectType = left->type;
                 Type *elementType = objectType;
                 int ilen;
@@ -758,6 +821,8 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
                 if (IsArray(objectType) && !IsVector(objectType, &ilen))
                 {
                     elementType = objectType->arr.eltype;
+                } else if (CgIsAttribArray(objectType)) {
+                    elementType = CgAttribArrayElement(objectType);
                 } else if (IsVector(objectType, &ilen)) {
                     elementType = GetStandardTypeKind(
                         GetScalarKind(objectType), 0, 0);
@@ -775,7 +840,19 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
                 return NULL;
             }
             left = NULL;
-            right = lLowerCallArguments(L, fExpr->bin.right, 0);
+            if (fExpr->bin.left->sym.symbol->details.fun.intrinsic !=
+                    NULL &&
+                CgIntrinsicIsGeometrySpecial(
+                    fExpr->bin.left->sym.symbol->details.fun.intrinsic->
+                        intrinsic))
+            {
+                /* Geometry operations keep annotated wrappers through
+                 * resolution; the module carries their values as a
+                 * plain call until Task 6/7 add real IR identities. */
+                right = lLowerGeometryCallArguments(L, fExpr->bin.right);
+            } else {
+                right = lLowerCallArguments(L, fExpr->bin.right, 0);
+            }
             if (right == NULL && L->module->failed)
                 return NULL;
             result = CgIRNewCall(L->module, fExpr->common.type, &L->loc,

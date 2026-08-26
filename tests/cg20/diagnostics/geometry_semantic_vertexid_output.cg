@@ -1,0 +1,7 @@
+/* Task 5 negative: VERTEXID never reaches an output slot; the
+   direction rule rejects the annotation (C6314). */
+
+POINT void bad_vertexid_output(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION, 1 : VERTEXID);
+}

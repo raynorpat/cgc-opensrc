@@ -4,8 +4,26 @@ endif()
 if(NOT DEFINED MESSAGE)
     message(FATAL_ERROR "check_cg20_failure.cmake requires MESSAGE")
 endif()
+
+# Geometry mode (Task 5): ENTRY selects one program entry and
+# PROFILE_OPTIONS is a semicolon list where every item becomes a
+# separate "-po <option>" pair.  EXPECTED is accepted for symmetry with
+# the success runner; failure fixtures pin diagnostics, not output.
+# The run keeps -nocode so a failed compilation never publishes.
+
+set(cg20_profile_args)
+if(DEFINED PROFILE_OPTIONS)
+    foreach(cg20_option IN LISTS PROFILE_OPTIONS)
+        list(APPEND cg20_profile_args -po "${cg20_option}")
+    endforeach()
+endif()
+set(cg20_entry_args)
+if(DEFINED ENTRY)
+    list(APPEND cg20_entry_args -entry "${ENTRY}")
+endif()
 execute_process(
-    COMMAND "${CGC}" -quiet -nocode -profile "${PROFILE}" ${EXTRA_ARGS} "${SOURCE}"
+    COMMAND "${CGC}" -quiet -nocode -profile "${PROFILE}" ${cg20_profile_args}
+        ${cg20_entry_args} ${EXTRA_ARGS} "${SOURCE}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE output
     ERROR_VARIABLE error
@@ -39,6 +57,10 @@ endif()
 # previous one, so the call-path hop order is part of the contract.
 
 if(DEFINED NOTES)
+    # Registrations escape the separators so the note list survives
+    # the add_test COMMAND expansion as one argument; undo that
+    # escaping here so every note becomes one ordered entry.
+    string(REPLACE "\\;" ";" NOTES "${NOTES}")
     string(REPLACE "\"" "" clean_diagnostic "${diagnostic}")
     set(remaining_notes "${clean_diagnostic}")
     foreach(note IN LISTS NOTES)

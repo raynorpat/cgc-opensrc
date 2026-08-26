@@ -2,7 +2,7 @@
 // geometry identity entirely from raw "-po" options (TRIANGLE and
 // Vertices=3 on the command line).
 
-void main(float4 p : POSITION)
+void main(AttribArray<float4> p : POSITION)
 {
-    float4 c = p;
+    float4 c = p[0];
 }

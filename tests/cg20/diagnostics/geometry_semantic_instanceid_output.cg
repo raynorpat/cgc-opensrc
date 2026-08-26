@@ -1,0 +1,7 @@
+/* Task 5 negative: INSTANCEID never reaches an output slot; the
+   direction rule rejects the annotation (C6314). */
+
+POINT void bad_instance_output(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION, 1 : INSTANCEID);
+}

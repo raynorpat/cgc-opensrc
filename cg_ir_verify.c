@@ -62,6 +62,7 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "cg_ir.h"
+#include "cg_stdlib.h"    // CgIntrinsicIsGeometrySpecial for call rules
 
 /////////////////////////// Verification context ///////////////////////////
 
@@ -319,6 +320,12 @@ static int lCanonicalType(const Type *type)
     case TYPE_CATEGORY_SAMPLER:
     case TYPE_CATEGORY_INTERFACE:
         return 1;
+    case TYPE_CATEGORY_ATTRIB_ARRAY:
+        /* Resolved attribute arrays are canonical interned types: a
+         * positive extent plus a canonical element.  The unresolved
+         * source shape (extent zero) never reaches the IR. */
+        return CgAttribArrayExtent(type) > 0 &&
+               lCanonicalType(CgAttribArrayElement(type));
     default:
         return 0;
     }
@@ -717,7 +724,8 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
         }
         objectType = expr->u.index.object->type;
         if (!IsArray(objectType) && !IsVector(objectType, NULL) &&
-            !IsMatrix(objectType, NULL, NULL))
+            !IsMatrix(objectType, NULL, NULL) &&
+            !CgIsAttribArray(objectType))
         {
             return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
         }
@@ -728,6 +736,10 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
         }
         if (IsArray(objectType)) {
             expected = objectType->arr.eltype;
+        } else if (CgIsAttribArray(objectType)) {
+            /* Indexing a resolved attribute array yields its element,
+             * exactly like the frontend rule. */
+            expected = CgAttribArrayElement(objectType);
         } else if (IsVector(objectType, NULL)) {
             expected = GetStandardTypeKind(GetScalarKind(objectType), 0, 0);
         } else {
@@ -939,6 +951,21 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
                     TYPE_CATEGORY_FUNCTION)
             {
                 break;
+            }
+            /* Geometry operations are catalog intrinsics the selected-
+             * program analysis owns; Task 6/7 give them real IR nodes,
+             * so until then their call sites carry no module function
+             * and no ordinary signature to check against. */
+            if (expr->u.call.callee->kind == FUNCTION_S) {
+                const CgIntrinsicSignature *geometrySignature =
+                    CgIntrinsicSignatureForSymbol(expr->u.call.callee);
+
+                if (geometrySignature &&
+                    CgIntrinsicIsGeometrySpecial(
+                        geometrySignature->intrinsic))
+                {
+                    break;
+                }
             }
             return CgIRFail(ctx, CGIR_VERIFY_CALL, expr->loc, expr);
         }

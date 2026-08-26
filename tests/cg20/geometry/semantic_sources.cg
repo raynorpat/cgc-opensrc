@@ -1,7 +1,8 @@
 // Task 4 fixture: one operation per semantic source -- inline
 // annotation, directly referenced declaration, selected aggregate
-// member, and direct attribute-array index inheritance.  Registered
-// DISABLED until Task 5 connects selected-program analysis.
+// member, and direct attribute-array index inheritance.  The declared
+// input is an attribute array: ordinary per-vertex inputs carry
+// AttribArray<T>, and indexing selects its element leaf.
 
 struct TwoColors
 {
@@ -10,12 +11,12 @@ struct TwoColors
 };
 
 TRIANGLE void sources_main(AttribArray<float4> p : POSITION,
-                           float4 declared : COLOR0,
+                           AttribArray<float4> declared : COLOR0,
                            uniform TwoColors pair,
                            uniform float4 marked)
 {
     flatAttrib(marked : TEXCOORD0);
-    emitVertex(declared);
+    emitVertex(declared[0]);
     emitVertex(pair.second);
     emitVertex(p[0]);
     restartStrip();

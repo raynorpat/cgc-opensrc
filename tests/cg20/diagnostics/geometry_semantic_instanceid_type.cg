@@ -1,0 +1,8 @@
+/* Task 5 negative: INSTANCEID demands a scalar int input; a float4
+   binding fails the value-type rule at the declaration (C6321). */
+
+POINT void bad_instance_type(AttribArray<float4> p : POSITION,
+                             float4 id : INSTANCEID)
+{
+    emitVertex(p[0] : POSITION);
+}

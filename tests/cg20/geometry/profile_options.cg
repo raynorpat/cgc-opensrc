@@ -1,0 +1,10 @@
+/* Task 5 fixture: one triangle entry whose topology can come from the
+   source modifier alone, from -po options alone, or from both in
+   agreement -- the Step 6 profile-option matrix drives every
+   combination from this one source. */
+
+TRIANGLE void profile_main(AttribArray<float4> p : POSITION)
+{
+    emitVertex(p[0] : POSITION);
+    restartStrip();
+}

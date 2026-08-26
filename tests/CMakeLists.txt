@@ -615,9 +615,9 @@ add_cg20_failure(cg20_ambiguous_overload
 
 # Geometry topology modifiers (Task 2): positives compile under the
 # neutral generic profile; negatives pin exact code and line.  The
-# modifiers fixture also uses AttribArray<T> parameters whose syntax
-# arrives with the attribute-array task, so its registration stays
-# DISABLED until that task enables it.
+# modifiers fixture keeps its DISABLED pin: its empty function bodies
+# still trip the pre-existing C1108 "has no statements" rule, which is
+# a language-policy question outside Task 5's scope.
 
 add_cg20_success(cg20_geometry_modifiers
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
@@ -673,23 +673,23 @@ add_cg20_failure(cg20_geometry_cg11
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
 # Attribute arrays (Task 3): canonical read-only AttribArray<T> types.
-# The four positive fixtures need selected-program analysis (resolved
-# type views plus .length folding), which Task 5 wires into
-# CompileProgram -- exactly like Task 4's operation positives they stay
-# registered DISABLED TRUE until then.  Every negative fixture fires at
-# declaration or expression checking and is enabled now.
+# The entry-input positives compile once Task 5's selected-program
+# analysis supplies the resolved type views and folds .length; the
+# helper-passing positive stays DISABLED because a helper formal still
+# needs the lowering-side admission Task 6/7 own.  Every negative
+# fixture fires at declaration or analysis time and is enabled now.
 
 add_cg20_success(cg20_geometry_attrib_array
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-entry\;triangle_main"
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array.cg
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-set_tests_properties(cg20_geometry_attrib_array PROPERTIES DISABLED TRUE)
 
 add_cg20_success(cg20_geometry_attrib_array_aggregate
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-entry\;triangle_agg"
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array_aggregate.cg
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-set_tests_properties(cg20_geometry_attrib_array_aggregate PROPERTIES DISABLED TRUE)
 
 add_cg20_success(cg20_geometry_attrib_array_helper
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
@@ -703,7 +703,6 @@ function(add_cg20_geometry_attrib_array_length name entry)
         "-DEXTRA_ARGS=-entry\;${entry}"
         -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array_length.cg
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-    set_tests_properties(${name} PROPERTIES DISABLED TRUE)
 endfunction()
 add_cg20_geometry_attrib_array_length(cg20_geometry_attrib_array_length_point point_length)
 add_cg20_geometry_attrib_array_length(cg20_geometry_attrib_array_length_line line_length)
@@ -797,29 +796,28 @@ add_cg20_failure(cg20_geometry_attrib_array_cg11
     "-DMESSAGE=requires.the.Cg.2.0.language"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
-# Geometry operations (Task 4): the three positive fixtures need
-# selected-program analysis to compile end-to-end, so they stay
-# registered DISABLED TRUE until Task 5 wires it in -- exactly like
-# Task 3's positives.  Every negative fixture is diagnosed by global
-# operation classification and is enabled now.
+# Geometry operations (Task 4): the three positive fixtures compile
+# end-to-end now that Task 5 wires selected-program analysis into
+# CompileProgram.  Every negative fixture is diagnosed by global
+# operation classification and was already enabled.
 
 add_cg20_success(cg20_geometry_operations
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-entry\;operation_main"
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/operations.cg
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-set_tests_properties(cg20_geometry_operations PROPERTIES DISABLED TRUE)
 
 add_cg20_success(cg20_geometry_aggregate_bundles
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-entry\;aggregate_main"
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/aggregate_bundles.cg
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-set_tests_properties(cg20_geometry_aggregate_bundles PROPERTIES DISABLED TRUE)
 
 add_cg20_success(cg20_geometry_semantic_sources
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-entry\;sources_main"
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/semantic_sources.cg
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-set_tests_properties(cg20_geometry_semantic_sources PROPERTIES DISABLED TRUE)
 
 function(add_cg20_geometry_operation_negative name code line message)
     string(REPLACE "cg20_" "" source_name "${name}")
@@ -865,6 +863,156 @@ add_cg20_failure(cg20_geometry_operation_annotation_cg11
     -DCODE=1400 -DEXPECTED_LINE=4
     "-DMESSAGE=requires.the.Cg.2.0.language"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
+# Selected-program analysis (Task 5): the geometry runners pass an
+# explicit entry and a semicolon list of raw "-po" values to the fixture
+# scripts, which expand each item into its own option pair.  Both
+# helpers append to CG20_TEST_NAMES like the base pair, so the manifest
+# cross-check sees them; existing two-argument registrations are
+# unchanged.
+
+function(add_cg20_geometry_success name profile source entry expected profile_options)
+    set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${name}")
+    set(cg20_geometry_args
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=${profile}
+        -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+        -DENTRY=${entry}
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.out")
+    if(expected)
+        list(APPEND cg20_geometry_args "-DEXPECTED=${expected}")
+    endif()
+    if(profile_options)
+        # Escape the separators so the option list survives the
+        # add_test COMMAND expansion as one argument.
+        string(REPLACE ";" "\\;" cg20_escaped_options "${profile_options}")
+        list(APPEND cg20_geometry_args "-DPROFILE_OPTIONS=${cg20_escaped_options}")
+    endif()
+    add_test(NAME "${name}"
+        COMMAND ${CMAKE_COMMAND} ${cg20_geometry_args}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+endfunction()
+
+function(add_cg20_geometry_failure name profile source entry code line message profile_options)
+    set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${name}")
+    set(cg20_geometry_args
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=${profile}
+        -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+        -DENTRY=${entry}
+        -DCODE=${code}
+        -DEXPECTED_LINE=${line}
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.txt")
+    if(message)
+        list(APPEND cg20_geometry_args "-DMESSAGE=${message}")
+    endif()
+    if(profile_options)
+        # Escape the separators so the option list survives the
+        # add_test COMMAND expansion as one argument.
+        string(REPLACE ";" "\\;" cg20_escaped_options "${profile_options}")
+        list(APPEND cg20_geometry_args "-DPROFILE_OPTIONS=${cg20_escaped_options}")
+    endif()
+    add_test(NAME "${name}"
+        COMMAND ${CMAKE_COMMAND} ${cg20_geometry_args}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+endfunction()
+
+# Reachability and semantic positives (Step 7): every geometry-only
+# semantic in its valid direction, operations through two helper
+# levels, and an unreachable geometry helper that must not poison a
+# vertex entry.
+
+add_cg20_geometry_success(cg20_geometry_semantics generic
+    tests/cg20/geometry/semantics.cg semantics_main "" "")
+add_cg20_geometry_success(cg20_geometry_reachable_helper generic
+    tests/cg20/geometry/reachable_helper.cg reachable_main "" "")
+add_cg20_geometry_success(cg20_geometry_unreachable_helper generic
+    tests/cg20/geometry/unreachable_helper.cg main "" "")
+
+# Profile-option matrix (Step 6): source-only, options-only, matching
+# mixed, conflicting mixed, duplicate equal/unequal Vertices, malformed
+# values, and missing input.  Option ordinals start at zero, so a
+# command-line anchor cites ordinal + 1 as its line.
+
+add_cg20_geometry_success(cg20_geometry_profile_option_source_only generic
+    tests/cg20/geometry/profile_options.cg profile_main "" "")
+add_cg20_geometry_success(cg20_geometry_profile_option_options_only generic
+    tests/cg20/geometry/options_only.cg main "" "TRIANGLE;Vertices=3")
+add_cg20_geometry_success(cg20_geometry_profile_option_mixed_match generic
+    tests/cg20/geometry/profile_options.cg profile_main "" "TRIANGLE;Vertices=3")
+add_cg20_geometry_success(cg20_geometry_profile_option_duplicate_equal generic
+    tests/cg20/geometry/options_only.cg main "" "TRIANGLE;Vertices=3;Vertices=3")
+add_cg20_geometry_failure(cg20_geometry_profile_option_mixed_conflict generic
+    tests/cg20/geometry/profile_options.cg profile_main
+    6301 1 conflicting.geometry.profile.option "LINE_ADJ")
+add_cg20_geometry_failure(cg20_geometry_profile_option_duplicate_unequal generic
+    tests/cg20/geometry/options_only.cg main
+    6301 3 conflicting.geometry.profile.option "TRIANGLE;Vertices=2;Vertices=5")
+add_cg20_geometry_failure(cg20_geometry_profile_option_malformed generic
+    tests/cg20/geometry/options_only.cg main
+    6300 2 invalid.geometry.profile.option "TRIANGLE;Vertices=x")
+add_cg20_geometry_failure(cg20_geometry_profile_option_missing_input generic
+    tests/cg20/geometry/options_only.cg main
+    6302 1 input.topology.is.required "Vertices=5")
+
+# Geometry semantic negatives (Step 7): one fixture per wrong direction,
+# type, or shape, each pinning exact code and line.
+
+function(add_cg20_geometry_semantic_negative name entry code line message)
+    string(REPLACE "cg20_" "" source_name "${name}")
+    add_cg20_geometry_failure(${name} generic
+        tests/cg20/diagnostics/${source_name}.cg ${entry}
+        ${code} ${line} ${message} "")
+endfunction()
+
+add_cg20_geometry_semantic_negative(cg20_geometry_semantic_instanceid_type
+    bad_instance_type 6321 5 invalid.value.type)
+add_cg20_geometry_semantic_negative(cg20_geometry_semantic_instanceid_output
+    bad_instance_output 6314 6 invalid.geometry.semantic)
+add_cg20_geometry_semantic_negative(cg20_geometry_semantic_vertexid_shape
+    bad_vertexid_shape 6321 5 invalid.value.type)
+add_cg20_geometry_semantic_negative(cg20_geometry_semantic_vertexid_output
+    bad_vertexid_output 6314 6 invalid.geometry.semantic)
+add_cg20_geometry_semantic_negative(cg20_geometry_semantic_primitiveid_type
+    bad_primitiveid_type 6321 5 invalid.value.type)
+add_cg20_geometry_semantic_negative(cg20_geometry_semantic_layer_type
+    bad_layer 6321 7 invalid.value.type)
+
+# Reachability negatives (Steps 3 and 7): a geometry operation reached
+# from a vertex or fragment entry anchors C6317 at the operation with
+# call-path notes back to the entry, and calling a topology-qualified
+# function as an ordinary helper anchors C6316 at its declaration.
+
+add_cg20_failure(cg20_geometry_stage_vertex
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslv -DENTRY=vertex_main
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_stage_vertex.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_geometry_stage_vertex.txt"
+    -DCODE=6317 -DEXPECTED_LINE=7
+    "-DMESSAGE=reachable.from.a.non-geometry.entry"
+    "-DNOTES=profile failure in function strip_helper\\;reached from entry function vertex_main"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_stage_fragment
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=glslf -DENTRY=fragment_main
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_stage_fragment.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_geometry_stage_fragment.txt"
+    -DCODE=6317 -DEXPECTED_LINE=7
+    "-DMESSAGE=reachable.from.a.non-geometry.entry"
+    "-DNOTES=profile failure in function strip_helper\\;reached from entry function fragment_main"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_entry_call
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic -DENTRY=main
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_entry_call.cg
+    "-DCONFIG=$<CONFIG>"
+    "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_geometry_entry_call.txt"
+    -DCODE=6316 -DEXPECTED_LINE=5
+    "-DMESSAGE=cannot.be.called"
+    "-DNOTES=profile failure in function geometry_entry\\;reached from entry function main"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
 
 # Parser regeneration determinism: regenerating from parser.y must
 # reproduce both checked-in artifacts byte-for-byte without warnings or

@@ -115,7 +115,37 @@ static void ClearDiagnostic(CgGeometryDiagnostic *diagnostic)
     diagnostic->loc.line = 0;
     diagnostic->optionOrdinal = 0;
     diagnostic->optionText = NULL;
+    diagnostic->symbol = NULL;
 } // ClearDiagnostic
+
+/*
+ * CommandLineFileAtom() - The interned "<command-line>" file atom, so
+ *         every option-supplied location shares one stable source.
+ */
+
+static int CommandLineFileAtom(void)
+{
+    static int commandLineAtom = 0;
+
+    if (!commandLineAtom) {
+        commandLineAtom = AddAtom(atable, "<command-line>");
+    }
+    return commandLineAtom;
+} // CommandLineFileAtom
+
+/*
+ * lCommandLineLoc() - Synthesize the SourceLoc of one "-po" option:
+ *         file atom "<command-line>", line optionOrdinal + 1.  This
+ *         gives known Vertices=N metadata and option diagnostics a
+ *         valid stable location without pretending the option came
+ *         from shader source.
+ */
+
+static void lCommandLineLoc(SourceLoc *loc, int ordinal)
+{
+    loc->file = CommandLineFileAtom();
+    loc->line = ordinal + 1;
+} // lCommandLineLoc
 
 /*
  * LookupInputSpelling() - Answer 1 with "answer" set when "text" is
@@ -273,6 +303,9 @@ void CgGeometryInitOptions(CgGeometryOptions *options)
     options->inputOrdinal = 0;
     options->outputOrdinal = 0;
     options->verticesOrdinal = 0;
+    options->inputText = NULL;
+    options->outputText = NULL;
+    options->verticesText = NULL;
 } // CgGeometryInitOptions
 
 /*
@@ -311,6 +344,7 @@ int CgGeometryParseOptions(const CgProfileOption *first,
             if (options->input == CG_GEOMETRY_INPUT_UNKNOWN) {
                 options->input = input;
                 options->inputOrdinal = option->ordinal;
+                options->inputText = option->text;
             }
         } else if (LookupOutputSpelling(option->text, &output)) {
             if (options->output != CG_GEOMETRY_OUTPUT_UNKNOWN &&
@@ -324,6 +358,7 @@ int CgGeometryParseOptions(const CgProfileOption *first,
             if (options->output == CG_GEOMETRY_OUTPUT_UNKNOWN) {
                 options->output = output;
                 options->outputOrdinal = option->ordinal;
+                options->outputText = option->text;
             }
         } else if (!strncmp(option->text, CG_GEOMETRY_VERTICES_PREFIX,
                             verticesPrefixLength)) {
@@ -348,6 +383,7 @@ int CgGeometryParseOptions(const CgProfileOption *first,
                 options->maxOutputVertices = value;
                 options->hasMaxOutputVertices = 1;
                 options->verticesOrdinal = option->ordinal;
+                options->verticesText = option->text;
             }
         } else {
             /* Includes GLSLVersion=150: there is deliberately no hidden
@@ -397,6 +433,7 @@ int CgGeometryResolveConfig(const CgGeometryModifiers *source,
         options->input != source->input) {
         diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_SOURCE_OPTION_CONFLICT;
         diagnostic->optionOrdinal = options->inputOrdinal;
+        diagnostic->optionText = options->inputText;
         return 0;
     }
     if (source->output != CG_GEOMETRY_OUTPUT_UNKNOWN &&
@@ -404,13 +441,37 @@ int CgGeometryResolveConfig(const CgGeometryModifiers *source,
         options->output != source->output) {
         diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_SOURCE_OPTION_CONFLICT;
         diagnostic->optionOrdinal = options->outputOrdinal;
+        diagnostic->optionText = options->outputText;
         return 0;
     }
 
-    config->inputLoc = source->inputLoc;
-    config->outputLoc = source->outputLoc;
-    config->maxVerticesLoc.file = 0;
-    config->maxVerticesLoc.line = 0;
+    /*
+     * Option-supplied locations synthesize "<command-line>" anchors at
+     * their own ordinal; source modifiers keep the declaration site.
+     */
+
+    if (source->input != CG_GEOMETRY_INPUT_UNKNOWN) {
+        config->inputLoc = source->inputLoc;
+    } else if (options->inputText) {
+        lCommandLineLoc(&config->inputLoc, options->inputOrdinal);
+    } else {
+        config->inputLoc.file = 0;
+        config->inputLoc.line = 0;
+    }
+    if (source->output != CG_GEOMETRY_OUTPUT_UNKNOWN) {
+        config->outputLoc = source->outputLoc;
+    } else if (options->outputText) {
+        lCommandLineLoc(&config->outputLoc, options->outputOrdinal);
+    } else {
+        config->outputLoc.file = 0;
+        config->outputLoc.line = 0;
+    }
+    if (options->hasMaxOutputVertices) {
+        lCommandLineLoc(&config->maxVerticesLoc, options->verticesOrdinal);
+    } else {
+        config->maxVerticesLoc.file = 0;
+        config->maxVerticesLoc.line = 0;
+    }
     if (!isGeometry) {
         config->stage = profileStage;
         config->inputTopology = CG_GEOMETRY_INPUT_UNKNOWN;
@@ -423,6 +484,15 @@ int CgGeometryResolveConfig(const CgGeometryModifiers *source,
 
     if (resolvedInput == CG_GEOMETRY_INPUT_UNKNOWN) {
         diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_MISSING_INPUT;
+        /* Anchor at whichever option made this look like a geometry
+         * program; with no options at all the location stays zeroed. */
+        if (options->verticesText) {
+            lCommandLineLoc(&diagnostic->loc, options->verticesOrdinal);
+        } else if (options->outputText) {
+            lCommandLineLoc(&diagnostic->loc, options->outputOrdinal);
+        } else if (options->inputText) {
+            lCommandLineLoc(&diagnostic->loc, options->inputOrdinal);
+        }
         return 0;
     }
     config->stage = CGIR_STAGE_GEOMETRY;
@@ -592,8 +662,16 @@ int CgGeometryValidateAttribArrayDeclaration(
         }
         return 1;
     case CG_GEOMETRY_DECL_HELPER_INPUT:
-        if (!program ||
-            program->config.stage != CGIR_STAGE_GEOMETRY) {
+        if (!program) {
+            /* Declaration time cannot prove reachability and cannot
+             * see option-promoted entries, so the verdict defers to
+             * selected-program analysis, which re-runs this whole
+             * check against the resolved program.  The element rule
+             * above already fired here, so unreached helpers still
+             * answer for their element types. */
+            return 1;
+        }
+        if (program->config.stage != CGIR_STAGE_GEOMETRY) {
             diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE;
             diagnostic->loc = symbol->loc;
             return 0;
@@ -1537,3 +1615,654 @@ int CgGeometryClassifyOperationStatement(CgGeometryProgram *program,
     }
     return 1;
 } // CgGeometryClassifyOperationStatement
+
+/*
+ * Geometry semantic classification and validation:
+ */
+
+/*
+ * The reserved spellings in canonical form; every other canonical
+ * spelling is ordinary.
+ */
+
+typedef struct CgGeometrySemanticClassSpelling_Rec {
+    const char *text;
+    CgGeometrySemanticClass cls;
+} CgGeometrySemanticClassSpelling;
+
+static const CgGeometrySemanticClassSpelling semanticClassSpellings[] = {
+    { "INSTANCEID",  CG_GEOMETRY_SEMANTIC_PRIMITIVE_INPUT },
+    { "VERTEXID",    CG_GEOMETRY_SEMANTIC_VERTEX_INPUT },
+    { "PRIMITIVEID", CG_GEOMETRY_SEMANTIC_PRIMITIVE_ID },
+    { "LAYER",       CG_GEOMETRY_SEMANTIC_OUTPUT }
+};
+
+/*
+ * lClassOfCanonical() - The class of one canonical spelling.
+ */
+
+static CgGeometrySemanticClass lClassOfCanonical(const char *canonical)
+{
+    size_t count;
+    int ii;
+
+    count = sizeof(semanticClassSpellings) /
+            sizeof(semanticClassSpellings[0]);
+    for (ii = 0; ii < (int) count; ii++) {
+        if (!strcmp(canonical, semanticClassSpellings[ii].text)) {
+            return semanticClassSpellings[ii].cls;
+        }
+    }
+    return CG_GEOMETRY_SEMANTIC_ORDINARY;
+} /* lClassOfCanonical */
+
+CgGeometrySemanticClass CgGeometryClassifySemantic(int semantic)
+{
+    return lClassOfCanonical(
+        GetAtomString(atable, lCanonicalSemanticAtom(semantic)));
+} /* CgGeometryClassifySemantic */
+
+/*
+ * lIsScalarOfKind() - True when "type" is a true scalar whose scalar
+ *         kind is exactly "kind"; packed vectors, arrays, attribute
+ *         arrays, structs, and everything else never pass.
+ */
+
+static int lIsScalarOfKind(const Type *type, CgScalarKind kind)
+{
+    if (!type ||
+        (type->properties & TYPE_CATEGORY_MASK) != TYPE_CATEGORY_SCALAR)
+    {
+        return 0;
+    }
+    return GetScalarKind(type) == kind;
+} /* lIsScalarOfKind */
+
+/*
+ * lLegalDirections() - The direction mask one class may appear in:
+ *     the two input-only classes never reach an output slot, LAYER
+ *     never reaches an input, primitive ids and ordinary semantics
+ *     travel both ways.
+ */
+
+static int lLegalDirections(CgGeometrySemanticClass cls)
+{
+    switch (cls) {
+    case CG_GEOMETRY_SEMANTIC_PRIMITIVE_INPUT:
+    case CG_GEOMETRY_SEMANTIC_VERTEX_INPUT:
+        return CG_GEOMETRY_DIRECTION_INPUT;
+    case CG_GEOMETRY_SEMANTIC_OUTPUT:
+        return CG_GEOMETRY_DIRECTION_OUTPUT;
+    case CG_GEOMETRY_SEMANTIC_PRIMITIVE_ID:
+    case CG_GEOMETRY_SEMANTIC_ORDINARY:
+    default:
+        return CG_GEOMETRY_DIRECTION_BOTH;
+    }
+} /* lLegalDirections */
+
+/*
+ * lRejectSemantic() - Fill one failed validation with the structured
+ *         reason and the binding's source spelling; no location anchor
+ *         exists at this layer, so callers attach their own.
+ *
+ * Returns: FALSE always, so call sites read as single conditions.
+ *
+ */
+
+static int lRejectSemantic(CgGeometryDiagnostic *diagnostic,
+                           CgGeometryDiagnosticReason reason,
+                           int semantic)
+{
+    diagnostic->reason = reason;
+    diagnostic->optionText = GetAtomString(atable, semantic);
+    return 0;
+} /* lRejectSemantic */
+
+/*
+ * CgGeometryValidateSemantic() - See cg_geometry.h.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryValidateSemantic(int semantic, Type *type, int direction,
+                               CgGeometryDiagnostic *diagnostic)
+{
+    CgGeometrySemanticClass cls;
+    Type *element;
+
+    ClearDiagnostic(diagnostic);
+    if (!semantic) {
+        /* No annotation binds nothing: nothing to enforce here. */
+        return 1;
+    }
+    if (!(direction & CG_GEOMETRY_DIRECTION_BOTH) ||
+        (direction & ~CG_GEOMETRY_DIRECTION_BOTH))
+    {
+        return lRejectSemantic(diagnostic,
+                               CG_GEOMETRY_DIAGNOSTIC_SEMANTIC,
+                               semantic);
+    }
+    cls = CgGeometryClassifySemantic(semantic);
+    if (direction & ~lLegalDirections(cls)) {
+        return lRejectSemantic(diagnostic,
+                               CG_GEOMETRY_DIAGNOSTIC_SEMANTIC,
+                               semantic);
+    }
+    if (CgIsAttribArray(type) && !CgAttribArrayExtent(type)) {
+        /* Every attribute array carries its selected resolved extent:
+         * the source (zero-extent) type never reaches validation. */
+        return lRejectSemantic(diagnostic,
+                               CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                               semantic);
+    }
+    element = CgAttribArrayElement(type);
+    if (direction & CG_GEOMETRY_DIRECTION_INPUT) {
+        switch (cls) {
+        case CG_GEOMETRY_SEMANTIC_VERTEX_INPUT:
+            if (!lIsScalarOfKind(element, CG_SCALAR_INT)) {
+                return lRejectSemantic(diagnostic,
+                       CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE, semantic);
+            }
+            break;
+        case CG_GEOMETRY_SEMANTIC_ORDINARY:
+            if (!CgIsAttribArray(type)) {
+                return lRejectSemantic(diagnostic,
+                       CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE, semantic);
+            }
+            break;
+        case CG_GEOMETRY_SEMANTIC_PRIMITIVE_ID:
+        case CG_GEOMETRY_SEMANTIC_OUTPUT:
+        default:
+            if (!lIsScalarOfKind(type, CG_SCALAR_INT)) {
+                return lRejectSemantic(diagnostic,
+                       CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE, semantic);
+            }
+            break;
+        }
+    }
+    if (direction & CG_GEOMETRY_DIRECTION_OUTPUT) {
+        switch (cls) {
+        case CG_GEOMETRY_SEMANTIC_PRIMITIVE_ID:
+        case CG_GEOMETRY_SEMANTIC_OUTPUT:
+            if (!lIsScalarOfKind(type, CG_SCALAR_INT)) {
+                return lRejectSemantic(diagnostic,
+                       CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE, semantic);
+            }
+            break;
+        case CG_GEOMETRY_SEMANTIC_ORDINARY:
+        default:
+            if (!lLegalBundleLeafType(type)) {
+                return lRejectSemantic(diagnostic,
+                       CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE, semantic);
+            }
+            break;
+        }
+    }
+    return 1;
+} /* CgGeometryValidateSemantic */
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////// Selected-program analysis: ///////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * lOperationName() - The catalog spelling of one operation kind, so
+ *         stage diagnostics can name the rejected operation.
+ */
+
+static const char *lOperationName(CgGeometryOperationKind kind)
+{
+    switch (kind) {
+    case CG_GEOMETRY_OPERATION_EMIT:
+        return "emitVertex";
+    case CG_GEOMETRY_OPERATION_FLAT:
+        return "flatAttrib";
+    case CG_GEOMETRY_OPERATION_RESTART:
+    default:
+        return "restartStrip";
+    }
+} // lOperationName
+
+/*
+ * lTopologyQualified() - True when the function carries any source
+ *         topology modifier; only such functions may serve as the
+ *         selected entry of a geometry program.
+ */
+
+static int lTopologyQualified(const Symbol *function)
+{
+    return function != NULL &&
+           function->kind == FUNCTION_S &&
+           (function->details.fun.geometry.input !=
+                CG_GEOMETRY_INPUT_UNKNOWN ||
+            function->details.fun.geometry.output !=
+                CG_GEOMETRY_OUTPUT_UNKNOWN);
+} // lTopologyQualified
+
+/*
+ * lEntryCallViolation() - The topology-qualified callee of some call
+ *         nested anywhere inside "fExpr", or NULL when the expression
+ *         only calls ordinary helpers.  The selected entry itself is
+ *         exempt -- being called is the one legal use of its modifiers.
+ */
+
+static Symbol *lEntryCallViolation(const expr *fExpr, const Symbol *entry)
+{
+    const Symbol *callee;
+    Symbol *found;
+
+    if (!fExpr) {
+        return NULL;
+    }
+    switch (fExpr->common.kind) {
+    case BINARY_N:
+        if ((fExpr->bin.op == FUN_CALL_OP ||
+             fExpr->bin.op == FUN_INTRINSIC_OP) &&
+            fExpr->bin.left != NULL &&
+            fExpr->bin.left->common.kind == SYMB_N &&
+            fExpr->bin.left->sym.symbol != NULL &&
+            fExpr->bin.left->sym.symbol->kind == FUNCTION_S)
+        {
+            callee = fExpr->bin.left->sym.symbol;
+            if (callee != entry && lTopologyQualified(callee)) {
+                return (Symbol *) callee;
+            }
+        }
+        found = lEntryCallViolation(fExpr->bin.left, entry);
+        if (!found) {
+            found = lEntryCallViolation(fExpr->bin.right, entry);
+        }
+        return found;
+    case UNARY_N:
+        return lEntryCallViolation(fExpr->un.arg, entry);
+    case TRINARY_N:
+        found = lEntryCallViolation(fExpr->tri.arg1, entry);
+        if (!found) {
+            found = lEntryCallViolation(fExpr->tri.arg2, entry);
+        }
+        if (!found) {
+            found = lEntryCallViolation(fExpr->tri.arg3, entry);
+        }
+        return found;
+    case SYMB_N:
+    case CONST_N:
+    default:
+        return NULL;
+    }
+} // lEntryCallViolation
+
+/*
+ * lFailEntryCall() - Fill the structured rejection of a call to a
+ *         topology-qualified function anchored at that function's own
+ *         declaration, the one location every call site shares.
+ */
+
+static void lFailEntryCall(CgGeometryDiagnostic *diagnostic,
+                           const Symbol *callee)
+{
+    diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ENTRY_CALL;
+    diagnostic->loc = callee->loc;
+    diagnostic->optionText = GetAtomString(atable, callee->name);
+    diagnostic->symbol = callee;
+} // lFailEntryCall
+
+/*
+ * lValidateOperationValues() - One resolved operation's output values
+ *         against the geometry semantic rules; each failure anchors at
+ *         the value's own origin and keeps the failing function for
+ *         call-path notes.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+static int lValidateOperationValues(
+    const CgGeometryProgram *program,
+    const Symbol *function,
+    const CgGeometryOperation *operation,
+    CgGeometryDiagnostic *diagnostic)
+{
+    const CgGeometryValue *value;
+
+    (void) program;
+    for (value = operation->values; value != NULL; value = value->next) {
+        if (!CgGeometryValidateSemantic(value->canonicalSemantic,
+                                        value->type,
+                                        CG_GEOMETRY_DIRECTION_OUTPUT,
+                                        diagnostic)) {
+            diagnostic->loc = value->loc;
+            diagnostic->symbol = function;
+            return 0;
+        }
+    }
+    return 1;
+} // lValidateOperationValues
+
+static int lAnalyzeStmtChain(CgGeometryProgram *program,
+                             const Symbol *entry,
+                             const Symbol *function,
+                             stmt *fStmt,
+                             CgGeometryDiagnostic *diagnostic);
+
+/*
+ * lAnalyzeStatement() - One statement of a reachable body: reject
+ *         topology-qualified callees first, then classify the
+ *         operation statement, gate any produced record against the
+ *         selected stage, and validate its output values.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+static int lAnalyzeStatement(CgGeometryProgram *program,
+                             const Symbol *entry,
+                             const Symbol *function,
+                             stmt *statement,
+                             CgGeometryDiagnostic *diagnostic)
+{
+    Symbol *violator;
+    CgGeometryOperation *operation;
+
+    violator = NULL;
+    if (statement->commonst.kind == EXPR_STMT) {
+        violator = lEntryCallViolation(statement->exprst.exp, entry);
+    }
+    if (violator) {
+        lFailEntryCall(diagnostic, violator);
+        return 0;
+    }
+    if (!CgGeometryClassifyOperationStatement(program, statement,
+                                              diagnostic)) {
+        if (diagnostic->reason == CG_GEOMETRY_DIAGNOSTIC_ALLOCATION) {
+            program->failed = 1;
+        }
+        return 0;
+    }
+    operation = CgGeometryFindOperation(program, statement);
+    if (operation == NULL) {
+        return 1;
+    }
+    if (program->config.stage != CGIR_STAGE_GEOMETRY) {
+        diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_REACHABLE_STAGE;
+        diagnostic->loc = operation->loc;
+        diagnostic->optionText = lOperationName(operation->kind);
+        diagnostic->symbol = function;
+        return 0;
+    }
+    return lValidateOperationValues(program, function, operation,
+                                    diagnostic);
+} // lAnalyzeStatement
+
+/*
+ * lAnalyzeStmtChain() - Walk one reachable statement chain in source
+ *         order, recursing into every nested chain exactly like the
+ *         global sweep so dead code answers identically.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+static int lAnalyzeStmtChain(CgGeometryProgram *program,
+                             const Symbol *entry,
+                             const Symbol *function,
+                             stmt *fStmt,
+                             CgGeometryDiagnostic *diagnostic)
+{
+    Symbol *violator;
+
+    for (; fStmt != NULL; fStmt = fStmt->commonst.next) {
+        switch (fStmt->commonst.kind) {
+        case EXPR_STMT:
+        case COMMENT_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+            if (!lAnalyzeStatement(program, entry, function, fStmt,
+                                   diagnostic)) {
+                return 0;
+            }
+            break;
+        case IF_STMT:
+            violator = lEntryCallViolation(fStmt->ifst.cond, entry);
+            if (violator) {
+                lFailEntryCall(diagnostic, violator);
+                return 0;
+            }
+            if (!lAnalyzeStmtChain(program, entry, function,
+                                   fStmt->ifst.thenstmt, diagnostic) ||
+                !lAnalyzeStmtChain(program, entry, function,
+                                   fStmt->ifst.elsestmt, diagnostic)) {
+                return 0;
+            }
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            violator = lEntryCallViolation(fStmt->whilest.cond, entry);
+            if (violator) {
+                lFailEntryCall(diagnostic, violator);
+                return 0;
+            }
+            if (!lAnalyzeStmtChain(program, entry, function,
+                                   fStmt->whilest.body, diagnostic)) {
+                return 0;
+            }
+            break;
+        case FOR_STMT:
+            if (!lAnalyzeStmtChain(program, entry, function,
+                                   fStmt->forst.init, diagnostic)) {
+                return 0;
+            }
+            violator = lEntryCallViolation(fStmt->forst.cond, entry);
+            if (violator) {
+                lFailEntryCall(diagnostic, violator);
+                return 0;
+            }
+            if (!lAnalyzeStmtChain(program, entry, function,
+                                   fStmt->forst.step, diagnostic) ||
+                !lAnalyzeStmtChain(program, entry, function,
+                                   fStmt->forst.body, diagnostic)) {
+                return 0;
+            }
+            break;
+        case BLOCK_STMT:
+            if (!lAnalyzeStmtChain(program, entry, function,
+                                   fStmt->blockst.body, diagnostic)) {
+                return 0;
+            }
+            break;
+        case RETURN_STMT:
+            violator = lEntryCallViolation(fStmt->returnst.exp, entry);
+            if (violator) {
+                lFailEntryCall(diagnostic, violator);
+                return 0;
+            }
+            break;
+        case DISCARD_STMT:
+            violator = lEntryCallViolation(fStmt->discardst.cond, entry);
+            if (violator) {
+                lFailEntryCall(diagnostic, violator);
+                return 0;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return 1;
+} // lAnalyzeStmtChain
+
+/*
+ * lAnalyzeFormals() - One reachable function's parameter interface.
+ *     Attribute-array formals re-run placement validation against the
+ *     now-resolved program (helper inputs stand or fall with proven
+ *     reachability).  Under a geometry stage the vertex/primitive
+ *     interface classifies in full -- attribute arrays with their
+ *     resolved views, plus every geometry-special binding -- while
+ *     ordinary semantics on plain types stay the legacy varying
+ *     interface the program binder already judged.  Non-geometry
+ *     stages leave binding semantics alone: those rules are geometry
+ *     rules.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+static int lAnalyzeFormals(CgGeometryProgram *program,
+                           const Symbol *function,
+                           CgGeometryDiagnostic *diagnostic)
+{
+    Symbol *formal;
+    Type *effective;
+    CgGeometryDeclarationUse use;
+    int isEntry;
+
+    isEntry = function == program->entry;
+    for (formal = function->details.fun.params; formal != NULL;
+         formal = formal->next)
+    {
+        if (!CgIsAttribArray(formal->type)) {
+            continue;
+        }
+        use = isEntry ? CG_GEOMETRY_DECL_ENTRY_INPUT
+                      : CG_GEOMETRY_DECL_HELPER_INPUT;
+        if (!CgGeometryValidateAttribArrayDeclaration(program, formal,
+                                                      use, diagnostic)) {
+            diagnostic->loc = formal->loc;
+            diagnostic->symbol = function;
+            return 0;
+        }
+    }
+    if (program->config.stage != CGIR_STAGE_GEOMETRY) {
+        return 1;
+    }
+    for (formal = function->details.fun.params; formal != NULL;
+         formal = formal->next)
+    {
+        if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM) {
+            continue;
+        }
+        /* Attribute arrays and geometry-special bindings carry the
+         * vertex/primitive interface and validate in full; ordinary
+         * semantics on plain types stay the legacy varying interface
+         * the binder already judged. */
+        if (!CgIsAttribArray(formal->type) &&
+            CgGeometryClassifySemantic(
+                formal->details.var.semantics) ==
+                CG_GEOMETRY_SEMANTIC_ORDINARY)
+        {
+            continue;
+        }
+        effective = CgGeometryFindResolvedType(program, formal->type);
+        if (!effective) {
+            effective = formal->type;
+        }
+        if (!CgGeometryValidateSemantic(formal->details.var.semantics,
+                                        effective,
+                                        CG_GEOMETRY_DIRECTION_INPUT,
+                                        diagnostic)) {
+            diagnostic->loc = formal->loc;
+            diagnostic->symbol = function;
+            return 0;
+        }
+    }
+    return 1;
+} // lAnalyzeFormals
+
+/*
+ * lAnchorOptionDiagnostic() - Give option-family failures their
+ *         "<command-line>" anchor; the parse layer records the
+ *         offending ordinal, this fills the matching synthesized
+ *         location.  Missing input anchors itself in
+ *         CgGeometryResolveConfig.
+ */
+
+static void lAnchorOptionDiagnostic(CgGeometryDiagnostic *diagnostic,
+                                    const CgGeometryOptions *options)
+{
+    switch (diagnostic->reason) {
+    case CG_GEOMETRY_DIAGNOSTIC_UNKNOWN_OPTION:
+    case CG_GEOMETRY_DIAGNOSTIC_MALFORMED_VERTICES:
+    case CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_INPUT:
+    case CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_OUTPUT:
+    case CG_GEOMETRY_DIAGNOSTIC_DUPLICATE_VERTICES:
+    case CG_GEOMETRY_DIAGNOSTIC_SOURCE_OPTION_CONFLICT:
+        lCommandLineLoc(&diagnostic->loc, diagnostic->optionOrdinal);
+        break;
+    default:
+        break;
+    }
+} // lAnchorOptionDiagnostic
+
+/*
+ * CgGeometryAnalyzeProgram() - See cg_geometry.h.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryAnalyzeProgram(CgGeometryProgram *program,
+                             Scope *globalScope,
+                             Symbol *entry,
+                             const CgReachGraph *reach,
+                             const CgProfileOption *profileOptions,
+                             CgIRStage profileStage,
+                             CgGeometryDiagnostic *diagnostic)
+{
+    CgGeometryModifiers source;
+    CgGeometryOptions options;
+    const CgReachNode *node;
+    Symbol *function;
+    int ii;
+
+    (void) globalScope;
+    if (!program || !program->alloc || !entry || !reach || !diagnostic) {
+        if (program) {
+            program->failed = 1;
+        }
+        if (diagnostic) {
+            ClearDiagnostic(diagnostic);
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_ALLOCATION;
+        }
+        return 0;
+    }
+    ClearDiagnostic(diagnostic);
+    source = entry->details.fun.geometry;
+    CgGeometryInitOptions(&options);
+    if (!CgGeometryParseOptions(profileOptions, &options, diagnostic)) {
+        lAnchorOptionDiagnostic(diagnostic, &options);
+        return 0;
+    }
+    if (!CgGeometryResolveConfig(&source, &options, profileStage,
+                                 &program->config, diagnostic)) {
+        lAnchorOptionDiagnostic(diagnostic, &options);
+        return 0;
+    }
+    program->entry = entry;
+    if (program->config.stage == CGIR_STAGE_GEOMETRY &&
+        !CgGeometryResolveLengths(program, reach, diagnostic)) {
+        program->failed = 1;
+        return 0;
+    }
+    for (ii = 0; ii < reach->nodeCount; ii++) {
+        node = &reach->nodes[ii];
+        function = node->symbol;
+        if (!function || function->kind != FUNCTION_S) {
+            continue;
+        }
+        if (function != entry && lTopologyQualified(function)) {
+            lFailEntryCall(diagnostic, function);
+            return 0;
+        }
+        if (!lAnalyzeFormals(program, function, diagnostic) ||
+            !lAnalyzeStmtChain(program, entry, function,
+                               function->details.fun.statements,
+                               diagnostic)) {
+            if (diagnostic->reason ==
+                CG_GEOMETRY_DIAGNOSTIC_ALLOCATION) {
+                program->failed = 1;
+            }
+            return 0;
+        }
+    }
+    return 1;
+} // CgGeometryAnalyzeProgram

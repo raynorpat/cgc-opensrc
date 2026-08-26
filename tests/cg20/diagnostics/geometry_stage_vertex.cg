@@ -1,0 +1,13 @@
+/* Task 5 negative: restartStrip() is reachable from a plain vertex
+   entry, so the operation itself anchors the stage diagnostic (C6317)
+   with witness notes back to the entry. */
+
+void strip_helper(void)
+{
+    restartStrip();
+}
+
+void vertex_main(float4 p : POSITION)
+{
+    strip_helper();
+}

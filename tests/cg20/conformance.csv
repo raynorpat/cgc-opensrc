@@ -280,3 +280,23 @@ GEOM-OPERATION-ARGUMENT-DIAG,invalid-language,cg20_geometry_operation_nested_arg
 GEOM-OPERATION-ARITHMETIC-DIAG,invalid-language,cg20_geometry_operation_nested_arithmetic,Geometry programs
 GEOM-OPERATION-LEGACY-REJECT,invalid-language,cg20_geometry_operation_cg11,Cg language policy
 GEOM-OPERATION-ANNOTATION-LEGACY-REJECT,invalid-language,cg20_geometry_operation_annotation_cg11,Cg language policy
+GEOM-SEMANTIC-DIRECTIONS,valid-generic,cg20_geometry_semantics,Geometry semantics
+GEOM-REACH-HELPERS,valid-generic,cg20_geometry_reachable_helper,Reachability
+GEOM-UNREACHABLE-VALID,valid-generic,cg20_geometry_unreachable_helper,Reachability
+GEOM-OPTION-SOURCE-ONLY,valid-generic,cg20_geometry_profile_option_source_only,Geometry profile options
+GEOM-OPTION-OPTIONS-MATRIX,valid-generic,cg20_geometry_profile_option_options_only,Geometry profile options
+GEOM-OPTION-MIXED-MATCH,valid-generic,cg20_geometry_profile_option_mixed_match,Geometry profile options
+GEOM-OPTION-DUPLICATE-EQUAL,valid-generic,cg20_geometry_profile_option_duplicate_equal,Geometry profile options
+GEOM-OPTION-MIXED-CONFLICT-DIAG,invalid-language,cg20_geometry_profile_option_mixed_conflict,Geometry profile options
+GEOM-OPTION-DUPLICATE-UNEQUAL-DIAG,invalid-language,cg20_geometry_profile_option_duplicate_unequal,Geometry profile options
+GEOM-OPTION-MALFORMED-DIAG,invalid-language,cg20_geometry_profile_option_malformed,Geometry profile options
+GEOM-OPTION-MISSING-INPUT-DIAG,invalid-language,cg20_geometry_profile_option_missing_input,Geometry profile options
+GEOM-SEMANTIC-INSTANCEID-TYPE-DIAG,invalid-language,cg20_geometry_semantic_instanceid_type,Geometry programs
+GEOM-SEMANTIC-INSTANCEID-OUTPUT-DIAG,invalid-language,cg20_geometry_semantic_instanceid_output,Geometry programs
+GEOM-SEMANTIC-VERTEXID-SHAPE-DIAG,invalid-language,cg20_geometry_semantic_vertexid_shape,Geometry programs
+GEOM-SEMANTIC-VERTEXID-OUTPUT-DIAG,invalid-language,cg20_geometry_semantic_vertexid_output,Geometry programs
+GEOM-SEMANTIC-PRIMITIVEID-TYPE-DIAG,invalid-language,cg20_geometry_semantic_primitiveid_type,Geometry programs
+GEOM-SEMANTIC-LAYER-TYPE-DIAG,invalid-language,cg20_geometry_semantic_layer_type,Geometry programs
+GEOM-STAGE-VERTEX-DIAG,invalid-language,cg20_geometry_stage_vertex,Reachability
+GEOM-STAGE-FRAGMENT-DIAG,invalid-language,cg20_geometry_stage_fragment,Reachability
+GEOM-ENTRY-CALL-DIAG,invalid-language,cg20_geometry_entry_call,Geometry programs

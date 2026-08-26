@@ -73,6 +73,57 @@ static void *lIRPoolAlloc(void *arg, size_t size)
     return mem_Calloc((MemoryPool *) arg, size, 1);
 } // lIRPoolAlloc
 
+/*
+ * CgGeometryPoolAlloc() - The selected geometry program's resolution
+ *          state lives in the compilation's global-scope memory pool
+ *          beside the Cg IR nodes: zero-filled, released with the
+ *          symbol table.
+ */
+
+static void *CgGeometryPoolAlloc(void *arg, size_t size)
+{
+    return mem_Calloc((MemoryPool *) arg, size, 1);
+} // CgGeometryPoolAlloc
+
+/*
+ * lInstallGeometryTypeViews() - Hand the analyzed program's resolved
+ *          attribute-array types to the lowering pipeline: every
+ *          reachable function's array formal adopts its resolved view
+ *          (element plus selected input-vertex-count extent) so the
+ *          old lowering call sees canonical shapes.  Task 6/7 replace
+ *          this seam with real geometry metadata in the IR.
+ */
+
+static void lInstallGeometryTypeViews(const CgGeometryProgram *geometry,
+                                      const CgReachGraph *reach)
+{
+    const CgReachNode *node;
+    Symbol *function;
+    Symbol *formal;
+    Type *resolved;
+    int ii;
+
+    for (ii = 0; ii < reach->nodeCount; ii++) {
+        node = &reach->nodes[ii];
+        function = node->symbol;
+        if (!function || function->kind != FUNCTION_S) {
+            continue;
+        }
+        for (formal = function->details.fun.params; formal != NULL;
+             formal = formal->next)
+        {
+            if (!CgIsAttribArray(formal->type)) {
+                continue;
+            }
+            resolved = CgGeometryFindResolvedType(geometry,
+                                                  formal->type);
+            if (resolved) {
+                formal->type = resolved;
+            }
+        }
+    }
+} // lInstallGeometryTypeViews
+
 ///////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////// Global geometry operation classification: ///////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////
@@ -80,14 +131,32 @@ static void *lIRPoolAlloc(void *arg, size_t size)
 /*
  * lReportGeometryDiagnostic() - Map one structured geometry reason to
  *          its stable diagnostic at the reason's own location.  The
- *          optionText slot carries the operation or semantic spelling
- *          where the message takes one.
+ *          optionText slot carries the operation, semantic, or option
+ *          spelling where the message takes one.
  */
 
 static void lReportGeometryDiagnostic(
     const CgGeometryDiagnostic *diagnostic)
 {
     switch (diagnostic->reason) {
+    case CG_GEOMETRY_DIAGNOSTIC_UNKNOWN_OPTION:
+    case CG_GEOMETRY_DIAGNOSTIC_MALFORMED_VERTICES:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_PROFILE_OPTION,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_INPUT:
+    case CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_OUTPUT:
+    case CG_GEOMETRY_DIAGNOSTIC_DUPLICATE_VERTICES:
+    case CG_GEOMETRY_DIAGNOSTIC_SOURCE_OPTION_CONFLICT:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_PROFILE_CONFLICT,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_MISSING_INPUT:
+        SemanticError(&diagnostic->loc,
+                      ERROR___GEOMETRY_INPUT_REQUIRED);
+        break;
     case CG_GEOMETRY_DIAGNOSTIC_OPERATION_ARITY:
         SemanticError(&diagnostic->loc,
                       ERROR_S_GEOMETRY_OPERATION_ARITY,
@@ -115,9 +184,28 @@ static void lReportGeometryDiagnostic(
         SemanticError(&diagnostic->loc,
                       ERROR___GEOMETRY_VALUE_TYPE);
         break;
+    case CG_GEOMETRY_DIAGNOSTIC_SEMANTIC:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_SEMANTIC,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_ENTRY_CALL:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_ENTRY_CALL,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_REACHABLE_STAGE:
+        SemanticError(&diagnostic->loc,
+                      ERROR_S_GEOMETRY_STAGE,
+                      diagnostic->optionText);
+        break;
+    case CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE:
+        SemanticError(&diagnostic->loc,
+                      ERROR___GEOMETRY_ATTRIB_STAGE);
+        break;
     default:
         InternalError(&diagnostic->loc, ERROR_S_CG_IR_INVARIANT,
-                      "geometry operation classification");
+                      "geometry program analysis");
         break;
     }
 } // lReportGeometryDiagnostic
@@ -206,6 +294,41 @@ static void lClassifyGeometryOperations(SourceLoc *loc, Scope *fScope)
 } // lClassifyGeometryOperations
 
 /*
+ * lSweepStrayAttribArrays() - Under a non-geometry compilation no
+ *          attribute-array formal can ever be legal on an unqualified
+ *          function, but selected-program analysis only sees the
+ *          reachable set.  Reject every remaining array formal on a
+ *          function other than the entry that carries no topology
+ *          modifiers of its own, with the stable stage rule at its
+ *          declaration.  Topology-qualified helpers self-certify.
+ */
+
+static void lSweepStrayAttribArrays(Symbol *fSymb, Symbol *entry)
+{
+    Symbol *formal;
+
+    if (!fSymb) {
+        return;
+    }
+    lSweepStrayAttribArrays(fSymb->left, entry);
+    if (fSymb->kind == FUNCTION_S && fSymb != entry &&
+        fSymb->details.fun.geometry.input == CG_GEOMETRY_INPUT_UNKNOWN &&
+        fSymb->details.fun.geometry.output == CG_GEOMETRY_OUTPUT_UNKNOWN)
+    {
+        for (formal = fSymb->details.fun.params; formal != NULL;
+             formal = formal->next)
+        {
+            if (CgIsAttribArray(formal->type)) {
+                SemanticError(&formal->loc,
+                              ERROR___GEOMETRY_ATTRIB_STAGE);
+            }
+        }
+    }
+    lSweepStrayAttribArrays(fSymb->right, entry);
+} // lSweepStrayAttribArrays
+
+
+/*
  * lLowerAndVerifyIR() - Cg 2.0 seam: after entry selection and language
  *          checking, compute the reachable set, lower the typed tree,
  *          and verify the module.  On verification failure exactly one
@@ -224,6 +347,9 @@ static void lClassifyGeometryOperations(SourceLoc *loc, Scope *fScope)
 static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
                              CgIRModule *moduleOut, CgReachGraph *reach)
 {
+    CgGeometryProgram geometry;
+    CgGeometryDiagnostic geometryDiagnostic;
+    CgIRStage profileStage;
     CgIRLowerContext context;
     int OK;
 
@@ -232,6 +358,33 @@ static int lLowerAndVerifyIR(SourceLoc *loc, Scope *fScope, Symbol *program,
         InternalError(loc, ERROR_S_CG_IR_INVARIANT, "reachability build");
         return 0;
     }
+
+    // Selected-program analysis (Task 5): with reachability proven,
+    // resolve the geometry configuration and interfaces before any
+    // lowering runs.  -nocode follows this same path, so invalid
+    // geometry source fails identically without ever publishing.
+
+    if (CgLanguageAllowsGeometry(Cg->options.languageVersion)) {
+        profileStage = CgProfileProgramStage(&Cg->theHAL->profileIdentity);
+        CgGeometryInitProgram(&geometry, CgGeometryPoolAlloc,
+                              fScope->pool);
+        if (!CgGeometryAnalyzeProgram(&geometry, fScope, program, reach,
+                                      Cg->options.profileOptions,
+                                      profileStage,
+                                      &geometryDiagnostic)) {
+            lReportGeometryDiagnostic(&geometryDiagnostic);
+            ReportProfileCallPath(geometryDiagnostic.symbol);
+            return 0;
+        }
+        if (geometry.config.stage != CGIR_STAGE_GEOMETRY) {
+            lSweepStrayAttribArrays(fScope->symbols, program);
+            if (GetErrorCount() != 0) {
+                return 0;
+            }
+        }
+        lInstallGeometryTypeViews(&geometry, reach);
+    }
+
     CgIRInitModule(moduleOut, lIRPoolAlloc, fScope->pool);
     context.module = moduleOut;
     context.reach = reach;

@@ -52,6 +52,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_stdlib.h"    // CgIntrinsicIsGeometrySpecial for call checking
 static int CheckFunctionDefinition(Scope *fScope, Symbol *funSymb, int IsProgram);
 
 #define NOT_CHECKED     0
@@ -309,6 +310,18 @@ static expr *CheckNodeForUndefinedFunctions(expr *fExpr, void *arg1, int arg2)
             if (lExpr->common.kind == SYMB_N) {
                 lSymb = lExpr->sym.symbol;
                 if (IsFunction(lSymb)) {
+                    const CgIntrinsicSignature *lSignature =
+                        CgIntrinsicSignatureForSymbol(lSymb);
+
+                    if (lSignature &&
+                        CgIntrinsicIsGeometrySpecial(lSignature->intrinsic))
+                    {
+                        /* Geometry operations are catalog intrinsics
+                         * without bodies on purpose: selected-program
+                         * analysis and lowering own them, so the
+                         * defined-body rule never applies. */
+                        break;
+                    }
                     if (!(lSymb->properties & SYMB_IS_DEFINED)) {
                         SemanticError(Cg->pLastSourceLoc, ERROR_S_CALL_UNDEF_FUN,
                                       GetAtomString(atable, lSymb->name));

@@ -1,0 +1,13 @@
+/* Task 5 negative: the same stage rule under a fragment-style entry --
+   restartStrip() reached from anything but a geometry program anchors
+   C6317 at the operation with notes back to the entry. */
+
+void strip_helper(void)
+{
+    restartStrip();
+}
+
+void fragment_main(float4 color : COLOR0)
+{
+    strip_helper();
+}

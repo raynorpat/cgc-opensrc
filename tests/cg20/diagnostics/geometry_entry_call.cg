@@ -1,0 +1,13 @@
+/* Task 5 negative: a topology-qualified function cannot be called as
+   an ordinary helper; the rejection anchors at its declaration
+   (C6316) and walks the call path back to main. */
+
+POINT void geometry_entry(void)
+{
+    restartStrip();
+}
+
+void main(float4 q : POSITION)
+{
+    geometry_entry();
+}

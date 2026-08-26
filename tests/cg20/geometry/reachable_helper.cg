@@ -1,0 +1,21 @@
+/* Task 5 fixture: operations reached through two helper levels stay
+   legal under the selected geometry entry, and every reached function
+   validates against this compilation's stage only. */
+
+uniform float4 tint;
+
+void leaf_emit(void)
+{
+    emitVertex(tint : COLOR0);
+}
+
+void middle_helper(void)
+{
+    leaf_emit();
+    restartStrip();
+}
+
+TRIANGLE void reachable_main(AttribArray<float4> p : POSITION)
+{
+    middle_helper();
+}

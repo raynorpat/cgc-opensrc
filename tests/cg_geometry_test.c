@@ -1,4 +1,4 @@
-/****************************************************************************\
+﻿/****************************************************************************\
 Copyright (c) 2002, NVIDIA Corporation.
 
 NVIDIA Corporation("NVIDIA") supplies this software to you in
@@ -812,12 +812,12 @@ static void TestAttribArrayDeclarationValidation(void)
            CG_GEOMETRY_DECL_HELPER_INPUT, &diagnostic));
     assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
 
-    /* Helper inputs without a resolved geometry program are rejected:
-       reachability is proven only by selected-program analysis. */
-    assert(!CgGeometryValidateAttribArrayDeclaration(NULL, &formal,
+    /* Helper inputs without a resolved program defer: declaration
+       time cannot prove reachability or resolve option-promoted
+       entries, so selected-program analysis answers the stage rule. */
+    assert(CgGeometryValidateAttribArrayDeclaration(NULL, &formal,
            CG_GEOMETRY_DECL_HELPER_INPUT, &diagnostic));
-    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE);
-    assert(diagnostic.loc.line == 9);
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
     assert(!CgGeometryValidateAttribArrayDeclaration(&neutral, &formal,
            CG_GEOMETRY_DECL_HELPER_INPUT, &diagnostic));
     assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_ATTRIB_STAGE);
@@ -1924,6 +1924,236 @@ static void TestClassifyRejectsNestedContexts(void)
     assert(diagnostic.loc.line == 13);
 }
 
+/*
+ * SemanticCase - One reserved-semantic row: its spelling, the class
+ *         CgGeometryClassifySemantic must answer, the directions the
+ *         binding is legal in, the scalar kind of its payload (the
+ *         element kind when "isAttribArray" is set), and whether the
+ *         payload travels as AttribArray<T>.
+ */
+
+typedef struct SemanticCase_Rec {
+    const char *name;
+    CgGeometrySemanticClass expected;
+    int direction;
+    CgScalarKind scalar;
+    int isAttribArray;
+} SemanticCase;
+
+static const SemanticCase lSemanticCases[] = {
+    { "INSTANCEID", CG_GEOMETRY_SEMANTIC_PRIMITIVE_INPUT,
+      CG_GEOMETRY_DIRECTION_INPUT, CG_SCALAR_INT, 0 },
+    { "VERTEXID", CG_GEOMETRY_SEMANTIC_VERTEX_INPUT,
+      CG_GEOMETRY_DIRECTION_INPUT, CG_SCALAR_INT, 1 },
+    { "PRIMITIVEID", CG_GEOMETRY_SEMANTIC_PRIMITIVE_ID,
+      CG_GEOMETRY_DIRECTION_BOTH, CG_SCALAR_INT, 0 },
+    { "LAYER", CG_GEOMETRY_SEMANTIC_OUTPUT,
+      CG_GEOMETRY_DIRECTION_OUTPUT, CG_SCALAR_INT, 0 }
+};
+
+static const char *lSemanticLower[] = {
+    "instanceid", "vertexid", "primitiveid", "layer"
+};
+
+static const char *lSemanticMixed[] = {
+    "InstanceId", "VertexId", "PrimitiveId", "Layer"
+};
+
+/*
+ * ExpectSemanticFailure() - One failed validation naming the source
+ *         spelling with the structured reason and no location anchor.
+ */
+
+static void ExpectSemanticFailure(int semantic, Type *type, int direction,
+                                  CgGeometryDiagnosticReason reason,
+                                  const char *spelling,
+                                  CgGeometryDiagnostic *diagnostic)
+{
+    assert(!CgGeometryValidateSemantic(semantic, type, direction,
+                                       diagnostic));
+    if (diagnostic->reason != reason ||
+        diagnostic->loc.file != 0 || diagnostic->loc.line != 0 ||
+        diagnostic->optionText == NULL ||
+        strcmp(diagnostic->optionText, spelling) != 0)
+    {
+        fprintf(stdout, "FAIL semantic=%d reason=%d text=%s\n",
+                semantic, (int) diagnostic->reason,
+                diagnostic->optionText ? diagnostic->optionText :
+                "(null)");
+        fflush(stdout);
+        assert(0);
+    }
+}
+
+/*
+ * TestSemanticClassificationAndValidation() - The four reserved
+ *         semantics classify by canonical spelling with case variants
+ *         answering identically; each validates on exactly its legal
+ *         directions and shapes; wrong directions name the semantic,
+ *         wrong scalar kinds and unresolved or non-array shapes fail
+ *         as value-type errors; ordinary named inputs carry a resolved
+ *         AttribArray<T> while ordinary outputs keep legal emit-leaf
+ *         shapes; an absent semantic always validates.
+ */
+
+static void TestSemanticClassificationAndValidation(void)
+{
+    CgGeometryDiagnostic diagnostic;
+    Type *scalar;
+    Type *array;
+    Type *type;
+    int atom;
+    int lower;
+    int mixed;
+    int position;
+    int unknown;
+    int ii;
+
+    for (ii = 0; ii < 4; ii++) {
+        scalar = GetStandardTypeKind(lSemanticCases[ii].scalar, 0, 0);
+        array = CgGetAttribArrayType(scalar, 3);
+        type = lSemanticCases[ii].isAttribArray ? array : scalar;
+        atom = TestAtom(lSemanticCases[ii].name);
+        lower = TestAtom(lSemanticLower[ii]);
+        mixed = TestAtom(lSemanticMixed[ii]);
+
+        assert(scalar != NULL);
+        assert(GetScalarKind(scalar) == lSemanticCases[ii].scalar);
+        assert(CgGeometryClassifySemantic(atom) ==
+               lSemanticCases[ii].expected);
+        assert(CgGeometryClassifySemantic(lower) ==
+               lSemanticCases[ii].expected);
+        assert(CgGeometryClassifySemantic(mixed) ==
+               lSemanticCases[ii].expected);
+
+        /* Each legal direction validates clean and clears state. */
+        diagnostic.reason = CG_GEOMETRY_DIAGNOSTIC_STAGE_CONFLICT;
+        if (lSemanticCases[ii].direction & CG_GEOMETRY_DIRECTION_INPUT) {
+            assert(CgGeometryValidateSemantic(atom, type,
+                   CG_GEOMETRY_DIRECTION_INPUT, &diagnostic));
+        }
+        if (lSemanticCases[ii].direction &
+            CG_GEOMETRY_DIRECTION_OUTPUT) {
+            assert(CgGeometryValidateSemantic(atom, type,
+                   CG_GEOMETRY_DIRECTION_OUTPUT, &diagnostic));
+        }
+        assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+        if (lSemanticCases[ii].direction == CG_GEOMETRY_DIRECTION_BOTH) {
+            assert(CgGeometryValidateSemantic(atom, type,
+                   CG_GEOMETRY_DIRECTION_BOTH, &diagnostic));
+        }
+
+        /* Never-input and never-output rules name the spelling. */
+        if (!(lSemanticCases[ii].direction &
+              CG_GEOMETRY_DIRECTION_INPUT)) {
+            ExpectSemanticFailure(atom, type,
+                                  CG_GEOMETRY_DIRECTION_INPUT,
+                                  CG_GEOMETRY_DIAGNOSTIC_SEMANTIC,
+                                  lSemanticCases[ii].name, &diagnostic);
+            ExpectSemanticFailure(lower, type,
+                                  CG_GEOMETRY_DIRECTION_BOTH,
+                                  CG_GEOMETRY_DIAGNOSTIC_SEMANTIC,
+                                  lSemanticLower[ii], &diagnostic);
+        }
+        if (!(lSemanticCases[ii].direction &
+              CG_GEOMETRY_DIRECTION_OUTPUT)) {
+            ExpectSemanticFailure(atom, type,
+                                  CG_GEOMETRY_DIRECTION_OUTPUT,
+                                  CG_GEOMETRY_DIAGNOSTIC_SEMANTIC,
+                                  lSemanticCases[ii].name, &diagnostic);
+            ExpectSemanticFailure(mixed, type,
+                                  CG_GEOMETRY_DIRECTION_OUTPUT,
+                                  CG_GEOMETRY_DIAGNOSTIC_SEMANTIC,
+                                  lSemanticMixed[ii], &diagnostic);
+        }
+    }
+
+    /* Wrong scalar kinds and wrong shapes fail as value-type errors
+     * at every reserved semantic, whatever the spelling. */
+    ExpectSemanticFailure(TestAtom("INSTANCEID"), Float4Type,
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "INSTANCEID", &diagnostic);
+    ExpectSemanticFailure(TestAtom("instanceid"), FloatType,
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "instanceid", &diagnostic);
+    ExpectSemanticFailure(TestAtom("PRIMITIVEID"), FloatType,
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "PRIMITIVEID", &diagnostic);
+    ExpectSemanticFailure(TestAtom("PrimitiveId"), Float4Type,
+                          CG_GEOMETRY_DIRECTION_OUTPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "PrimitiveId", &diagnostic);
+    ExpectSemanticFailure(TestAtom("LAYER"), FloatType,
+                          CG_GEOMETRY_DIRECTION_OUTPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "LAYER", &diagnostic);
+
+    /* VERTEXID shape rules: plain int, wrong element, unresolved
+     * extent. */
+    ExpectSemanticFailure(TestAtom("VERTEXID"), IntType,
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "VERTEXID", &diagnostic);
+    ExpectSemanticFailure(TestAtom("VERTEXID"),
+                          CgGetAttribArrayType(FloatType, 3),
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "VERTEXID", &diagnostic);
+    ExpectSemanticFailure(TestAtom("vertexId"),
+                          CgGetAttribArrayType(IntType, 0),
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "vertexId", &diagnostic);
+
+    /* Ordinary named inputs carry a resolved AttribArray<T>; ordinary
+     * outputs keep the legal emit-leaf shapes. */
+    position = TestAtom("POSITION");
+    assert(CgGeometryClassifySemantic(position) ==
+           CG_GEOMETRY_SEMANTIC_ORDINARY);
+    assert(CgGeometryValidateSemantic(position,
+           CgGetAttribArrayType(Float4Type, 6),
+           CG_GEOMETRY_DIRECTION_INPUT, &diagnostic));
+    ExpectSemanticFailure(position, Float4Type,
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "POSITION", &diagnostic);
+    ExpectSemanticFailure(position, CgGetAttribArrayType(Float4Type, 0),
+                          CG_GEOMETRY_DIRECTION_INPUT,
+                          CG_GEOMETRY_DIAGNOSTIC_VALUE_TYPE,
+                          "POSITION", &diagnostic);
+    assert(CgGeometryValidateSemantic(position, Float4Type,
+           CG_GEOMETRY_DIRECTION_OUTPUT, &diagnostic));
+
+    unknown = TestAtom("TEXCOORD3");
+    assert(CgGeometryClassifySemantic(unknown) ==
+           CG_GEOMETRY_SEMANTIC_ORDINARY);
+    assert(CgGeometryValidateSemantic(unknown, Float2Type,
+           CG_GEOMETRY_DIRECTION_OUTPUT, &diagnostic));
+
+    /* Numeric suffixes follow bundle canonicalization: they make a
+     * distinct ordinary spelling, never a geometry keyword. */
+    assert(CgGeometryClassifySemantic(TestAtom("LAYER0")) ==
+           CG_GEOMETRY_SEMANTIC_ORDINARY);
+    assert(CgGeometryClassifySemantic(TestAtom("LAYER00")) ==
+           CG_GEOMETRY_SEMANTIC_ORDINARY);
+    assert(CgGeometryClassifySemantic(TestAtom("layer00")) ==
+           CG_GEOMETRY_SEMANTIC_ORDINARY);
+    assert(CgGeometryClassifySemantic(TestAtom("INSTANCEID1")) ==
+           CG_GEOMETRY_SEMANTIC_ORDINARY);
+
+    /* An absent semantic classifies ordinary and always validates. */
+    assert(CgGeometryClassifySemantic(0) == CG_GEOMETRY_SEMANTIC_ORDINARY);
+    diagnostic.reason = CG_GEOMETRY_DIAGNOSTIC_STAGE_CONFLICT;
+    assert(CgGeometryValidateSemantic(0, NULL,
+           CG_GEOMETRY_DIRECTION_BOTH, &diagnostic));
+    assert(CgGeometryValidateSemantic(0, Float4Type,
+           CG_GEOMETRY_DIRECTION_OUTPUT, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+}
+
 int main(void)
 {
     CgStruct cg;
@@ -1973,6 +2203,7 @@ int main(void)
     TestClassifyBuildsRecords();
     TestClassifyRejectsBadArity();
     TestClassifyRejectsNestedContexts();
+    TestSemanticClassificationAndValidation();
     return 0;
 }
 

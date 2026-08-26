@@ -102,6 +102,11 @@ typedef struct CgGeometryOptions_Rec {
     int inputOrdinal;
     int outputOrdinal;
     int verticesOrdinal;
+    /* Raw command-line spellings of the accepted options; NULL when
+     * that slot was never filled, which also disambiguates ordinal 0. */
+    const char *inputText;
+    const char *outputText;
+    const char *verticesText;
 } CgGeometryOptions;
 
 typedef struct CgGeometryConfig_Rec {
@@ -165,6 +170,10 @@ typedef struct CgGeometryDiagnostic_Rec {
     SourceLoc loc;
     int optionOrdinal;
     const char *optionText;
+    /* The reachable function that failed selected-program analysis,
+     * when one exists; ReportProfileCallPath walks its witness chain
+     * back to the selected entry.  NULL for every other failure. */
+    const Symbol *symbol;
 } CgGeometryDiagnostic;
 
 /*
@@ -313,13 +322,14 @@ int CgGeometryAcceptsAttribArrayElement(const Type *type);
  * Declaration placement of one AttribArray symbol.  "program" is the
  * selected geometry program when one has been resolved and NULL while
  * only source-level facts are known.  Entry inputs are admitted on
- * the strength of their own declaration; helper inputs additionally
- * require a resolved geometry program, since reachability is proven
- * only by selected-program analysis.  Every other use fails with a
- * structured placement reason, an illegal element outranks any
- * placement rule, and symbols whose type is not an attribute array
- * always validate.  On failure "diagnostic" names the reason at the
- * symbol's location.
+ * the strength of their own declaration; helper inputs defer at
+ * declaration time -- no program exists yet to prove reachability or
+ * resolve option-promoted entries -- so selected-program analysis
+ * re-runs the whole check with the resolved program and answers the
+ * stage rule there.  Every other use fails with a structured
+ * placement reason, an illegal element outranks any placement rule,
+ * and symbols whose type is not an attribute array always validate.
+ * On failure "diagnostic" names the reason at the symbol's location.
  */
 
 int CgGeometryValidateAttribArrayDeclaration(
@@ -341,6 +351,94 @@ int CgGeometryValidateAttribArrayDeclaration(
 int CgGeometryResolveLengths(CgGeometryProgram *program,
                              const CgReachGraph *reach,
                              CgGeometryDiagnostic *diagnostic);
+
+/*
+ * CgGeometryAnalyzeProgram() - The one selected-program analysis entry
+ *         point.  "program" must be initialized by CgGeometryInitProgram
+ *         with the caller-chosen arena; "reach" is the built
+ *         reachability graph of "entry" whose slot zero is the entry;
+ *         "profileOptions" is the raw "-po" chain and "profileStage"
+ *         the profile identity's own stage.  Analysis parses the raw
+ *         options once, merges the entry's stored source modifiers,
+ *         resolves the stage/configuration (option-supplied locations
+ *         synthesize a "<command-line>" file atom at line
+ *         optionOrdinal + 1), builds resolved attribute-array views,
+ *         folds .length, classifies entry and helper interfaces with
+ *         CgGeometryValidateSemantic, resolves operation records for
+ *         every reachable statement, and enforces the reachability
+ *         rules: topology-qualified functions cannot be called as
+ *         ordinary helpers, geometry operations demand the geometry
+ *         stage, and unreachable helpers never poison other stages.
+ *         On failure "diagnostic" names the structured reason at its
+ *         own anchor with "symbol" holding the failing function for
+ *         call-path notes; allocation refusal additionally marks
+ *         program->failed so no partially usable program survives.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryAnalyzeProgram(CgGeometryProgram *program,
+                             Scope *globalScope,
+                             Symbol *entry,
+                             const CgReachGraph *reach,
+                             const CgProfileOption *profileOptions,
+                             CgIRStage profileStage,
+                             CgGeometryDiagnostic *diagnostic);
+
+/*
+ * Geometry binding-semantic classes.  Classification is purely
+ * lexical: the canonical spelling of the binding atom decides (root
+ * case-folded to upper case plus numeric suffix, exactly like bundle
+ * equality), and every unrecognized spelling stays ordinary.
+ */
+
+typedef enum CgGeometrySemanticClass_Rec {
+    CG_GEOMETRY_SEMANTIC_ORDINARY = 0,
+    CG_GEOMETRY_SEMANTIC_PRIMITIVE_INPUT,
+    CG_GEOMETRY_SEMANTIC_VERTEX_INPUT,
+    CG_GEOMETRY_SEMANTIC_PRIMITIVE_ID,
+    CG_GEOMETRY_SEMANTIC_OUTPUT
+} CgGeometrySemanticClass;
+
+/*
+ * Direction masks for CgGeometryValidateSemantic.  The caller passes
+ * every side a binding must be legal on, so BOTH demands both rules.
+ */
+
+#define CG_GEOMETRY_DIRECTION_INPUT  1
+#define CG_GEOMETRY_DIRECTION_OUTPUT 2
+#define CG_GEOMETRY_DIRECTION_BOTH   3
+
+/*
+ * CgGeometryClassifySemantic() - The class of one binding semantic
+ *         atom: INSTANCEID answers primitive input, VERTEXID vertex
+ *         input, PRIMITIVEID primitive id, LAYER output, and every
+ *         other spelling -- including no semantic at all -- answers
+ *         ordinary.
+ */
+
+CgGeometrySemanticClass CgGeometryClassifySemantic(int semantic);
+
+/*
+ * CgGeometryValidateSemantic() - One binding against the geometry
+ *         semantic rules for "direction": INSTANCEID a scalar int on
+ *         input only, VERTEXID a resolved AttribArray<int> on input
+ *         only, PRIMITIVEID a scalar int on either side, LAYER a
+ *         scalar int output only; ordinary named inputs carry
+ *         AttribArray<T>, ordinary outputs keep the legal emit-leaf
+ *         shapes, and every attribute array must carry its resolved
+ *         extent.  An absent semantic always validates.  On failure
+ *         "diagnostic" names the structured reason and the source
+ *         spelling of the semantic; the caller supplies any location
+ *         anchor.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int CgGeometryValidateSemantic(int semantic, Type *type, int direction,
+                               CgGeometryDiagnostic *diagnostic);
 
 void CgGeometryInitModifiers(CgGeometryModifiers *modifiers);
 int CgGeometryApplyInputModifier(CgGeometryModifiers *modifiers,

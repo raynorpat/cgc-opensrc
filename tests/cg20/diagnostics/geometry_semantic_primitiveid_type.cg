@@ -1,0 +1,8 @@
+/* Task 5 negative: an input PRIMITIVEID must be a scalar int; a float4
+   binding fails the value-type rule at the declaration (C6321). */
+
+POINT void bad_primitiveid_type(AttribArray<float4> p : POSITION,
+                                float4 id : PRIMITIVEID)
+{
+    emitVertex(p[0] : POSITION);
+}

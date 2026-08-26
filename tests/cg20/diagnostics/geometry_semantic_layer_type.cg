@@ -1,0 +1,8 @@
+/* Task 5 negative: LAYER must be an int output value; a float4 binding
+   fails the value-type rule at the annotation (C6321). */
+
+TRIANGLE void bad_layer(AttribArray<float4> p : POSITION,
+                        uniform float4 bad)
+{
+    emitVertex(p[0] : POSITION, bad : LAYER);
+}

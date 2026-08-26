@@ -1,0 +1,21 @@
+/* Task 5 fixture: every geometry-only binding semantic in its valid
+   direction -- INSTANCEID as scalar int primitive input, VERTEXID as
+   AttribArray<int> vertex input, PRIMITIVEID on both sides, and LAYER
+   as an int output value. */
+
+POINT void semantics_main(AttribArray<float4> p : POSITION,
+                          int instance : INSTANCEID,
+                          int primitiveIn : PRIMITIVEID,
+                          AttribArray<int> vertexIds : VERTEXID,
+                          uniform float4 color)
+{
+    int primitiveOut;
+    int layerOut;
+
+    primitiveOut = 5;
+    layerOut = 2;
+    flatAttrib(color : COLOR0);
+    emitVertex(p[0] : POSITION, primitiveOut : PRIMITIVEID,
+               layerOut : LAYER);
+    restartStrip();
+}
