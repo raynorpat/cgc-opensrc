@@ -1,21 +1,22 @@
-#version 110
-// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+#version 150
+// cgc-bind input cg_TEXCOORD0 TEXCOORD0
+// cgc-bind output cg_COLOR0 COLOR0
 // cgc-bind sampler z 0
 // cgc-bind sampler a 1
-// cgc-bind builtin gl_FragColor COLOR0
 
 struct FragmentOut
 {
     vec4 color;
 };
 
-varying vec2 cg_TEXCOORD0;
+in vec2 cg_TEXCOORD0;
+out vec4 cg_COLOR0;
 uniform sampler2D z;
 uniform sampler2D a;
 
 vec4 sampleBoth(vec2 coord)
 {
-    return texture2D(a, coord) + texture2D(z, coord);
+    return texture(a, coord) + texture(z, coord);
 }
 
 void main()
@@ -24,5 +25,5 @@ void main()
     FragmentOut result;
     coord = cg_TEXCOORD0;
     result.color = sampleBoth(coord);
-    gl_FragColor = result.color;
+    cg_COLOR0 = result.color;
 }

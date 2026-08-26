@@ -14,6 +14,9 @@ if(NOT result EQUAL 0)
     message(FATAL_ERROR "${PROFILE} registration failed: ${output}${error}")
 endif()
 string(REPLACE "\r\n" "\n" output "${output}")
-if(NOT output MATCHES "^#version 110\n")
-    message(FATAL_ERROR "${PROFILE} did not emit #version 110 first:\n${output}")
+# Core 1.50: the module writer owns the only version directive, so a
+# -nocode compile emits no header at all.
+if(output MATCHES "#version")
+    message(FATAL_ERROR
+        "${PROFILE} emitted a version directive without codegen:\n${output}")
 endif()

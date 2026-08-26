@@ -1,5 +1,5 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
 // cgc-bind builtin gl_Position POSITION0
 
 struct VertexOut
@@ -7,7 +7,7 @@ struct VertexOut
     vec4 position;
 };
 
-attribute vec4 cg_ATTRIB0;
+in vec4 cg_ATTRIB0;
 
 vec2 cg_get_mat2_m00_m01(mat2 matrix)
 {

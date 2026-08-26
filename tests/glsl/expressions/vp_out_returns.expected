@@ -1,7 +1,7 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
-// cgc-bind attribute cg_ATTRIB1 ATTRIB1
-// cgc-bind varying cg_COLOR0 COLOR0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
+// cgc-bind input cg_ATTRIB1 ATTRIB1
+// cgc-bind output cg_COLOR0 COLOR0
 // cgc-bind builtin gl_Position POSITION0
 // cgc-bind builtin gl_PointSize PSIZE0
 
@@ -11,9 +11,9 @@ struct VertexOut
     vec4 color;
 };
 
-attribute vec4 cg_ATTRIB0;
-attribute vec4 cg_ATTRIB1;
-varying vec4 cg_COLOR0;
+in vec4 cg_ATTRIB0;
+in vec4 cg_ATTRIB1;
+out vec4 cg_COLOR0;
 
 void main()
 {

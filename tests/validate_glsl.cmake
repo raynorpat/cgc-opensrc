@@ -40,15 +40,24 @@ endif()
 file(READ "${OUTPUT}" shader)
 string(REPLACE "\r\n" "\n" shader "${shader}")
 string(REPLACE "\r" "\n" shader "${shader}")
-if(NOT shader MATCHES "^#version 110\n")
-    message(FATAL_ERROR "generated shader does not begin with #version 110")
+# Strip the compiler banner/trailer comments so the shader itself is
+# judged; this mirrors the normalization check_glsl.cmake applies.
+string(REGEX REPLACE "(^|\n)// cgc version [^\n]*\n" "\\1"
+    shader "${shader}")
+string(REGEX REPLACE "(^|\n)// command line args:[^\n]*\n" "\\1"
+    shader "${shader}")
+string(REGEX REPLACE "(^|\n)// End of program\n?$" "\\1"
+    shader "${shader}")
+# Core GLSL 1.50: GlslWriteModule owns the only version directive and
+# emits it first, before any declaration or bind comment.
+if(NOT shader MATCHES "^#version 150\n")
+    message(FATAL_ERROR "generated shader does not begin with #version 150")
 endif()
-string(REGEX MATCHALL "(^|\n)#version[ \t]+110([ \t]*\n|$)"
-    version_lines "${shader}")
+string(REGEX MATCHALL "(^|\n)#version([ \t]|\n)" version_lines "${shader}")
 list(LENGTH version_lines version_count)
 if(NOT version_count EQUAL 1)
     message(FATAL_ERROR
-        "generated shader contains ${version_count} #version 110 directives")
+        "generated shader contains ${version_count} #version directives")
 endif()
 if(shader MATCHES "(^|\n)[ \t]*#extension" OR
         shader MATCHES "\\$vin|\\$vout")
@@ -58,6 +67,14 @@ string(FIND "${shader}" "\nvoid main()\n" main_offset)
 if(main_offset EQUAL -1)
     message(FATAL_ERROR "generated shader does not contain readable void main()")
 endif()
+
+# Shared core-1.50 token contract: exactly one "#version 150" plus none
+# of the compatibility spellings (attribute/varying storage,
+# gl_FragColor, texture1D/2D/3D/Cube calls, #extension lines).  The
+# contract script recompiles into the same path; the writer is
+# deterministic, so it judges exactly the shader read above.
+set(ACTUAL "${OUTPUT}")
+include("${CMAKE_CURRENT_LIST_DIR}/check_glsl150.cmake")
 
 execute_process(
     COMMAND "${VALIDATOR}" -S "${STAGE}" "${OUTPUT}"

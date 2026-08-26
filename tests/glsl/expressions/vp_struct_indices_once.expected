@@ -1,5 +1,5 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
 // cgc-bind builtin gl_Position POSITION0
 
 struct Pair
@@ -18,7 +18,7 @@ struct VertexOut
     vec4 position;
 };
 
-attribute vec4 cg_ATTRIB0;
+in vec4 cg_ATTRIB0;
 
 int nextIndex(inout int index)
 {

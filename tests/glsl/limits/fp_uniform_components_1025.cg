@@ -3,11 +3,11 @@ struct FragmentOut {
 };
 
 FragmentOut main(float2 texcoord : TEXCOORD0,
-                 uniform float4 values[16],
+                 uniform float4 values[256],
                  uniform float extra)
 {
     FragmentOut output;
-    output.color = values[0] + values[15] + extra +
+    output.color = values[0] + values[255] + extra +
                    float4(texcoord.x, texcoord.y, 0.0, 0.0);
     return output;
 }

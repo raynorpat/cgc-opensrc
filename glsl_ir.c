@@ -749,13 +749,28 @@ const char *GlslBuiltinSpelling(GlslBuiltin builtin)
         "length", "distance", "min", "max", "clamp", "abs", "sign",
         "floor", "ceil", "sqrt", "exp", "exp2", "log", "log2",
         "sin", "cos", "tan", "asin", "acos", "atan", "inversesqrt",
-        "mix", "fract", "clamp", "texture1D", "texture2D",
-        "texture3D", "textureCube"
+        "mix", "fract", "clamp",
+        "texture", "texture", "texture", "texture",
+        "textureProj", "textureProj", "textureProj", "textureProj",
+        "textureLod", "textureLod", "textureLod", "textureLod"
     };
 
-    if (builtin <= GLSL_BUILTIN_NONE || builtin > GLSL_BUILTIN_TEXCUBE)
+    if (builtin <= GLSL_BUILTIN_NONE ||
+        builtin > GLSL_BUILTIN_TEXCUBE_LOD)
+    {
         return NULL;
+    }
     return spellings[builtin];
+}
+
+const char *GlslStorageSpelling(GlslStage stage, GlslStorage storage)
+{
+    (void) stage;
+    switch (storage) {
+    case GLSL_STORAGE_INPUT: return "in";
+    case GLSL_STORAGE_OUTPUT: return "out";
+    default: return NULL;
+    }
 }
 
 typedef struct GlslTypeCountFrame_Rec {

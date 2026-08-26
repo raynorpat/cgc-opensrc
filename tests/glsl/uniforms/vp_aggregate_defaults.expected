@@ -1,5 +1,5 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
 // cgc-bind uniform matrix2
 // cgc-default matrix2 1.0 2.0 3.0 4.0
 // cgc-bind uniform matrix3
@@ -15,7 +15,7 @@ struct VertexOut
     vec4 position;
 };
 
-attribute vec4 cg_ATTRIB0;
+in vec4 cg_ATTRIB0;
 uniform mat2 matrix2;
 uniform mat3 matrix3;
 uniform mat4 matrix4;

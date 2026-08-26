@@ -1,8 +1,8 @@
-#version 110
-// cgc-bind attribute cg_POSITION0 POSITION0
+#version 150
+// cgc-bind input cg_POSITION0 POSITION0
 // cgc-bind builtin gl_Position POSITION0
 
-attribute vec4 cg_POSITION0;
+in vec4 cg_POSITION0;
 
 void main()
 {

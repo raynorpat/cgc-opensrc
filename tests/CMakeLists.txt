@@ -4,6 +4,12 @@ if(NOT GLSLANG_VALIDATOR)
         "glslangValidator not found; GLSL source validation tests are disabled")
 endif()
 
+# Golden regeneration switch (Task 8 Step 7): used only by the fixture
+# registration below; flip to ON to rewrite the tracked GLSL
+# expectations, inspect every diff before committing, then turn it off.
+set(CGC_UPDATE_GLSL_EXPECTED OFF CACHE BOOL
+    "Regenerate tracked GLSL expectations; inspect before committing")
+
 function(add_glsl_validation name profile stage source)
     if(GLSLANG_VALIDATOR)
         add_test(
@@ -40,6 +46,7 @@ function(add_glsl_fixture name profile source expected)
             -DPROFILE=${profile}
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
             -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+            -DUPDATE_EXPECTED=${CGC_UPDATE_GLSL_EXPECTED}
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl.cmake
@@ -65,6 +72,23 @@ function(add_glsl_failure name source expected_line reason)
             -DEXPECTED_LINE=${expected_line}
             -DREASON=${reason}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+    )
+endfunction()
+
+# Core GLSL 1.50 output contract (Task 8 Step 1): compiles a fixture
+# and fails unless the generated shader starts with exactly one
+# #version 150 and contains none of the forbidden compatibility tokens
+# (attribute/varying/gl_FragColor/texture1D-3D,Cube/#extension).
+function(add_glsl150_contract name profile source)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.glsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl150.cmake
     )
 endfunction()
 
@@ -515,7 +539,7 @@ add_cg20_success(cg20_unreachable_profile_feature
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/ir/unreachable_profile_feature.cg
     "-DCONFIG=$<CONFIG>"
     "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/cg20_unreachable_profile_feature.glsl"
-    "-DMESSAGE=#version 110"
+    "-DMESSAGE=#version 150"
     ${cg20_unreachable_validator}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake)
 
@@ -1491,9 +1515,11 @@ add_glsl_fixture(glslf_sampler_numeric_limit glslf
     tests/glsl/textures/fp_sampler_numeric_limit.cg
     tests/glsl/textures/fp_sampler_numeric_limit.expected)
 
-add_glsl_profile_failure(glslf_third_sampler glslf
-    tests/glsl/textures/fp_third_sampler.cg 6207 5
-    "3.used,.2.available")
+# Core 1.50 portable limits: three samplers sit below the 16 texture
+# units per stage, so this former GLSL 1.10 one-past fixture now
+# compiles cleanly; it doubles as a core-1.50 syntax contract check.
+add_glsl150_contract(glslf_third_sampler glslf
+    tests/glsl/textures/fp_third_sampler.cg)
 
 add_glsl_profile_failure(glslv_sampler glslv
     tests/glsl/textures/vp_sampler.cg 6202 7
@@ -1969,15 +1995,23 @@ add_glsl_diagnostic(glslv_duplicate_semantic_diagnostic glslv
 add_glsl_diagnostic(glslv_attributes_limit glslv
     tests/glsl/limits/vp_attributes17.cg 6207 18
     "attribute.*17.used,.16.available")
-add_glsl_diagnostic(glslv_varyings_limit glslv
-    tests/glsl/limits/vp_varyings36.cg 6207 11
-    "varying.*36.used,.32.available")
+# Core 1.50 portable limits: 36 vertex output components sit below the
+# 64-component minimum, so this former GLSL 1.10 one-past fixture now
+# compiles cleanly; it doubles as a core-1.50 syntax contract check.
+add_glsl150_contract(glslv_varyings_limit glslv
+    tests/glsl/limits/vp_varyings36.cg)
 add_glsl_diagnostic(glslf_uniforms_limit glslf
-    tests/glsl/limits/fp_uniforms68.cg 6207 2
-    "fragment.uniform.components.*68.used,.64.available")
-add_glsl_diagnostic(glslf_samplers_limit glslf
-    tests/glsl/limits/fp_samplers3.cg 6207 5
-    "fragment.texture.units.*3.used,.2.available")
+    tests/glsl/limits/fp_uniforms1025.cg 6207 3
+    "fragment.uniform.components.*1025.used,.1024.available")
+# Core 1.50 portable limits: fp_samplers3 uses three of the sixteen
+# texture units per stage, so this former GLSL 1.10 one-past fixture
+# now compiles cleanly; it doubles as a core-1.50 syntax contract
+# check.  The new one-past boundary lives in glslf_seventeen_samplers.
+add_glsl150_contract(glslf_samplers_limit glslf
+    tests/glsl/limits/fp_samplers3.cg)
+add_glsl_profile_failure(glslf_seventeen_samplers glslf
+    tests/glsl/textures/fp_samplers17.cg 6207 19
+    "17.used,.16.available")
 add_glsl_diagnostic(glslv_intrinsic_diagnostic glslv
     tests/glsl/diagnostics/vp_bad_intrinsic.cg 6206 1
     "no.exact.intrinsic.*rsqrt")
@@ -2121,45 +2155,37 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
 )
 add_test(
-    NAME glslv_uniform_components_513
+    NAME glslv_uniform_components_1025
     COMMAND ${CMAKE_COMMAND}
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
-        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_components_513.cg
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_components_1025.cg
         "-DCONFIG=$<CONFIG>"
-        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_components_513.glsl"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_components_1025.glsl"
         -DCODE=6207
         -DEXPECTED_LINE=14
-        -DREASON=513.used,.512.available
+        -DREASON=1025.used,.1024.available
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
 )
-add_glsl_profile_failure(glslf_uniform_components_65 glslf
-    tests/glsl/limits/fp_uniform_components_65.cg 6207 7
-    "65.used,.64.available")
+add_glsl_profile_failure(glslf_uniform_components_1025 glslf
+    tests/glsl/limits/fp_uniform_components_1025.cg 6207 7
+    "1025.used,.1024.available")
+# Core 1.50 portable limits: 516 uniform components sit below the
+# 1,024-component minimum, so this former GLSL 1.10 one-past fixture
+# now compiles cleanly; it doubles as a core-1.50 syntax contract check.
+add_glsl150_contract(glslv_uniform_components_516 glslv
+    tests/glsl/limits/vp_uniform_components_516.cg)
 add_test(
-    NAME glslv_uniform_components_516
+    NAME glslv_uniform_struct_components_1025
     COMMAND ${CMAKE_COMMAND}
         -DCGC=$<TARGET_FILE:cgc>
         -DPROFILE=glslv
-        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_components_516.cg
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_struct_components_1025.cg
         "-DCONFIG=$<CONFIG>"
-        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_components_516.glsl"
-        -DCODE=6207
-        -DEXPECTED_LINE=6
-        -DREASON=516.used,.512.available
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
-)
-add_test(
-    NAME glslv_uniform_struct_components_513
-    COMMAND ${CMAKE_COMMAND}
-        -DCGC=$<TARGET_FILE:cgc>
-        -DPROFILE=glslv
-        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/limits/vp_uniform_struct_components_513.cg
-        "-DCONFIG=$<CONFIG>"
-        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_struct_components_513.glsl"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslv_uniform_struct_components_1025.glsl"
         -DCODE=6207
         -DEXPECTED_LINE=14
-        -DREASON=513.used,.512.available
+        -DREASON=1025.used,.1024.available
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
 )
 add_test(
@@ -2544,3 +2570,19 @@ if(CGC_REFERENCE_EXECUTABLE)
     add_arb_oracle(fp_passthrough arbfp1 tests/arb/oracle/fp_passthrough.cg)
     add_arb_oracle(fp_texture arbfp1 tests/arb/oracle/fp_texture.cg)
 endif()
+
+# Core GLSL 1.50 contract on representative vertex and fragment
+# fixtures (Task 8 Step 1 registration; the checks read only fresh cgc
+# output, so they pass once the compiler emits core 1.50 and fail while
+# it still emits #version 110/attribute/varying/gl_FragColor).
+
+add_glsl150_contract(glsl150_glslv_passthrough glslv
+    tests/glsl/profile/vp_passthrough.cg)
+add_glsl150_contract(glsl150_glslf_passthrough glslf
+    tests/glsl/profile/fp_passthrough.cg)
+add_glsl150_contract(glsl150_glslv_vertexlight glslv
+    vertexlight.cg)
+add_glsl150_contract(glsl150_glslf_tex2d glslf
+    tests/glsl/textures/fp_tex2d.cg)
+add_glsl150_contract(glsl150_glslv_position glslv
+    position.cg)

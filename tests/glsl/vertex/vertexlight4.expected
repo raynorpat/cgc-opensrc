@@ -1,9 +1,9 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
-// cgc-bind attribute cg_ATTRIB1 ATTRIB1
-// cgc-bind attribute cg_ATTRIB2 ATTRIB2
-// cgc-bind varying cg_COLOR0 COLOR0
-// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
+// cgc-bind input cg_ATTRIB1 ATTRIB1
+// cgc-bind input cg_ATTRIB2 ATTRIB2
+// cgc-bind output cg_COLOR0 COLOR0
+// cgc-bind output cg_TEXCOORD0 TEXCOORD0
 // cgc-bind uniform object_matrix
 // cgc-bind uniform objviewproj_matrix
 // cgc-bind uniform lightdir
@@ -25,11 +25,11 @@ struct vf20
     vec4 TEX0;
 };
 
-attribute vec4 cg_ATTRIB0;
-attribute vec3 cg_ATTRIB1;
-attribute vec4 cg_ATTRIB2;
-varying vec4 cg_COLOR0;
-varying vec4 cg_TEXCOORD0;
+in vec4 cg_ATTRIB0;
+in vec3 cg_ATTRIB1;
+in vec4 cg_ATTRIB2;
+out vec4 cg_COLOR0;
+out vec4 cg_TEXCOORD0;
 uniform mat3 object_matrix;
 uniform mat4 objviewproj_matrix;
 uniform vec3 lightdir[4];

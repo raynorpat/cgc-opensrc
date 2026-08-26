@@ -1,8 +1,8 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
-// cgc-bind attribute cg_ATTRIB1 ATTRIB1
-// cgc-bind varying cg_COLOR0 COLOR0
-// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
+// cgc-bind input cg_ATTRIB1 ATTRIB1
+// cgc-bind output cg_COLOR0 COLOR0
+// cgc-bind output cg_TEXCOORD0 TEXCOORD0
 // cgc-bind uniform modelview_matrix
 // cgc-bind uniform projection_matrix
 // cgc-bind uniform lightdir
@@ -23,10 +23,10 @@ struct vf20
     vec4 TEX0;
 };
 
-attribute vec4 cg_ATTRIB0;
-attribute vec3 cg_ATTRIB1;
-varying vec4 cg_COLOR0;
-varying vec4 cg_TEXCOORD0;
+in vec4 cg_ATTRIB0;
+in vec3 cg_ATTRIB1;
+out vec4 cg_COLOR0;
+out vec4 cg_TEXCOORD0;
 uniform mat4 modelview_matrix;
 uniform mat4 projection_matrix;
 uniform vec3 lightdir;

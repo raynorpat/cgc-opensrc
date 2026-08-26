@@ -89,7 +89,7 @@ static GlslSemanticDesc semanticMap_glslf[] = {
     { "POSITION", "POSITION", 0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "WPOS",     "WPOS",     0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "FACE",     "FACE",     0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_FRONT_FACING },
-    { "COLOR",    "COLOR",    0, 1, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COLOR },
+    { "COLOR",    "COLOR",    0, 1, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_COLOR_OUTPUT },
     { "DEPTH",    "DEPTH",    0, 1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_FRAG_DEPTH }
 };
 
@@ -107,7 +107,10 @@ static GlslProfileDesc profile_glslf = {
     aliases_glslf, NUMELS(aliases_glslf),
     inputRegs_glslf, NUMELS(inputRegs_glslf),
     outputRegs_glslf, NUMELS(outputRegs_glslf),
-    { 0, 64, 32, 2, 1 }
+    /* Core 1.50 portable minima: 1,024 numeric uniform components,
+     * 128 fragment input components, 16 texture units, and the
+     * existing focused limit of one fragment color output. */
+    { 0, 1024, 128, 16, 1 }
 };
 
 int InitHAL_glslf(slHAL *hal)

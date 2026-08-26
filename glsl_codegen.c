@@ -53,13 +53,23 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static const char *GlslStorageName(GlslStorage storage)
 {
     switch (storage) {
-    case GLSL_STORAGE_ATTRIBUTE: return "attribute";
-    case GLSL_STORAGE_VARYING: return "varying";
+    case GLSL_STORAGE_INPUT: return "input";
+    case GLSL_STORAGE_OUTPUT: return "output";
     case GLSL_STORAGE_UNIFORM: return "uniform";
     case GLSL_STORAGE_SAMPLER: return "sampler";
     case GLSL_STORAGE_CONST: return "const";
     case GLSL_STORAGE_BUILTIN: return "builtin";
     default: return NULL;
+    }
+}
+
+static const char *GlslInterpolationText(GlslInterpolation interpolation)
+{
+    switch (interpolation) {
+    case GLSL_INTERPOLATION_FLAT: return "flat ";
+    case GLSL_INTERPOLATION_NOPERSPECTIVE: return "noperspective ";
+    case GLSL_INTERPOLATION_SMOOTH: return "smooth ";
+    default: return "";
     }
 }
 
@@ -224,6 +234,22 @@ static int GlslValidateTextureCall(const GlslModule *module,
         samplerBase = GLSL_BASE_SAMPLERCUBE;
         coordLen = 3;
         break;
+    case GLSL_BUILTIN_TEX1D_PROJ:
+        samplerBase = GLSL_BASE_SAMPLER1D;
+        coordLen = 4;
+        break;
+    case GLSL_BUILTIN_TEX2D_PROJ:
+        samplerBase = GLSL_BASE_SAMPLER2D;
+        coordLen = 4;
+        break;
+    case GLSL_BUILTIN_TEX3D_PROJ:
+        samplerBase = GLSL_BASE_SAMPLER3D;
+        coordLen = 4;
+        break;
+    case GLSL_BUILTIN_TEXCUBE_PROJ:
+        samplerBase = GLSL_BASE_SAMPLERCUBE;
+        coordLen = 4;
+        break;
     default:
         return 0;
     }
@@ -268,7 +294,7 @@ static int GlslValidateExpr(const GlslModule *module,
                GlslValidateExpr(module, expr->u.conditional.falseExpr);
     case GLSL_EXPR_CALL:
         if (expr->u.call.builtin >= GLSL_BUILTIN_TEX1D &&
-            expr->u.call.builtin <= GLSL_BUILTIN_TEXCUBE)
+            expr->u.call.builtin <= GLSL_BUILTIN_TEXCUBE_PROJ)
         {
             return GlslValidateTextureCall(module, expr);
         }
@@ -401,7 +427,8 @@ static int GlslValidateSamplerBindings(const GlslModule *module)
         if (binding->storage != GLSL_STORAGE_SAMPLER)
             continue;
         bindingCount++;
-        if (module->stage != GLSL_STAGE_FRAGMENT || bindingCount > 2 ||
+        if (module->stage != GLSL_STAGE_FRAGMENT ||
+            bindingCount > 16 ||
             binding->declaration == NULL ||
             !GlslDeclInList(module->globals, binding->declaration) ||
             binding->declaration->storage != GLSL_STORAGE_SAMPLER ||
@@ -430,7 +457,7 @@ static int GlslValidateSamplerBindings(const GlslModule *module)
         if (decl->storage != GLSL_STORAGE_SAMPLER)
             continue;
         samplerCount++;
-        if (module->stage != GLSL_STAGE_FRAGMENT || samplerCount > 2 ||
+        if (module->stage != GLSL_STAGE_FRAGMENT || samplerCount > 16 ||
             !GlslSamplerType(&decl->type)) return 0;
         match = NULL;
         matchCount = 0;
@@ -741,14 +768,29 @@ static int GlslWriteStruct(FILE *out, const GlslDecl *decl)
     return fprintf(out, "};\n") >= 0;
 }
 
-static int GlslWriteGlobal(FILE *out, const GlslDecl *decl)
+static int GlslWriteGlobal(FILE *out, GlslStage stage, const GlslDecl *decl)
 {
+    const char *interpolation;
     const char *storage;
 
-    storage = decl->storage == GLSL_STORAGE_SAMPLER ? "uniform" :
-              GlslStorageName(decl->storage);
+    interpolation = GlslInterpolationText(decl->interpolation);
+    if (decl->storage == GLSL_STORAGE_INPUT ||
+        decl->storage == GLSL_STORAGE_OUTPUT)
+    {
+        /* Core 1.50 interfaces: optional interpolation qualifier, then
+         * the stage-directional spelling from the shared table. */
+        storage = GlslStorageSpelling(stage, decl->storage);
+    } else {
+        storage = decl->storage == GLSL_STORAGE_SAMPLER ? "uniform" :
+                  GlslStorageName(decl->storage);
+    }
     if (storage != NULL && fprintf(out, "%s ", storage) < 0)
         return 0;
+    if (interpolation[0] != '\0' &&
+        fprintf(out, "%s", interpolation) < 0)
+    {
+        return 0;
+    }
     return GlslWriteDeclarator(out, &decl->type, decl->name) &&
            fprintf(out, ";\n") >= 0;
 }
@@ -885,8 +927,8 @@ static int GlslWriteFunction(FILE *out, const GlslFunction *function)
 int GlslWriteModule(FILE *out, const GlslModule *module)
 {
     static const GlslStorage globalOrder[] = {
-        GLSL_STORAGE_ATTRIBUTE,
-        GLSL_STORAGE_VARYING,
+        GLSL_STORAGE_INPUT,
+        GLSL_STORAGE_OUTPUT,
         GLSL_STORAGE_UNIFORM,
         GLSL_STORAGE_SAMPLER,
         GLSL_STORAGE_CONST,
@@ -899,6 +941,10 @@ int GlslWriteModule(FILE *out, const GlslModule *module)
     int wrotePrototype = 0;
 
     if (out == NULL || !GlslValidateModule(module)) return 0;
+    /* The writer owns the only version directive; it is the first
+     * output after the module structural check succeeds.  Core GLSL
+     * 1.50, matching VERSION_STRING_GLSL in glsl_hal.h. */
+    if (fprintf(out, "#version 150\n") < 0) return 0;
     for (binding = module->bindings; binding != NULL;
          binding = binding->next)
     {
@@ -929,7 +975,10 @@ int GlslWriteModule(FILE *out, const GlslModule *module)
     {
         for (decl = module->globals; decl != NULL; decl = decl->next) {
             if (decl->storage == globalOrder[i] &&
-                !GlslWriteGlobal(out, decl)) return 0;
+                !GlslWriteGlobal(out, module->stage, decl))
+            {
+                return 0;
+            }
         }
     }
     if (module->globals != NULL && fprintf(out, "\n") < 0) return 0;

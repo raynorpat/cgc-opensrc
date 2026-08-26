@@ -51,7 +51,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "glsl_ir.h"
 
 #define VENDOR_STRING_GLSL "OpenGL"
-#define VERSION_STRING_GLSL "1.10"
+#define VERSION_STRING_GLSL "1.50"
 #define PROFILE_GLSLV_NAME "glslv"
 #define PROFILE_GLSLV_ID 12
 #define PROFILE_GLSLF_NAME "glslf"
@@ -87,7 +87,12 @@ typedef enum GlslInterface_Enum {
     GLSL_INTERFACE_FRAG_COORD,
     GLSL_INTERFACE_FRONT_FACING,
     GLSL_INTERFACE_FRAG_COLOR,
-    GLSL_INTERFACE_FRAG_DEPTH
+    GLSL_INTERFACE_FRAG_DEPTH,
+    /* Fragment COLOR0 in core 1.50: a deterministic user output
+     * (cg_COLOR0), not a compatibility built-in.  Kept separate from
+     * GLSL_INTERFACE_VARYING so the exact vec4 size rule and the
+     * one-color-output limit stay attached to the color semantic. */
+    GLSL_INTERFACE_COLOR_OUTPUT
 } GlslInterface;
 
 typedef struct GlslSemanticDesc_Rec {

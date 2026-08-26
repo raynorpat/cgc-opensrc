@@ -1,6 +1,6 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
-// cgc-bind varying cg_COLOR0 COLOR0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
+// cgc-bind output cg_COLOR0 COLOR0
 // cgc-bind uniform source
 // cgc-bind builtin gl_Position POSITION0
 
@@ -10,8 +10,8 @@ struct VertexOut
     vec4 color;
 };
 
-attribute vec4 cg_ATTRIB0;
-varying vec4 cg_COLOR0;
+in vec4 cg_ATTRIB0;
+out vec4 cg_COLOR0;
 uniform mat3 source;
 
 void main()

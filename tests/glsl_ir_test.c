@@ -179,8 +179,10 @@ int main(int argc, char **argv)
         "length", "distance", "min", "max", "clamp", "abs", "sign",
         "floor", "ceil", "sqrt", "exp", "exp2", "log", "log2",
         "sin", "cos", "tan", "asin", "acos", "atan", "inversesqrt",
-        "mix", "fract", "clamp", "texture1D", "texture2D",
-        "texture3D", "textureCube"
+        "mix", "fract", "clamp",
+        "texture", "texture", "texture", "texture",
+        "textureProj", "textureProj", "textureProj", "textureProj",
+        "textureLod", "textureLod", "textureLod", "textureLod"
     };
 
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
@@ -236,7 +238,7 @@ int main(int argc, char **argv)
     type = GlslMatrixType(3);
     assert(!strcmp(GlslTypeName(&type), "mat3"));
 
-    for (index = GLSL_BUILTIN_MUL; index <= GLSL_BUILTIN_TEXCUBE;
+    for (index = GLSL_BUILTIN_MUL; index <= GLSL_BUILTIN_TEXCUBE_LOD;
          index++)
     {
         assert(GlslBuiltinSpelling((GlslBuiltin) index) != NULL);
@@ -245,6 +247,33 @@ int main(int argc, char **argv)
     }
     assert(GlslBuiltinSpelling(GLSL_BUILTIN_NONE) == NULL);
     assert(GlslBuiltinSpelling((GlslBuiltin) 999) == NULL);
+
+    /* Core 1.50 contract: stage-directional interface spellings and
+     * modern texture intrinsic names come from the shared tables. */
+    assert(strcmp(GlslStorageSpelling(GLSL_STAGE_VERTEX,
+              GLSL_STORAGE_INPUT), "in") == 0);
+    assert(strcmp(GlslStorageSpelling(GLSL_STAGE_VERTEX,
+              GLSL_STORAGE_OUTPUT), "out") == 0);
+    assert(strcmp(GlslStorageSpelling(GLSL_STAGE_FRAGMENT,
+              GLSL_STORAGE_INPUT), "in") == 0);
+    assert(strcmp(GlslStorageSpelling(GLSL_STAGE_FRAGMENT,
+              GLSL_STORAGE_OUTPUT), "out") == 0);
+    assert(GlslStorageSpelling(GLSL_STAGE_VERTEX,
+                               GLSL_STORAGE_UNIFORM) == NULL);
+    assert(GlslStorageSpelling(GLSL_STAGE_FRAGMENT,
+                               GLSL_STORAGE_SAMPLER) == NULL);
+    assert(strcmp(GlslBuiltinSpelling(GLSL_BUILTIN_TEX2D),
+                  "texture") == 0);
+    assert(strcmp(GlslBuiltinSpelling(GLSL_BUILTIN_TEX2D_PROJ),
+                  "textureProj") == 0);
+    assert(strcmp(GlslBuiltinSpelling(GLSL_BUILTIN_TEX2D_LOD),
+                  "textureLod") == 0);
+    assert(strcmp(GlslBuiltinSpelling(GLSL_BUILTIN_TEX1D),
+                  "texture") == 0);
+    assert(strcmp(GlslBuiltinSpelling(GLSL_BUILTIN_TEX3D),
+                  "texture") == 0);
+    assert(strcmp(GlslBuiltinSpelling(GLSL_BUILTIN_TEXCUBE),
+                  "texture") == 0);
 
     type = GlslNumericType(GLSL_BASE_FLOAT, 4);
     builtinParams[0] = type;
@@ -642,9 +671,9 @@ int main(int argc, char **argv)
 
     GlslInitModule(&dirtyModule, GLSL_STAGE_FRAGMENT, DirtyAlloc, NULL);
     type = GlslNumericType(GLSL_BASE_FLOAT, 4);
-    decl = GlslNewDecl(&dirtyModule, GLSL_STORAGE_ATTRIBUTE, type, "decl");
+    decl = GlslNewDecl(&dirtyModule, GLSL_STORAGE_INPUT, type, "decl");
     assert(decl->next == NULL);
-    assert(decl->storage == GLSL_STORAGE_ATTRIBUTE);
+    assert(decl->storage == GLSL_STORAGE_INPUT);
     assert(decl->type.base == GLSL_BASE_FLOAT);
     assert(decl->type.len == 4);
     assert(!strcmp(decl->name, "decl"));
@@ -654,6 +683,7 @@ int main(int argc, char **argv)
     assert(decl->identity == NULL);
     assert(decl->members == NULL);
     assert(decl->parameterQualifier == GLSL_PARAMETER_IN);
+    assert(decl->interpolation == GLSL_INTERPOLATION_DEFAULT);
     expr = GlslNewExpr(&dirtyModule, GLSL_EXPR_FLOAT, type);
     assert(expr->next == NULL);
     assert(expr->kind == GLSL_EXPR_FLOAT);
@@ -745,6 +775,7 @@ int main(int argc, char **argv)
     assert(binding->loc.line == 0);
     assert(binding->declaration == NULL);
     assert(binding->isOutput == 0);
+    assert(binding->interpolation == GLSL_INTERPOLATION_DEFAULT);
 
     secondDecl = GlslNewDecl(&dirtyModule, GLSL_STORAGE_UNIFORM, type,
         "second");
@@ -911,7 +942,7 @@ int main(int argc, char **argv)
     secondExpr = GlslNewExpr(&samplerModule, GLSL_EXPR_CALL,
                              GlslNumericType(GLSL_BASE_FLOAT, 4));
     assert(secondExpr != NULL);
-    secondExpr->u.call.name = "texture2D";
+    secondExpr->u.call.name = "texture";
     secondExpr->u.call.arguments = expr;
     secondExpr->u.call.builtin = GLSL_BUILTIN_TEX2D;
     stmt = GlslNewStmt(&samplerModule, GLSL_STMT_EXPRESSION);
@@ -1089,9 +1120,85 @@ int main(int argc, char **argv)
     thirdBinding->declaration = thirdSamplerDecl;
     secondSamplerDecl->next = thirdSamplerDecl;
     secondBinding->next = thirdBinding;
-    ExpectModuleRejected("third sampler binding", &samplerModule);
+
+    /* Core 1.50 portable limit: sixteen texture units per stage, so
+     * three samplers write successfully and seventeen are rejected. */
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(GlslWriteModule(writer, &samplerModule));
+    assert(ftell(writer) > 0);
+    assert(!fclose(writer));
     secondSamplerDecl->next = NULL;
     secondBinding->next = NULL;
+
+    {
+        static char unitTexts[17][4];
+        GlslDecl *manyDecls[17];
+        GlslBinding *manyBindings[17];
+        GlslFunction *unitFunction;
+        GlslBinding *bindingTail;
+        int samplerIndex;
+
+        GlslInitModule(&module, GLSL_STAGE_FRAGMENT, TestAlloc, NULL);
+        type = GlslNumericType(GLSL_BASE_VOID, 0);
+        unitFunction = GlslNewFunction(&module, type, "main");
+        assert(unitFunction != NULL);
+        unitFunction->isEntry = 1;
+        module.entry = unitFunction;
+        GlslAppendFunction(&module.functions, unitFunction);
+        bindingTail = NULL;
+        /* Sixteen samplers sit exactly at the portable texture-unit
+         * limit; adding one more must fail the writer's structural
+         * check without emitting anything. */
+        for (samplerIndex = 0; samplerIndex < 17; samplerIndex++) {
+            sprintf(unitTexts[samplerIndex], "%d", samplerIndex);
+            manyDecls[samplerIndex] = NULL;
+            manyBindings[samplerIndex] = NULL;
+            if (samplerIndex == 16)
+                break;
+            manyDecls[samplerIndex] = GlslNewDecl(&module,
+                GLSL_STORAGE_SAMPLER,
+                GlslNumericType(GLSL_BASE_SAMPLER2D, 1), "image");
+            assert(manyDecls[samplerIndex] != NULL);
+            manyDecls[samplerIndex]->name = GlslAllocateDistinctName(
+                &module, "image");
+            assert(manyDecls[samplerIndex]->name != NULL);
+            GlslAppendDecl(&module.globals, manyDecls[samplerIndex]);
+            manyBindings[samplerIndex] = GlslNewBinding(&module,
+                GLSL_STORAGE_SAMPLER, manyDecls[samplerIndex]->name,
+                unitTexts[samplerIndex]);
+            assert(manyBindings[samplerIndex] != NULL);
+            manyBindings[samplerIndex]->declaration =
+                manyDecls[samplerIndex];
+            if (bindingTail == NULL)
+                module.bindings = manyBindings[samplerIndex];
+            else
+                bindingTail->next = manyBindings[samplerIndex];
+            bindingTail = manyBindings[samplerIndex];
+        }
+        writer = tmpfile();
+        assert(writer != NULL);
+        assert(GlslWriteModule(writer, &module));
+        assert(ftell(writer) > 0);
+        assert(!fclose(writer));
+        manyDecls[16] = GlslNewDecl(&module, GLSL_STORAGE_SAMPLER,
+            GlslNumericType(GLSL_BASE_SAMPLER2D, 1), "image");
+        assert(manyDecls[16] != NULL);
+        manyDecls[16]->name = GlslAllocateDistinctName(&module, "image");
+        assert(manyDecls[16]->name != NULL);
+        GlslAppendDecl(&module.globals, manyDecls[16]);
+        manyBindings[16] = GlslNewBinding(&module, GLSL_STORAGE_SAMPLER,
+                                          manyDecls[16]->name, "16");
+        assert(manyBindings[16] != NULL);
+        manyBindings[16]->declaration = manyDecls[16];
+        assert(bindingTail != NULL);
+        bindingTail->next = manyBindings[16];
+        writer = tmpfile();
+        assert(writer != NULL);
+        assert(!GlslWriteModule(writer, &module));
+        assert(ftell(writer) == 0);
+        assert(!fclose(writer));
+    }
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     writer = tmpfile();

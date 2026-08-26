@@ -3,7 +3,7 @@ struct Leaf {
 };
 
 struct ResourceBlock {
-    Leaf leaves[128];
+    Leaf leaves[256];
     float extra;
 };
 
@@ -17,6 +17,6 @@ VertexOut main(float4 position : ATTRIB0)
 {
     VertexOut output;
     output.position = position + resources.leaves[0].value +
-                      resources.leaves[127].value * resources.extra;
+                      resources.leaves[255].value * resources.extra;
     return output;
 }

@@ -1,10 +1,10 @@
-#version 110
-// cgc-bind attribute cg_POSITION0 POSITION0
-// cgc-bind attribute cg_COLOR0_2 COLOR0
-// cgc-bind attribute cg_TEXCOORD0_2 TEXCOORD0
-// cgc-bind varying cg_COLOR0 COLOR0
-// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
-// cgc-bind varying cg_TEXCOORD1 TEXCOORD1
+#version 150
+// cgc-bind input cg_POSITION0 POSITION0
+// cgc-bind input cg_COLOR0_2 COLOR0
+// cgc-bind input cg_TEXCOORD0_2 TEXCOORD0
+// cgc-bind output cg_COLOR0 COLOR0
+// cgc-bind output cg_TEXCOORD0 TEXCOORD0
+// cgc-bind output cg_TEXCOORD1 TEXCOORD1
 // cgc-bind uniform cg_TEXCOORD0_1
 // cgc-bind builtin gl_Position POSITION0
 
@@ -21,12 +21,12 @@ struct VertexOut
     vec4 auxiliary;
 };
 
-attribute vec4 cg_POSITION0;
-attribute vec4 cg_COLOR0_2;
-attribute vec4 cg_TEXCOORD0_2;
-varying vec4 cg_COLOR0;
-varying vec4 cg_TEXCOORD0;
-varying vec4 cg_TEXCOORD1;
+in vec4 cg_POSITION0;
+in vec4 cg_COLOR0_2;
+in vec4 cg_TEXCOORD0_2;
+out vec4 cg_COLOR0;
+out vec4 cg_TEXCOORD0;
+out vec4 cg_TEXCOORD1;
 uniform vec4 cg_TEXCOORD0_1;
 
 void main()

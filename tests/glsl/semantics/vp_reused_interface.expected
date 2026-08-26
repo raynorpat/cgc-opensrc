@@ -1,5 +1,5 @@
-#version 110
-// cgc-bind attribute cg_TEXCOORD0 TEXCOORD0
+#version 150
+// cgc-bind input cg_TEXCOORD0 TEXCOORD0
 // cgc-bind builtin gl_Position POSITION0
 
 struct VertexIn
@@ -12,7 +12,7 @@ struct VertexOut
     vec4 position;
 };
 
-attribute vec2 cg_TEXCOORD0;
+in vec2 cg_TEXCOORD0;
 
 void main()
 {

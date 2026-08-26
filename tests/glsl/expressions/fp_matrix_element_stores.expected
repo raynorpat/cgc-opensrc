@@ -1,14 +1,15 @@
-#version 110
-// cgc-bind varying cg_COLOR0 COLOR0
+#version 150
+// cgc-bind input cg_COLOR0 COLOR0
+// cgc-bind output cg_COLOR0_1 COLOR0
 // cgc-bind uniform source
-// cgc-bind builtin gl_FragColor COLOR0
 
 struct FragmentOut
 {
     vec4 color;
 };
 
-varying vec4 cg_COLOR0;
+in vec4 cg_COLOR0;
+out vec4 cg_COLOR0_1;
 uniform mat3 source;
 
 void main()
@@ -38,5 +39,5 @@ void main()
     fill[2][3] = 15.0;
     fill[3][3] = 16.0;
     cg_output.color = color + vec4(mixed[0][0] + fill[3][3], mixed[1][0] - fill[0][0], mixed[0][2] * 0.5 + fill[1][2], fill[2][1] * 0.0);
-    gl_FragColor = cg_output.color;
+    cg_COLOR0_1 = cg_output.color;
 }

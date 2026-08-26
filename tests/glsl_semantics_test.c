@@ -163,7 +163,7 @@ static const GlslSemanticDesc fragmentSemantics[] = {
     { "POSITION", "POSITION", 0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "WPOS",     "WPOS",     0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "FACE",     "FACE",     0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_FRONT_FACING },
-    { "COLOR",    "COLOR",    0, 1, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COLOR },
+    { "COLOR",    "COLOR",    0, 1, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_COLOR_OUTPUT },
     { "DEPTH",    "DEPTH",    0, 1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_FRAG_DEPTH }
 };
 
@@ -726,8 +726,10 @@ static void CheckFragment(void)
                    AddAtom(atable, "WPOS"), 0), "gl_FragCoord"));
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
                    AddAtom(atable, "FACE"), 0), "gl_FrontFacing"));
+    /* Core 1.50: fragment COLOR0 is a deterministic user output, so
+     * the canonical name is the connector, not gl_FragColor. */
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
-                   AddAtom(atable, "COLOR"), 1), "gl_FragColor"));
+                   AddAtom(atable, "COLOR"), 1), "COLOR0"));
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
                    AddAtom(atable, "DEPTH"), 1), "gl_FragDepth"));
     assert(!strcmp(GlslCanonicalInterfaceName(profile,

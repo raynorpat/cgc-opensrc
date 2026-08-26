@@ -21,7 +21,7 @@ if(NOT EXISTS "${ACTUAL}")
     message(FATAL_ERROR "cgc did not create ${ACTUAL}")
 endif()
 file(READ "${ACTUAL}" shader)
-if(NOT shader MATCHES "#version 110" OR
+if(NOT shader MATCHES "#version 150" OR
    NOT shader MATCHES "void main\\(\\)")
     message(FATAL_ERROR "boundary shader output is incomplete")
 endif()

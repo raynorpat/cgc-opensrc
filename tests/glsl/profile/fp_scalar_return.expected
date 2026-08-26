@@ -1,12 +1,13 @@
-#version 110
-// cgc-bind varying cg_TEXCOORD0 TEXCOORD0
-// cgc-bind builtin gl_FragColor COLOR0
+#version 150
+// cgc-bind input cg_TEXCOORD0 TEXCOORD0
+// cgc-bind output cg_COLOR0 COLOR0
 
-varying vec2 cg_TEXCOORD0;
+in vec2 cg_TEXCOORD0;
+out vec4 cg_COLOR0;
 
 void main()
 {
     vec2 texcoord;
     texcoord = cg_TEXCOORD0;
-    gl_FragColor = vec4(texcoord.x, texcoord.y, 0.0, 1.0);
+    cg_COLOR0 = vec4(texcoord.x, texcoord.y, 0.0, 1.0);
 }

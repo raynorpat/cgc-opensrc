@@ -119,7 +119,15 @@ typedef enum GlslBuiltin_Enum {
     GLSL_BUILTIN_TEX1D,
     GLSL_BUILTIN_TEX2D,
     GLSL_BUILTIN_TEX3D,
-    GLSL_BUILTIN_TEXCUBE
+    GLSL_BUILTIN_TEXCUBE,
+    GLSL_BUILTIN_TEX1D_PROJ,
+    GLSL_BUILTIN_TEX2D_PROJ,
+    GLSL_BUILTIN_TEX3D_PROJ,
+    GLSL_BUILTIN_TEXCUBE_PROJ,
+    GLSL_BUILTIN_TEX1D_LOD,
+    GLSL_BUILTIN_TEX2D_LOD,
+    GLSL_BUILTIN_TEX3D_LOD,
+    GLSL_BUILTIN_TEXCUBE_LOD
 } GlslBuiltin;
 
 typedef struct GlslDecl_Rec GlslDecl;
@@ -146,12 +154,25 @@ typedef struct GlslName_Rec {
 typedef enum GlslStorage_Enum {
     GLSL_STORAGE_NONE,
     GLSL_STORAGE_CONST,
-    GLSL_STORAGE_ATTRIBUTE,
-    GLSL_STORAGE_VARYING,
+    GLSL_STORAGE_INPUT,
+    GLSL_STORAGE_OUTPUT,
     GLSL_STORAGE_UNIFORM,
     GLSL_STORAGE_SAMPLER,
     GLSL_STORAGE_BUILTIN
 } GlslStorage;
+
+/* Interpolation qualifier of an interstage interface declaration.
+ * Integer interfaces carry GLSL_INTERPOLATION_FLAT; float interfaces
+ * default to GLSL_INTERPOLATION_DEFAULT.  Matching producer and
+ * consumer declarations derive the same qualifier from the same type,
+ * so linked pipelines agree by construction. */
+
+typedef enum GlslInterpolation_Rec {
+    GLSL_INTERPOLATION_DEFAULT = 0,
+    GLSL_INTERPOLATION_FLAT,
+    GLSL_INTERPOLATION_NOPERSPECTIVE,
+    GLSL_INTERPOLATION_SMOOTH
+} GlslInterpolation;
 
 typedef enum GlslParameterQualifier_Enum {
     GLSL_PARAMETER_IN,
@@ -288,6 +309,7 @@ struct GlslDecl_Rec {
     const void *identity;
     GlslDecl *members;
     GlslParameterQualifier parameterQualifier;
+    GlslInterpolation interpolation;
 };
 
 struct GlslFunction_Rec {
@@ -316,6 +338,7 @@ struct GlslBinding_Rec {
     int isOutput;
     int defaultCount;
     float *defaultValues;
+    GlslInterpolation interpolation;
 };
 
 typedef struct GlslModule_Rec {
@@ -369,6 +392,11 @@ GlslBuiltin GlslLookupBuiltin(const char *name, const GlslType *result,
     const GlslType *params, int paramCount);
 int GlslIsBuiltinName(const char *name);
 const char *GlslBuiltinSpelling(GlslBuiltin builtin);
+/* Single stage-directional spelling table for interface storage:
+ * "in" for GLSL_STORAGE_INPUT and "out" for GLSL_STORAGE_OUTPUT in
+ * every focused stage; NULL for the other storage classes.  Used by
+ * both codegen and the unit test. */
+const char *GlslStorageSpelling(GlslStage stage, GlslStorage storage);
 int GlslTypeComponentCount(const GlslType *type);
 int GlslParseSamplerUnit(const char *text, int *unit);
 int GlslSamplerUnitMatches(const char *text, int unit);

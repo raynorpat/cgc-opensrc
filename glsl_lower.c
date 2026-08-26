@@ -1091,30 +1091,38 @@ static int GlslValidateInterfaceLimits(GlslLowerContext *context)
 {
     GlslBinding *binding;
     int attributes;
-    int varyingComponents;
+    int interfaceComponents;
     int fragmentColors;
     int components;
+    const char *componentResource;
 
     attributes = 0;
-    varyingComponents = 0;
+    interfaceComponents = 0;
     fragmentColors = 0;
+    componentResource =
+        context->profile->stage == GLSL_STAGE_VERTEX ?
+        "vertex output components" : "fragment input components";
     for (binding = context->module->bindings; binding != NULL;
          binding = binding->next)
     {
         if (binding->declaration == NULL)
             continue;
-        if (binding->storage == GLSL_STORAGE_ATTRIBUTE) {
+        if (context->profile->stage == GLSL_STAGE_VERTEX &&
+            binding->storage == GLSL_STORAGE_INPUT)
+        {
             attributes++;
             if (attributes > context->profile->limits.attributes) {
                 return GlslRecordResourceLimit(context, binding,
                     "vertex attributes", attributes,
                     context->profile->limits.attributes);
             }
-        } else if (binding->storage == GLSL_STORAGE_VARYING) {
+        } else if (context->profile->stage == GLSL_STAGE_VERTEX &&
+                   binding->storage == GLSL_STORAGE_OUTPUT)
+        {
             components = GlslTypeComponentCount(
                 &binding->declaration->type);
             if (components <= 0 ||
-                components > INT_MAX - varyingComponents)
+                components > INT_MAX - interfaceComponents)
             {
                 context->statementLoc.file =
                     (unsigned short) binding->loc.file;
@@ -1125,19 +1133,48 @@ static int GlslValidateInterfaceLimits(GlslLowerContext *context)
                                       "interface value");
                 return 0;
             }
-            varyingComponents += components;
-            if (varyingComponents >
+            interfaceComponents += components;
+            if (interfaceComponents >
                 context->profile->limits.varyingComponents)
             {
                 return GlslRecordResourceLimit(context, binding,
-                    "varying components", varyingComponents,
+                    componentResource, interfaceComponents,
                     context->profile->limits.varyingComponents);
             }
         } else if (context->profile->stage == GLSL_STAGE_FRAGMENT &&
-                   binding->storage == GLSL_STORAGE_BUILTIN &&
-                   binding->isOutput && binding->name != NULL &&
-                   !strcmp(binding->name, "gl_FragColor"))
+                   binding->storage == GLSL_STORAGE_INPUT)
         {
+            components = GlslTypeComponentCount(
+                &binding->declaration->type);
+            if (components <= 0 ||
+                components > INT_MAX - interfaceComponents)
+            {
+                context->statementLoc.file =
+                    (unsigned short) binding->loc.file;
+                context->statementLoc.line =
+                    (unsigned short) binding->loc.line;
+                GlslRecordFailureKind(context,
+                                      GLSL_ERROR_UNSUPPORTED_TYPE,
+                                      "interface value");
+                return 0;
+            }
+            interfaceComponents += components;
+            if (interfaceComponents >
+                context->profile->limits.varyingComponents)
+            {
+                return GlslRecordResourceLimit(context, binding,
+                    componentResource, interfaceComponents,
+                    context->profile->limits.varyingComponents);
+            }
+        } else if (context->profile->stage == GLSL_STAGE_FRAGMENT &&
+                   binding->isOutput &&
+                   binding->storage == GLSL_STORAGE_OUTPUT &&
+                   binding->semantic != NULL &&
+                   !strncmp(binding->semantic, "COLOR", 5))
+        {
+            /* Fragment COLOR outputs are ordinary user interfaces in
+             * core 1.50; the focused one-color-output limit counts
+             * them by their canonical COLOR semantic root. */
             fragmentColors++;
             if (fragmentColors >
                 context->profile->limits.colorOutputs)
@@ -1732,6 +1769,7 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
     GlslDecl *decl;
     GlslType type;
     GlslStorage storage;
+    GlslInterpolation interpolation;
     const char *canonical;
     const char *interfaceName;
     const char *name;
@@ -1757,6 +1795,14 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
     if (canonical == NULL || interfaceName == NULL ||
         !GlslLowerTypeAuto(context, member->type, &type,
                            &member->loc)) return NULL;
+    /* Interstage interfaces are directional: an input of either focused
+     * stage is "in" and an output of either stage is "out".  Integer
+     * interfaces interpolate flat; matching producer/consumer
+     * declarations derive the identical qualifier from the identical
+     * semantic and type. */
+    storage = isOutput ? GLSL_STORAGE_OUTPUT : GLSL_STORAGE_INPUT;
+    interpolation = type.base == GLSL_BASE_INT ?
+                    GLSL_INTERPOLATION_FLAT : GLSL_INTERPOLATION_DEFAULT;
     if (GlslHasInterfaceBinding(context, interfaceName, isOutput)) {
         context->statementLoc = member->loc;
         GlslRecordFailureKind(context, GLSL_ERROR_INTERFACE_CONFLICT,
@@ -1766,6 +1812,7 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
     if (!strncmp(interfaceName, "gl_", 3)) {
         storage = GLSL_STORAGE_BUILTIN;
         name = interfaceName;
+        interpolation = GLSL_INTERPOLATION_DEFAULT;
     } else {
         if (strlen(interfaceName) + 4 > sizeof(generatedName))
             return NULL;
@@ -1778,21 +1825,19 @@ static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
         }
         if (name == NULL)
             return NULL;
-        if (!isOutput && context->profile->stage == GLSL_STAGE_VERTEX)
-            storage = GLSL_STORAGE_ATTRIBUTE;
-        else
-            storage = GLSL_STORAGE_VARYING;
     }
     decl = GlslNewDecl(context->module, storage, type, name);
     binding = GlslNewBinding(context->module, storage, name, canonical);
     if (decl == NULL || binding == NULL)
         return NULL;
     decl->identity = member;
+    decl->interpolation = interpolation;
     GlslSetLoc(&decl->loc, &member->loc);
     decl->sourceOrdinal = member->sourceOrdinal;
     binding->declaration = decl;
     binding->interfaceKey = interfaceName;
     binding->isOutput = isOutput;
+    binding->interpolation = interpolation;
     GlslSetLoc(&binding->loc, &member->loc);
     binding->sourceOrdinal = member->sourceOrdinal;
     if (storage != GLSL_STORAGE_BUILTIN)
@@ -3087,7 +3132,7 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
     int sourceBase;
 
     if (builtin < GLSL_BUILTIN_TEX1D ||
-        builtin > GLSL_BUILTIN_TEXCUBE) return 1;
+        builtin > GLSL_BUILTIN_TEXCUBE_PROJ) return 1;
     if (context->profile->stage != GLSL_STAGE_FRAGMENT) {
         GlslRecordFailureKind(context, GLSL_ERROR_STAGE_OPERATION,
                               "texture sampling");
@@ -3113,6 +3158,26 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
         samplerBase = GLSL_BASE_SAMPLERCUBE;
         sourceBase = TYPE_BASE_GLSL_SAMPLERCUBE;
         coordLen = 3;
+        break;
+    case GLSL_BUILTIN_TEX1D_PROJ:
+        samplerBase = GLSL_BASE_SAMPLER1D;
+        sourceBase = TYPE_BASE_GLSL_SAMPLER1D;
+        coordLen = 4;
+        break;
+    case GLSL_BUILTIN_TEX2D_PROJ:
+        samplerBase = GLSL_BASE_SAMPLER2D;
+        sourceBase = TYPE_BASE_GLSL_SAMPLER2D;
+        coordLen = 4;
+        break;
+    case GLSL_BUILTIN_TEX3D_PROJ:
+        samplerBase = GLSL_BASE_SAMPLER3D;
+        sourceBase = TYPE_BASE_GLSL_SAMPLER3D;
+        coordLen = 4;
+        break;
+    case GLSL_BUILTIN_TEXCUBE_PROJ:
+        samplerBase = GLSL_BASE_SAMPLERCUBE;
+        sourceBase = TYPE_BASE_GLSL_SAMPLERCUBE;
+        coordLen = 4;
         break;
     default:
         return 0;
@@ -3162,11 +3227,13 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
 
 /*
  * GlslIntrinsicBuiltin() - Map a stable catalog intrinsic identity to
- *        its exact GLSL 1.10 builtin.  GLSL_BUILTIN_NONE means the
- *        cataloged intrinsic has no exact GLSL 1.10 lowering and must
- *        reach profile validation.  The Cg spellings map once here:
- *        lerp to mix, frac to fract, rsqrt to inversesqrt,
- *        saturate to clamp, and tex* to texture*.
+ *        its exact core GLSL 1.50 builtin.  GLSL_BUILTIN_NONE means the
+ *        cataloged intrinsic has no exact GLSL 1.50 lowering and must
+ *        reach profile validation.  The Cg spellings map once here by
+ *        intrinsic identity, never by source name: lerp to mix, frac to
+ *        fract, rsqrt to inversesqrt, saturate to clamp, base tex* to
+ *        texture, projected tex*proj to textureProj, and explicit-LOD
+ *        identities to textureLod.
  */
 
 static GlslBuiltin GlslIntrinsicBuiltin(CgIntrinsic intrinsic)
@@ -3206,6 +3273,10 @@ static GlslBuiltin GlslIntrinsicBuiltin(CgIntrinsic intrinsic)
     case CG_INTRINSIC_TEX2D:     return GLSL_BUILTIN_TEX2D;
     case CG_INTRINSIC_TEX3D:     return GLSL_BUILTIN_TEX3D;
     case CG_INTRINSIC_TEXCUBE:   return GLSL_BUILTIN_TEXCUBE;
+    case CG_INTRINSIC_TEX1DPROJ: return GLSL_BUILTIN_TEX1D_PROJ;
+    case CG_INTRINSIC_TEX2DPROJ: return GLSL_BUILTIN_TEX2D_PROJ;
+    case CG_INTRINSIC_TEX3DPROJ: return GLSL_BUILTIN_TEX3D_PROJ;
+    case CG_INTRINSIC_TEXCUBEPROJ: return GLSL_BUILTIN_TEXCUBE_PROJ;
     default:
         return GLSL_BUILTIN_NONE;
     }
@@ -3241,7 +3312,7 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
 
         /* Lowering is keyed on the stable intrinsic identity carried by
          * the selected symbol, never on a name lookup.  A cataloged
-         * intrinsic without an exact GLSL 1.10 lowering fails profile
+         * intrinsic without an exact GLSL 1.50 lowering fails profile
          * validation with the existing intrinsic diagnostic. */
         builtin = signature != NULL ?
                   GlslIntrinsicBuiltin(signature->intrinsic) :
@@ -3261,7 +3332,7 @@ static GlslExpr *GlslLowerCall(GlslLowerContext *context, expr *source,
     arguments = NULL;
     if (source->bin.right != NULL) {
         if (function == NULL && builtin >= GLSL_BUILTIN_TEX1D &&
-            builtin <= GLSL_BUILTIN_TEXCUBE)
+            builtin <= GLSL_BUILTIN_TEXCUBE_PROJ)
         {
             arguments = GlslLowerTextureArguments(context,
                                                    source->bin.right);
@@ -6482,7 +6553,7 @@ static GlslExpr *GlslIRLowerCallCore(GlslLowerContext *context,
     } else {
         /* Lowering is keyed on the stable intrinsic identity carried by
          * the selected signature, never on a name lookup.  A cataloged
-         * intrinsic without an exact GLSL 1.10 lowering fails profile
+         * intrinsic without an exact GLSL 1.50 lowering fails profile
          * validation with the existing intrinsic diagnostic. */
         builtin = signature != NULL ?
                   GlslIntrinsicBuiltin(signature->intrinsic) :
@@ -6501,7 +6572,7 @@ static GlslExpr *GlslIRLowerCallCore(GlslLowerContext *context,
     arguments = NULL;
     if (argumentSource != NULL) {
         if (function == NULL && builtin >= GLSL_BUILTIN_TEX1D &&
-            builtin <= GLSL_BUILTIN_TEXCUBE)
+            builtin <= GLSL_BUILTIN_TEXCUBE_PROJ)
         {
             arguments = GlslIRLowerTextureArguments(context,
                                                     argumentSource);

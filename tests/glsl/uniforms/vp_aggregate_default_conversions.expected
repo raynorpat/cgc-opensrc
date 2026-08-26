@@ -1,5 +1,5 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
 // cgc-bind uniform scalarIntPositive
 // cgc-default scalarIntPositive 1.0
 // cgc-bind uniform scalarIntNegative
@@ -35,7 +35,7 @@ struct VertexOut
     vec4 position;
 };
 
-attribute vec4 cg_ATTRIB0;
+in vec4 cg_ATTRIB0;
 uniform int scalarIntPositive;
 uniform int scalarIntNegative;
 uniform int intValues[4];

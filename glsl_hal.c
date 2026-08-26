@@ -163,13 +163,16 @@ const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
             return "gl_FragCoord";
         case GLSL_INTERFACE_FRONT_FACING:
             return "gl_FrontFacing";
-        case GLSL_INTERFACE_FRAG_COLOR:
-            return "gl_FragColor";
         case GLSL_INTERFACE_FRAG_DEPTH:
             return "gl_FragDepth";
         case GLSL_INTERFACE_ATTRIBUTE:
         case GLSL_INTERFACE_VARYING:
+        case GLSL_INTERFACE_COLOR_OUTPUT:
             return GlslConnectorName(profile, desc, index, isOutput);
+        case GLSL_INTERFACE_FRAG_COLOR:
+            /* Compatibility-only spelling; core 1.50 fragment colors
+             * route through GLSL_INTERFACE_COLOR_OUTPUT instead. */
+            return "gl_FragColor";
         }
     }
     return NULL;
@@ -431,6 +434,7 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
                 case GLSL_INTERFACE_POINT_SIZE:
                 case GLSL_INTERFACE_FRAG_COORD:
                 case GLSL_INTERFACE_FRAG_COLOR:
+                case GLSL_INTERFACE_COLOR_OUTPUT:
                 case GLSL_INTERFACE_FRAG_DEPTH:
                     if ((semantic->size == 1 && !IsScalar(type)) ||
                         (semantic->size > 1 &&
@@ -683,9 +687,16 @@ static int GetCapsBit_glsl(int bitNumber)
     }
 }
 
+/*
+ * PrintCodeHeader_glsl() - The GLSL writer owns the only version
+ *          directive: GlslWriteModule emits it as its first output
+ *          after the module structural check succeeds.  The shared
+ *          output-transaction header therefore writes nothing.
+ */
+
 static int PrintCodeHeader_glsl(FILE *out)
 {
-    fprintf(out, "#version 110\n");
+    (void) out;
     return 1;
 }
 

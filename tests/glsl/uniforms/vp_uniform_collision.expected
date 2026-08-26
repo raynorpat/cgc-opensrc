@@ -1,5 +1,5 @@
-#version 110
-// cgc-bind attribute cg_ATTRIB0 ATTRIB0
+#version 150
+// cgc-bind input cg_ATTRIB0 ATTRIB0
 // cgc-bind uniform cg_output_1
 // cgc-default cg_output_1 2.0
 // cgc-bind uniform cg_output
@@ -11,7 +11,7 @@ struct VertexOut
     vec4 position;
 };
 
-attribute vec4 cg_ATTRIB0;
+in vec4 cg_ATTRIB0;
 uniform float cg_output;
 uniform float cg_output_1;
 
