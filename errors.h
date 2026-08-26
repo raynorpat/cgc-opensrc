@@ -203,6 +203,11 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_RESERVED_WORD               1300, "reserved word \"%s\""
 #define ERROR___REF_TO_VAR_WITH_NO_VALUE    1301, "use of variable with no defined value"
 
+// Language version gates (numbers 1400 to 1419 are reserved for
+// language version and keyword rules)
+
+#define ERROR___REQUIRES_CG_20_LANGUAGE     1400, "this construct requires the Cg 2.0 language"
+
 // Errors detected when compiling
 
 #define ERROR___NO_PROGRAM                  3001, "no program defined"

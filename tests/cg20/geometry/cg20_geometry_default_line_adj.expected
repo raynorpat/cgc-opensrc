@@ -1,0 +1,14 @@
+# Generic output by Cg compiler
+//vendor NVIDIA Corporation
+//version 1.0.1
+//profile generic
+//program line_adj_default
+//var float4 p : $vin.POSITION : POSITION : 0 : 1
+uniform struct $vin $vin;
+
+void line_adj_default(varying float4 p : POSITION)
+{
+  float4 c;
+  p = $vin.POSITION;
+  c = p;
+}

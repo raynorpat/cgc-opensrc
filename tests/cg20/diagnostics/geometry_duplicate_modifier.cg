@@ -1,0 +1,7 @@
+// Task 2 fixture: repeating the identical input modifier is rejected as
+// a repeated modifier (C6303), not as a conflict, at the second token.
+
+POINT POINT void dup_main(float4 p : POSITION)
+{
+    float4 c = p;
+}

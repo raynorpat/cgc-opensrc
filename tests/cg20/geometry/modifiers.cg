@@ -1,0 +1,11 @@
+// Task 2 fixture: every input and output topology modifier parses at
+// declaration-specifier position.  The parameter spelling AttribArray<T>
+// is introduced by the attribute-array task; this file stays registered
+// DISABLED until that syntax exists.
+
+POINT void point_main(AttribArray<float4> p : POSITION) { }
+LINE LINE_OUT void line_main(AttribArray<float4> p : POSITION) { }
+LINE_ADJ void line_adj_main(AttribArray<float4> p : POSITION) { }
+TRIANGLE POINT_OUT void triangle_main(AttribArray<float4> p : POSITION) { }
+TRIANGLE_ADJ TRIANGLE_OUT void triangle_adj_main(
+    AttribArray<float4> p : POSITION) { }

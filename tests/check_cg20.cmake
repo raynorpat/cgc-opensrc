@@ -36,7 +36,8 @@ if(DEFINED EXPECTED)
     file(MAKE_DIRECTORY "${cg20_expected_dir}")
     file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
     execute_process(
-        COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
+        COMMAND "${CGC}" -quiet -profile "${PROFILE}" ${EXTRA_ARGS}
+            -o "${ACTUAL}" "${SOURCE}"
         RESULT_VARIABLE result
         OUTPUT_VARIABLE output
         ERROR_VARIABLE error

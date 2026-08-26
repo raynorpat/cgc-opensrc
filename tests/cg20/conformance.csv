@@ -215,6 +215,17 @@ GENERIC-ACCEPTS-INTERFACE,valid-generic,cg20_glsl_interface_dispatch_generic,Pro
 PROFILE-GLSL-UNSIZED-REJECT,backend-reject,glslv_glsl_unsized_array,Profiles
 GENERIC-ACCEPTS-UNSIZED,valid-generic,cg20_glsl_unsized_array_generic,Profiles
 GEOM-OPTION-PARSE,valid-generic,cg_geometry_unit,Geometry profile options
+GEOM-MODIFIER-PARSE,valid-generic,cg20_geometry_modifiers,Geometry programs
+GEOM-MODIFIER-OPTIONS-ONLY,valid-generic,cg20_geometry_options_only,Geometry profile options
+GEOM-DEFAULT-OUTPUT-POINTS,valid-generic,cg20_geometry_default_point,Geometry programs
+GEOM-DEFAULT-OUTPUT-LINE-STRIP,valid-generic,cg20_geometry_default_line,Geometry programs
+GEOM-DEFAULT-OUTPUT-LINE-STRIP-ADJ,valid-generic,cg20_geometry_default_line_adj,Geometry programs
+GEOM-DEFAULT-OUTPUT-TRIANGLE-STRIP,valid-generic,cg20_geometry_default_triangle,Geometry programs
+GEOM-DEFAULT-OUTPUT-TRIANGLE-STRIP-ADJ,valid-generic,cg20_geometry_default_triangle_adj,Geometry programs
+GEOM-MODIFIER-REPEAT-DIAG,invalid-language,cg20_geometry_duplicate_modifier,Geometry programs
+GEOM-MODIFIER-CONFLICT-DIAG,invalid-language,cg20_geometry_conflicting_modifier,Geometry programs
+GEOM-MODIFIER-FUNCTION-DIAG,invalid-language,cg20_geometry_modifier_on_variable,Geometry programs
+GEOM-MODIFIER-LEGACY-REJECT,invalid-language,cg20_geometry_cg11,Cg language policy
 EMISSION-NORMALIZED-IR,valid-generic,cg20_ir_normalized,Emission
 EMISSION-GLSL-GOLDENS,valid-generic,glslv_passthrough,Emission
 MANDATE-VERTEX-POSITION,valid-generic,glslv_passthrough,Mandatory program outputs

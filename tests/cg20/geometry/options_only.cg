@@ -1,0 +1,8 @@
+// Task 2 fixture: a program with no source-level modifier takes its
+// geometry identity entirely from raw "-po" options (TRIANGLE and
+// Vertices=3 on the command line).
+
+void main(float4 p : POSITION)
+{
+    float4 c = p;
+}

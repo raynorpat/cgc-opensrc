@@ -446,6 +446,92 @@ static void TestGeometryStageRequiresInput(void)
     assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_MISSING_INPUT);
 }
 
+/*
+ * SourceLocOfLine() - A recognizable location for modifier provenance.
+ */
+
+static SourceLoc SourceLocOfLine(int line)
+{
+    SourceLoc loc;
+
+    loc.file = 7;
+    loc.line = line;
+    return loc;
+}
+
+static void TestApplyInputModifier(void)
+{
+    CgGeometryModifiers modifiers;
+    CgGeometryDiagnostic diagnostic;
+    SourceLoc firstLoc;
+    SourceLoc secondLoc;
+
+    firstLoc = SourceLocOfLine(3);
+    secondLoc = SourceLocOfLine(9);
+
+    CgGeometryInitModifiers(&modifiers);
+    assert(CgGeometryApplyInputModifier(&modifiers,
+           CG_GEOMETRY_INPUT_LINE, &firstLoc, &diagnostic));
+    assert(modifiers.input == CG_GEOMETRY_INPUT_LINE);
+    assert(modifiers.inputLoc.line == 3);
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+
+    /* Identical repeat: rejected as repeated, naming the first spot. */
+    assert(!CgGeometryApplyInputModifier(&modifiers,
+           CG_GEOMETRY_INPUT_LINE, &secondLoc, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_REPEATED_INPUT);
+    assert(diagnostic.loc.line == 3);
+
+    /* Contradictory value: a different structured reason, same anchor. */
+    assert(!CgGeometryApplyInputModifier(&modifiers,
+           CG_GEOMETRY_INPUT_TRIANGLE_ADJACENCY, &secondLoc, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_INPUT);
+    assert(diagnostic.loc.line == 3);
+
+    /* Failures leave the recorded value and location untouched. */
+    assert(modifiers.input == CG_GEOMETRY_INPUT_LINE);
+    assert(modifiers.inputLoc.line == 3);
+}
+
+static void TestApplyOutputModifier(void)
+{
+    CgGeometryModifiers modifiers;
+    CgGeometryDiagnostic diagnostic;
+    SourceLoc firstLoc;
+    SourceLoc secondLoc;
+
+    firstLoc = SourceLocOfLine(4);
+    secondLoc = SourceLocOfLine(8);
+
+    CgGeometryInitModifiers(&modifiers);
+    assert(CgGeometryApplyOutputModifier(&modifiers,
+           CG_GEOMETRY_OUTPUT_LINE_STRIP, &firstLoc, &diagnostic));
+    assert(modifiers.output == CG_GEOMETRY_OUTPUT_LINE_STRIP);
+    assert(modifiers.outputLoc.line == 4);
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_NONE);
+
+    /* Identical repeat: rejected as repeated, naming the first spot. */
+    assert(!CgGeometryApplyOutputModifier(&modifiers,
+           CG_GEOMETRY_OUTPUT_LINE_STRIP, &secondLoc, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_REPEATED_OUTPUT);
+    assert(diagnostic.loc.line == 4);
+
+    /* Contradictory value: a different structured reason, same anchor. */
+    assert(!CgGeometryApplyOutputModifier(&modifiers,
+           CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP, &secondLoc, &diagnostic));
+    assert(diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_OUTPUT);
+    assert(diagnostic.loc.line == 4);
+
+    assert(modifiers.output == CG_GEOMETRY_OUTPUT_LINE_STRIP);
+    assert(modifiers.outputLoc.line == 4);
+
+    /* Input and output slots are independent records. */
+    assert(CgGeometryApplyInputModifier(&modifiers,
+           CG_GEOMETRY_INPUT_POINT, &secondLoc, &diagnostic));
+    assert(modifiers.input == CG_GEOMETRY_INPUT_POINT);
+    assert(modifiers.output == CG_GEOMETRY_OUTPUT_LINE_STRIP);
+}
+
 int main(void)
 {
     TestInitializedState();
@@ -464,5 +550,7 @@ int main(void)
     TestDuplicateVerticesRejected();
     TestDuplicateEqualVerticesAccepted();
     TestGeometryStageRequiresInput();
+    TestApplyInputModifier();
+    TestApplyOutputModifier();
     return 0;
 }

@@ -613,6 +613,89 @@ add_cg20_failure(cg20_ambiguous_overload
     "-DNOTES=candidate #1: float probe(float);candidate #2: float probe(int)"
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
+# Geometry topology modifiers (Task 2): positives compile under the
+# neutral generic profile; negatives pin exact code and line.  The
+# modifiers fixture also uses AttribArray<T> parameters whose syntax
+# arrives with the attribute-array task, so its registration stays
+# DISABLED until that task enables it.
+
+add_cg20_success(cg20_geometry_modifiers
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/modifiers.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+set_tests_properties(cg20_geometry_modifiers PROPERTIES DISABLED TRUE)
+
+add_cg20_success(cg20_geometry_options_only
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-po\;TRIANGLE\;-po\;Vertices=3"
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/options_only.cg
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+
+function(add_cg20_geometry_default_output name entry)
+    add_cg20_success(${name}
+        -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+        "-DEXTRA_ARGS=-entry\;${entry}"
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/default_outputs.cg
+        -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/${name}.expected
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.txt"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
+endfunction()
+add_cg20_geometry_default_output(cg20_geometry_default_point point_default)
+add_cg20_geometry_default_output(cg20_geometry_default_line line_default)
+add_cg20_geometry_default_output(cg20_geometry_default_line_adj line_adj_default)
+add_cg20_geometry_default_output(cg20_geometry_default_triangle triangle_default)
+add_cg20_geometry_default_output(cg20_geometry_default_triangle_adj triangle_adj_default)
+
+add_cg20_failure(cg20_geometry_duplicate_modifier
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_duplicate_modifier.cg
+    -DCODE=6303 -DEXPECTED_LINE=4
+    "-DMESSAGE=repeated.geometry.modifier"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_conflicting_modifier
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_conflicting_modifier.cg
+    -DCODE=6304 -DEXPECTED_LINE=4
+    "-DMESSAGE=conflicts.with"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_modifier_on_variable
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_modifier_on_variable.cg
+    -DCODE=6305 -DEXPECTED_LINE=4
+    "-DMESSAGE=geometry.modifier.requires.a.function"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_geometry_cg11
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-version\;1.1"
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/geometry_cg11.cg
+    -DCODE=1400 -DEXPECTED_LINE=5
+    "-DMESSAGE=requires.the.Cg.2.0.language"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
+# Parser regeneration determinism: regenerating from parser.y must
+# reproduce both checked-in artifacts byte-for-byte without warnings or
+# grammar conflicts.  Skipped (return code 77) where bison is absent.
+
+find_package(BISON QUIET)
+if(BISON_FOUND)
+    set(cg20_parser_regen_bison "${BISON_EXECUTABLE}")
+else()
+    set(cg20_parser_regen_bison "BISON-NOTFOUND")
+endif()
+add_test(
+    NAME parser_regeneration
+    COMMAND ${CMAKE_COMMAND}
+        -DBISON=${cg20_parser_regen_bison}
+        -DSOURCE=${PROJECT_SOURCE_DIR}/parser.y
+        -DEXPECTED_PARSER=${PROJECT_SOURCE_DIR}/parser.c
+        -DEXPECTED_DEFINES=${PROJECT_SOURCE_DIR}/parser.h
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/parser-regeneration"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_parser_regeneration.cmake
+)
+if(NOT BISON_FOUND)
+    set_tests_properties(parser_regeneration PROPERTIES SKIP_RETURN_CODE 77)
+endif()
+
 # Profile-failure call-path notes (Task 18): the primary diagnostic at
 # the rejected operation is followed by one note per hop back to the
 # entry, naming second, first, then main in order.  The rejection is a
@@ -906,15 +989,20 @@ add_generic_regression(vertexlight vertexlight.cg
 # default-language and 1.1 compiles for these legacy inputs, while Cg 2.0
 # emission switched to the normalized IR printer ("Emit normalized Cg IR
 # from generic").
+# Hashes updated by "Parse geometry topology modifiers": interning the
+# eight topology-modifier keyword atoms shifts dynamic atom IDs, which
+# reorders top-level declarations in generic output.  Verified against
+# pre-change builds: outputs are identical as line multisets modulo the
+# stripped banner, i.e. declaration order moved and no content changed.
 add_generic_regression(vertexlight4 vertexlight4.cg
-    8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
+    5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
 add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg
     0a03690bd59c1ed3ed7f8799845b4468157ff57743c72bb2bf0cd6d54345bea1)
 add_generic_regression(helper_discard
     tests/glsl/diagnostics/generic_helper_discard.cg
-    bd6b290f26f99e5aba011e12059163aa3648a872710b0f04f40b654fe8b73afc)
+    4afadd12ac3af8acdb484c0e26a854dfa0fb7f9e3d8d31d64bf6ebf37e4cf058)
 add_generic_diagnostic(generic_matrix_scalar2_baseline
     tests/glsl/diagnostics/generic_matrix_scalar2.cg 1035 9
     "assignment.of.incompatible.types")
@@ -1422,6 +1510,9 @@ add_glsl_fixture(glslv_uniform_struct_nested glslv
 # at startup, shifting the same tie-break once more.  Re-verified as
 # order-only: member declarations swap and the commutative addition swaps
 # operands with it; token multiset equality proven against db3d1a6.
+# Updated again by "Parse geometry topology modifiers": the eight new
+# keyword atoms shift the same tie-break; re-verified as order-only
+# against the pre-change build with the identical member/addition swap.
 add_glsl_fixture(glslv_uniform_struct_collision glslv
     tests/glsl/uniforms/vp_uniform_struct_collision.cg
     tests/glsl/uniforms/vp_uniform_struct_collision.expected)

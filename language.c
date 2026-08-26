@@ -69,6 +69,19 @@ int CgLanguageAtLeast(CgLanguageVersion actual, CgLanguageVersion required)
 }
 
 /*
+ * CgLanguageAllowsGeometry() - The one language-version decision for
+ *         every geometry source form: topology modifiers, attribute
+ *         arrays, and special operations exist only in Cg 2.0, so
+ *         explicit 1.1 mode rejects them all through this gate.
+ *
+ */
+
+int CgLanguageAllowsGeometry(CgLanguageVersion version)
+{
+    return version == CG_LANGUAGE_2_0;
+} // CgLanguageAllowsGeometry
+
+/*
  * Cg 2.0 reserved words that the compiler does not implement as keywords.
  * Implemented keywords (the original keyword set, the Cg 2.0 scalar type
  * spellings, and the sampler type names) are recognized through their

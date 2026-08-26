@@ -147,6 +147,14 @@ typedef struct CgGeometryDiagnostic_Rec {
 } CgGeometryDiagnostic;
 
 void CgGeometryInitModifiers(CgGeometryModifiers *modifiers);
+int CgGeometryApplyInputModifier(CgGeometryModifiers *modifiers,
+                                 CgGeometryInput input,
+                                 const SourceLoc *loc,
+                                 CgGeometryDiagnostic *diagnostic);
+int CgGeometryApplyOutputModifier(CgGeometryModifiers *modifiers,
+                                  CgGeometryOutput output,
+                                  const SourceLoc *loc,
+                                  CgGeometryDiagnostic *diagnostic);
 void CgGeometryInitOptions(CgGeometryOptions *options);
 int CgGeometryParseOptions(const CgProfileOption *first,
                            CgGeometryOptions *options,

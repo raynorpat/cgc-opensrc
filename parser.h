@@ -53,7 +53,7 @@ extern int yydebug;
     YYEMPTY = -2,
     YYEOF = 0,                     /* "end of file"  */
     YYerror = 256,                 /* error  */
-    YYUNDEF = 325,                 /* "invalid token"  */
+    YYUNDEF = 334,                 /* "invalid token"  */
     AND_SY = 257,                  /* AND_SY  */
     ASM_SY = 258,                  /* ASM_SY  */
     ASSIGNMINUS_SY = 259,          /* ASSIGNMINUS_SY  */
@@ -121,7 +121,15 @@ extern int yydebug;
     SHORT_SY = 321,                /* SHORT_SY  */
     UNSIGNED_SY = 322,             /* UNSIGNED_SY  */
     RESERVED_SY = 323,             /* RESERVED_SY  */
-    FIRST_USER_TOKEN_SY = 324      /* FIRST_USER_TOKEN_SY  */
+    POINT_SY = 325,                /* POINT_SY  */
+    LINE_SY = 326,                 /* LINE_SY  */
+    LINE_ADJ_SY = 327,             /* LINE_ADJ_SY  */
+    TRIANGLE_SY = 328,             /* TRIANGLE_SY  */
+    TRIANGLE_ADJ_SY = 329,         /* TRIANGLE_ADJ_SY  */
+    POINT_OUT_SY = 330,            /* POINT_OUT_SY  */
+    LINE_OUT_SY = 331,             /* LINE_OUT_SY  */
+    TRIANGLE_OUT_SY = 332,         /* TRIANGLE_OUT_SY  */
+    FIRST_USER_TOKEN_SY = 333      /* FIRST_USER_TOKEN_SY  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -147,7 +155,7 @@ union YYSTYPE
     /* Dummy palce holder: */
     int    dummy;
 
-#line 151 "parser.h"
+#line 159 "parser.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

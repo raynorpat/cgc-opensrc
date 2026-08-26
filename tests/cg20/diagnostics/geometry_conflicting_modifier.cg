@@ -1,0 +1,7 @@
+// Task 2 fixture: contradictory input modifiers are rejected as a
+// conflicting-modifier diagnostic (C6304) naming the first location.
+
+LINE TRIANGLE void conflict_main(float4 p : POSITION)
+{
+    float4 c = p;
+}

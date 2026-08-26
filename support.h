@@ -53,6 +53,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "cg_types.h"
 #include "cg_numeric.h"
+#include "cg_geometry.h"    // CgGeometryModifiers for dtype
 
 // Typedefs for things defined here in "support.h":
 
@@ -322,6 +323,7 @@ struct dtype_rec {
     int IsDerived;      // TRUE if anything has been altered
     int numNewDims;     // Number of new dimensions added for this declarator
     StorageClass storageClass;   // Aplied to variables when defined, not part of the type
+    CgGeometryModifiers geometry;   // Source topology modifiers seen before the base type
     Type type;          // Local copy of type
 };
 
@@ -551,11 +553,16 @@ int SetTypeMisc(SourceLoc *loc, dtype *fType, int misc);
 int SetTypePacked(SourceLoc *loc, dtype *fType);
 int SetStorageClass(SourceLoc *loc, dtype *fType, int storage);
 Type *ResolveScalarTypeSpecifier(SourceLoc *loc, int token, int isUnsigned);
+int SetGeometryInputModifier(SourceLoc *loc, dtype *specifiers,
+                             CgGeometryInput input);
+int SetGeometryOutputModifier(SourceLoc *loc, dtype *specifiers,
+                              CgGeometryOutput output);
 
 /********************************** Parser Semantic Rules: ***********************************/
 
 void SetPendingProfileSpecifier(SourceLoc *loc, int ident);
 void ClearPendingProfileSpecifier(void);
+void ClearPendingGeometryModifiers(void);
 expr *Initializer(SourceLoc *loc, expr *fExpr);
 expr *InitializerList(SourceLoc *loc, expr *list, expr *fExpr);
 expr *ArgumentList(SourceLoc *loc, expr *flist, expr *fExpr);

@@ -207,6 +207,61 @@ void CgGeometryInitModifiers(CgGeometryModifiers *modifiers)
     modifiers->outputLoc.line = 0;
 } // CgGeometryInitModifiers
 
+/*
+ * CgGeometryApplyInputModifier() - Record one source-level input
+ *         topology modifier.  A fresh value is stored with its location;
+ *         an occupied slot always fails so callers can report at the
+ *         first location: an equal value as a repeated modifier and a
+ *         different value as a conflicting one.  Failed applications
+ *         never disturb the recorded value or location.
+ */
+
+int CgGeometryApplyInputModifier(CgGeometryModifiers *modifiers,
+                                 CgGeometryInput input,
+                                 const SourceLoc *loc,
+                                 CgGeometryDiagnostic *diagnostic)
+{
+    ClearDiagnostic(diagnostic);
+    if (modifiers->input != CG_GEOMETRY_INPUT_UNKNOWN) {
+        diagnostic->loc = modifiers->inputLoc;
+        if (modifiers->input == input) {
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_REPEATED_INPUT;
+        } else {
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_INPUT;
+        }
+        return 0;
+    }
+    modifiers->input = input;
+    modifiers->inputLoc = *loc;
+    return 1;
+} // CgGeometryApplyInputModifier
+
+/*
+ * CgGeometryApplyOutputModifier() - Record one source-level output
+ *         topology modifier with the same repeat/conflict discipline as
+ *         the input slot; the two slots stay independent.
+ */
+
+int CgGeometryApplyOutputModifier(CgGeometryModifiers *modifiers,
+                                  CgGeometryOutput output,
+                                  const SourceLoc *loc,
+                                  CgGeometryDiagnostic *diagnostic)
+{
+    ClearDiagnostic(diagnostic);
+    if (modifiers->output != CG_GEOMETRY_OUTPUT_UNKNOWN) {
+        diagnostic->loc = modifiers->outputLoc;
+        if (modifiers->output == output) {
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_REPEATED_OUTPUT;
+        } else {
+            diagnostic->reason = CG_GEOMETRY_DIAGNOSTIC_CONFLICTING_OUTPUT;
+        }
+        return 0;
+    }
+    modifiers->output = output;
+    modifiers->outputLoc = *loc;
+    return 1;
+} // CgGeometryApplyOutputModifier
+
 void CgGeometryInitOptions(CgGeometryOptions *options)
 {
     options->input = CG_GEOMETRY_INPUT_UNKNOWN;

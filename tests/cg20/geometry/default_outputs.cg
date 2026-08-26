@@ -1,0 +1,30 @@
+// Task 2 fixture: one entry per input topology, each compiled separately
+// under generic with normalized per-entry expectations.  Points, line
+// strip, line strip, triangle strip, and triangle strip are the default
+// output topologies these inputs resolve to once selected-program
+// analysis lands; parsing itself never derives them.
+
+POINT void point_default(float4 p : POSITION)
+{
+    float4 c = p;
+}
+
+LINE void line_default(float4 p : POSITION)
+{
+    float4 c = p;
+}
+
+LINE_ADJ void line_adj_default(float4 p : POSITION)
+{
+    float4 c = p;
+}
+
+TRIANGLE void triangle_default(float4 p : POSITION)
+{
+    float4 c = p;
+}
+
+TRIANGLE_ADJ void triangle_adj_default(float4 p : POSITION)
+{
+    float4 c = p;
+}

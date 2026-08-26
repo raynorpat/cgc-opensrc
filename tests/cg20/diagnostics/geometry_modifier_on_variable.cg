@@ -1,0 +1,4 @@
+// Task 2 fixture: a topology modifier before an ordinary variable is
+// rejected because geometry modifiers require a function (C6305).
+
+POINT int modified_global;

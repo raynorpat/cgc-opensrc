@@ -1,0 +1,8 @@
+// Task 2 fixture: topology modifiers are Cg 2.0 syntax; explicit
+// -version 1.1 rejects the form at the modifier token and recovers at
+// the declaration boundary.
+
+POINT void cg11_entry(float4 p : POSITION)
+{
+    float4 c = p;
+}

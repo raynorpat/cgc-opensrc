@@ -253,6 +253,7 @@ union Type_Rec {
 // Symbol table is a simple binary tree.
 
 #include "cg_overload.h"    // CgProfileSelector for FunSymbol
+#include "cg_geometry.h"    // CgGeometryModifiers for FunSymbol
 
 struct FunSymbol_Rec {
     Scope *locals;
@@ -271,6 +272,7 @@ struct FunSymbol_Rec {
     Type *ownerType;    // Owning struct or interface for methods, NULL otherwise
     int isMethod;       // > 0 when declared inside an interface or struct body
     CgProfileSelector profileSelector;  // Profile qualification; open when unqualified
+    CgGeometryModifiers geometry;       // Source topology modifiers; empty when unmodified
 };
 
 typedef struct VarSymbol_Rec {

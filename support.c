@@ -53,6 +53,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "glsl_hal.h"
+#include "language.h"
 
 dtype CurrentDeclTypeSpecs = { 0, };
 
@@ -757,6 +758,134 @@ comment_stmt *NewCommentStmt(SourceLoc *loc, const char *str)
 
 /************************************* dtype functions: *************************************/
 
+///////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////// Geometry topology modifier recording: ////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+/*
+ * Modifier tokens reduce at the head of a declaration-specifier run,
+ * before the base type keyword has initialised CurrentDeclTypeSpecs.
+ * Each request is validated and parked here; SetDType() initialises
+ * the pending record into the dtype it is setting up, which both
+ * applies it at the right time and keeps one declaration's modifiers
+ * out of the next one.  ClearPendingGeometryModifiers() drops an
+ * unconsumed record when parser recovery abandons a declaration.
+ */
+
+static CgGeometryModifiers lPendingGeometryModifiers;
+
+void ClearPendingGeometryModifiers(void)
+{
+    CgGeometryInitModifiers(&lPendingGeometryModifiers);
+} // ClearPendingGeometryModifiers
+
+/*
+ * SetGeometryInputModifier() - Parser-facing application of one input
+ *         topology token.  The version gate reports the stable Cg 2.0
+ *         language diagnostic at the token and returns zero so parsing
+ *         recovers at the declaration boundary.  The pure helper
+ *         validates against the pending record, whose structured reason
+ *         maps to the stable repeated (C6303) or conflicting (C6304)
+ *         diagnostics naming the first location.  "specifiers" receives
+ *         the record when SetDType runs, not here, so the scratch dtype
+ *         never sees a half-initialised state.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int SetGeometryInputModifier(SourceLoc *loc, dtype *specifiers, CgGeometryInput input)
+{
+    CgGeometryDiagnostic diagnostic;
+
+    if (!CgLanguageAllowsGeometry(Cg->options.languageVersion)) {
+        SemanticError(loc, ERROR___REQUIRES_CG_20_LANGUAGE);
+        return 0;
+    }
+    if (!CgGeometryApplyInputModifier(&lPendingGeometryModifiers, input,
+                                      loc, &diagnostic)) {
+        if (diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_REPEATED_INPUT) {
+            SemanticError(loc, ERROR_S_GEOMETRY_REPEATED_MODIFIER,
+                          CgGeometryInputName(input));
+        } else {
+            SemanticError(loc, ERROR_SS_GEOMETRY_MODIFIER_CONFLICT,
+                          CgGeometryInputName(input),
+                          CgGeometryInputName(lPendingGeometryModifiers.input));
+        }
+        return 0;
+    }
+    return 1;
+} // SetGeometryInputModifier
+
+/*
+ * SetGeometryOutputModifier() - Output-token twin of
+ *         SetGeometryInputModifier over the independent output slot.
+ *
+ * Returns: TRUE if O.K.
+ *
+ */
+
+int SetGeometryOutputModifier(SourceLoc *loc, dtype *specifiers, CgGeometryOutput output)
+{
+    CgGeometryDiagnostic diagnostic;
+
+    if (!CgLanguageAllowsGeometry(Cg->options.languageVersion)) {
+        SemanticError(loc, ERROR___REQUIRES_CG_20_LANGUAGE);
+        return 0;
+    }
+    if (!CgGeometryApplyOutputModifier(&lPendingGeometryModifiers, output,
+                                       loc, &diagnostic)) {
+        if (diagnostic.reason == CG_GEOMETRY_DIAGNOSTIC_REPEATED_OUTPUT) {
+            SemanticError(loc, ERROR_S_GEOMETRY_REPEATED_MODIFIER,
+                          CgGeometryOutputName(output));
+        } else {
+            SemanticError(loc, ERROR_SS_GEOMETRY_MODIFIER_CONFLICT,
+                          CgGeometryOutputName(output),
+                          CgGeometryOutputName(lPendingGeometryModifiers.output));
+        }
+        return 0;
+    }
+    return 1;
+} // SetGeometryOutputModifier
+
+/*
+ * lMergeGeometryModifiers() - Carry a declaration's source modifiers
+ *         onto a function symbol.  Fields the newer record leaves
+ *         unknown keep their previous values, so a definition may
+ *         restate or extend its prototype's modifiers without losing
+ *         any.
+ */
+
+static void lMergeGeometryModifiers(CgGeometryModifiers *dst,
+                                    const CgGeometryModifiers *src)
+{
+    if (src->input != CG_GEOMETRY_INPUT_UNKNOWN) {
+        dst->input = src->input;
+        dst->inputLoc = src->inputLoc;
+    }
+    if (src->output != CG_GEOMETRY_OUTPUT_UNKNOWN) {
+        dst->output = src->output;
+        dst->outputLoc = src->outputLoc;
+    }
+} // lMergeGeometryModifiers
+
+/*
+ * lRejectGeometryModifiersOnNonFunction() - Topology modifiers qualify
+ *         functions only; an ordinary object carrying a nonempty
+ *         modifier record is rejected here so no later stage ever sees
+ *         modifiers off a function.
+ */
+
+static void lRejectGeometryModifiersOnNonFunction(SourceLoc *loc,
+                                                  const dtype *fDtype)
+{
+    if (fDtype->geometry.input == CG_GEOMETRY_INPUT_UNKNOWN &&
+        fDtype->geometry.output == CG_GEOMETRY_OUTPUT_UNKNOWN) {
+        return;
+    }
+    SemanticError(loc, ERROR___GEOMETRY_MODIFIER_FUNCTION);
+} // lRejectGeometryModifiersOnNonFunction
+
 /*
  * GetTypePointer() - Strange function that returns a pointer to the type defined by it's
  *         argument.  There are 2 cases:
@@ -799,6 +928,13 @@ dtype *SetDType(dtype *fDtype, Type *fType)
     fDtype->IsDerived = 0;
     fDtype->numNewDims = 0;
     fDtype->storageClass = SC_UNKNOWN;
+    /* Topology modifier tokens reduce before the base type keyword, so
+     * their record is parked in the pending store and initialised into
+     * the dtype here, exactly when the rest of the dtype is set up.
+     * Consuming the pending record also keeps one declaration's
+     * modifiers out of the next one. */
+    fDtype->geometry = lPendingGeometryModifiers;
+    CgGeometryInitModifiers(&lPendingGeometryModifiers);
     fDtype->type = *fType;
     return fDtype;
 } // SetDType
@@ -1935,6 +2071,8 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
         if (fDecl->type.storageClass != SC_UNKNOWN)
             SemanticError(&fDecl->loc, ERROR_S_STORAGE_NOT_ALLOWED,
                           GetAtomString(atable, fDecl->name));
+        /* Topology modifiers never qualify an individual formal. */
+        lRejectGeometryModifiersOnNonFunction(&fDecl->loc, &fDecl->type);
         fDecl->semantics = semantics;
     } else {
         lSymb = LookUpLocalSymbol(CurrentScope, fDecl->name);
@@ -1946,6 +2084,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
             }
             if (GetCategory(&fDecl->type.type) != TYPE_CATEGORY_FUNCTION) {
                 lRejectPendingProfileSpecifier(&fDecl->loc);
+                lRejectGeometryModifiersOnNonFunction(&fDecl->loc, &fDecl->type);
             }
             if (fDecl->type.type.properties & TYPE_MISC_TYPEDEF) {
                 lSymb = DefineTypedef(loc, CurrentScope, fDecl->name, lType);
@@ -1965,6 +2104,8 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     params = AddFormalParamDecls(lScope, fDecl->params);
                     lSymb = DeclareFunc(&fDecl->loc, CurrentScope, NULL, fDecl->name, lType, lScope, params);
                     lAttachPendingProfileSpecifier(lSymb);
+                    lMergeGeometryModifiers(&lSymb->details.fun.geometry,
+                                            &fDecl->type.geometry);
                     lValidateParameterDefaults(&fDecl->loc, lSymb);
                     // Programs may carry a return-value semantic; it is bound
                     // later by BuildSemanticStructs() for the selected entry.
@@ -2039,6 +2180,11 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                 params = AddFormalParamDecls(lScope, fDecl->params);
                 lSymb = DeclareFunc(&fDecl->loc, CurrentScope, lSymb, fDecl->name, lType, lScope, params);
                 lAttachPendingProfileSpecifier(lSymb);
+                /* A matching redeclaration merges its modifiers into
+                 * the surviving symbol; fields the redeclaration omits
+                 * keep the original values. */
+                lMergeGeometryModifiers(&lSymb->details.fun.geometry,
+                                        &fDecl->type.geometry);
                 lValidateParameterDefaults(&fDecl->loc, lSymb);
                 lSymb->storageClass = fDecl->type.storageClass;
                 // See the matching new-declaration path above.
@@ -2046,6 +2192,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     lSymb->details.fun.semantics = semantics;
             } else {
                 lRejectPendingProfileSpecifier(&fDecl->loc);
+                lRejectGeometryModifiersOnNonFunction(&fDecl->loc, &fDecl->type);
                 if (!IsTypeBase(&fDecl->type.type, TYPE_BASE_UNDEFINED_TYPE)) {
                     SemanticError(&fDecl->loc, ERROR_S_NAME_ALREADY_DEFINED,
                                   GetAtomString(atable, fDecl->name));
@@ -2750,6 +2897,10 @@ void DefineFunction(SourceLoc *loc, Scope *fScope, decl *func, stmt *body)
 
     if (IsFunction(lSymb)) {
         if (body) {
+            /* The definition restates or extends whatever modifiers its
+             * declarations recorded; nothing is ever dropped here. */
+            lMergeGeometryModifiers(&lSymb->details.fun.geometry,
+                                    &func->type.geometry);
             if (lSymb->properties & SYMB_IS_DEFINED) {
                 SemanticError(loc, ERROR_S_FUN_ALREADY_DEFINED,
                               GetAtomString(atable, lSymb->name));

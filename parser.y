@@ -140,7 +140,20 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %token <sc_token> SHORT_SY 321
 %token <sc_token> UNSIGNED_SY 322
 %token <sc_token> RESERVED_SY 323
-%token <sc_token> FIRST_USER_TOKEN_SY 324  /* Must be last token declaration */
+
+/* Geometry topology modifiers: appended after the last fixed token with
+ * explicit increasing values; FIRST_USER_TOKEN_SY stays the final
+ * declaration and no prior token was renumbered (stdlib.c embeds token
+ * values). */
+%token <sc_token> POINT_SY 325
+%token <sc_token> LINE_SY 326
+%token <sc_token> LINE_ADJ_SY 327
+%token <sc_token> TRIANGLE_SY 328
+%token <sc_token> TRIANGLE_ADJ_SY 329
+%token <sc_token> POINT_OUT_SY 330
+%token <sc_token> LINE_OUT_SY 331
+%token <sc_token> TRIANGLE_OUT_SY 332
+%token <sc_token> FIRST_USER_TOKEN_SY 333  /* Must be last token declaration */
 
 /*************<<<<<<<<<<<<<<<<<<<********************
 %type <dummy> abstract_parameter_declaration
@@ -154,6 +167,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %type <dummy> struct_compound_header
 
 %type <sc_int> function_specifier
+%type <sc_int> geometry_modifier
 %type <sc_int> in_out
 /***
 %type <sc_int> integer_constant
@@ -293,7 +307,9 @@ declaration:              declaration_specifiers ';'
                         | declaration_specifiers init_declarator_list ';'
                               { $$ = $2; }
                         | ERROR_SY ';'
-                              { RecordErrorPos(Cg->tokenLoc); $$ = NULL; }
+                              { RecordErrorPos(Cg->tokenLoc);
+                                ClearPendingGeometryModifiers();
+                                $$ = NULL; }
 ;
 
 abstract_declaration:     abstract_declaration_specifiers abstract_declarator
@@ -322,6 +338,11 @@ abstract_declaration_specifiers:
                               { SetTypeQualifiers(Cg->tokenLoc, &CurrentDeclTypeSpecs, $1); $$ = CurrentDeclTypeSpecs; }
                         | function_specifier abstract_declaration_specifiers
                               { SetTypeMisc(Cg->tokenLoc, &CurrentDeclTypeSpecs, $1); $$ = CurrentDeclTypeSpecs; }
+                        | geometry_modifier abstract_declaration_specifiers
+                              /* The modifier token already parked its record;
+                               * SetDType initialised it into the scratch dtype
+                               * when the base type specifier reduced. */
+                              { $$ = CurrentDeclTypeSpecs; }
                         | PACKED_SY abstract_declaration_specifiers
                               { SetTypePacked(Cg->tokenLoc, &CurrentDeclTypeSpecs); $$ = CurrentDeclTypeSpecs; }
 ;
@@ -399,6 +420,7 @@ type_specifier:           INT_SY
                               { $$ = LookUpTypeSymbol(NULL, $1); }
                         | error
                               {
+                                ClearPendingGeometryModifiers();
                                 SemanticParseError(Cg->tokenLoc, ERROR_S_TYPE_NAME_EXPECTED,
                                                    GetAtomString(atable, Cg->mostRecentToken /* yychar */));
                                 $$ = UndefinedType;
@@ -441,6 +463,26 @@ function_specifier:       INLINE_SY
                               { $$ = TYPE_MISC_INLINE; }
                         | INTERNAL_SY
                               { $$ = TYPE_MISC_INTERNAL; }
+;
+
+/**********************/
+/* Geometry Modifiers */
+/**********************/
+
+/* Each action parks one topology modifier with its location via the
+ * parser-facing wrappers.  A zero result means a diagnostic was already
+ * reported at this token; parsing recovers at the declaration boundary.
+ * No backend selection or default-output derivation happens here. */
+
+geometry_modifier:
+          POINT_SY        { $$ = SetGeometryInputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_INPUT_POINT); }
+        | LINE_SY         { $$ = SetGeometryInputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_INPUT_LINE); }
+        | LINE_ADJ_SY     { $$ = SetGeometryInputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_INPUT_LINE_ADJACENCY); }
+        | TRIANGLE_SY     { $$ = SetGeometryInputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_INPUT_TRIANGLE); }
+        | TRIANGLE_ADJ_SY { $$ = SetGeometryInputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_INPUT_TRIANGLE_ADJACENCY); }
+        | POINT_OUT_SY    { $$ = SetGeometryOutputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_OUTPUT_POINTS); }
+        | LINE_OUT_SY     { $$ = SetGeometryOutputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_OUTPUT_LINE_STRIP); }
+        | TRIANGLE_OUT_SY { $$ = SetGeometryOutputModifier(Cg->tokenLoc, &CurrentDeclTypeSpecs, CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP); }
 ;
 
 /**********/
