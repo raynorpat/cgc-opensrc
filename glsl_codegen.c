@@ -401,6 +401,10 @@ static int GlslValidateStmtList(const GlslModule *module,
         case GLSL_STMT_BREAK:
         case GLSL_STMT_CONTINUE:
             break;
+        case GLSL_STMT_GEOMETRY_EMIT:
+        case GLSL_STMT_GEOMETRY_RESTART:
+            if (module->stage != GLSL_STAGE_GEOMETRY) return 0;
+            break;
         default:
             return 0;
         }
@@ -898,6 +902,32 @@ static int GlslWriteStmt(FILE *out, const GlslStmt *stmt, int level)
     case GLSL_STMT_DISCARD: return fprintf(out, "discard;\n") >= 0;
     case GLSL_STMT_BREAK: return fprintf(out, "break;\n") >= 0;
     case GLSL_STMT_CONTINUE: return fprintf(out, "continue;\n") >= 0;
+    case GLSL_STMT_GEOMETRY_EMIT: {
+        const GlslStmt *assign;
+        const GlslFlatReplay *replay;
+
+        for (assign = stmt->u.emit.assignments;
+             assign != NULL; assign = assign->next)
+        {
+            if (fprintf(out, "    ") < 0 ||
+                !GlslWriteExprPrec(out,
+                    assign->u.expression, 0, 0, GLSL_OP_NONE) ||
+                fprintf(out, ";\n") < 0) return 0;
+        }
+        for (replay = stmt->u.emit.replay;
+             replay != NULL; replay = replay->next)
+        {
+            if (fprintf(out, "    if (%s) {\n    %s = %s;\n    }\n",
+                    replay->defined->name,
+                    replay->target->name,
+                    replay->shadow->name) < 0) return 0;
+        }
+        if (!GlslWriteIndent(out, level) ||
+            fprintf(out, "EmitVertex();\n") < 0) return 0;
+        return 1;
+    }
+    case GLSL_STMT_GEOMETRY_RESTART:
+        return fprintf(out, "EndPrimitive();\n") >= 0;
     default: return 0;
     }
 }
@@ -945,6 +975,38 @@ int GlslWriteModule(FILE *out, const GlslModule *module)
      * output after the module structural check succeeds.  Core GLSL
      * 1.50, matching VERSION_STRING_GLSL in glsl_hal.h. */
     if (fprintf(out, "#version 150\n") < 0) return 0;
+    if (module->stage == GLSL_STAGE_GEOMETRY) {
+        const char *inputToken = NULL;
+        const char *outputToken = NULL;
+
+        if (module->geometry != NULL) {
+            switch (module->geometry->inputTopology) {
+                case GLSL_GEOMETRY_INPUT_POINTS:   inputToken = "points"; break;
+                case GLSL_GEOMETRY_INPUT_LINES:    inputToken = "lines"; break;
+                case GLSL_GEOMETRY_INPUT_LINES_ADJACENCY:  inputToken = "lines_adjacency"; break;
+                case GLSL_GEOMETRY_INPUT_TRIANGLES: inputToken = "triangles"; break;
+                case GLSL_GEOMETRY_INPUT_TRIANGLES_ADJACENCY: inputToken = "triangles_adjacency"; break;
+            }
+            switch (module->geometry->outputTopology) {
+                case GLSL_GEOMETRY_OUTPUT_POINTS:       outputToken = "points"; break;
+                case GLSL_GEOMETRY_OUTPUT_LINE_STRIP:   outputToken = "line_strip"; break;
+                case GLSL_GEOMETRY_OUTPUT_TRIANGLE_STRIP: outputToken = "triangle_strip"; break;
+            }
+        }
+        if (inputToken != NULL &&
+            fprintf(out, "layout(%s) in;\n", inputToken) < 0) return 0;
+        if (outputToken != NULL) {
+            if (module->geometry->maxOutputVertices > 0) {
+                if (fprintf(out, "layout(%s, max_vertices = %d) out;\n",
+                        outputToken,
+                        module->geometry->maxOutputVertices) < 0) return 0;
+            } else {
+                if (fprintf(out, "layout(%s) out;\n", outputToken) < 0)
+                    return 0;
+            }
+        }
+        if (fprintf(out, "\n") < 0) return 0;
+    }
     for (binding = module->bindings; binding != NULL;
          binding = binding->next)
     {

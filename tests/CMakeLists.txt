@@ -1128,6 +1128,7 @@ add_cg20_failure(cg20_interface_bad_signature
 
 add_executable(glsl_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
+    ${PROJECT_SOURCE_DIR}/glsl_verify.c
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
     glsl_ir_test.c
 )

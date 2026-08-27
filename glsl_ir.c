@@ -1056,3 +1056,35 @@ void GlslAppendFunction(GlslFunction **list, GlslFunction *function)
         ;
     current->next = function;
 }
+
+GlslStmt *GlslNewGeometryEmit(GlslModule *module,
+    GlslStmt *assignments, GlslFlatReplay *replay)
+{
+    GlslStmt *stmt = GlslNewStmt(module, GLSL_STMT_GEOMETRY_EMIT);
+
+    if (stmt != NULL) {
+        stmt->u.emit.assignments = assignments;
+        stmt->u.emit.replay = replay;
+    }
+    return stmt;
+}
+
+GlslStmt *GlslNewGeometryRestart(GlslModule *module)
+{
+    return GlslNewStmt(module, GLSL_STMT_GEOMETRY_RESTART);
+}
+
+GlslFlatReplay *GlslNewFlatReplay(GlslModule *module,
+    GlslDecl *target, GlslDecl *shadow, GlslDecl *defined)
+{
+    GlslFlatReplay *replay;
+
+    replay = (GlslFlatReplay *) GlslAlloc(module,
+        sizeof(GlslFlatReplay));
+    if (replay != NULL) {
+        replay->target = target;
+        replay->shadow = shadow;
+        replay->defined = defined;
+    }
+    return replay;
+}

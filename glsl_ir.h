@@ -51,8 +51,20 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 enum GlslStage_Enum {
     GLSL_STAGE_VERTEX,
-    GLSL_STAGE_FRAGMENT
+    GLSL_STAGE_FRAGMENT,
+    GLSL_STAGE_GEOMETRY
 };
+
+typedef enum GlslVerifyReason_Rec {
+    GLSL_VERIFY_OK = 0,
+    GLSL_VERIFY_STAGE,
+    GLSL_VERIFY_TYPE,
+    GLSL_VERIFY_DECLARATION,
+    GLSL_VERIFY_INTERFACE,
+    GLSL_VERIFY_CONTROL,
+    GLSL_VERIFY_GEOMETRY,
+    GLSL_VERIFY_LOCATION
+} GlslVerifyReason;
 
 typedef enum GlslStage_Enum GlslStage;
 
@@ -210,7 +222,9 @@ typedef enum GlslOperator_Enum {
 typedef enum GlslStmtKind_Enum {
     GLSL_STMT_EXPRESSION, GLSL_STMT_IF, GLSL_STMT_WHILE, GLSL_STMT_DO,
     GLSL_STMT_FOR, GLSL_STMT_BLOCK, GLSL_STMT_RETURN, GLSL_STMT_DISCARD,
-    GLSL_STMT_BREAK, GLSL_STMT_CONTINUE
+    GLSL_STMT_BREAK, GLSL_STMT_CONTINUE,
+    GLSL_STMT_GEOMETRY_EMIT,
+    GLSL_STMT_GEOMETRY_RESTART
 } GlslStmtKind;
 
 typedef struct GlslLoc_Rec {
@@ -218,10 +232,28 @@ typedef struct GlslLoc_Rec {
     int line;
 } GlslLoc;
 
+typedef enum GlslGeometryInput_Enum {
+    GLSL_GEOMETRY_INPUT_POINTS,
+    GLSL_GEOMETRY_INPUT_LINES,
+    GLSL_GEOMETRY_INPUT_LINES_ADJACENCY,
+    GLSL_GEOMETRY_INPUT_TRIANGLES,
+    GLSL_GEOMETRY_INPUT_TRIANGLES_ADJACENCY
+} GlslGeometryInput;
+
+typedef enum GlslGeometryOutput_Enum {
+    GLSL_GEOMETRY_OUTPUT_POINTS,
+    GLSL_GEOMETRY_OUTPUT_LINE_STRIP,
+    GLSL_GEOMETRY_OUTPUT_TRIANGLE_STRIP
+} GlslGeometryOutput;
+
 typedef struct GlslExpr_Rec GlslExpr;
 typedef struct GlslStmt_Rec GlslStmt;
 typedef struct GlslFunction_Rec GlslFunction;
 typedef struct GlslBinding_Rec GlslBinding;
+
+typedef struct GlslVerifyDiagnostic_Rec GlslVerifyDiagnostic;
+typedef struct GlslGeometryInfo_Rec GlslGeometryInfo;
+typedef struct GlslFlatReplay_Rec GlslFlatReplay;
 
 struct GlslExpr_Rec {
     GlslExpr *next;
@@ -294,7 +326,11 @@ struct GlslStmt_Rec {
             GlslStmt *body;
         } forStmt;
         GlslStmt *block;
-        GlslExpr *returnExpr;
+        GlslStmt *returnExpr;
+        struct {
+            GlslStmt *assignments;
+            GlslFlatReplay *replay;
+        } emit;
     } u;
 };
 
@@ -362,6 +398,7 @@ typedef struct GlslModule_Rec {
     int resourceUsed;
     int resourceAvailable;
     int errors;
+    GlslGeometryInfo *geometry;
 } GlslModule;
 
 void GlslInitModule(GlslModule *module, GlslStage stage,
@@ -414,5 +451,48 @@ GlslBinding *GlslNewBinding(GlslModule *module, GlslStorage storage,
 void GlslAppendDecl(GlslDecl **list, GlslDecl *decl);
 void GlslAppendStmt(GlslStmt **list, GlslStmt *stmt);
 void GlslAppendFunction(GlslFunction **list, GlslFunction *function);
+
+GlslStmt *GlslNewGeometryEmit(GlslModule *module,
+    GlslStmt *assignments, GlslFlatReplay *replay);
+GlslStmt *GlslNewGeometryRestart(GlslModule *module);
+GlslFlatReplay *GlslNewFlatReplay(GlslModule *module,
+    GlslDecl *target, GlslDecl *shadow, GlslDecl *defined);
+
+int GlslVerifyModule(const GlslModule *module,
+    GlslVerifyDiagnostic *diagnostic);
+
+/* Geometry layout info --- optional; NULL for vertex/fragment modules. */
+
+struct GlslGeometryInfo_Rec {
+    GlslGeometryInput inputTopology;
+    GlslGeometryOutput outputTopology;
+    int inputVertexCount;
+    int maxOutputVertices;
+    GlslLoc inputLoc;
+    GlslLoc outputLoc;
+    GlslLoc maxVerticesLoc;
+};
+
+/* Flat shadow replay: one triple per output semantic potentially
+ * written by flatAttrib.  The target is the output declaration, the
+ * shadow is the private shadow variable, and defined is the bool flag
+ * guarding the replay. */
+
+struct GlslFlatReplay_Rec {
+    struct GlslFlatReplay_Rec *next;
+    GlslDecl *target;
+    GlslDecl *shadow;
+    GlslDecl *defined;
+};
+
+/* Verifier diagnostic: reason code, source location, and the offending
+ * node pointer.  Stored separately from the module so verification
+ * does not pollute module state. */
+
+struct GlslVerifyDiagnostic_Rec {
+    GlslVerifyReason reason;
+    GlslLoc loc;
+    const void *node;
+};
 
 #endif // !defined(__GLSL_IR_H)

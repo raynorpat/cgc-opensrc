@@ -1238,5 +1238,86 @@ int main(int argc, char **argv)
     assert(GlslWriteModule(writer, &module));
     assert(ftell(writer) > 0);
     assert(!fclose(writer));
+
+    /* ---- Geometry module: builders and basic writer exercise ---- */
+    {
+        GlslModule geoModule;
+        GlslGeometryInfo geoInfo;
+        GlslDecl *outDecl;
+        GlslStmt *emitStmt, *restartStmt;
+        GlslFlatReplay *replay;
+        GlslFunction *geoFunc;
+        GlslType float4Type;
+        GlslDecl *shadowDecl, *definedDecl;
+
+        GlslInitModule(&geoModule, GLSL_STAGE_GEOMETRY, TestAlloc, NULL);
+        geoInfo.inputTopology = GLSL_GEOMETRY_INPUT_TRIANGLES_ADJACENCY;
+        geoInfo.outputTopology = GLSL_GEOMETRY_OUTPUT_TRIANGLE_STRIP;
+        geoInfo.inputVertexCount = 6;
+        geoInfo.maxOutputVertices = 12;
+        geoInfo.inputLoc.file = 0;
+        geoInfo.inputLoc.line = 0;
+        geoInfo.outputLoc.file = 0;
+        geoInfo.outputLoc.line = 0;
+        geoInfo.maxVerticesLoc.file = 0;
+        geoInfo.maxVerticesLoc.line = 0;
+        geoModule.geometry = &geoInfo;
+
+        float4Type = GlslNumericType(GLSL_BASE_FLOAT, 4);
+        outDecl = GlslNewDecl(&geoModule, GLSL_STORAGE_OUTPUT,
+                              float4Type, "cg_COLOR0");
+        assert(outDecl != NULL);
+        GlslAppendDecl(&geoModule.globals, outDecl);
+        shadowDecl = GlslNewDecl(&geoModule, GLSL_STORAGE_CONST,
+                                 float4Type, "cg_flat_COLOR0");
+        assert(shadowDecl != NULL);
+        GlslAppendDecl(&geoModule.globals, shadowDecl);
+        definedDecl = GlslNewDecl(&geoModule, GLSL_STORAGE_CONST,
+                                  GlslNumericType(GLSL_BASE_BOOL, 0),
+                                  "cg_flat_COLOR0_defined");
+        assert(definedDecl != NULL);
+        GlslAppendDecl(&geoModule.globals, definedDecl);
+
+        replay = GlslNewFlatReplay(&geoModule, outDecl,
+                                   shadowDecl, definedDecl);
+        assert(replay != NULL);
+        assert(replay->target == outDecl);
+        assert(replay->shadow == shadowDecl);
+        assert(replay->defined == definedDecl);
+
+        emitStmt = GlslNewGeometryEmit(&geoModule, NULL, replay);
+        assert(emitStmt != NULL);
+        assert(emitStmt->kind == GLSL_STMT_GEOMETRY_EMIT);
+        assert(emitStmt->u.emit.replay == replay);
+
+        restartStmt = GlslNewGeometryRestart(&geoModule);
+        assert(restartStmt != NULL);
+        assert(restartStmt->kind == GLSL_STMT_GEOMETRY_RESTART);
+
+        geoFunc = GlslNewFunction(&geoModule, float4Type, "main");
+        assert(geoFunc != NULL);
+        geoFunc->isEntry = 1;
+        geoModule.entry = geoFunc;
+        GlslAppendFunction(&geoModule.functions, geoFunc);
+        GlslAppendStmt(&geoFunc->body, emitStmt);
+        GlslAppendStmt(&geoFunc->body, restartStmt);
+
+        /* Verify list shape: first statement is emit, second is restart. */
+        assert(geoFunc->body->kind == GLSL_STMT_GEOMETRY_EMIT);
+        assert(geoFunc->body->next->kind == GLSL_STMT_GEOMETRY_RESTART);
+        assert(geoFunc->body->next->next == NULL);
+    }
+
+    /* ---- Geometry verifier: rejects missing geometry metadata ---- */
+    {
+        GlslModule badGeo;
+        GlslVerifyDiagnostic diag;
+
+        GlslInitModule(&badGeo, GLSL_STAGE_GEOMETRY, TestAlloc, NULL);
+        badGeo.geometry = NULL;
+        assert(!GlslVerifyModule(&badGeo, &diag));
+        assert(diag.reason == GLSL_VERIFY_GEOMETRY);
+    }
+
     return 0;
 }

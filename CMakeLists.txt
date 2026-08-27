@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16)
 
 project(cgc LANGUAGES C)
 
@@ -35,6 +35,7 @@ add_executable(cgc
     cpp.c
     generic_hal.c
     glsl_ir.c
+    glsl_verify.c
     glsl_lower.c
     glsl_codegen.c
     glsl_hal.c
