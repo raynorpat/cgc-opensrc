@@ -168,7 +168,18 @@ const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
         case GLSL_INTERFACE_ATTRIBUTE:
         case GLSL_INTERFACE_VARYING:
         case GLSL_INTERFACE_COLOR_OUTPUT:
+        case GLSL_INTERFACE_USER:
             return GlslConnectorName(profile, desc, index, isOutput);
+        case GLSL_INTERFACE_GEOMETRY_POSITION_IN:
+            return "gl_in";
+        case GLSL_INTERFACE_PRIMITIVE_ID_IN:
+            return "gl_PrimitiveIDIn";
+        case GLSL_INTERFACE_PRIMITIVE_ID_OUT:
+            return "gl_PrimitiveID";
+        case GLSL_INTERFACE_LAYER:
+            return "gl_Layer";
+        case GLSL_INTERFACE_VERTEX_ID:
+            return "gl_VertexID";
         case GLSL_INTERFACE_FRAG_COLOR:
             /* Compatibility-only spelling; core 1.50 fragment colors
              * route through GLSL_INTERFACE_COLOR_OUTPUT instead. */
@@ -419,6 +430,20 @@ static int BindVaryingSemantic_glsl(SourceLoc *loc, Symbol *fSymb,
             base = GetBase(type);
             if (semantic->interfaceKind == GLSL_INTERFACE_FRONT_FACING) {
                 if (!IsScalar(type) || base != TYPE_BASE_BOOLEAN) {
+                    SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
+                                  semanticName);
+                    return 0;
+                }
+            } else if (semantic->interfaceKind ==
+                           GLSL_INTERFACE_VERTEX_ID ||
+                       semantic->interfaceKind ==
+                           GLSL_INTERFACE_PRIMITIVE_ID_IN ||
+                       semantic->interfaceKind ==
+                           GLSL_INTERFACE_PRIMITIVE_ID_OUT ||
+                       semantic->interfaceKind == GLSL_INTERFACE_LAYER ||
+                       !strcmp(semantic->canonicalRoot, "VERTEXID"))
+            {
+                if (!IsScalar(type) || base != TYPE_BASE_INT) {
                     SemanticError(loc, ERROR_S_GLSL_SEMANTIC,
                                   semanticName);
                     return 0;
@@ -921,6 +946,7 @@ int RegisterProfiles_glsl(void)
 {
     RegisterProfile(InitHAL_glslv, PROFILE_GLSLV_NAME, PROFILE_GLSLV_ID);
     RegisterProfile(InitHAL_glslf, PROFILE_GLSLF_NAME, PROFILE_GLSLF_ID);
+    RegisterProfile(InitHAL_glslg, PROFILE_GLSLG_NAME, PROFILE_GLSLG_ID);
     /* glslv answers to its exact name and to the vertex wildcard "vs";
      * glslf to its exact name and the fragment wildcard "ps".  The
      * wildcard specificity integer orders wildcard candidates against
@@ -929,5 +955,7 @@ int RegisterProfiles_glsl(void)
                        "vs", 10);
     SetProfileIdentity(PROFILE_GLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT,
                        "ps", 10);
+    SetProfileIdentity(PROFILE_GLSLG_NAME, CG_PROFILE_STAGE_GEOMETRY,
+                       "gs", 10);
     return 1;
 }

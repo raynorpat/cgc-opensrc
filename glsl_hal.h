@@ -56,6 +56,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define PROFILE_GLSLV_ID 12
 #define PROFILE_GLSLF_NAME "glslf"
 #define PROFILE_GLSLF_ID 13
+#define PROFILE_GLSLG_NAME "glslg"
+#define PROFILE_GLSLG_ID 14
 #define CID_GLSLV_IN_NAME "glslv_in"
 #define CID_GLSLV_IN_ID 14
 #define CID_GLSLV_OUT_NAME "glslv_out"
@@ -64,6 +66,10 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CID_GLSLF_IN_ID 16
 #define CID_GLSLF_OUT_NAME "glslf_out"
 #define CID_GLSLF_OUT_ID 17
+#define CID_GLSLG_IN_NAME "glslg_in"
+#define CID_GLSLG_IN_ID 18
+#define CID_GLSLG_OUT_NAME "glslg_out"
+#define CID_GLSLG_OUT_ID 19
 #define GLSL_BUILTIN_GROUP 3
 
 #define TYPE_BASE_GLSL_SAMPLER1D   (TYPE_BASE_FIRST_USER + 0)
@@ -92,7 +98,13 @@ typedef enum GlslInterface_Enum {
      * (cg_COLOR0), not a compatibility built-in.  Kept separate from
      * GLSL_INTERFACE_VARYING so the exact vec4 size rule and the
      * one-color-output limit stay attached to the color semantic. */
-    GLSL_INTERFACE_COLOR_OUTPUT
+    GLSL_INTERFACE_COLOR_OUTPUT,
+    GLSL_INTERFACE_USER,
+    GLSL_INTERFACE_GEOMETRY_POSITION_IN,
+    GLSL_INTERFACE_PRIMITIVE_ID_IN,
+    GLSL_INTERFACE_PRIMITIVE_ID_OUT,
+    GLSL_INTERFACE_LAYER,
+    GLSL_INTERFACE_VERTEX_ID
 } GlslInterface;
 
 typedef struct GlslSemanticDesc_Rec {
@@ -133,6 +145,8 @@ int RegisterProfiles_glsl(void);
 int GlslInitHAL(slHAL *hal, const GlslProfileDesc *profile);
 int InitHAL_glslv(slHAL *hal);
 int InitHAL_glslf(slHAL *hal);
+int InitHAL_glslg(slHAL *hal);
+const GlslProfileDesc *GlslGeometryProfileDesc(void);
 /* Cg 2.0 boundary: lower a verified Cg IR module into the GLSL module. */
 int GlslLowerCgIR(GlslModule *module, const GlslProfileDesc *profile,
     const CgIRModule *source);

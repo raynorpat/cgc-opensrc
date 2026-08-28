@@ -1,0 +1,11 @@
+uniform float4 tint;
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          int primitiveId : PRIMITIVEID)
+{
+    if (primitiveId > 0) {
+        flatAttrib(tint : COLOR0);
+    }
+    emitVertex(position[0] : POSITION, tint * 0.5 : COLOR0);
+    restartStrip();
+}

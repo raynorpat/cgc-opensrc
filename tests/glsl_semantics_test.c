@@ -91,11 +91,13 @@ static const GlslSemanticDesc vertexSemantics[] = {
     { "BINORMAL",     "BINORMAL",     0,  1, SEM_IN | SEM_VARYING, 3, GLSL_INTERFACE_ATTRIBUTE },
     { "BLENDWEIGHT",  "BLENDWEIGHT",  0,  1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_ATTRIBUTE },
     { "BLENDINDICES", "BLENDINDICES", 0,  1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_ATTRIBUTE },
+    { "VERTEXID",     "VERTEXID",     0,  1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_VERTEX_ID },
     { "POSITION",     "POSITION",     0,  1, SEM_OUT | SEM_VARYING | SEM_REQUIRED, 4, GLSL_INTERFACE_POSITION },
     { "COLOR",        "COLOR",        0,  2, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_VARYING },
     { "TEXCOORD",     "TEXCOORD",     0,  8, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_VARYING },
     { "FOG",          "FOG",          0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_VARYING },
-    { "PSIZE",        "PSIZE",        0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_POINT_SIZE }
+    { "PSIZE",        "PSIZE",        0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_POINT_SIZE },
+    { "VERTEXID",     "VERTEXID",     0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_USER }
 };
 
 static const GlslSemanticAlias vertexAliases[] = {
@@ -137,7 +139,8 @@ static const ExpectedRegister vertexInput[] = {
     { "TANGENT0",      TYPE_BASE_FLOAT, 3, REG_INPUT },
     { "BINORMAL0",     TYPE_BASE_FLOAT, 3, REG_INPUT },
     { "BLENDWEIGHT0",  TYPE_BASE_FLOAT, 4, REG_INPUT },
-    { "BLENDINDICES0", TYPE_BASE_FLOAT, 4, REG_INPUT }
+    { "BLENDINDICES0", TYPE_BASE_FLOAT, 4, REG_INPUT },
+    { "VERTEXID0",     TYPE_BASE_INT,   1, REG_INPUT }
 };
 
 static const ExpectedRegister vertexOutput[] = {
@@ -153,7 +156,8 @@ static const ExpectedRegister vertexOutput[] = {
     { "TEXCOORD6", TYPE_BASE_FLOAT, 4, REG_OUTPUT },
     { "TEXCOORD7", TYPE_BASE_FLOAT, 4, REG_OUTPUT },
     { "FOG0",      TYPE_BASE_FLOAT, 1, REG_OUTPUT },
-    { "PSIZE0",    TYPE_BASE_FLOAT, 1, REG_OUTPUT }
+    { "PSIZE0",    TYPE_BASE_FLOAT, 1, REG_OUTPUT },
+    { "VERTEXID0", TYPE_BASE_INT,   1, REG_OUTPUT }
 };
 
 static const GlslSemanticDesc fragmentSemantics[] = {
@@ -163,6 +167,7 @@ static const GlslSemanticDesc fragmentSemantics[] = {
     { "POSITION", "POSITION", 0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "WPOS",     "WPOS",     0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "FACE",     "FACE",     0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_FRONT_FACING },
+    { "PRIMITIVEID", "PRIMITIVEID", 0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_PRIMITIVE_ID_OUT },
     { "COLOR",    "COLOR",    0, 1, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_COLOR_OUTPUT },
     { "DEPTH",    "DEPTH",    0, 1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_FRAG_DEPTH }
 };
@@ -187,7 +192,8 @@ static const ExpectedRegister fragmentInput[] = {
     { "FOG0",      TYPE_BASE_FLOAT,   1, REG_INPUT },
     { "POSITION0", TYPE_BASE_FLOAT,   4, REG_INPUT },
     { "WPOS0",     TYPE_BASE_FLOAT,   4, REG_INPUT },
-    { "FACE0",     TYPE_BASE_BOOLEAN, 1, REG_INPUT }
+    { "FACE0",     TYPE_BASE_BOOLEAN, 1, REG_INPUT },
+    { "PRIMITIVEID0", TYPE_BASE_INT, 1, REG_INPUT }
 };
 
 static const ExpectedRegister fragmentOutput[] = {
@@ -540,8 +546,20 @@ static void CheckSemanticBoundaries(slHAL *hal)
         semantic = &profile->semanticMap[i];
         IsOutVal = (semantic->properties & SEM_OUT) != 0;
         required = (semantic->properties & SEM_REQUIRED) != 0;
-        base = semantic->interfaceKind == GLSL_INTERFACE_FRONT_FACING ?
-               TYPE_BASE_BOOLEAN : TYPE_BASE_FLOAT;
+        if (semantic->interfaceKind == GLSL_INTERFACE_FRONT_FACING) {
+            base = TYPE_BASE_BOOLEAN;
+        } else if (semantic->interfaceKind == GLSL_INTERFACE_VERTEX_ID ||
+                   semantic->interfaceKind ==
+                       GLSL_INTERFACE_PRIMITIVE_ID_IN ||
+                   semantic->interfaceKind ==
+                       GLSL_INTERFACE_PRIMITIVE_ID_OUT ||
+                   semantic->interfaceKind == GLSL_INTERFACE_LAYER ||
+                   !strcmp(semantic->canonicalRoot, "VERTEXID"))
+        {
+            base = TYPE_BASE_INT;
+        } else {
+            base = TYPE_BASE_FLOAT;
+        }
 
         index = semantic->firstIndex;
         sprintf(semanticName, "%s%d", semantic->root, index);
@@ -646,6 +664,14 @@ static void CheckVertex(void)
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
                    AddAtom(atable, "PSIZE"), 1), "gl_PointSize"));
     assert(GlslCanonicalInterfaceName(profile,
+           AddAtom(atable, "VERTEXID"), 0) != NULL);
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "VERTEXID"), 0), "gl_VertexID"));
+    assert(GlslCanonicalInterfaceName(profile,
+           AddAtom(atable, "VERTEXID"), 1) != NULL);
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "VERTEXID"), 1), "VERTEXID0"));
+    assert(GlslCanonicalInterfaceName(profile,
            AddAtom(atable, "ATTRIB16"), 0) == NULL);
     assert(GlslCanonicalInterfaceName(profile,
            AddAtom(atable, "NOT_A_SEMANTIC"), 0) == NULL);
@@ -732,6 +758,11 @@ static void CheckFragment(void)
                    AddAtom(atable, "COLOR"), 1), "COLOR0"));
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
                    AddAtom(atable, "DEPTH"), 1), "gl_FragDepth"));
+    assert(GlslCanonicalInterfaceName(profile,
+           AddAtom(atable, "PRIMITIVEID"), 0) != NULL);
+    assert(!strcmp(GlslCanonicalInterfaceName(profile,
+                   AddAtom(atable, "PRIMITIVEID"), 0),
+                   "gl_PrimitiveID"));
     assert(!strcmp(GlslCanonicalInterfaceName(profile,
                    AddAtom(atable, "COLOR1"), 0), "COLOR1"));
     assert(GlslCanonicalInterfaceName(profile,
@@ -766,6 +797,57 @@ static void CheckFragment(void)
                                TYPE_BASE_FLOAT, 1);
 
     assert(!hal.BindVaryingUnbound(NULL, NULL, 0, 0, NULL, 1));
+}
+
+static const GlslSemanticDesc *FindGeometrySemantic(
+    const GlslProfileDesc *profile, const char *root, int isOutput)
+{
+    int direction;
+    int i;
+
+    direction = isOutput ? SEM_OUT : SEM_IN;
+    for (i = 0; i < profile->numSemanticMap; i++) {
+        if (!strcmp(profile->semanticMap[i].root, root) &&
+            (profile->semanticMap[i].properties & direction) != 0)
+        {
+            return &profile->semanticMap[i];
+        }
+    }
+    return NULL;
+}
+
+static void CheckGeometryDescriptor(void)
+{
+    static const struct {
+        const char *semantic;
+        int isOutput;
+        GlslInterface interfaceKind;
+    } expected[] = {
+        { "INSTANCEID", 0, GLSL_INTERFACE_PRIMITIVE_ID_IN },
+        { "PRIMITIVEID", 0, GLSL_INTERFACE_PRIMITIVE_ID_IN },
+        { "VERTEXID", 0, GLSL_INTERFACE_USER },
+        { "POSITION", 0, GLSL_INTERFACE_GEOMETRY_POSITION_IN },
+        { "POSITION", 1, GLSL_INTERFACE_POSITION },
+        { "PRIMITIVEID", 1, GLSL_INTERFACE_PRIMITIVE_ID_OUT },
+        { "LAYER", 1, GLSL_INTERFACE_LAYER }
+    };
+    const GlslProfileDesc *profile;
+    const GlslSemanticDesc *semantic;
+    int i;
+
+    profile = GlslGeometryProfileDesc();
+    assert(profile != NULL);
+    assert(profile->stage == GLSL_STAGE_GEOMETRY);
+    assert(!strcmp(profile->name, PROFILE_GLSLG_NAME));
+    assert(profile->pid == PROFILE_GLSLG_ID);
+    assert(profile->inputCid == CID_GLSLG_IN_ID);
+    assert(profile->outputCid == CID_GLSLG_OUT_ID);
+    for (i = 0; i < NUMELS(expected); i++) {
+        semantic = FindGeometrySemantic(profile, expected[i].semantic,
+                                        expected[i].isOutput);
+        assert(semantic != NULL);
+        assert(semantic->interfaceKind == expected[i].interfaceKind);
+    }
 }
 
 static void CheckOperatorFilter(void)
@@ -921,6 +1003,7 @@ int main(void)
     assert(result);
     CheckVertex();
     CheckFragment();
+    CheckGeometryDescriptor();
     CheckOperatorFilter();
     CheckGenerateCodeWriterFailure();
     CheckIRHooks();

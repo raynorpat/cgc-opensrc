@@ -1,0 +1,17 @@
+POINT void semantics_main(AttribArray<float4> position : POSITION,
+                          int instance : INSTANCEID,
+                          int primitiveIn : PRIMITIVEID,
+                          AttribArray<int> vertexIds : VERTEXID,
+                          uniform float4 color)
+{
+    int primitiveOut;
+    int layerOut;
+
+    primitiveOut = primitiveIn + instance;
+    layerOut = vertexIds[0];
+    flatAttrib(color : COLOR0);
+    emitVertex(position[0] : POSITION,
+               primitiveOut : PRIMITIVEID,
+               layerOut : LAYER);
+    restartStrip();
+}

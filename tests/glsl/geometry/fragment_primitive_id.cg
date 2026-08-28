@@ -1,0 +1,11 @@
+struct FragmentOut
+{
+    float4 color : COLOR0;
+};
+
+FragmentOut main(int primitiveId : PRIMITIVEID)
+{
+    FragmentOut output;
+    output.color = float4(float(primitiveId), 0.0, 0.0, 1.0);
+    return output;
+}

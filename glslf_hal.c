@@ -51,6 +51,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
 #define FLT TYPE_BASE_FLOAT
+#define INT TYPE_BASE_INT
 #define BOOL TYPE_BASE_BOOLEAN
 
 static ConnectorRegisters inputRegs_glslf[] = {
@@ -67,7 +68,8 @@ static ConnectorRegisters inputRegs_glslf[] = {
     { "FOG0",      0, FLT,  10, 1, REG_RESERVED | REG_INPUT },
     { "POSITION0", 0, FLT,  11, 4, REG_RESERVED | REG_INPUT },
     { "WPOS0",     0, FLT,  12, 4, REG_RESERVED | REG_INPUT },
-    { "FACE0",     0, BOOL, 13, 1, REG_RESERVED | REG_INPUT }
+    { "FACE0",     0, BOOL, 13, 1, REG_RESERVED | REG_INPUT },
+    { "PRIMITIVEID0", 0, INT, 14, 1, REG_RESERVED | REG_INPUT }
 };
 
 static ConnectorRegisters outputRegs_glslf[] = {
@@ -89,6 +91,7 @@ static GlslSemanticDesc semanticMap_glslf[] = {
     { "POSITION", "POSITION", 0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "WPOS",     "WPOS",     0, 1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_FRAG_COORD },
     { "FACE",     "FACE",     0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_FRONT_FACING },
+    { "PRIMITIVEID", "PRIMITIVEID", 0, 1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_PRIMITIVE_ID_OUT },
     { "COLOR",    "COLOR",    0, 1, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_COLOR_OUTPUT },
     { "DEPTH",    "DEPTH",    0, 1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_FRAG_DEPTH }
 };

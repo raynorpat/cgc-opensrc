@@ -1,0 +1,13 @@
+struct VertexOut
+{
+    float4 position : POSITION;
+    int vertexId : VERTEXID;
+};
+
+VertexOut main(int vertexId : VERTEXID)
+{
+    VertexOut output;
+    output.position = float4(0.0, 0.0, 0.0, 1.0);
+    output.vertexId = vertexId;
+    return output;
+}

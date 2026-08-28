@@ -3,10 +3,12 @@ foreach(required CGC VALIDATOR PROFILE STAGE SOURCE OUTPUT)
         message(FATAL_ERROR "${required} must be defined")
     endif()
 endforeach()
-if(NOT PROFILE STREQUAL "glslv" AND NOT PROFILE STREQUAL "glslf")
+if(NOT PROFILE STREQUAL "glslv" AND NOT PROFILE STREQUAL "glslf" AND
+        NOT PROFILE STREQUAL "glslg")
     message(FATAL_ERROR "unsupported GLSL profile ${PROFILE}")
 endif()
-if(NOT STAGE STREQUAL "vert" AND NOT STAGE STREQUAL "frag")
+if(NOT STAGE STREQUAL "vert" AND NOT STAGE STREQUAL "frag" AND
+        NOT STAGE STREQUAL "geom")
     message(FATAL_ERROR "unsupported validator stage ${STAGE}")
 endif()
 if(PROFILE STREQUAL "glslv" AND NOT STAGE STREQUAL "vert")
@@ -15,6 +17,20 @@ endif()
 if(PROFILE STREQUAL "glslf" AND NOT STAGE STREQUAL "frag")
     message(FATAL_ERROR "glslf must be validated as frag")
 endif()
+if(PROFILE STREQUAL "glslg" AND NOT STAGE STREQUAL "geom")
+    message(FATAL_ERROR "glslg must be validated as geom")
+endif()
+
+set(glsl_profile_args)
+if(DEFINED PROFILE_OPTIONS)
+    foreach(glsl_option IN LISTS PROFILE_OPTIONS)
+        list(APPEND glsl_profile_args -po "${glsl_option}")
+    endforeach()
+endif()
+set(glsl_entry_args)
+if(DEFINED ENTRY)
+    list(APPEND glsl_entry_args -entry "${ENTRY}")
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${OUTPUT}")
@@ -22,7 +38,8 @@ get_filename_component(output_dir "${OUTPUT}" DIRECTORY)
 file(MAKE_DIRECTORY "${output_dir}")
 file(REMOVE "${OUTPUT}" "${OUTPUT}.normalized")
 execute_process(
-    COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${OUTPUT}"
+    COMMAND "${CGC}" -quiet -profile "${PROFILE}" ${glsl_profile_args}
+        ${glsl_entry_args} -o "${OUTPUT}"
         "${SOURCE}"
     RESULT_VARIABLE cgc_result
     OUTPUT_VARIABLE cgc_stdout

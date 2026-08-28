@@ -213,7 +213,9 @@ static int GlslValidateTextureCall(const GlslModule *module,
     GlslBase samplerBase;
     int coordLen;
 
-    if (module->stage != GLSL_STAGE_FRAGMENT || expr->u.call.name == NULL ||
+    if ((module->stage != GLSL_STAGE_FRAGMENT &&
+         module->stage != GLSL_STAGE_GEOMETRY) ||
+        expr->u.call.name == NULL ||
         strcmp(expr->u.call.name,
                GlslBuiltinSpelling(expr->u.call.builtin)) ||
         !GlslSimpleType(&expr->type, GLSL_BASE_FLOAT, 4)) return 0;
@@ -431,7 +433,8 @@ static int GlslValidateSamplerBindings(const GlslModule *module)
         if (binding->storage != GLSL_STORAGE_SAMPLER)
             continue;
         bindingCount++;
-        if (module->stage != GLSL_STAGE_FRAGMENT ||
+        if ((module->stage != GLSL_STAGE_FRAGMENT &&
+             module->stage != GLSL_STAGE_GEOMETRY) ||
             bindingCount > 16 ||
             binding->declaration == NULL ||
             !GlslDeclInList(module->globals, binding->declaration) ||
@@ -461,7 +464,9 @@ static int GlslValidateSamplerBindings(const GlslModule *module)
         if (decl->storage != GLSL_STORAGE_SAMPLER)
             continue;
         samplerCount++;
-        if (module->stage != GLSL_STAGE_FRAGMENT || samplerCount > 16 ||
+        if ((module->stage != GLSL_STAGE_FRAGMENT &&
+             module->stage != GLSL_STAGE_GEOMETRY) ||
+            samplerCount > 16 ||
             !GlslSamplerType(&decl->type)) return 0;
         match = NULL;
         matchCount = 0;
@@ -788,13 +793,13 @@ static int GlslWriteGlobal(FILE *out, GlslStage stage, const GlslDecl *decl)
         storage = decl->storage == GLSL_STORAGE_SAMPLER ? "uniform" :
                   GlslStorageName(decl->storage);
     }
-    if (storage != NULL && fprintf(out, "%s ", storage) < 0)
-        return 0;
     if (interpolation[0] != '\0' &&
         fprintf(out, "%s", interpolation) < 0)
     {
         return 0;
     }
+    if (storage != NULL && fprintf(out, "%s ", storage) < 0)
+        return 0;
     return GlslWriteDeclarator(out, &decl->type, decl->name) &&
            fprintf(out, ";\n") >= 0;
 }
@@ -909,18 +914,24 @@ static int GlslWriteStmt(FILE *out, const GlslStmt *stmt, int level)
         for (assign = stmt->u.emit.assignments;
              assign != NULL; assign = assign->next)
         {
-            if (fprintf(out, "    ") < 0 ||
-                !GlslWriteExprPrec(out,
+            if (assign != stmt->u.emit.assignments &&
+                !GlslWriteIndent(out, level)) return 0;
+            if (!GlslWriteExprPrec(out,
                     assign->u.expression, 0, 0, GLSL_OP_NONE) ||
                 fprintf(out, ";\n") < 0) return 0;
         }
         for (replay = stmt->u.emit.replay;
              replay != NULL; replay = replay->next)
         {
-            if (fprintf(out, "    if (%s) {\n    %s = %s;\n    }\n",
-                    replay->defined->name,
-                    replay->target->name,
-                    replay->shadow->name) < 0) return 0;
+            if (!GlslWriteIndent(out, level) ||
+                fprintf(out, "if (%s) {\n",
+                        replay->defined->name) < 0 ||
+                !GlslWriteIndent(out, level + 1) ||
+                fprintf(out, "%s = %s;\n",
+                        replay->target->name,
+                        replay->shadow->name) < 0 ||
+                !GlslWriteIndent(out, level) ||
+                fprintf(out, "}\n") < 0) return 0;
         }
         if (!GlslWriteIndent(out, level) ||
             fprintf(out, "EmitVertex();\n") < 0) return 0;

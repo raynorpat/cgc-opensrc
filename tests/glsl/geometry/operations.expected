@@ -1,0 +1,33 @@
+#version 150
+layout(triangles) in;
+layout(triangle_strip, max_vertices = 6) out;
+
+// cgc-bind output cg_COLOR0 COLOR0
+// cgc-bind output cg_TEXCOORD0 TEXCOORD0
+// cgc-bind uniform state
+
+struct FlatState
+{
+    vec4 tint;
+};
+
+out vec4 cg_COLOR0;
+out vec4 cg_TEXCOORD0;
+uniform FlatState state;
+vec4 cg_flat_COLOR0;
+bool cg_flat_COLOR0_defined;
+
+void main()
+{
+    {
+        cg_flat_COLOR0 = state.tint;
+        cg_flat_COLOR0_defined = true;
+    }
+    gl_Position = gl_in[0].gl_Position;
+    cg_TEXCOORD0 = gl_in[1].gl_Position;
+    if (cg_flat_COLOR0_defined) {
+        cg_COLOR0 = cg_flat_COLOR0;
+    }
+    EmitVertex();
+    EndPrimitive();
+}

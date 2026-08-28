@@ -27,6 +27,29 @@ function(add_glsl_validation name profile stage source)
     endif()
 endfunction()
 
+function(add_glsl_geometry_validation name source entry profile_options)
+    if(GLSLANG_VALIDATOR)
+        set(glsl_geometry_args
+            -DCGC=$<TARGET_FILE:cgc>
+            "-DVALIDATOR=${GLSLANG_VALIDATOR}"
+            -DPROFILE=glslg
+            -DSTAGE=geom
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DENTRY=${entry}
+            "-DCONFIG=$<CONFIG>"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.glsl")
+        string(REPLACE ";" "\\;" glsl_geometry_options
+            "${profile_options}")
+        list(APPEND glsl_geometry_args
+            "-DPROFILE_OPTIONS=${glsl_geometry_options}")
+        add_test(
+            NAME validate_${name}
+            COMMAND ${CMAKE_COMMAND} ${glsl_geometry_args}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/validate_glsl.cmake
+        )
+    endif()
+endfunction()
+
 function(add_generic_regression name source expected_sha256)
     add_test(
         NAME generic_${name}
@@ -1012,6 +1035,88 @@ add_cg20_geometry_success(cg20_geometry_layered generic
     ${PROJECT_SOURCE_DIR}/tests/cg20/geometry/layered.expected
     "POINT;Vertices=4")
 
+add_cg20_geometry_success(glsl_geometry_lower_pass glslg
+    tests/glsl/geometry/topologies.cg main ""
+    "TRIANGLE;Vertices=3")
+add_cg20_geometry_success(glsl_geometry_flat_lower glslg
+    tests/cg20/geometry/flat.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/operations.expected
+    "TRIANGLE;Vertices=6")
+add_cg20_geometry_success(glsl_geometry_semantics_lower glslg
+    tests/glsl/geometry/semantics.cg semantics_main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/semantics.expected
+    "Vertices=3")
+add_glsl_geometry_validation(glsl_geometry_semantics_lower
+    tests/glsl/geometry/semantics.cg semantics_main "Vertices=3")
+add_glsl_geometry_validation(glsl_geometry_pass_through_lower
+    tests/cg20/geometry/pass_through.cg main "TRIANGLE;Vertices=3")
+add_glsl_geometry_validation(glsl_geometry_amplify_lower
+    tests/cg20/geometry/amplify.cg main "POINT;POINT_OUT;Vertices=4")
+add_glsl_geometry_validation(glsl_geometry_adjacency_lower
+    tests/cg20/geometry/adjacency.cg main
+    "LINE_ADJ;LINE_OUT;Vertices=2")
+add_glsl_geometry_validation(glsl_geometry_flat_lower
+    tests/cg20/geometry/flat.cg main "TRIANGLE;Vertices=6")
+add_glsl_geometry_validation(glsl_geometry_reachable_helper_lower
+    tests/cg20/geometry/reachable_helper.cg reachable_main "Vertices=3")
+add_cg20_geometry_success(glsl_geometry_uniform_texture_lower glslg
+    tests/glsl/geometry/uniform_texture.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/uniform_texture.expected
+    "Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_uniform_texture_lower
+    tests/glsl/geometry/uniform_texture.cg main "Vertices=1")
+add_cg20_geometry_success(glsl_geometry_conditional_flat_lower glslg
+    tests/glsl/geometry/conditional_flat.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/control_flow.expected
+    "Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_conditional_flat_lower
+    tests/glsl/geometry/conditional_flat.cg main "Vertices=1")
+add_cg20_geometry_success(glsl_geometry_reachable_helper_lower glslg
+    tests/cg20/geometry/reachable_helper.cg reachable_main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/helpers.expected
+    "Vertices=3")
+
+add_cg20_geometry_success(glsl_geometry_topology_points glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_points.expected
+    "POINT;Vertices=1")
+add_cg20_geometry_success(glsl_geometry_topology_lines glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_lines.expected
+    "LINE;Vertices=1")
+add_cg20_geometry_success(glsl_geometry_topology_lines_adjacency glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_lines_adjacency.expected
+    "LINE_ADJ;Vertices=1")
+add_cg20_geometry_success(glsl_geometry_topology_triangles glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_triangles.expected
+    "TRIANGLE;Vertices=1")
+add_cg20_geometry_success(glsl_geometry_topology_triangles_adjacency glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_triangles_adjacency.expected
+    "TRIANGLE_ADJ;Vertices=1")
+add_cg20_geometry_success(glsl_geometry_output_points glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/output_points.expected
+    "POINT;POINT_OUT;Vertices=1")
+add_cg20_geometry_success(glsl_geometry_output_line_strip glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/output_line_strip.expected
+    "POINT;LINE_OUT;Vertices=1")
+add_cg20_geometry_success(glsl_geometry_output_triangle_strip glslg
+    tests/cg20/geometry/pass_through.cg main
+    ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/output_triangle_strip.expected
+    "POINT;TRIANGLE_OUT;Vertices=1")
+add_glsl150_contract(glslv_vertex_id_bridge glslv
+    tests/glsl/geometry/vertex_id_bridge.cg)
+add_glsl_validation(glslv_vertex_id_bridge glslv vert
+    tests/glsl/geometry/vertex_id_bridge.cg)
+add_glsl150_contract(glslf_primitive_id_input glslf
+    tests/glsl/geometry/fragment_primitive_id.cg)
+add_glsl_validation(glslf_primitive_id_input glslf frag
+    tests/glsl/geometry/fragment_primitive_id.cg)
+
 # Geometry semantic negatives (Step 7): one fixture per wrong direction,
 # type, or shape, each pinning exact code and line.
 
@@ -1165,6 +1270,7 @@ add_executable(glsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/glsl_hal.c
     ${PROJECT_SOURCE_DIR}/glslv_hal.c
     ${PROJECT_SOURCE_DIR}/glslf_hal.c
+    ${PROJECT_SOURCE_DIR}/glslg_hal.c
     ${PROJECT_SOURCE_DIR}/memory.c
     glsl_semantics_test.c
 )
@@ -1192,7 +1298,9 @@ add_test(
 
 add_executable(glsl_lower_ir_unit
     ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/cg_geometry.c
     ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
     ${PROJECT_SOURCE_DIR}/cg_numeric.c
     ${PROJECT_SOURCE_DIR}/cg_stdlib.c
     ${PROJECT_SOURCE_DIR}/language.c
@@ -1201,7 +1309,9 @@ add_executable(glsl_lower_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_hal.c
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_lower.c
+    ${PROJECT_SOURCE_DIR}/glsl_verify.c
     ${PROJECT_SOURCE_DIR}/glslf_hal.c
+    ${PROJECT_SOURCE_DIR}/glslg_hal.c
     ${PROJECT_SOURCE_DIR}/glslv_hal.c
     ${PROJECT_SOURCE_DIR}/memory.c
     ${PROJECT_SOURCE_DIR}/symbols.c
@@ -1403,20 +1513,20 @@ add_generic_regression(vertexlight vertexlight.cg
 # default-language and 1.1 compiles for these legacy inputs, while Cg 2.0
 # emission switched to the normalized IR printer ("Emit normalized Cg IR
 # from generic").
-# Hashes updated by "Parse geometry topology modifiers": interning the
-# eight topology-modifier keyword atoms shifts dynamic atom IDs, which
+# Hashes updated by geometry profile support: interning the topology and
+# GLSL geometry-profile atoms shifts dynamic atom IDs, which
 # reorders top-level declarations in generic output.  Verified against
 # pre-change builds: outputs are identical as line multisets modulo the
 # stripped banner, i.e. declaration order moved and no content changed.
 add_generic_regression(vertexlight4 vertexlight4.cg
-    5454876aedd830f1d07b65e26cd51e7570035ee01d7d4b784ba4769632e31961)
+    8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
 add_generic_regression(direct_discard tests/glsl/diagnostics/vp_discard.cg
     0a03690bd59c1ed3ed7f8799845b4468157ff57743c72bb2bf0cd6d54345bea1)
 add_generic_regression(helper_discard
     tests/glsl/diagnostics/generic_helper_discard.cg
-    4afadd12ac3af8acdb484c0e26a854dfa0fb7f9e3d8d31d64bf6ebf37e4cf058)
+    bd6b290f26f99e5aba011e12059163aa3648a872710b0f04f40b654fe8b73afc)
 add_generic_diagnostic(generic_matrix_scalar2_baseline
     tests/glsl/diagnostics/generic_matrix_scalar2.cg 1035 9
     "assignment.of.incompatible.types")

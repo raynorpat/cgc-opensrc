@@ -1,0 +1,33 @@
+#version 150
+layout(points) in;
+layout(points, max_vertices = 3) out;
+
+// cgc-bind input cg_VERTEXID0 VERTEXID
+// cgc-bind output cg_COLOR0 COLOR0
+// cgc-bind uniform color
+
+flat in int cg_VERTEXID0[1];
+out vec4 cg_COLOR0;
+uniform vec4 color;
+vec4 cg_flat_COLOR0;
+bool cg_flat_COLOR0_defined;
+
+void main()
+{
+    int primitiveOut;
+    int layerOut;
+    primitiveOut = gl_PrimitiveIDIn + gl_PrimitiveIDIn;
+    layerOut = cg_VERTEXID0[0];
+    {
+        cg_flat_COLOR0 = color;
+        cg_flat_COLOR0_defined = true;
+    }
+    gl_Position = gl_in[0].gl_Position;
+    gl_PrimitiveID = primitiveOut;
+    gl_Layer = layerOut;
+    if (cg_flat_COLOR0_defined) {
+        cg_COLOR0 = cg_flat_COLOR0;
+    }
+    EmitVertex();
+    EndPrimitive();
+}

@@ -1,0 +1,11 @@
+uniform sampler2D image;
+uniform float scale;
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          AttribArray<float2> texcoord : TEXCOORD0)
+{
+    float4 sampled;
+
+    sampled = tex2D(image, texcoord[0]);
+    emitVertex(position[0] + sampled * scale : POSITION);
+}

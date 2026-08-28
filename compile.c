@@ -2973,6 +2973,7 @@ static void lPrintVaryingVariableDescription(FILE *out, const char *symbolName,
         semantics = fSymb->details.var.semantics;
         lBind = fSymb->details.var.bind;
     }
+    mname = 0;
     category = GetCategory(lType);
     switch (category) {
     case TYPE_CATEGORY_SCALAR:
@@ -2996,7 +2997,8 @@ static void lPrintVaryingVariableDescription(FILE *out, const char *symbolName,
                 bindingRegName = "";
             }
             fprintf(out, "%svar %s %s%s", Cg->theHAL->comment, str1, symbolName, str2);
-            fprintf(out, " : %s.%s", scopeName, GetAtomString(atable, mname));
+            fprintf(out, " : %s.%s", scopeName,
+                    GetAtomString(atable, mname));
             fprintf(out, " : %s", bindingRegName);
             fprintf(out, " : %d", paramNo);
             fprintf(out, " : %d", 1);

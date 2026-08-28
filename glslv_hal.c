@@ -51,6 +51,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
 #define FLT TYPE_BASE_FLOAT
+#define INT TYPE_BASE_INT
 
 static ConnectorRegisters inputRegs_glslv[] = {
     { "ATTRIB0",       0, FLT,  0, 4, REG_ALLOC | REG_INPUT },
@@ -84,7 +85,8 @@ static ConnectorRegisters inputRegs_glslv[] = {
     { "TANGENT0",      0, FLT, 28, 3, REG_RESERVED | REG_INPUT },
     { "BINORMAL0",     0, FLT, 29, 3, REG_RESERVED | REG_INPUT },
     { "BLENDWEIGHT0",  0, FLT, 30, 4, REG_RESERVED | REG_INPUT },
-    { "BLENDINDICES0", 0, FLT, 31, 4, REG_RESERVED | REG_INPUT }
+    { "BLENDINDICES0", 0, FLT, 31, 4, REG_RESERVED | REG_INPUT },
+    { "VERTEXID0",     0, INT, 32, 1, REG_RESERVED | REG_INPUT }
 };
 
 static ConnectorRegisters outputRegs_glslv[] = {
@@ -100,7 +102,8 @@ static ConnectorRegisters outputRegs_glslv[] = {
     { "TEXCOORD6", 0, FLT,  9, 4, REG_ALLOC | REG_OUTPUT },
     { "TEXCOORD7", 0, FLT, 10, 4, REG_ALLOC | REG_OUTPUT },
     { "FOG0",      0, FLT, 11, 1, REG_RESERVED | REG_OUTPUT },
-    { "PSIZE0",    0, FLT, 12, 1, REG_RESERVED | REG_OUTPUT }
+    { "PSIZE0",    0, FLT, 12, 1, REG_RESERVED | REG_OUTPUT },
+    { "VERTEXID0", 0, INT, 13, 1, REG_RESERVED | REG_OUTPUT }
 };
 
 static ConnectorDescriptor connectors_glslv[] = {
@@ -120,11 +123,13 @@ static GlslSemanticDesc semanticMap_glslv[] = {
     { "BINORMAL",     "BINORMAL",     0,  1, SEM_IN | SEM_VARYING, 3, GLSL_INTERFACE_ATTRIBUTE },
     { "BLENDWEIGHT",  "BLENDWEIGHT",  0,  1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_ATTRIBUTE },
     { "BLENDINDICES", "BLENDINDICES", 0,  1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_ATTRIBUTE },
+    { "VERTEXID",     "VERTEXID",     0,  1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_VERTEX_ID },
     { "POSITION",     "POSITION",     0,  1, SEM_OUT | SEM_VARYING | SEM_REQUIRED, 4, GLSL_INTERFACE_POSITION },
     { "COLOR",        "COLOR",        0,  2, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_VARYING },
     { "TEXCOORD",     "TEXCOORD",     0,  8, SEM_OUT | SEM_VARYING, 4, GLSL_INTERFACE_VARYING },
     { "FOG",          "FOG",          0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_VARYING },
-    { "PSIZE",        "PSIZE",        0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_POINT_SIZE }
+    { "PSIZE",        "PSIZE",        0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_POINT_SIZE },
+    { "VERTEXID",     "VERTEXID",     0,  1, SEM_OUT | SEM_VARYING, 1, GLSL_INTERFACE_USER }
 };
 
 static GlslSemanticAlias aliases_glslv[] = {

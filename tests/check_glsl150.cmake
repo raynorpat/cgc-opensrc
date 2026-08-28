@@ -14,9 +14,22 @@ endforeach()
 include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${ACTUAL}")
 
+set(glsl150_profile_args)
+if(DEFINED PROFILE_OPTIONS)
+    foreach(glsl150_option IN LISTS PROFILE_OPTIONS)
+        list(APPEND glsl150_profile_args -po "${glsl150_option}")
+    endforeach()
+endif()
+set(glsl150_entry_args)
+if(DEFINED ENTRY)
+    list(APPEND glsl150_entry_args -entry "${ENTRY}")
+endif()
+
 file(REMOVE "${ACTUAL}")
 execute_process(
-    COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
+    COMMAND "${CGC}" -quiet -profile "${PROFILE}"
+        ${glsl150_profile_args} ${glsl150_entry_args}
+        -o "${ACTUAL}" "${SOURCE}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr

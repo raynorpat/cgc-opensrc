@@ -1,0 +1,29 @@
+#version 150
+layout(points) in;
+layout(points, max_vertices = 1) out;
+
+// cgc-bind output cg_COLOR0 COLOR0
+// cgc-bind uniform tint
+
+out vec4 cg_COLOR0;
+uniform vec4 tint;
+vec4 cg_flat_COLOR0;
+bool cg_flat_COLOR0_defined;
+
+void main()
+{
+    if (gl_PrimitiveIDIn > 0)
+    {
+        {
+            cg_flat_COLOR0 = tint;
+            cg_flat_COLOR0_defined = true;
+        }
+    }
+    gl_Position = gl_in[0].gl_Position;
+    cg_COLOR0 = tint * 0.5;
+    if (cg_flat_COLOR0_defined) {
+        cg_COLOR0 = cg_flat_COLOR0;
+    }
+    EmitVertex();
+    EndPrimitive();
+}

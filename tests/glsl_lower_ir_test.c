@@ -423,6 +423,85 @@ static const char *lLowerText(CgIRModule *source, GlslModule *out,
     return textBuffer;
 } // lLowerText
 
+static void lScenarioGeometryPassThrough(void)
+{
+    CgIRModule ir;
+    CgIRGeometryInfo info;
+    CgIRVerifyDiagnostic irDiagnostic;
+    CgIRStmt *list;
+    CgIRStmt *emit;
+    CgIRStmt *restart;
+    CgIRGeometryValue *positionValue;
+    CgIRExpr *positionRef;
+    CgIRFunction *entry;
+    Symbol *position;
+    GlslModule out;
+    GlslVerifyDiagnostic glslDiagnostic;
+    const GlslProfileDesc *profile;
+    FILE *writer;
+    long size;
+    int positionAtom;
+
+    lInitModule(&ir);
+    assert(CgIRSetStage(&ir, CGIR_STAGE_GEOMETRY));
+    memset(&info, 0, sizeof(info));
+    info.inputTopology = CG_GEOMETRY_INPUT_TRIANGLE;
+    info.outputTopology = CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP;
+    info.inputVertexCount = 3;
+    info.maxOutputVertices = 3;
+    info.hasMaxOutputVertices = 1;
+    info.inputLoc = nodeLoc;
+    info.outputLoc = nodeLoc;
+    info.maxVerticesLoc = nodeLoc;
+    assert(CgIRSetGeometryInfo(&ir, &info));
+
+    list = NULL;
+    position = lAddLocalDecl(&ir, &list, "position", float4Type);
+    positionRef = CgIRNewSymbol(&ir, float4Type, &nodeLoc, position);
+    assert(positionRef != NULL);
+    positionAtom = LookUpAddString(atable, "POSITION");
+    positionValue = CgIRNewGeometryValue(&ir, positionAtom, positionAtom,
+                                         float4Type, positionRef, nodeLoc);
+    assert(positionValue != NULL);
+    emit = CgIRNewGeometryEmit(&ir, positionValue, nodeLoc);
+    restart = CgIRNewGeometryRestart(&ir, nodeLoc);
+    assert(emit != NULL && restart != NULL);
+    CgIRAppendStmt(&list, emit);
+    CgIRAppendStmt(&list, restart);
+    entry = lAddEntry(&ir, list);
+    assert(entry != NULL);
+    assert(CgIRVerifyModule(&ir, &irDiagnostic));
+
+    profile = GlslGeometryProfileDesc();
+    assert(profile != NULL);
+    assert(profile->stage == GLSL_STAGE_GEOMETRY);
+    memset(&out, 0, sizeof(out));
+    GlslInitModule(&out, GLSL_STAGE_GEOMETRY, TestAlloc, NULL);
+    assert(GlslLowerCgIR(&out, profile, &ir));
+    assert(out.geometry != NULL);
+    assert(out.geometry->inputTopology == GLSL_GEOMETRY_INPUT_TRIANGLES);
+    assert(out.geometry->outputTopology ==
+           GLSL_GEOMETRY_OUTPUT_TRIANGLE_STRIP);
+    assert(out.geometry->inputVertexCount == 3);
+    assert(out.geometry->maxOutputVertices == 3);
+    assert(GlslVerifyModule(&out, &glslDiagnostic));
+
+    writer = tmpfile();
+    assert(writer != NULL);
+    assert(GlslWriteModule(writer, &out));
+    size = ftell(writer);
+    assert(size > 0 && size < (long) TEXT_BUFFER_SIZE);
+    rewind(writer);
+    assert(fread(textBuffer, 1, (size_t) size, writer) == (size_t) size);
+    textBuffer[size] = '\0';
+    assert(!fclose(writer));
+    assert(strstr(textBuffer, "layout(triangles) in;") != NULL);
+    assert(strstr(textBuffer,
+                  "layout(triangle_strip, max_vertices = 3) out;") != NULL);
+    assert(strstr(textBuffer, "EmitVertex();") != NULL);
+    assert(strstr(textBuffer, "EndPrimitive();") != NULL);
+}
+
 ///////////////////////////////// Assertions //////////////////////////////////
 
 /*
@@ -683,6 +762,7 @@ int main(int argc, char **argv)
     lScenarioProducerCapStaysLoud(profile);
     lScenarioUserFillFallsBack(profile);
     lScenarioVectorIntoScalarFailsLoud(profile);
+    lScenarioGeometryPassThrough();
 
     return 0;
 }

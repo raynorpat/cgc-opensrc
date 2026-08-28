@@ -1,0 +1,26 @@
+#version 150
+layout(triangles) in;
+layout(triangle_strip, max_vertices = 3) out;
+
+// cgc-bind output cg_COLOR0 COLOR0
+// cgc-bind uniform tint
+
+out vec4 cg_COLOR0;
+uniform vec4 tint;
+
+void leaf_emit()
+{
+    cg_COLOR0 = tint;
+    EmitVertex();
+}
+
+void middle_helper()
+{
+    leaf_emit();
+    EndPrimitive();
+}
+
+void main()
+{
+    middle_helper();
+}
