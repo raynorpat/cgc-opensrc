@@ -194,8 +194,8 @@ const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
 
 typedef struct HlslHALData_Rec {
     const HlslProfileDesc *profile;
-    Binding *inputUsed[HLSL_MAX_INTERFACE_REGISTERS];
-    Binding *outputUsed[HLSL_MAX_INTERFACE_REGISTERS];
+    Symbol *inputUsed[HLSL_MAX_INTERFACE_REGISTERS];
+    Symbol *outputUsed[HLSL_MAX_INTERFACE_REGISTERS];
     HlslErrorKind errorKind;
     const char *errorReason;
     SourceLoc errorLoc;
@@ -452,6 +452,7 @@ static int GetCapsBit_hlsl(int bitNumber)
     case CAPS_AGGREGATE_DEFAULT_BINDINGS:
     case CAPS_PRESERVE_ENTRY_RETURNS:
     case CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS:
+    case CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS:
         return 1;
     default:
         return 0;
@@ -585,6 +586,25 @@ static int HlslSemanticTypeIsValid(const HlslSemanticDesc *semantic,
     }
 } // HlslSemanticTypeIsValid
 
+static int ClaimHlslSemantic(HlslHALData *data, Symbol *owner, int slot,
+                             int IsOutVal)
+{
+    Symbol **used;
+    int i;
+
+    for (i = 0; i < HLSL_MAX_INTERFACE_REGISTERS; i++) {
+        if (data->inputUsed[i] == owner)
+            return !IsOutVal && i == slot;
+        if (data->outputUsed[i] == owner)
+            return IsOutVal && i == slot;
+    }
+    used = IsOutVal ? data->outputUsed : data->inputUsed;
+    if (used[slot] != NULL)
+        return 0;
+    used[slot] = owner;
+    return 1;
+} // ClaimHlslSemantic
+
 /*
  * BindVaryingSemantic_hlsl() - Canonicalize and claim one stage interface
  *         location transactionally.  Every failure is reported here so the
@@ -599,7 +619,6 @@ static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb,
     const HlslProfileDesc *profile;
     const HlslSemanticDesc *descriptor;
     ConnectorRegisters *reg;
-    Binding **used;
     const char *source, *canonical;
     int slot;
 
@@ -629,14 +648,11 @@ static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb,
         return ReportHlslInterfaceError(loc, HLSL_ERROR_SEMANTIC, source);
     }
 
-    used = IsOutVal ? data->outputUsed : data->inputUsed;
-    if (used[slot] != NULL && used[slot] != fBind) {
+    if (!ClaimHlslSemantic(data, fSymb, slot, IsOutVal)) {
         return ReportHlslInterfaceError(loc,
                                         HLSL_ERROR_INTERFACE_CONFLICT,
                                         canonical);
     }
-
-    used[slot] = fBind;
     fBind->conn.kind = BK_CONNECTOR;
     fBind->conn.rname = reg->name;
     fBind->conn.regno = reg->regno;

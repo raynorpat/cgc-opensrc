@@ -397,11 +397,15 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal,
             {
                 return NULL;
             }
-            /* Case-canonical identity: reject the second use of an
-             * output semantic before profile binding sees either
-             * spelling of the name. */
-            if (IsOutVal && lCheckOutputSemantic(fSymb, lname))
+            /* Profiles without canonical conflict ownership use the common
+             * case-insensitive output map before profile binding. */
+            if (IsOutVal &&
+                !Cg->theHAL->GetCapsBit(
+                    CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS) &&
+                lCheckOutputSemantic(fSymb, lname))
+            {
                 return NULL;
+            }
             errorsBefore = GetErrorCount();
             if (Cg->theHAL->BindVaryingSemantic(&fSymb->loc, fSymb, lname, lBind, IsOutVal)) {
                 if (lBind->none.properties & BIND_INPUT) {

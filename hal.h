@@ -86,6 +86,7 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_AGGREGATE_DEFAULT_BINDINGS 9
 #define CAPS_PRESERVE_ENTRY_RETURNS    10
 #define CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS 11
+#define CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS 12
 
 struct slProfile_Rec {
     slProfile *next;

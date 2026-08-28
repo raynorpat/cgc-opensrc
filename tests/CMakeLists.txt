@@ -1435,6 +1435,43 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
 )
 
+add_executable(hlsl_semantics_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
+    hlsl_semantics_test.c
+)
+
+target_include_directories(hlsl_semantics_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(hlsl_semantics_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(NAME hlsl_semantics_unit COMMAND hlsl_semantics_unit)
+add_test(
+    NAME hlsl_semantics_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_semantics_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+add_test(NAME hlsl_interface_same_owner_same_slot
+    COMMAND hlsl_semantics_unit same-slot)
+add_test(NAME hlsl_interface_same_owner_different_slot
+    COMMAND hlsl_semantics_unit different-slot)
+add_test(NAME hlsl_interface_same_owner_different_direction
+    COMMAND hlsl_semantics_unit different-direction)
+add_test(NAME hlsl_interface_different_owner_collision
+    COMMAND hlsl_semantics_unit different-owner)
+add_test(NAME hlsl_interface_fresh_hal_isolation
+    COMMAND hlsl_semantics_unit fresh-hal)
+
 add_executable(glsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
@@ -1747,6 +1784,33 @@ add_hlsl_fixture(hlslv_registration hlslv
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-vs.expected)
 add_hlsl_fixture(hlslf_registration hlslf
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-ps.expected)
+
+function(add_hlsl_interface_failure name source code line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=hlslv
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -DCODE=${code}
+            -DEXPECTED_LINE=${line}
+            -DREASON=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+    )
+endfunction()
+
+add_hlsl_interface_failure(hlslv_interface_exact_output_conflict
+    tests/hlsl/diagnostics/vp_exact_output_conflict.cg 6404 4 COLOR0)
+add_hlsl_interface_failure(hlslv_interface_case_output_conflict
+    tests/hlsl/diagnostics/vp_case_output_conflict.cg 6404 4 COLOR0)
+add_hlsl_interface_failure(hlslv_interface_alias_output_conflict
+    tests/hlsl/diagnostics/vp_alias_output_conflict.cg 6404 4 COLOR0)
+add_hlsl_interface_failure(hlslv_interface_invalid_width
+    tests/hlsl/diagnostics/vp_invalid_width.cg 6403 2 POSITION)
+add_hlsl_interface_failure(hlslv_interface_unbound_input
+    tests/hlsl/diagnostics/vp_unbound_input.cg 6403 3 missingSemantic)
 
 add_test(
     NAME hlslv_interface_attr_texcoord_conflict
