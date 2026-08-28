@@ -1,0 +1,5 @@
+// profile hlslv
+// target vs_3_0
+void main()
+{
+}

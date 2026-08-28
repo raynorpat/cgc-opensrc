@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16)
 
 project(cgc LANGUAGES C)
 
@@ -40,6 +40,9 @@ add_executable(cgc
     glslv_hal.c
     glslf_hal.c
     hal.c
+    hlsl_hal.c
+    hlslv_hal.c
+    hlslf_hal.c
     inline.c
     language.c
     memory.c
