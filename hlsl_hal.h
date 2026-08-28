@@ -48,19 +48,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __HLSL_HAL_H 1
 
 #include "hal.h"
-
-#ifdef __HLSL_IR_H
-#error hlsl_hal.h must be included before hlsl_ir.h; include hal.h
-#endif
-
-// Stage enum duplicated from hlsl_ir.h for the registration-only
-// skeleton.  Task 2 unifies them.
-#ifndef __HLSL_IR_H
-typedef enum HlslStage_Enum {
-    HLSL_STAGE_VERTEX,
-    HLSL_STAGE_PIXEL
-} HlslStage;
-#endif
+#include "hlsl_ir.h"
 
 #define VENDOR_STRING_HLSL         "Microsoft"
 #define VERSION_STRING_HLSL        "DirectX 9.0c Shader Model 3"
@@ -84,7 +72,7 @@ typedef struct HlslLimits_Rec {
     int colorOutputs;
 } HlslLimits;
 
-typedef struct HlslProfileDesc_Rec {
+struct HlslProfileDesc_Rec {
     HlslStage stage;
     const char *name;
     const char *target;
@@ -98,7 +86,7 @@ typedef struct HlslProfileDesc_Rec {
     ConnectorRegisters *outputRegs;
     int numOutputRegs;
     const HlslLimits *limits;
-} HlslProfileDesc;
+};
 
 // Stage descriptors:
 extern const HlslProfileDesc HlslProfile_hlslv;
@@ -108,5 +96,17 @@ extern const HlslProfileDesc HlslProfile_hlslf;
 int RegisterProfiles_hlsl(void);
 int InitHAL_hlslv(slHAL *hal);
 int InitHAL_hlslf(slHAL *hal);
+
+// HLSL backend phases:
+int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
+    SourceLoc *loc, Scope *scope, Symbol *program);
+int HlslBuildEntryWrapper(HlslModule *module,
+    const HlslProfileDesc *profile);
+int HlslLegalizeModule(HlslModule *module,
+    const HlslProfileDesc *profile);
+int HlslAllocateBindings(HlslModule *module,
+    const HlslProfileDesc *profile);
+int HlslValidateModule(HlslModule *module,
+    const HlslProfileDesc *profile);
 
 #endif // !defined(__HLSL_HAL_H)

@@ -54,7 +54,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
 
 // Static HAL callbacks:
-static int InitHAL_hlsl(slHAL *fHAL);
+static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile);
 static int FreeHAL_hlsl(slHAL *fHAL);
 static int RegisterNames_hlsl(slHAL *fHAL);
 static int GetConnectorID_hlsl(int name);
@@ -68,40 +68,10 @@ static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb, int semantic,
                                     Binding *fBind, int IsOutVal);
 static int PrintCodeHeader_hlsl(FILE *out);
 static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program);
-
-// Temporary HlslModule for the skeleton; Task 2 replaces these with
-// the permanent definitions from hlsl_ir.h:
-
-typedef struct HlslLoc_Rec {
-    int file;
-    int line;
-} HlslLoc;
-
-typedef struct HlslModule_Rec {
-    HlslStage stage;
-    HlslLoc errorLoc;
-    const char *errorReason;
-    int errors;
-} HlslModule;
-
-// Forward declarations for the temporary skeleton phase functions.
-// Task 2 moves these to their permanent files (hlsl_lower, etc.).
-static int HlslSkeletonLower(HlslModule *module, const HlslProfileDesc *profile,
-                             SourceLoc *loc, Scope *scope, Symbol *program);
-static int HlslSkeletonEntryWrapper(HlslModule *module, const HlslProfileDesc *profile);
-static int HlslSkeletonLegalize(HlslModule *module, const HlslProfileDesc *profile);
-static int HlslSkeletonAllocate(HlslModule *module, const HlslProfileDesc *profile);
-static int HlslSkeletonValidate(HlslModule *module, const HlslProfileDesc *profile);
-static int HlslSkeletonWrite(FILE *out, const HlslModule *module, const HlslProfileDesc *profile);
-
-static void HlslInitModule(HlslModule *module, HlslStage stage)
-{
-    module->stage = stage;
-    module->errorLoc.file = 0;
-    module->errorLoc.line = 0;
-    module->errorReason = NULL;
-    module->errors = 0;
-}
+static void *HlslCompilerAlloc(void *arg, size_t size);
+static int ReportHlslFailure(const HlslModule *module,
+                             const HlslProfileDesc *profile,
+                             const Symbol *program);
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////// Profile Registration //////////////////////////////
@@ -331,6 +301,86 @@ static int PrintCodeHeader_hlsl(FILE *out)
     return 1;
 } // PrintCodeHeader_hlsl
 
+static void *HlslCompilerAlloc(void *arg, size_t size)
+{
+    return mem_Calloc((MemoryPool *) arg, size, 1);
+} // HlslCompilerAlloc
+
+/*
+ * ReportHlslFailure() - Emit one diagnostic for a failed HLSL phase.
+ */
+
+static int ReportHlslFailure(const HlslModule *module,
+                             const HlslProfileDesc *profile,
+                             const Symbol *program)
+{
+    SourceLoc failureLoc;
+    const char *reason;
+
+    if (program != NULL)
+        failureLoc = program->loc;
+    else {
+        failureLoc.file = 0;
+        failureLoc.line = 0;
+    }
+    if (module->errorLoc.file != 0 || module->errorLoc.line != 0) {
+        failureLoc.file = (unsigned short) module->errorLoc.file;
+        failureLoc.line = (unsigned short) module->errorLoc.line;
+    }
+    reason = module->errorReason != NULL ?
+             module->errorReason : "HLSL profile program";
+    if (module->resourceName != NULL) {
+        SemanticError(&failureLoc, ERROR_SII_HLSL_RESOURCE_LIMIT,
+                      module->resourceName, module->resourceUsed,
+                      module->resourceAvailable);
+        return 0;
+    }
+    switch (module->errorKind) {
+    case HLSL_ERROR_UNSUPPORTED_TYPE:
+        SemanticError(&failureLoc, ERROR_S_HLSL_UNSUPPORTED_TYPE, reason);
+        break;
+    case HLSL_ERROR_STAGE_OPERATION:
+        SemanticError(&failureLoc, ERROR_SS_HLSL_STAGE_OPERATION,
+                      profile->name, reason);
+        break;
+    case HLSL_ERROR_SEMANTIC:
+        SemanticError(&failureLoc, ERROR_S_HLSL_SEMANTIC, reason);
+        break;
+    case HLSL_ERROR_INTERFACE_CONFLICT:
+        SemanticError(&failureLoc, ERROR_S_HLSL_INTERFACE_CONFLICT, reason);
+        break;
+    case HLSL_ERROR_REQUIRED_POSITION:
+        SemanticError(&failureLoc, ERROR___HLSL_REQUIRED_POSITION);
+        break;
+    case HLSL_ERROR_ENTRY_ABI:
+        SemanticError(&failureLoc, ERROR_S_HLSL_ENTRY_ABI, reason);
+        break;
+    case HLSL_ERROR_REGISTER_COLLISION:
+        SemanticError(&failureLoc, ERROR_S_HLSL_REGISTER_COLLISION, reason);
+        break;
+    case HLSL_ERROR_SAMPLER:
+        SemanticError(&failureLoc, ERROR_S_HLSL_SAMPLER, reason);
+        break;
+    case HLSL_ERROR_INTRINSIC:
+        SemanticError(&failureLoc, ERROR_S_HLSL_INTRINSIC, reason);
+        break;
+    case HLSL_ERROR_NAME_COLLISION:
+        SemanticError(&failureLoc, ERROR_S_HLSL_NAME_COLLISION, reason);
+        break;
+    case HLSL_ERROR_INVALID_IR:
+        InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
+        break;
+    case HLSL_ERROR_NONE:
+    case HLSL_ERROR_UNSUPPORTED_OPERATION:
+    case HLSL_ERROR_RESOURCE_LIMIT:
+    default:
+        SemanticError(&failureLoc, ERROR_S_HLSL_UNSUPPORTED_OPERATION,
+                      reason);
+        break;
+    }
+    return 0;
+} // ReportHlslFailure
+
 /*
  * GenerateCode_hlsl() - Orchestrate the backend pipeline.
  */
@@ -341,98 +391,141 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
     const HlslProfileDesc *profile;
 
     profile = (const HlslProfileDesc *) Cg->theHAL->localData;
-    HlslInitModule(&module, profile->stage);
-    if (!HlslSkeletonLower(&module, profile, loc, fScope, program) ||
-        !HlslSkeletonEntryWrapper(&module, profile) ||
-        !HlslSkeletonLegalize(&module, profile) ||
-        !HlslSkeletonAllocate(&module, profile) ||
-        !HlslSkeletonValidate(&module, profile))
+    HlslInitModule(&module, profile->stage, HlslCompilerAlloc,
+                   CurrentScope->pool);
+    if (!HlslLowerProgram(&module, profile, loc, fScope, program) ||
+        !HlslBuildEntryWrapper(&module, profile) ||
+        !HlslLegalizeModule(&module, profile) ||
+        !HlslAllocateBindings(&module, profile) ||
+        !HlslValidateModule(&module, profile))
     {
-        // Report failure: on error we still continue to preserve
-        // transactional output rule.
-        return 1;
+        return ReportHlslFailure(&module, profile, program);
     }
-    if (!HlslSkeletonWrite(Cg->options.outfd, &module, profile))
-        return 1;
+    if (!HlslWriteModule(Cg->options.outfd, &module, profile))
+        return ReportHlslFailure(&module, profile, program);
     return 1;
 } // GenerateCode_hlsl
 
 ///////////////////////////////////////////////////////////////////////////////
-////////////////////////// Skeleton Pipeline Phases ////////////////////////////
+//////////////////// Registration-Only Pipeline Phases ///////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-/*
- * HlslSkeletonLower() - Temporary lowering stub.
- */
-
-static int HlslSkeletonLower(HlslModule *module, const HlslProfileDesc *profile,
-                             SourceLoc *loc, Scope *scope, Symbol *program)
+static int HlslRecordUnsupported(HlslModule *module, const HlslLoc *loc,
+                                 const char *reason)
 {
-    (void) module;
-    (void) profile;
-    (void) loc;
+    if (module != NULL && module->errors == 0) {
+        module->errorKind = HLSL_ERROR_UNSUPPORTED_OPERATION;
+        module->errorReason = reason;
+        if (loc != NULL)
+            module->errorLoc = *loc;
+    }
+    if (module != NULL)
+        module->errors++;
+    return 0;
+} // HlslRecordUnsupported
+
+static int HlslHasEmptyEntry(const HlslModule *module)
+{
+    const HlslFunction *entry;
+
+    if (module == NULL || module->entry == NULL)
+        return 0;
+    entry = module->entry;
+    if (module->structs != NULL || module->globals != NULL ||
+        module->bindings != NULL || module->wrapper != NULL ||
+        module->functions != entry || entry->next != NULL ||
+        entry->parameters != NULL || entry->locals != NULL ||
+        entry->body != NULL)
+    {
+        return 0;
+    }
+    return entry->result.base == HLSL_BASE_VOID &&
+           entry->result.len == 0 && entry->result.rows == 0 &&
+           entry->result.cols == 0 && entry->result.arraySize == 0 &&
+           entry->result.structName == NULL &&
+           entry->result.elementType == NULL &&
+           entry->result.members == NULL;
+} // HlslHasEmptyEntry
+
+int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
+                     SourceLoc *loc, Scope *scope, Symbol *program)
+{
+    HlslFunction *entry;
+    HlslLoc errorLoc;
+    HlslType result;
+
     (void) scope;
-    (void) program;
+    errorLoc.file = loc != NULL ? loc->file : 0;
+    errorLoc.line = loc != NULL ? loc->line : 0;
+    if (module == NULL || profile == NULL || program == NULL ||
+        module->stage != profile->stage || program->kind != FUNCTION_S)
+    {
+        return HlslRecordUnsupported(module, &errorLoc,
+                                     "HLSL entry program");
+    }
+    errorLoc.file = program->loc.file;
+    errorLoc.line = program->loc.line;
+    if (program->details.fun.params != NULL ||
+        program->details.fun.statements != NULL ||
+        program->details.fun.entryOutputAssignments != NULL)
+    {
+        return HlslRecordUnsupported(module, &errorLoc,
+                                     "nonempty entry program");
+    }
+    result = HlslNumericType(HLSL_BASE_VOID, 0);
+    entry = HlslNewFunction(module, result, "main");
+    if (entry == NULL)
+        return HlslRecordUnsupported(module, &errorLoc,
+                                     "HLSL module allocation");
+    entry->loc = errorLoc;
+    entry->identity = program;
+    entry->isEntry = 1;
+    HlslAppendFunction(&module->functions, entry);
+    module->entry = entry;
     return 1;
-} // HlslSkeletonLower
+} // HlslLowerProgram
 
-/*
- * HlslSkeletonEntryWrapper() - Temporary entry wrapper stub.
- */
-
-static int HlslSkeletonEntryWrapper(HlslModule *module, const HlslProfileDesc *profile)
+int HlslBuildEntryWrapper(HlslModule *module,
+                          const HlslProfileDesc *profile)
 {
-    (void) module;
     (void) profile;
+    if (!HlslHasEmptyEntry(module))
+        return HlslRecordUnsupported(module, NULL,
+                                     "nonempty entry wrapper");
     return 1;
-} // HlslSkeletonEntryWrapper
+} // HlslBuildEntryWrapper
 
-/*
- * HlslSkeletonLegalize() - Temporary legalization stub.
- */
-
-static int HlslSkeletonLegalize(HlslModule *module, const HlslProfileDesc *profile)
+int HlslLegalizeModule(HlslModule *module,
+                       const HlslProfileDesc *profile)
 {
-    (void) module;
     (void) profile;
+    if (!HlslHasEmptyEntry(module))
+        return HlslRecordUnsupported(module, NULL,
+                                     "nonempty HLSL legalization");
     return 1;
-} // HlslSkeletonLegalize
+} // HlslLegalizeModule
 
-/*
- * HlslSkeletonAllocate() - Temporary allocation stub.
- */
-
-static int HlslSkeletonAllocate(HlslModule *module, const HlslProfileDesc *profile)
+int HlslAllocateBindings(HlslModule *module,
+                         const HlslProfileDesc *profile)
 {
-    (void) module;
     (void) profile;
+    if (!HlslHasEmptyEntry(module))
+        return HlslRecordUnsupported(module, NULL,
+                                     "nonempty HLSL bindings");
     return 1;
-} // HlslSkeletonAllocate
+} // HlslAllocateBindings
 
-/*
- * HlslSkeletonValidate() - Temporary validation stub.
- */
-
-static int HlslSkeletonValidate(HlslModule *module, const HlslProfileDesc *profile)
+int HlslValidateModule(HlslModule *module,
+                       const HlslProfileDesc *profile)
 {
-    (void) module;
-    (void) profile;
+    if (profile == NULL || module == NULL ||
+        module->stage != profile->stage || !HlslHasEmptyEntry(module))
+    {
+        return HlslRecordUnsupported(module, NULL,
+                                     "nonempty HLSL validation");
+    }
     return 1;
-} // HlslSkeletonValidate
-
-/*
- * HlslSkeletonWrite() - Write the minimal stage header and empty entry.
- */
-
-static int HlslSkeletonWrite(FILE *out, const HlslModule *module,
-                             const HlslProfileDesc *profile)
-{
-    (void) module;
-    fprintf(out, "// profile %s\n", profile->name);
-    fprintf(out, "// target %s\n", profile->target);
-    fprintf(out, "void main()\n{\n}\n");
-    return 1;
-} // HlslSkeletonWrite
+} // HlslValidateModule
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////// InitHAL_hlslv / InitHAL_hlslf ////////////////////////

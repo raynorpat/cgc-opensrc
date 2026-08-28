@@ -1395,6 +1395,34 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
 )
 
+add_executable(hlsl_ir_unit
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
+    hlsl_ir_test.c
+)
+
+target_include_directories(hlsl_ir_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(hlsl_ir_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME hlsl_ir_unit
+    COMMAND hlsl_ir_unit
+)
+
+add_test(
+    NAME hlsl_ir_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_ir_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+
 add_executable(glsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/glsl_ir.c

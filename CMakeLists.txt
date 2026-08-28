@@ -43,6 +43,8 @@ add_executable(cgc
     glslf_hal.c
     glslg_hal.c
     hal.c
+    hlsl_ir.c
+    hlsl_codegen.c
     hlsl_hal.c
     hlslv_hal.c
     hlslf_hal.c
