@@ -1,0 +1,5 @@
+// profile hlslf
+// target ps_3_0
+void main()
+{
+}

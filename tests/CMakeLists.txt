@@ -1690,6 +1690,24 @@ endfunction()
 add_glsl_registration(glslv)
 add_glsl_registration(glslf)
 
+function(add_hlsl_fixture name profile source expected)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+endfunction()
+
+add_hlsl_fixture(hlslv_registration hlslv
+    tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-vs.expected)
+add_hlsl_fixture(hlslf_registration hlslf
+    tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-ps.expected)
+
 add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.cg
     tests/glsl/profile/vp_passthrough.expected)

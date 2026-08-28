@@ -59,11 +59,13 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 int RegisterProfiles_generic(void);
 int RegisterProfiles_glsl(void);
 int RegisterProfiles_arb(void);
+int RegisterProfiles_hlsl(void);
 
 static int (*RegistrationFunctions[])(void) = {
     RegisterProfiles_generic,
     RegisterProfiles_glsl,
     RegisterProfiles_arb,
+    RegisterProfiles_hlsl,
 };
 
 int CommandLineArgs(int argc, char **argv, int pass);

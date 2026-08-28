@@ -360,6 +360,22 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define ERROR___GEOMETRY_VALUE_TYPE 6321, "geometry operation argument has an invalid value type"
 
+// Numbers 6400 to 6499 are reserved for the HLSL profile messages
+
+#define ERROR_S_HLSL_UNSUPPORTED_TYPE       6400, "HLSL Shader Model 3 does not support type \"%s\""
+#define ERROR_S_HLSL_UNSUPPORTED_OPERATION  6401, "HLSL Shader Model 3 does not support operation \"%s\""
+#define ERROR_SS_HLSL_STAGE_OPERATION       6402, "%s profile does not support operation \"%s\""
+#define ERROR_S_HLSL_SEMANTIC               6403, "HLSL profile cannot bind semantic \"%s\""
+#define ERROR_S_HLSL_INTERFACE_CONFLICT     6404, "HLSL interface conflicts at semantic \"%s\""
+#define ERROR___HLSL_REQUIRED_POSITION      6405, "HLSL vertex entry must write POSITION0"
+#define ERROR_S_HLSL_ENTRY_ABI              6406, "HLSL entry interface cannot represent \"%s\""
+#define ERROR_S_HLSL_REGISTER_COLLISION     6407, "HLSL register binding conflicts at \"%s\""
+#define ERROR_SII_HLSL_RESOURCE_LIMIT       6408, "HLSL %s limit exceeded: %d used, %d available"
+#define ERROR_S_HLSL_SAMPLER                6409, "HLSL Shader Model 3 does not support sampler feature \"%s\""
+#define ERROR_S_HLSL_INTRINSIC              6410, "HLSL Shader Model 3 has no exact intrinsic for \"%s\""
+#define ERROR_S_HLSL_NAME_COLLISION         6411, "HLSL name cannot be resolved for \"%s\""
+#define ERROR___HLSL_INVALID_IR              9013, "invalid HLSL intermediate representation"
+
 // Warnings:
 
 #define WARNING___QUALIFIER_SPECIFIED_TWICE 7001, "qualifier specified twice"

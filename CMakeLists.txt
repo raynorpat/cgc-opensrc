@@ -43,6 +43,9 @@ add_executable(cgc
     glslf_hal.c
     glslg_hal.c
     hal.c
+    hlsl_hal.c
+    hlslv_hal.c
+    hlslf_hal.c
     inline.c
     language.c
     memory.c
