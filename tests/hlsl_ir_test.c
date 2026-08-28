@@ -86,38 +86,102 @@ static void *FaultAlloc(void *arg, size_t size)
 
 static void TestReservedNames(void)
 {
-    static const char *requiredNames[] = {
-        "const_cast", "delete", "dynamic_cast", "export", "mutable",
-        "PixelShader", "pixelshader", "pixelfragment", "static_cast",
-        "VertexShader", "vertexshader", "vertexfragment"
+    static const char *explicitReservedNames[] = {
+        "AttribArray", "LINE", "LINE_ADJ", "LINE_OUT", "POINT",
+        "POINT_OUT", "PixelShader", "TRIANGLE", "TRIANGLE_ADJ",
+        "TRIANGLE_OUT", "VertexShader", "__internal", "__packed", "asm",
+        "asm_fragment", "attribute", "auto", "bool", "break", "case",
+        "cast", "catch", "const_cast", "centroid", "char", "class",
+        "column_major", "compile", "compile_fragment", "const", "continue",
+        "default", "discard", "decl", "delete", "do", "double", "dword",
+        "dynamic_cast", "else", "emit", "enum", "explicit", "export",
+        "extern", "external", "false", "fixed", "float", "for", "foreach",
+        "friend", "get", "goto", "half", "if", "in", "inline", "inout",
+        "input", "int", "interface", "invariant", "is", "long", "main",
+        "matrix", "mutable", "namespace", "new", "noinline", "null",
+        "nointerpolation", "operator", "out", "output", "packoffset",
+        "packed", "pass", "pixelfragment", "pixelshader", "precise",
+        "private", "protected", "public", "ref", "register",
+        "reinterpret_cast", "return", "row_major", "sampler", "sampler1D",
+        "sampler2D", "sampler3D", "samplerCUBE", "samplerCube",
+        "samplerRECT", "sampler_state", "set", "shared", "short", "signed",
+        "sizeof", "snorm", "stateblock", "stateblock_state", "static",
+        "static_cast", "string", "struct", "switch", "technique",
+        "technique10", "technique11", "template", "texture", "texture1D",
+        "texture2D", "texture3D", "textureCUBE", "textureCube",
+        "textureRECT", "this", "throw", "true", "try", "typedef",
+        "typename", "uchar", "uint", "ulong", "uniform", "union", "unorm",
+        "unsigned", "ushort", "using", "varying", "vector",
+        "vertexfragment", "vertexshader", "virtual", "void", "volatile",
+        "while", "yield",
+        "AppendStructuredBuffer", "BlendState", "Buffer",
+        "ByteAddressBuffer", "cbuffer", "CompileShader", "ComputeShader",
+        "ConsumeStructuredBuffer", "DepthStencilState", "DepthStencilView",
+        "DomainShader", "fxgroup", "GeometryShader", "groupshared",
+        "Hullshader", "HullShader", "InputPatch", "line", "lineadj",
+        "linear", "LineStream", "min16float", "min10float", "min16int",
+        "min12int", "min16uint", "noperspective", "NULL", "OutputPatch",
+        "point", "PointStream", "RasterizerState", "RenderTargetView",
+        "RWBuffer", "RWByteAddressBuffer", "RWStructuredBuffer",
+        "RWTexture1D", "RWTexture1DArray", "RWTexture2D",
+        "RWTexture2DArray", "RWTexture3D", "sample", "SamplerState",
+        "SamplerComparisonState", "StructuredBuffer", "tbuffer", "Texture1D",
+        "Texture1DArray", "Texture2D", "Texture2DArray", "Texture2DMS",
+        "Texture2DMSArray", "Texture3D", "TextureCube", "TextureCubeArray",
+        "triangle", "triangleadj", "TriangleStream", "DWORD", "FLOAT",
+        "VECTOR", "MATRIX", "STRING", "TEXTURE", "PIXELSHADER",
+        "VERTEXSHADER"
     };
     static const char *numericBases[] = {
         "bool", "cfloat", "char", "cint", "double", "dword", "fixed",
-        "float", "half", "int", "long", "short", "uchar", "uint",
+        "float", "half", "int", "long", "min10float", "min16float",
+        "min12int", "min16int", "min16uint", "short", "uchar", "uint",
         "ulong", "ushort"
     };
     HlslModule module;
     char spelling[32];
     const char *emitted;
     const char *reserved;
+    int candidate;
+    int expectedCount;
+    int found;
     int index;
+    int reservedCount;
 
     HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
-    for (index = 0; index < HlslReservedNameCount(); index++) {
+    expectedCount = (int) (sizeof(explicitReservedNames) /
+                           sizeof(explicitReservedNames[0]));
+    reservedCount = HlslReservedNameCount();
+    assert(reservedCount == expectedCount);
+    for (index = 0; index < reservedCount; index++) {
         reserved = HlslReservedNameAt(index);
         assert(reserved != NULL);
         assert(HlslIsReservedName(reserved));
+        found = 0;
+        for (candidate = 0; candidate < expectedCount; candidate++) {
+            if (!strcmp(reserved, explicitReservedNames[candidate])) {
+                found = 1;
+                break;
+            }
+        }
+        assert(found);
         emitted = HlslAllocateDistinctName(&module, reserved);
         assert(emitted != NULL);
         assert(!strncmp(emitted, "cg_", 3));
     }
+    for (index = 0; index < expectedCount; index++) {
+        found = 0;
+        for (candidate = 0; candidate < reservedCount; candidate++) {
+            reserved = HlslReservedNameAt(candidate);
+            if (!strcmp(explicitReservedNames[index], reserved)) {
+                found = 1;
+                break;
+            }
+        }
+        assert(found);
+    }
     assert(HlslReservedNameAt(-1) == NULL);
     assert(HlslReservedNameAt(HlslReservedNameCount()) == NULL);
-    for (index = 0; index < (int) (sizeof(requiredNames) /
-                                    sizeof(requiredNames[0])); index++)
-    {
-        assert(HlslIsReservedName(requiredNames[index]));
-    }
     for (index = 0; index < (int) (sizeof(numericBases) /
                                     sizeof(numericBases[0])); index++)
     {
@@ -437,6 +501,10 @@ static void TestTypesAndLists(void)
     HlslType type;
     HlslType invalid;
     HlslType element;
+    HlslType innerArray;
+    HlslType outerArray;
+    HlslType arrayCycleA;
+    HlslType arrayCycleB;
     HlslDecl *decl1;
     HlslDecl *decl2;
     HlslExpr *expr1;
@@ -489,6 +557,20 @@ static void TestTypesAndLists(void)
     invalid.elementType = &invalid;
     assert(HlslTypeName(&invalid) == NULL);
     assert(HlslTypeRegisterSpan(&invalid) == 0);
+    memset(&innerArray, 0, sizeof(innerArray));
+    memset(&outerArray, 0, sizeof(outerArray));
+    innerArray.arraySize = 2;
+    innerArray.elementType = &element;
+    outerArray.arraySize = 3;
+    outerArray.elementType = &innerArray;
+    assert(!strcmp(HlslTypeName(&outerArray), "float"));
+    memset(&arrayCycleA, 0, sizeof(arrayCycleA));
+    memset(&arrayCycleB, 0, sizeof(arrayCycleB));
+    arrayCycleA.arraySize = 2;
+    arrayCycleA.elementType = &arrayCycleB;
+    arrayCycleB.arraySize = 3;
+    arrayCycleB.elementType = &arrayCycleA;
+    assert(HlslTypeName(&arrayCycleA) == NULL);
     assert(HlslTypeName(NULL) == NULL);
     assert(HlslTypeRegisterSpan(NULL) == 0);
 

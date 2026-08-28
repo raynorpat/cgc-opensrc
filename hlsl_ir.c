@@ -84,13 +84,30 @@ static const char *reservedNames[] = {
     "throw", "true", "try", "typedef", "typename", "uchar", "uint",
     "ulong", "uniform", "union", "unorm", "unsigned", "ushort", "using",
     "varying", "vector", "vertexfragment", "vertexshader", "virtual",
-    "void", "volatile", "while", "yield"
+    "void", "volatile", "while", "yield",
+    "AppendStructuredBuffer", "BlendState", "Buffer",
+    "ByteAddressBuffer", "cbuffer", "CompileShader", "ComputeShader",
+    "ConsumeStructuredBuffer", "DepthStencilState", "DepthStencilView",
+    "DomainShader", "fxgroup", "GeometryShader", "groupshared",
+    "Hullshader", "HullShader", "InputPatch", "line", "lineadj", "linear",
+    "LineStream", "min16float", "min10float", "min16int", "min12int",
+    "min16uint", "noperspective", "NULL", "OutputPatch", "point",
+    "PointStream", "RasterizerState", "RenderTargetView", "RWBuffer",
+    "RWByteAddressBuffer", "RWStructuredBuffer", "RWTexture1D",
+    "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray", "RWTexture3D",
+    "sample", "SamplerState", "SamplerComparisonState", "StructuredBuffer",
+    "tbuffer", "Texture1D", "Texture1DArray", "Texture2D",
+    "Texture2DArray", "Texture2DMS", "Texture2DMSArray", "Texture3D",
+    "TextureCube", "TextureCubeArray", "triangle", "triangleadj",
+    "TriangleStream", "DWORD", "FLOAT", "VECTOR", "MATRIX", "STRING",
+    "TEXTURE", "PIXELSHADER", "VERTEXSHADER"
 };
 
 static const char *reservedTypeBases[] = {
     "bool", "cfloat", "char", "cint", "double", "dword", "fixed",
-    "float", "half", "int", "long", "short", "uchar", "uint", "ulong",
-    "ushort"
+    "float", "half", "int", "long", "min10float", "min16float",
+    "min12int", "min16int", "min16uint", "short", "uchar", "uint",
+    "ulong", "ushort"
 };
 
 static void *HlslAlloc(HlslModule *module, size_t size)
@@ -399,7 +416,23 @@ HlslType HlslMatrixType(int rows, int cols)
     return type;
 }
 
-const char *HlslTypeName(const HlslType *type)
+typedef struct HlslTypeFrame_Rec {
+    const struct HlslTypeFrame_Rec *parent;
+    const HlslType *type;
+} HlslTypeFrame;
+
+static int HlslTypeFrameContains(const HlslTypeFrame *frame,
+    const HlslType *type)
+{
+    for (; frame != NULL; frame = frame->parent) {
+        if (frame->type == type)
+            return 1;
+    }
+    return 0;
+}
+
+static const char *HlslTypeNameInner(const HlslType *type,
+    const HlslTypeFrame *parent)
 {
     static const char *floatNames[] = {
         "float", "float2", "float3", "float4"
@@ -420,13 +453,19 @@ const char *HlslTypeName(const HlslType *type)
         { "row_major float4x1", "row_major float4x2",
           "row_major float4x3", "row_major float4x4" }
     };
+    HlslTypeFrame frame;
 
-    if (type == NULL || type->arraySize < 0)
+    if (type == NULL || type->arraySize < 0 ||
+        HlslTypeFrameContains(parent, type))
+    {
         return NULL;
+    }
+    frame.parent = parent;
+    frame.type = type;
     if (type->arraySize > 0) {
-        if (type->elementType == NULL || type->elementType == type)
+        if (type->elementType == NULL)
             return NULL;
-        return HlslTypeName(type->elementType);
+        return HlslTypeNameInner(type->elementType, &frame);
     }
     if (type->base != HLSL_BASE_STRUCT &&
         (type->structName != NULL || type->members != NULL))
@@ -469,19 +508,9 @@ const char *HlslTypeName(const HlslType *type)
     return NULL;
 }
 
-typedef struct HlslTypeSpanFrame_Rec {
-    const struct HlslTypeSpanFrame_Rec *parent;
-    const HlslType *type;
-} HlslTypeSpanFrame;
-
-static int HlslTypeSpanContains(const HlslTypeSpanFrame *frame,
-    const HlslType *type)
+const char *HlslTypeName(const HlslType *type)
 {
-    for (; frame != NULL; frame = frame->parent) {
-        if (frame->type == type)
-            return 1;
-    }
-    return 0;
+    return HlslTypeNameInner(type, NULL);
 }
 
 static int HlslDeclListHasCycle(const HlslDecl *list)
@@ -501,15 +530,15 @@ static int HlslDeclListHasCycle(const HlslDecl *list)
 }
 
 static int HlslTypeRegisterSpanInner(const HlslType *type,
-    const HlslTypeSpanFrame *parent)
+    const HlslTypeFrame *parent)
 {
-    HlslTypeSpanFrame frame;
+    HlslTypeFrame frame;
     const HlslDecl *member;
     int memberSpan;
     int span;
 
     if (type == NULL || type->arraySize < 0 ||
-        HlslTypeSpanContains(parent, type))
+        HlslTypeFrameContains(parent, type))
     {
         return 0;
     }
