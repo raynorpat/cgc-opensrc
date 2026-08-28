@@ -44,6 +44,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // hlsl_bind.c
 //
 
+#include <float.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -96,6 +97,38 @@ static int HlslBindFailure(HlslModule *module, const HlslBinding *binding,
     return 0;
 } // HlslBindFailure
 
+static int HlslPublicIdentifierIsValid(const char *name)
+{
+    const char *current;
+
+    if (name == NULL ||
+        !((name[0] >= 'A' && name[0] <= 'Z') ||
+          (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+    {
+        return 0;
+    }
+    for (current = name + 1; *current != '\0'; current++) {
+        if (!((*current >= 'A' && *current <= 'Z') ||
+              (*current >= 'a' && *current <= 'z') ||
+              (*current >= '0' && *current <= '9') || *current == '_'))
+        {
+            return 0;
+        }
+    }
+    return 1;
+} // HlslPublicIdentifierIsValid
+
+static const char *HlslPublicBindingName(const HlslBinding *binding)
+{
+    const char *name;
+
+    if (binding == NULL)
+        return NULL;
+    name = binding->publicName != NULL && binding->publicName[0] != '\0' ?
+           binding->publicName : binding->name;
+    return HlslPublicIdentifierIsValid(name) ? name : NULL;
+} // HlslPublicBindingName
+
 static const char *HlslBankName(HlslRegisterBank bank)
 {
     switch (bank) {
@@ -128,6 +161,41 @@ static HlslRegisterBank HlslTypeBank(const HlslType *type)
         return HLSL_REGISTER_C;
     }
 } // HlslTypeBank
+
+static int HlslHomogeneousBank(const HlslType *type,
+                               HlslRegisterBank *result)
+{
+    const HlslDecl *member;
+    HlslRegisterBank bank;
+    HlslRegisterBank memberBank;
+    int hasBank;
+
+    if (type == NULL || result == NULL)
+        return 0;
+    if (type->arraySize > 0)
+        return HlslHomogeneousBank(type->elementType, result);
+    if (type->base != HLSL_BASE_STRUCT) {
+        bank = HlslTypeBank(type);
+        if (bank == HLSL_REGISTER_NONE)
+            return 0;
+        *result = bank;
+        return 1;
+    }
+    bank = HLSL_REGISTER_NONE;
+    hasBank = 0;
+    for (member = type->members; member != NULL; member = member->next) {
+        if (!HlslHomogeneousBank(&member->type, &memberBank))
+            return 0;
+        if (hasBank && memberBank != bank)
+            return 0;
+        bank = memberBank;
+        hasBank = 1;
+    }
+    if (!hasBank)
+        return 0;
+    *result = bank;
+    return 1;
+} // HlslHomogeneousBank
 
 static int HlslTypeComponentCount(const HlslType *type)
 {
@@ -196,6 +264,33 @@ static const char *HlslJoinPublicPath(HlslModule *module,
     return path;
 } // HlslJoinPublicPath
 
+static const char *HlslIndexPublicPath(HlslModule *module,
+                                       const char *parent, int index)
+{
+    char number[32];
+    char *path;
+    size_t parentLength;
+    size_t numberLength;
+
+    if (parent == NULL || index < 0)
+        return NULL;
+    sprintf(number, "%d", index);
+    parentLength = strlen(parent);
+    numberLength = strlen(number);
+    if (parentLength > (size_t) -1 - numberLength - 3)
+        return NULL;
+    path = (char *) HlslBindAlloc(module,
+        parentLength + numberLength + 3);
+    if (path == NULL)
+        return NULL;
+    memcpy(path, parent, parentLength);
+    path[parentLength] = '[';
+    memcpy(path + parentLength + 1, number, numberLength);
+    path[parentLength + numberLength + 1] = ']';
+    path[parentLength + numberLength + 2] = '\0';
+    return path;
+} // HlslIndexPublicPath
+
 static int HlslAppendLeafPlan(HlslLeafPlan **list, HlslLeafPlan *plan)
 {
     HlslLeafPlan *current;
@@ -219,7 +314,12 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
     const HlslDecl *member;
     HlslLeafPlan *plan;
     const char *memberPath;
+    const char *elementPath;
+    HlslRegisterBank homogeneousBank;
     int componentCount;
+    int elementComponents;
+    int elementSpan;
+    int i;
     int memberComponents;
     int memberSpan;
     int span;
@@ -227,13 +327,15 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
     span = HlslTypeRegisterSpan(type);
     if (span <= 0)
         return 0;
-    if (type->arraySize == 0 && type->base == HLSL_BASE_STRUCT) {
+    if (!HlslHomogeneousBank(type, &homogeneousBank) &&
+        type->arraySize == 0 && type->base == HLSL_BASE_STRUCT)
+    {
         for (member = type->members; member != NULL; member = member->next) {
             memberPath = HlslJoinPublicPath(module, path, member->name);
             memberSpan = HlslTypeRegisterSpan(&member->type);
             memberComponents = HlslTypeComponentCount(&member->type);
             if (memberPath == NULL || memberSpan <= 0 ||
-                memberComponents <= 0 ||
+                memberComponents < 0 ||
                 !HlslPlanLeaves(module, &member->type, memberPath,
                                 recursiveOffset, defaultOffset, plans))
             {
@@ -249,6 +351,26 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
         }
         return 1;
     }
+    if (!HlslHomogeneousBank(type, &homogeneousBank) &&
+        type->arraySize > 0)
+    {
+        elementSpan = HlslTypeRegisterSpan(type->elementType);
+        elementComponents = HlslTypeComponentCount(type->elementType);
+        if (elementSpan <= 0 || elementComponents < 0)
+            return 0;
+        for (i = 0; i < type->arraySize; i++) {
+            elementPath = HlslIndexPublicPath(module, path, i);
+            if (elementPath == NULL ||
+                !HlslPlanLeaves(module, type->elementType, elementPath,
+                                recursiveOffset, defaultOffset, plans))
+            {
+                return 0;
+            }
+            recursiveOffset += elementSpan;
+            defaultOffset += elementComponents;
+        }
+        return 1;
+    }
 
     plan = (HlslLeafPlan *) HlslBindAlloc(module, sizeof(HlslLeafPlan));
     componentCount = HlslTypeComponentCount(type);
@@ -259,7 +381,7 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
     plan->recursiveOffset = recursiveOffset;
     plan->defaultOffset = defaultOffset;
     plan->defaultCount = componentCount;
-    plan->bank = HlslTypeBank(type);
+    plan->bank = homogeneousBank;
     plan->span = span;
     if (plan->bank == HLSL_REGISTER_NONE)
         return 0;
@@ -369,6 +491,15 @@ static int HlslUsedCount(const unsigned char *used, int limit)
     return count;
 } // HlslUsedCount
 
+static int HlslSaturatingAdd(int left, int right)
+{
+    if (left < 0)
+        return right;
+    if (right < 0 || left > INT_MAX - right)
+        return INT_MAX;
+    return left + right;
+} // HlslSaturatingAdd
+
 static int HlslResourceFailure(HlslModule *module,
                                const HlslBinding *binding,
                                HlslRegisterBank bank, int used, int limit)
@@ -383,7 +514,7 @@ static int HlslResourceFailure(HlslModule *module,
 } // HlslResourceFailure
 
 static const char *HlslCollisionReason(HlslModule *module,
-                                       const HlslBinding *binding,
+                                       const char *publicName,
                                        HlslRegisterBank bank, int regno)
 {
     const char *name;
@@ -392,8 +523,7 @@ static const char *HlslCollisionReason(HlslModule *module,
     char *reason;
     size_t length;
 
-    name = binding != NULL && binding->name != NULL ?
-           binding->name : "anonymous";
+    name = publicName != NULL ? publicName : "anonymous";
     bankName = HlslBankName(bank);
     sprintf(number, "%d", regno);
     length = strlen(name) + strlen(bankName) + strlen(number) + 5;
@@ -426,13 +556,12 @@ static int HlslReservePlan(HlslModule *module,
         first = explicitRegno;
         if (first < 0 || plan->span > limit || first > limit - plan->span)
             return HlslResourceFailure(module, binding, plan->bank,
-                                       first < 0 ? plan->span :
-                                       first + plan->span, limit);
+                HlslSaturatingAdd(first, plan->span), limit);
         for (i = 0; i < plan->span; i++) {
             if (used[first + i]) {
                 return HlslBindFailure(module, binding,
                     HLSL_ERROR_REGISTER_COLLISION,
-                    HlslCollisionReason(module, binding, plan->bank,
+                    HlslCollisionReason(module, plan->publicName, plan->bank,
                                         first + i));
             }
         }
@@ -440,7 +569,8 @@ static int HlslReservePlan(HlslModule *module,
         first = HlslFindRange(used, limit, plan->span);
         if (first < 0) {
             return HlslResourceFailure(module, binding, plan->bank,
-                HlslUsedCount(used, limit) + plan->span, limit);
+                HlslSaturatingAdd(HlslUsedCount(used, limit), plan->span),
+                limit);
         }
     }
     plan->regno = first;
@@ -481,10 +611,83 @@ static HlslBase HlslDefaultBase(const HlslType *type)
     return type->base;
 } // HlslDefaultBase
 
-static HlslExpr *HlslBuildDefaultInitializer(HlslModule *module,
-                                             const HlslType *type,
-                                             const float *values,
-                                             int count)
+static int HlslDefaultScalarIsValid(HlslBase base, float value)
+{
+    int integerValue;
+
+    if (value != value || value > FLT_MAX || value < -FLT_MAX)
+        return 0;
+    if (base == HLSL_BASE_FLOAT)
+        return 1;
+    if (base == HLSL_BASE_BOOL)
+        return value == 0.0f || value == 1.0f;
+    if (base != HLSL_BASE_INT || (double) value > (double) INT_MAX ||
+        (double) value < (double) INT_MIN)
+    {
+        return 0;
+    }
+    integerValue = (int) value;
+    return (float) integerValue == value;
+} // HlslDefaultScalarIsValid
+
+static int HlslValidateDefaultType(const HlslType *type,
+                                   const float *values, int *offset)
+{
+    const HlslDecl *member;
+    HlslBase base;
+    int count;
+    int i;
+
+    if (type->arraySize > 0) {
+        for (i = 0; i < type->arraySize; i++) {
+            if (!HlslValidateDefaultType(type->elementType, values, offset))
+                return 0;
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslValidateDefaultType(&member->type, values, offset))
+                return 0;
+        }
+        return 1;
+    }
+    base = HlslDefaultBase(type);
+    if (base == HLSL_BASE_SAMPLER1D || base == HLSL_BASE_SAMPLER2D ||
+        base == HLSL_BASE_SAMPLER3D || base == HLSL_BASE_SAMPLERCUBE)
+    {
+        return 1;
+    }
+    if (type->rows > 0 && type->cols > 0)
+        count = type->rows * type->cols;
+    else
+        count = type->len;
+    for (i = 0; i < count; i++) {
+        if (!HlslDefaultScalarIsValid(base, values[*offset]))
+            return 0;
+        (*offset)++;
+    }
+    return 1;
+} // HlslValidateDefaultType
+
+static int HlslDefaultValuesAreValid(const HlslBinding *binding)
+{
+    int offset;
+
+    if (binding->defaultCount == 0)
+        return binding->defaultValues == NULL;
+    if (binding->defaultValues == NULL)
+        return 0;
+    offset = 0;
+    return HlslValidateDefaultType(&binding->type, binding->defaultValues,
+                                   &offset) &&
+           offset == binding->defaultCount;
+} // HlslDefaultValuesAreValid
+
+static int HlslBuildDefaultInitializer(HlslModule *module,
+                                       const HlslType *type,
+                                       const float *values, int count,
+                                       HlslExpr **result)
 {
     HlslExpr *initializer;
     HlslExpr *value;
@@ -492,20 +695,23 @@ static HlslExpr *HlslBuildDefaultInitializer(HlslModule *module,
     HlslBase base;
     int i;
 
+    if (result == NULL)
+        return 0;
+    *result = NULL;
     if (type == NULL || values == NULL || count <= 0 ||
         type->arraySize > 0 || type->base == HLSL_BASE_STRUCT)
     {
-        return NULL;
+        return 1;
     }
     base = HlslDefaultBase(type);
     if (base != HLSL_BASE_FLOAT && base != HLSL_BASE_INT &&
         base != HLSL_BASE_BOOL)
     {
-        return NULL;
+        return 1;
     }
     initializer = HlslNewExpr(module, HLSL_EXPR_CONSTRUCT, *type);
     if (initializer == NULL)
-        return NULL;
+        return 0;
     scalarType = HlslNumericType(base, 1);
     for (i = 0; i < count; i++) {
         if (base == HLSL_BASE_FLOAT) {
@@ -522,10 +728,11 @@ static HlslExpr *HlslBuildDefaultInitializer(HlslModule *module,
                 value->u.literalBool = values[i] != 0.0f;
         }
         if (value == NULL)
-            return NULL;
+            return 0;
         HlslAppendExpr(&initializer->u.construct.arguments, value);
     }
-    return initializer;
+    *result = initializer;
+    return 1;
 } // HlslBuildDefaultInitializer
 
 static void HlslAppendAllocatedBinding(HlslBinding **list,
@@ -594,8 +801,12 @@ static int HlslBuildLeafRecords(HlslModule *module, HlslBinding *binding,
                    (size_t) plan->defaultCount * sizeof(float));
             record->defaultCount = plan->defaultCount;
             record->defaultValues = defaults;
-            declaration->initializer = HlslBuildDefaultInitializer(
-                module, &plan->type, defaults, plan->defaultCount);
+            if (!HlslBuildDefaultInitializer(module, &plan->type, defaults,
+                                              plan->defaultCount,
+                                              &declaration->initializer))
+            {
+                return 0;
+            }
         }
         declaration->semantic = binding->semantic;
         declaration->loc = binding->loc;
@@ -612,12 +823,14 @@ int HlslAllocateOneBinding(HlslModule *module,
                            HlslBinding *binding)
 {
     HlslBankState state;
+    HlslName *savedNames;
     HlslLeafPlan *plans;
     HlslLeafPlan *plan;
     HlslBinding *records;
     HlslBinding *record;
     HlslBinding *nextRecord;
     HlslDecl *globals;
+    const char *publicName;
     int defaultComponents;
     int explicitRegno;
     int planCount;
@@ -629,17 +842,25 @@ int HlslAllocateOneBinding(HlslModule *module,
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "invalid HLSL binding");
     }
+    publicName = HlslPublicBindingName(binding);
+    if (publicName == NULL)
+        return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
+                               "invalid HLSL public binding name");
+    if (HlslTypeRegisterSpan(&binding->type) <= 0)
+        return HlslBindFailure(module, binding,
+                               HLSL_ERROR_UNSUPPORTED_TYPE, binding->name);
     defaultComponents = HlslTypeComponentCount(&binding->type);
     if (binding->defaultCount < 0 ||
         (binding->defaultCount > 0 &&
          (binding->defaultValues == NULL ||
-          binding->defaultCount != defaultComponents)))
+          binding->defaultCount != defaultComponents)) ||
+        !HlslDefaultValuesAreValid(binding))
     {
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "invalid HLSL binding default");
     }
     plans = NULL;
-    if (!HlslPlanLeaves(module, &binding->type, binding->name, 0, 0,
+    if (!HlslPlanLeaves(module, &binding->type, publicName, 0, 0,
                         &plans))
     {
         return HlslBindFailure(module, binding,
@@ -666,10 +887,14 @@ int HlslAllocateOneBinding(HlslModule *module,
     HlslLoadBankState(module, &state);
     for (plan = plans; plan != NULL; plan = plan->next) {
         if (binding->hasExplicitRegister &&
-            (binding->physical.regno < 0 ||
-             binding->physical.regno > INT_MAX - plan->recursiveOffset))
+            binding->physical.regno < 0)
         {
             explicitRegno = -1;
+        } else if (binding->hasExplicitRegister &&
+                   binding->physical.regno >
+                       INT_MAX - plan->recursiveOffset)
+        {
+            explicitRegno = INT_MAX;
         } else {
             explicitRegno = binding->physical.regno +
                             plan->recursiveOffset;
@@ -682,9 +907,12 @@ int HlslAllocateOneBinding(HlslModule *module,
     }
     records = NULL;
     globals = NULL;
-    if (!HlslBuildLeafRecords(module, binding, plans, &records, &globals))
+    savedNames = module->names;
+    if (!HlslBuildLeafRecords(module, binding, plans, &records, &globals)) {
+        module->names = savedNames;
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "HLSL binding allocation");
+    }
 
     HlslStoreBankState(module, &state);
     binding->leafBindings = records;

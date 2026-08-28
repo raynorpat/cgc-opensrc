@@ -48,6 +48,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #undef NDEBUG
 #endif
 #include <assert.h>
+#include <float.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,6 +83,14 @@ static void *FaultAlloc(void *arg, size_t size)
     (void) arg;
     (void) size;
     return NULL;
+}
+
+static void *InitializerFaultAlloc(void *arg, size_t size)
+{
+    (void) arg;
+    if (size == sizeof(HlslExpr))
+        return NULL;
+    return calloc(1, size);
 }
 
 static void TestReservedNames(void)
@@ -716,6 +725,8 @@ static void TestBindingBanks(void)
     collisionBinding = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
                                      "collision", NULL);
     assert(collisionBinding != NULL);
+    collisionBinding->loc.file = 3;
+    collisionBinding->loc.line = 19;
     collisionBinding->hasExplicitRegister = 1;
     collisionBinding->physical.bank = HLSL_REGISTER_C;
     collisionBinding->physical.regno = 0;
@@ -724,6 +735,7 @@ static void TestBindingBanks(void)
     assert(module.errorReason != NULL);
     assert(strstr(module.errorReason, "collision") != NULL);
     assert(strstr(module.errorReason, "c0") != NULL);
+    assert(module.errorLoc.file == 3 && module.errorLoc.line == 19);
 }
 
 static void TestAggregateAndSamplerBindings(void)
@@ -940,6 +952,269 @@ static void TestCyclicBindingListIsRejected(void)
     assert(module.errorKind == HLSL_ERROR_INVALID_IR);
 }
 
+static void TestAggregateBankClassification(void)
+{
+    HlslModule module;
+    HlslProfileDesc profile;
+    HlslLimits limits;
+    HlslBinding *firstBlocker;
+    HlslBinding *secondBlocker;
+    HlslBinding *homogeneous;
+    HlslBinding *mixedArray;
+    HlslBinding *leaf;
+    HlslDecl firstMember;
+    HlslDecl secondMember;
+    HlslType homogeneousType;
+    HlslType mixedType;
+    HlslType mixedArrayType;
+    HlslType type;
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    profile = HlslProfile_hlslv;
+    limits = *profile.limits;
+    limits.floatConstants = 6;
+    profile.limits = &limits;
+    type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    firstBlocker = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
+                                  "firstBlocker", NULL);
+    secondBlocker = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
+                                   "secondBlocker", NULL);
+    assert(firstBlocker != NULL && secondBlocker != NULL);
+    firstBlocker->hasExplicitRegister = 1;
+    firstBlocker->physical.bank = HLSL_REGISTER_C;
+    firstBlocker->physical.regno = 1;
+    secondBlocker->hasExplicitRegister = 1;
+    secondBlocker->physical.bank = HLSL_REGISTER_C;
+    secondBlocker->physical.regno = 3;
+    assert(HlslAllocateOneBinding(&module, &profile, firstBlocker));
+    assert(HlslAllocateOneBinding(&module, &profile, secondBlocker));
+
+    memset(&firstMember, 0, sizeof(firstMember));
+    memset(&secondMember, 0, sizeof(secondMember));
+    firstMember.name = "first";
+    firstMember.type = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    firstMember.next = &secondMember;
+    secondMember.name = "second";
+    secondMember.type = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    memset(&homogeneousType, 0, sizeof(homogeneousType));
+    homogeneousType.base = HLSL_BASE_STRUCT;
+    homogeneousType.structName = "Homogeneous";
+    homogeneousType.members = &firstMember;
+    homogeneous = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM,
+                                 homogeneousType, "pair", NULL);
+    assert(homogeneous != NULL);
+    assert(HlslAllocateOneBinding(&module, &profile, homogeneous));
+    assert(homogeneous->physical.bank == HLSL_REGISTER_C);
+    assert(homogeneous->physical.regno == 4);
+    assert(homogeneous->physical.span == 2);
+    assert(homogeneous->leafBindings != NULL);
+    assert(homogeneous->leafBindings->next == NULL);
+    assert(!strcmp(homogeneous->leafBindings->publicName, "pair"));
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    profile = HlslProfile_hlslv;
+    memset(&firstMember, 0, sizeof(firstMember));
+    memset(&secondMember, 0, sizeof(secondMember));
+    firstMember.name = "weight";
+    firstMember.type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    firstMember.next = &secondMember;
+    secondMember.name = "index";
+    secondMember.type = HlslNumericType(HLSL_BASE_INT, 1);
+    memset(&mixedType, 0, sizeof(mixedType));
+    mixedType.base = HLSL_BASE_STRUCT;
+    mixedType.structName = "Mixed";
+    mixedType.members = &firstMember;
+    memset(&mixedArrayType, 0, sizeof(mixedArrayType));
+    mixedArrayType.arraySize = 2;
+    mixedArrayType.elementType = &mixedType;
+    mixedArray = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM,
+                               mixedArrayType, "items", NULL);
+    assert(mixedArray != NULL);
+    assert(HlslAllocateOneBinding(&module, &profile, mixedArray));
+    assert(mixedArray->physical.bank == HLSL_REGISTER_NONE);
+    leaf = mixedArray->leafBindings;
+    assert(leaf != NULL && !strcmp(leaf->publicName, "items[0].weight"));
+    assert(leaf->physical.bank == HLSL_REGISTER_C &&
+           leaf->physical.regno == 0);
+    leaf = leaf->next;
+    assert(leaf != NULL && !strcmp(leaf->publicName, "items[0].index"));
+    assert(leaf->physical.bank == HLSL_REGISTER_I &&
+           leaf->physical.regno == 0);
+    leaf = leaf->next;
+    assert(leaf != NULL && !strcmp(leaf->publicName, "items[1].weight"));
+    assert(leaf->physical.bank == HLSL_REGISTER_C &&
+           leaf->physical.regno == 1);
+    leaf = leaf->next;
+    assert(leaf != NULL && !strcmp(leaf->publicName, "items[1].index"));
+    assert(leaf->physical.bank == HLSL_REGISTER_I &&
+           leaf->physical.regno == 1 && leaf->next == NULL);
+}
+
+static void TestBindingDiagnosticArithmetic(void)
+{
+    HlslModule module;
+    HlslBinding binding;
+    HlslBinding *occupied;
+    HlslProfileDesc profile;
+    HlslType elementType;
+    HlslType hugeType;
+    HlslType type;
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    profile = HlslProfile_hlslv;
+    memset(&binding, 0, sizeof(binding));
+    binding.storage = HLSL_STORAGE_UNIFORM;
+    binding.type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    binding.name = "internalExplicit";
+    binding.publicName = "publicExplicit";
+    binding.loc.file = 7;
+    binding.loc.line = 31;
+    binding.hasExplicitRegister = 1;
+    binding.physical.bank = HLSL_REGISTER_C;
+    binding.physical.regno = INT_MAX;
+    assert(!HlslAllocateOneBinding(&module, &profile, &binding));
+    assert(module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(module.resourceUsed == INT_MAX);
+    assert(module.resourceAvailable == profile.limits->floatConstants);
+    assert(module.errorLoc.file == 7 && module.errorLoc.line == 31);
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    profile = HlslProfile_hlslv;
+    type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    occupied = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
+                             "occupied", NULL);
+    assert(occupied != NULL);
+    assert(HlslAllocateOneBinding(&module, &profile, occupied));
+    elementType = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    memset(&hugeType, 0, sizeof(hugeType));
+    hugeType.arraySize = INT_MAX;
+    hugeType.elementType = &elementType;
+    memset(&binding, 0, sizeof(binding));
+    binding.storage = HLSL_STORAGE_UNIFORM;
+    binding.type = hugeType;
+    binding.name = "internalHuge";
+    binding.publicName = "publicHuge";
+    assert(!HlslAllocateOneBinding(&module, &profile, &binding));
+    assert(module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(module.resourceUsed == INT_MAX);
+}
+
+static void TestDefaultValidationIsTransactional(void)
+{
+    HlslModule module;
+    HlslBinding binding;
+    HlslProfileDesc profile;
+    HlslType type;
+    volatile float zero;
+    float value;
+
+    profile = HlslProfile_hlslv;
+    type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, InitializerFaultAlloc, NULL);
+    memset(&binding, 0, sizeof(binding));
+    binding.storage = HLSL_STORAGE_UNIFORM;
+    binding.type = type;
+    binding.name = "initializerFailure";
+    binding.publicName = "initializerFailure";
+    binding.defaultCount = 1;
+    value = 1.0f;
+    binding.defaultValues = &value;
+    assert(!HlslAllocateOneBinding(&module, &profile, &binding));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+    assert(module.names == NULL && module.globals == NULL &&
+           module.allocatedBindings == NULL);
+    assert(binding.leafBindings == NULL && !binding.isAllocated);
+    assert(module.cRegisterUsed[0] == 0);
+
+    type = HlslNumericType(HLSL_BASE_INT, 1);
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    memset(&binding, 0, sizeof(binding));
+    binding.storage = HLSL_STORAGE_UNIFORM;
+    binding.type = type;
+    binding.name = "largeInteger";
+    binding.defaultCount = 1;
+    value = FLT_MAX;
+    binding.defaultValues = &value;
+    assert(!HlslAllocateOneBinding(&module, &profile, &binding));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+
+    type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    memset(&binding, 0, sizeof(binding));
+    binding.storage = HLSL_STORAGE_UNIFORM;
+    binding.type = type;
+    binding.name = "notANumber";
+    binding.defaultCount = 1;
+    zero = 0.0f;
+    value = zero / zero;
+    binding.defaultValues = &value;
+    assert(!HlslAllocateOneBinding(&module, &profile, &binding));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+
+    type = HlslNumericType(HLSL_BASE_BOOL, 1);
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    memset(&binding, 0, sizeof(binding));
+    binding.storage = HLSL_STORAGE_UNIFORM;
+    binding.type = type;
+    binding.name = "invalidBoolean";
+    binding.defaultCount = 1;
+    value = 2.0f;
+    binding.defaultValues = &value;
+    assert(!HlslAllocateOneBinding(&module, &profile, &binding));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+}
+
+static void TestPublicBindingNames(void)
+{
+    HlslModule module;
+    HlslBinding *occupied;
+    HlslBinding *binding;
+    HlslProfileDesc profile;
+    HlslType type;
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    profile = HlslProfile_hlslv;
+    type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    binding = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
+                            "internalColor", NULL);
+    assert(binding != NULL);
+    binding->publicName = "publicColor";
+    assert(HlslAllocateOneBinding(&module, &profile, binding));
+    assert(binding->leafBindings != NULL);
+    assert(!strcmp(binding->leafBindings->publicName, "publicColor"));
+    occupied = binding;
+
+    binding = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
+                            "fallbackColor", NULL);
+    assert(binding != NULL);
+    binding->publicName = "";
+    assert(HlslAllocateOneBinding(&module, &profile, binding));
+    assert(!strcmp(binding->leafBindings->publicName, "fallbackColor"));
+
+    binding = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
+                            "otherInternalColor", NULL);
+    assert(binding != NULL && occupied->physical.regno == 0);
+    binding->publicName = "otherPublicColor";
+    binding->loc.file = 9;
+    binding->loc.line = 44;
+    binding->hasExplicitRegister = 1;
+    binding->physical.bank = HLSL_REGISTER_C;
+    binding->physical.regno = 0;
+    assert(!HlslAllocateOneBinding(&module, &profile, binding));
+    assert(module.errorKind == HLSL_ERROR_REGISTER_COLLISION);
+    assert(strstr(module.errorReason, "otherPublicColor") != NULL);
+    assert(strstr(module.errorReason, "otherInternalColor") == NULL);
+    assert(module.errorLoc.file == 9 && module.errorLoc.line == 44);
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    binding = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, type,
+                            "validInternal", NULL);
+    assert(binding != NULL);
+    binding->publicName = "invalid public name";
+    assert(!HlslAllocateOneBinding(&module, &profile, binding));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+}
+
 int main(int argc, char **argv)
 {
     HlslModule module;
@@ -1022,5 +1297,9 @@ int main(int argc, char **argv)
     TestAggregateAndSamplerBindings();
     TestDefaultBindingAndResourceFailure();
     TestCyclicBindingListIsRejected();
+    TestAggregateBankClassification();
+    TestBindingDiagnosticArithmetic();
+    TestDefaultValidationIsTransactional();
+    TestPublicBindingNames();
     return 0;
 }

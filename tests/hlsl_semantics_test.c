@@ -672,6 +672,29 @@ static void CheckUnbound(void)
     FreeStage(&hal);
 }
 
+static void CheckUniformUnbound(void)
+{
+    slHAL hal;
+    Symbol symbol;
+    Binding binding;
+    Type type;
+
+    InitStage(&hal, 1);
+    MakeScalar(&type, TYPE_BASE_FLOAT);
+    memset(&symbol, 0, sizeof(symbol));
+    memset(&binding, 0, sizeof(binding));
+    symbol.name = AddAtom(atable, "lateUniform");
+    symbol.type = &type;
+    symbol.loc.line = 37;
+    assert(hal.BindUniformUnbound(&symbol.loc, &symbol, &binding));
+    assert((binding.none.properties & (BIND_IS_BOUND | BIND_UNIFORM)) ==
+           (BIND_IS_BOUND | BIND_UNIFORM));
+    assert(binding.none.kind == BK_NONE);
+    assert(binding.reg.rname == 0 && binding.reg.regno == 0 &&
+           binding.reg.count == 0 && binding.texunit.unitno == 0);
+    FreeStage(&hal);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
@@ -702,6 +725,7 @@ int main(int argc, char **argv)
         CheckConnectors();
         CheckBindingTypes();
         CheckUnbound();
+        CheckUniformUnbound();
     }
     FreeAtomTable(atable);
     return 0;

@@ -352,6 +352,7 @@ struct HlslBinding_Rec {
     HlslStorage storage;
     HlslType type;
     const char *name;
+    /* Source-facing metadata root; NULL or empty falls back to name. */
     const char *publicName;
     const char *semantic;
     HlslLoc loc;
