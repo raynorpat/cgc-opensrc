@@ -1089,9 +1089,20 @@ int GlslLowerLegacyProgram(GlslModule *module,
 int GlslLowerCgIR(GlslModule *module, const GlslProfileDesc *profile,
                   const CgIRModule *source)
 {
-    (void) module;
+    static GlslFunction entry;
+    GlslType voidType;
+
     (void) profile;
     (void) source;
+    if (lowerProgramResult) {
+        memset(&entry, 0, sizeof(entry));
+        voidType = GlslNumericType(GLSL_BASE_VOID, 0);
+        entry.result = voidType;
+        entry.name = "main";
+        entry.isEntry = 1;
+        module->entry = &entry;
+        module->functions = &entry;
+    }
     return lowerProgramResult;
 }
 

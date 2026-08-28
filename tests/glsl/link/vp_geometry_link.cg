@@ -1,0 +1,18 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float pointSize : PSIZE;
+    float4 color : COLOR0;
+    float2 texcoord : TEXCOORD0;
+};
+
+VertexOut main(float4 position : ATTRIB0,
+               float4 color : ATTRIB1,
+               float2 texcoord : ATTRIB2)
+{
+    VertexOut output;
+    output.position = position;
+    output.pointSize = 1.0;
+    output.color = color;
+    output.texcoord = texcoord;
+    return output;
+}

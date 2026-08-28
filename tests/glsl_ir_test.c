@@ -104,6 +104,50 @@ static void ExpectModuleRejected(const char *label,
     assert(!fclose(writer));
 }
 
+static void InitVerifiedGeometryModule(GlslModule *module,
+    GlslGeometryInfo *geometry, GlslFunction **entry)
+{
+    GlslType voidType;
+
+    GlslInitModule(module, GLSL_STAGE_GEOMETRY, TestAlloc, NULL);
+    geometry->inputTopology = GLSL_GEOMETRY_INPUT_TRIANGLES;
+    geometry->outputTopology = GLSL_GEOMETRY_OUTPUT_TRIANGLE_STRIP;
+    geometry->inputVertexCount = 3;
+    geometry->maxOutputVertices = 3;
+    geometry->inputLoc.file = 1;
+    geometry->inputLoc.line = 10;
+    geometry->outputLoc.file = 1;
+    geometry->outputLoc.line = 11;
+    geometry->maxVerticesLoc.file = 1;
+    geometry->maxVerticesLoc.line = 12;
+    module->geometry = geometry;
+    voidType = GlslNumericType(GLSL_BASE_VOID, 0);
+    *entry = GlslNewFunction(module, voidType, "main");
+    assert(*entry != NULL);
+    (*entry)->isEntry = 1;
+    module->entry = *entry;
+    GlslAppendFunction(&module->functions, *entry);
+}
+
+static void ExpectVerifyFailure(const GlslModule *module,
+    GlslVerifyReason reason, const void *node, int line)
+{
+    GlslVerifyDiagnostic diagnostic;
+
+    assert(!GlslVerifyModule(module, &diagnostic));
+    assert(diagnostic.reason == reason);
+    assert(diagnostic.node == node);
+    assert(diagnostic.loc.line == line);
+}
+
+static void ExpectVerifySuccess(const GlslModule *module)
+{
+    GlslVerifyDiagnostic diagnostic;
+
+    assert(GlslVerifyModule(module, &diagnostic));
+    assert(diagnostic.reason == GLSL_VERIFY_OK);
+}
+
 static int DiagnosticMatches(int code, const char *message,
                              int expectedCode,
                              const char *expectedMessage)
@@ -198,9 +242,9 @@ int main(int argc, char **argv)
 
     GlslInitModule(&module, GLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(DiagnosticMatches(ERROR_S_GLSL_UNSUPPORTED_TYPE, 6200,
-        "GLSL 1.10 does not support type \"%s\""));
+        "GLSL profile does not support type \"%s\""));
     assert(DiagnosticMatches(ERROR_S_GLSL_UNSUPPORTED_OPERATION, 6201,
-        "GLSL 1.10 does not support operation \"%s\""));
+        "GLSL profile does not support operation \"%s\""));
     assert(DiagnosticMatches(ERROR_SS_GLSL_STAGE_OPERATION, 6202,
         "%s profile does not support operation \"%s\""));
     assert(DiagnosticMatches(ERROR_S_GLSL_SEMANTIC, 6203,
@@ -210,13 +254,13 @@ int main(int argc, char **argv)
     assert(DiagnosticMatches(ERROR_S_GLSL_NAME_COLLISION, 6205,
         "GLSL name cannot be resolved for \"%s\""));
     assert(DiagnosticMatches(ERROR_S_GLSL_INTRINSIC, 6206,
-        "GLSL 1.10 has no exact intrinsic for \"%s\""));
+        "GLSL profile has no exact intrinsic for \"%s\""));
     assert(DiagnosticMatches(ERROR_SII_GLSL_RESOURCE_LIMIT, 6207,
         "GLSL portable %s limit exceeded: %d used, %d available"));
     assert(DiagnosticMatches(ERROR_S_GLSL_SAMPLER, 6208,
-        "GLSL 1.10 does not support sampler feature \"%s\""));
+        "GLSL profile does not support sampler feature \"%s\""));
     assert(DiagnosticMatches(ERROR_S_GLSL_NON_SQUARE_MATRIX, 6209,
-        "GLSL 1.10 requires a square matrix, found \"%s\""));
+        "GLSL profile requires a square matrix, found \"%s\""));
     assert(GlslSamplerUnitMatches("0", 0));
     assert(GlslSamplerUnitMatches("1", 1));
     assert(!GlslSamplerUnitMatches("0", 1));
@@ -1273,7 +1317,7 @@ int main(int argc, char **argv)
         assert(shadowDecl != NULL);
         GlslAppendDecl(&geoModule.globals, shadowDecl);
         definedDecl = GlslNewDecl(&geoModule, GLSL_STORAGE_CONST,
-                                  GlslNumericType(GLSL_BASE_BOOL, 0),
+                                  GlslNumericType(GLSL_BASE_BOOL, 1),
                                   "cg_flat_COLOR0_defined");
         assert(definedDecl != NULL);
         GlslAppendDecl(&geoModule.globals, definedDecl);
@@ -1317,6 +1361,244 @@ int main(int argc, char **argv)
         badGeo.geometry = NULL;
         assert(!GlslVerifyModule(&badGeo, &diag));
         assert(diag.reason == GLSL_VERIFY_GEOMETRY);
+    }
+
+    /* ---- Geometry verifier: complete structural contracts ---- */
+    {
+        GlslModule verified;
+        GlslGeometryInfo geometry;
+        GlslFunction *entry;
+        GlslDecl *input;
+        GlslType inputType;
+        GlslType *inputElement;
+
+        InitVerifiedGeometryModule(&verified, &geometry, &entry);
+        ExpectVerifySuccess(&verified);
+
+        geometry.inputVertexCount = 2;
+        ExpectVerifyFailure(&verified, GLSL_VERIFY_GEOMETRY,
+                            &geometry, geometry.inputLoc.line);
+        geometry.inputVertexCount = 3;
+        geometry.maxOutputVertices = 0;
+        ExpectVerifyFailure(&verified, GLSL_VERIFY_GEOMETRY,
+                            &geometry, geometry.maxVerticesLoc.line);
+        geometry.maxOutputVertices = 3;
+
+        inputElement = (GlslType *) TestAlloc(NULL, sizeof(GlslType));
+        assert(inputElement != NULL);
+        *inputElement = GlslNumericType(GLSL_BASE_FLOAT, 4);
+        inputType = GlslNumericType(GLSL_BASE_VOID, 0);
+        inputType.arraySize = 2;
+        inputType.elementType = inputElement;
+        input = GlslNewDecl(&verified, GLSL_STORAGE_INPUT,
+                            inputType, "cg_COLOR0");
+        assert(input != NULL);
+        input->loc.file = 2;
+        input->loc.line = 20;
+        GlslAppendDecl(&verified.globals, input);
+        ExpectVerifyFailure(&verified, GLSL_VERIFY_INTERFACE,
+                            input, input->loc.line);
+        input->type.arraySize = 3;
+        ExpectVerifySuccess(&verified);
+    }
+
+    {
+        GlslModule vertexWithGeometry;
+        GlslGeometryInfo geometry;
+        GlslFunction *entry;
+
+        InitVerifiedGeometryModule(&vertexWithGeometry, &geometry, &entry);
+        vertexWithGeometry.stage = GLSL_STAGE_VERTEX;
+        ExpectVerifyFailure(&vertexWithGeometry, GLSL_VERIFY_GEOMETRY,
+                            &geometry, geometry.inputLoc.line);
+    }
+
+    {
+        GlslModule verified;
+        GlslGeometryInfo geometry;
+        GlslFunction *entry;
+        GlslDecl *target;
+        GlslDecl *shadow;
+        GlslDecl *defined;
+        GlslFlatReplay *replay;
+        GlslStmt *emit;
+        GlslType float4Type;
+
+        InitVerifiedGeometryModule(&verified, &geometry, &entry);
+        float4Type = GlslNumericType(GLSL_BASE_FLOAT, 4);
+        target = GlslNewDecl(&verified, GLSL_STORAGE_OUTPUT,
+                             float4Type, "cg_COLOR0");
+        shadow = GlslNewDecl(&verified, GLSL_STORAGE_NONE,
+                             float4Type, "cg_flat_COLOR0");
+        defined = GlslNewDecl(&verified, GLSL_STORAGE_NONE,
+            GlslNumericType(GLSL_BASE_BOOL, 1),
+            "cg_flat_COLOR0_defined");
+        assert(target != NULL && shadow != NULL && defined != NULL);
+        target->loc.line = 30;
+        shadow->loc.line = 31;
+        defined->loc.line = 32;
+        GlslAppendDecl(&verified.globals, target);
+        GlslAppendDecl(&verified.globals, shadow);
+        GlslAppendDecl(&verified.globals, defined);
+        replay = GlslNewFlatReplay(&verified, target, shadow, defined);
+        assert(replay != NULL);
+        emit = GlslNewGeometryEmit(&verified, NULL, replay);
+        assert(emit != NULL);
+        emit->loc.line = 33;
+        GlslAppendStmt(&entry->body, emit);
+        ExpectVerifySuccess(&verified);
+
+        shadow->type = GlslNumericType(GLSL_BASE_FLOAT, 3);
+        ExpectVerifyFailure(&verified, GLSL_VERIFY_TYPE,
+                            replay, emit->loc.line);
+        shadow->type = float4Type;
+        defined->storage = GLSL_STORAGE_OUTPUT;
+        ExpectVerifyFailure(&verified, GLSL_VERIFY_DECLARATION,
+                            replay, emit->loc.line);
+        defined->storage = GLSL_STORAGE_NONE;
+        emit->u.emit.assignments = GlslNewStmt(
+            &verified, GLSL_STMT_BREAK);
+        assert(emit->u.emit.assignments != NULL);
+        ExpectVerifyFailure(&verified, GLSL_VERIFY_GEOMETRY,
+                            emit->u.emit.assignments, 0);
+    }
+
+    {
+        GlslModule vertex;
+        GlslFunction *entry;
+        GlslStmt *emit;
+        GlslType voidType;
+
+        GlslInitModule(&vertex, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+        voidType = GlslNumericType(GLSL_BASE_VOID, 0);
+        entry = GlslNewFunction(&vertex, voidType, "main");
+        assert(entry != NULL);
+        entry->isEntry = 1;
+        vertex.entry = entry;
+        GlslAppendFunction(&vertex.functions, entry);
+        emit = GlslNewGeometryEmit(&vertex, NULL, NULL);
+        assert(emit != NULL);
+        emit->loc.line = 40;
+        GlslAppendStmt(&entry->body, emit);
+        ExpectVerifyFailure(&vertex, GLSL_VERIFY_CONTROL,
+                            emit, emit->loc.line);
+    }
+
+    /* A binding and its declaration cannot disagree about the
+     * interpolation contract carried into pipeline qualification. */
+    {
+        GlslModule verified;
+        GlslGeometryInfo geometry;
+        GlslFunction *entry;
+        GlslDecl *output;
+        GlslBinding *outputBinding;
+
+        InitVerifiedGeometryModule(&verified, &geometry, &entry);
+        output = GlslNewDecl(&verified, GLSL_STORAGE_OUTPUT,
+            GlslNumericType(GLSL_BASE_FLOAT, 4), "cg_COLOR0");
+        assert(output != NULL);
+        output->loc.line = 50;
+        GlslAppendDecl(&verified.globals, output);
+        outputBinding = GlslNewBinding(&verified, GLSL_STORAGE_OUTPUT,
+                                       "cg_COLOR0", "COLOR0");
+        assert(outputBinding != NULL);
+        outputBinding->declaration = output;
+        outputBinding->interpolation = GLSL_INTERPOLATION_FLAT;
+        outputBinding->loc.line = 51;
+        verified.bindings = outputBinding;
+        ExpectVerifyFailure(&verified, GLSL_VERIFY_INTERFACE,
+                            outputBinding, outputBinding->loc.line);
+    }
+
+    /* Writer safety: malformed texture calls, for headers, and struct
+     * wrappers must be rejected before the version directive. */
+    {
+        GlslModule malformed;
+        GlslFunction *entry;
+        GlslDecl *sampler;
+        GlslBinding *samplerBinding;
+        GlslExpr *call;
+        GlslExpr *samplerRef;
+        GlslStmt *callStmt;
+        GlslType voidType;
+        GlslType samplerType;
+
+        GlslInitModule(&malformed, GLSL_STAGE_FRAGMENT, TestAlloc, NULL);
+        voidType = GlslNumericType(GLSL_BASE_VOID, 0);
+        entry = GlslNewFunction(&malformed, voidType, "main");
+        assert(entry != NULL);
+        entry->isEntry = 1;
+        malformed.entry = entry;
+        GlslAppendFunction(&malformed.functions, entry);
+        samplerType = GlslNumericType(GLSL_BASE_SAMPLER2D, 1);
+        sampler = GlslNewDecl(&malformed, GLSL_STORAGE_SAMPLER,
+                              samplerType, "image");
+        assert(sampler != NULL);
+        GlslAppendDecl(&malformed.globals, sampler);
+        samplerBinding = GlslNewBinding(&malformed,
+            GLSL_STORAGE_SAMPLER, "image", "0");
+        assert(samplerBinding != NULL);
+        samplerBinding->declaration = sampler;
+        malformed.bindings = samplerBinding;
+        call = GlslNewExpr(&malformed, GLSL_EXPR_CALL,
+                           GlslNumericType(GLSL_BASE_FLOAT, 4));
+        samplerRef = GlslNewExpr(&malformed, GLSL_EXPR_SYMBOL,
+                                 samplerType);
+        assert(call != NULL && samplerRef != NULL);
+        samplerRef->u.symbol = sampler;
+        call->u.call.name = "texture";
+        call->u.call.builtin = GLSL_BUILTIN_TEX2D;
+        call->u.call.arguments = samplerRef;
+        callStmt = GlslNewStmt(&malformed, GLSL_STMT_EXPRESSION);
+        assert(callStmt != NULL);
+        callStmt->u.expression = call;
+        entry->body = callStmt;
+        ExpectModuleRejected("incomplete texture call", &malformed);
+    }
+
+    {
+        GlslModule malformed;
+        GlslFunction *entry;
+        GlslStmt *forStmt;
+        GlslType voidType;
+
+        GlslInitModule(&malformed, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+        voidType = GlslNumericType(GLSL_BASE_VOID, 0);
+        entry = GlslNewFunction(&malformed, voidType, "main");
+        assert(entry != NULL);
+        entry->isEntry = 1;
+        malformed.entry = entry;
+        GlslAppendFunction(&malformed.functions, entry);
+        forStmt = GlslNewStmt(&malformed, GLSL_STMT_FOR);
+        assert(forStmt != NULL);
+        forStmt->u.forStmt.init = GlslNewStmt(&malformed,
+                                              GLSL_STMT_BLOCK);
+        assert(forStmt->u.forStmt.init != NULL);
+        entry->body = forStmt;
+        ExpectModuleRejected("non-expression for initializer",
+                             &malformed);
+    }
+
+    {
+        GlslModule malformed;
+        GlslFunction *entry;
+        GlslDecl *wrapper;
+        GlslType voidType;
+
+        GlslInitModule(&malformed, GLSL_STAGE_VERTEX, TestAlloc, NULL);
+        voidType = GlslNumericType(GLSL_BASE_VOID, 0);
+        entry = GlslNewFunction(&malformed, voidType, "main");
+        assert(entry != NULL);
+        entry->isEntry = 1;
+        malformed.entry = entry;
+        GlslAppendFunction(&malformed.functions, entry);
+        wrapper = GlslNewDecl(&malformed, GLSL_STORAGE_NONE,
+                              GlslNumericType(GLSL_BASE_STRUCT, 0),
+                              "Wrapper");
+        assert(wrapper != NULL);
+        wrapper->name = NULL;
+        malformed.structs = wrapper;
+        ExpectModuleRejected("unnamed struct wrapper", &malformed);
     }
 
     return 0;

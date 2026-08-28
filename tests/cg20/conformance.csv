@@ -309,6 +309,8 @@ GEOM-LOWER-LAYERED,valid-generic,cg20_geometry_layered,Normalized generic output
 GLSLG-MAX-REQUIRED,backend-reject,glslg_geometry_missing_vertices,GLSL geometry profile
 GLSLG-STAGE-VERTEX-DIAG,backend-reject,glslv_geometry_stage_mismatch,GLSL geometry profile
 GLSLG-STAGE-FRAGMENT-DIAG,backend-reject,glslf_geometry_stage_mismatch,GLSL geometry profile
+ARBVP1-GEOMETRY-DIAG,backend-reject,arbvp1_geometry_stage_reject,ARB profile stages
+ARBFP1-GEOMETRY-DIAG,backend-reject,arbfp1_geometry_stage_reject,ARB profile stages
 GLSLG-TYPE-DIAG,backend-reject,glslg_unsupported_type,GLSL geometry capabilities
 GLSLG-INTRINSIC-DIAG,backend-reject,glslg_unsupported_intrinsic,GLSL geometry capabilities
 GLSLG-SAMPLER-DIAG,backend-reject,glslg_unsupported_sampler,GLSL geometry capabilities
@@ -324,3 +326,6 @@ GLSLG-UNIFORM-1024,valid-generic,glslg_uniform_components_1024,GLSL geometry lim
 GLSLG-UNIFORM-1025-DIAG,backend-reject,glslg_uniform_components_1025,GLSL geometry limits
 GLSLG-TEXTURES-16,valid-generic,glslg_texture_units_16,GLSL geometry limits
 GLSLG-TEXTURES-17-DIAG,backend-reject,glslg_texture_units_17,GLSL geometry limits
+GLSLG-PIPELINE-LINK,valid-generic,glsl_pipeline_geometry,GLSL geometry linking
+GLSLG-VERTEXID-LINK,valid-generic,glsl_pipeline_vertex_id,GLSL geometry linking
+GLSLG-TYPE-MISMATCH-LINK,backend-reject,glsl_pipeline_type_mismatch,GLSL geometry linking

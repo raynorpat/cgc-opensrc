@@ -113,6 +113,7 @@ typedef enum GlslInterface_Enum {
     GLSL_INTERFACE_COLOR_OUTPUT,
     GLSL_INTERFACE_USER,
     GLSL_INTERFACE_GEOMETRY_POSITION_IN,
+    GLSL_INTERFACE_GEOMETRY_POINT_SIZE_IN,
     GLSL_INTERFACE_PRIMITIVE_ID_IN,
     GLSL_INTERFACE_PRIMITIVE_ID_OUT,
     GLSL_INTERFACE_LAYER,
@@ -171,5 +172,7 @@ int GlslLowerLegacyProgram(GlslModule *module, const GlslProfileDesc *profile,
 int GlslWriteModule(FILE *out, const GlslModule *module);
 const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
     int semantic, int isOutput);
+const char *GlslGeometryInputMemberName(const GlslProfileDesc *profile,
+    int semantic);
 
 #endif // !defined(__GLSL_HAL_H)

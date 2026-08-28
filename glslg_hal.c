@@ -129,7 +129,7 @@ static ConnectorDescriptor connectors_glslg[] = {
 static GlslSemanticDesc semanticMap_glslg[] = {
     { "ATTRIB",      "ATTRIB",      0, 16, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_USER },
     { "POSITION",    "POSITION",    0,  1, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_GEOMETRY_POSITION_IN },
-    { "PSIZE",       "PSIZE",       0,  1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_USER },
+    { "PSIZE",       "PSIZE",       0,  1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_GEOMETRY_POINT_SIZE_IN },
     { "FOG",         "FOG",         0,  1, SEM_IN | SEM_VARYING, 1, GLSL_INTERFACE_USER },
     { "COLOR",       "COLOR",       0,  2, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_USER },
     { "BCOL",        "BCOL",        0,  2, SEM_IN | SEM_VARYING, 4, GLSL_INTERFACE_USER },

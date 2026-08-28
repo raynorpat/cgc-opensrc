@@ -608,6 +608,12 @@ CgConversionRank CgClassifyConversion(const Type *from, const Type *to,
         case TYPE_CATEGORY_INTERFACE:
             /* Interface identity is the declared type itself. */
             return from == to ? CG_CONVERSION_EXACT : CG_CONVERSION_NONE;
+        case TYPE_CATEGORY_ATTRIB_ARRAY:
+            /* Attribute arrays are canonical, read-only topology views.
+             * Only the identical interned (element, extent) shape binds;
+             * no element or extent conversion is meaningful. */
+            return IsSameUnqualifiedType(from, to) ?
+                   CG_CONVERSION_EXACT : CG_CONVERSION_NONE;
         case TYPE_CATEGORY_SAMPLER: {
             /* Samplers are opaque: the same object converts exactly,
              * and a specific kind binds to the deprecated base sampler

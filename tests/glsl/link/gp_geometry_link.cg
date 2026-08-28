@@ -1,0 +1,16 @@
+TRIANGLE TRIANGLE_OUT void main(
+    AttribArray<float4> position : POSITION,
+    AttribArray<float> pointSize : PSIZE,
+    AttribArray<float4> color : COLOR0,
+    AttribArray<float2> texcoord : TEXCOORD0,
+    int primitive : PRIMITIVEID)
+{
+    int i;
+    for (i = 0; i < position.length; ++i) {
+        emitVertex(position[i] : POSITION,
+                   pointSize[i] : PSIZE,
+                   color[i] : COLOR1,
+                   texcoord[i] : TEXCOORD1,
+                   primitive : PRIMITIVEID);
+    }
+}

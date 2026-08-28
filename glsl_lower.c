@@ -256,7 +256,7 @@ static const char *GlslUnsupportedExprReason(const expr *source)
             break;
         }
     }
-    return "GLSL 1.10 expression";
+    return "GLSL profile expression";
 }
 
 static char *GlslCopyText(GlslModule *module, const char *text)
@@ -447,7 +447,7 @@ static int GlslLowerType(GlslLowerContext *context, Type *source,
     if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
         /* Adapter: canonical language samplers keep the historical
          * texture-object bases, so the GLSL type mapping below is
-         * unchanged; kinds without a GLSL 1.10 spelling are rejected
+         * unchanged; kinds outside the focused GLSL profile are rejected
          * through the normal unsupported-type path. */
         switch (source->samp.samplerKind) {
         case CG_SAMPLER_1D:
@@ -716,7 +716,7 @@ static int GlslEnsureType(GlslLowerContext *context, Type *type)
         return 1;
     if (GetCategory(type) == TYPE_CATEGORY_SAMPLER) {
         /* Adapter: canonical language samplers validate through their
-         * family kind; GLSL 1.10 has no spelling for samplerRECT or the
+         * family kind; the focused GLSL profile has no spelling for samplerRECT or the
          * deprecated base sampler. */
         switch (type->samp.samplerKind) {
         case CG_SAMPLER_1D:
@@ -3730,7 +3730,7 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
         !GlslLowerType(context, source->common.type, &type, NULL))
     {
         GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
-                              "GLSL 1.10 expression type");
+                              "GLSL profile expression type");
         return NULL;
     }
     if (GlslIsSamplerType(&type)) {
@@ -4180,7 +4180,7 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
             target = GlslNewStmt(context->module, GLSL_STMT_CONTINUE);
             break;
         default:
-            GlslRecordFailure(context, "GLSL 1.10 statement");
+            GlslRecordFailure(context, "GLSL profile statement");
             return 0;
         }
         if (target == NULL)
@@ -4896,7 +4896,7 @@ static int GlslEnsureTypeAuto(GlslLowerContext *context, Type *type,
 
 /*
  * GlslIRScalarBase() - Canonical scalar kind to GLSL base.  Kinds with
- *          no GLSL 1.10 spelling record the existing unsupported-type
+ *          no focused GLSL profile spelling record the existing unsupported-type
  *          diagnostic and return zero.
  */
 
@@ -4917,7 +4917,7 @@ static int GlslIRScalarBase(GlslLowerContext *context, CgScalarKind kind,
         return 1;
     default:
         /* half/fixed/double and every unsigned width carry no GLSL
-         * 1.10 spelling; profile validation rejects them here. */
+         * focused GLSL profile spelling; profile validation rejects them here. */
         GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
                                 CgScalarKindName(kind), loc);
         return 0;
@@ -5055,7 +5055,7 @@ static int GlslIRType(GlslLowerContext *context, Type *source,
     if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
         /* Canonical language samplers keep the historical texture-object
          * bases; samplerRECT and the deprecated base sampler have no
-         * GLSL 1.10 spelling and fail profile validation. */
+         * focused GLSL profile spelling and fail profile validation. */
         switch (source->samp.samplerKind) {
         case CG_SAMPLER_1D:
             *target = GlslNumericType(GLSL_BASE_SAMPLER1D, 1);
@@ -5210,7 +5210,7 @@ static int GlslIREnsureType(GlslLowerContext *context, Type *type,
         case CG_SCALAR_BOOL:
             return 1;
         default:
-            /* half/fixed/double and unsigned widths carry no GLSL 1.10
+            /* half/fixed/double and unsigned widths carry no focused GLSL
              * spelling; profile validation rejects them here. */
             GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
                                     CgScalarKindName(kind), loc);
@@ -5252,7 +5252,7 @@ static int GlslIREnsureType(GlslLowerContext *context, Type *type,
     if (GetCategory(type) == TYPE_CATEGORY_ARRAY) {
         if (type->arr.numels == CG_ARRAY_UNSIZED || type->arr.numels <= 0)
         {
-            /* Dynamic unsized arrays have no GLSL 1.10 storage rule;
+            /* Dynamic unsized arrays are outside the focused GLSL storage rules;
              * name the construct instead of a generic fallback. */
             GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
                                     "dynamic unsized array", loc);
@@ -6939,7 +6939,7 @@ static const char *GlslIRComparisonName(CgIROp op)
 
 /*
  * GlslIRUnsupportedReason() - Historical unsupported-operation text for
- *          the operator families GLSL 1.10 never carried.
+ *          the operator families outside the focused GLSL profile.
  */
 
 static const char *GlslIRUnsupportedReason(CgIROp op)
@@ -7537,6 +7537,109 @@ static GlslExpr *GlslIRLowerIncrement(GlslLowerContext *context,
     return target;
 } // GlslIRLowerIncrement
 
+static const CgIRDecl *GlslIRGeometryEntryParameter(
+    const GlslLowerContext *context, const Symbol *symbol)
+{
+    const CgIRDecl *param;
+
+    if (context->module->stage != GLSL_STAGE_GEOMETRY ||
+        context->entry == NULL || symbol == NULL)
+    {
+        return NULL;
+    }
+    for (param = context->entry->parameters; param != NULL;
+         param = param->next)
+    {
+        if (param->symbol == symbol)
+            return param;
+    }
+    return NULL;
+}
+
+static GlslExpr *GlslIRGeometryBuiltinElement(
+    GlslLowerContext *context, const CgIRDecl *param,
+    GlslExpr *indexExpr, const GlslType *resultType,
+    const SourceLoc *loc)
+{
+    const char *memberName;
+    GlslType perVertexType;
+    GlslType glInType;
+    GlslType *element;
+    GlslDecl *glInDecl;
+    GlslExpr *glIn;
+    GlslExpr *indexed;
+    GlslExpr *memberExpr;
+
+    memberName = GlslGeometryInputMemberName(context->profile,
+                                              param->semantic);
+    if (memberName == NULL)
+        return NULL;
+    perVertexType = GlslNumericType(GLSL_BASE_STRUCT, 0);
+    perVertexType.structName = "gl_PerVertex";
+    element = (GlslType *) context->module->alloc(
+        context->module->allocArg, sizeof(GlslType));
+    if (element == NULL)
+        return NULL;
+    *element = perVertexType;
+    glInType = GlslNumericType(GLSL_BASE_VOID, 0);
+    glInType.arraySize = context->module->geometry->inputVertexCount;
+    glInType.elementType = element;
+    glInDecl = GlslNewDecl(context->module, GLSL_STORAGE_BUILTIN,
+                           glInType, "gl_in");
+    glIn = GlslNewExpr(context->module, GLSL_EXPR_SYMBOL, glInType);
+    indexed = GlslNewExpr(context->module, GLSL_EXPR_INDEX,
+                          perVertexType);
+    memberExpr = GlslNewExpr(context->module, GLSL_EXPR_MEMBER,
+                             *resultType);
+    if (glInDecl == NULL || glIn == NULL || indexExpr == NULL ||
+        indexed == NULL || memberExpr == NULL)
+    {
+        return NULL;
+    }
+    glIn->u.symbol = glInDecl;
+    indexed->u.index.object = glIn;
+    indexed->u.index.index = indexExpr;
+    memberExpr->u.member.object = indexed;
+    memberExpr->u.member.name = memberName;
+    GlslSetLoc(&memberExpr->loc, loc);
+    return memberExpr;
+}
+
+static GlslExpr *GlslIRGeometryBuiltinArray(
+    GlslLowerContext *context, const CgIRExpr *expr,
+    const GlslType *type)
+{
+    const CgIRDecl *param;
+    GlslExpr *target;
+    GlslType elementType;
+    int i;
+
+    param = GlslIRGeometryEntryParameter(context, expr->u.symbol);
+    if (param == NULL || !CgIsAttribArray(param->type) ||
+        GlslGeometryInputMemberName(context->profile,
+                                    param->semantic) == NULL ||
+        type->elementType == NULL)
+    {
+        return NULL;
+    }
+    elementType = *type->elementType;
+    target = GlslNewExpr(context->module, GLSL_EXPR_CONSTRUCT, *type);
+    if (target == NULL)
+        return NULL;
+    for (i = 0; i < context->module->geometry->inputVertexCount; i++) {
+        GlslExpr *indexExpr;
+        GlslExpr *item;
+
+        indexExpr = GlslNewLiteral(context, GLSL_BASE_INT, i, 0.0f);
+        item = GlslIRGeometryBuiltinElement(context, param, indexExpr,
+                                            &elementType, &expr->loc);
+        if (item == NULL)
+            return NULL;
+        GlslAppendExpr(&target->u.construct.arguments, item);
+    }
+    return target;
+}
+
 /*
  * GlslIRLowerExpr() - One Cg IR expression to the GLSL expression tree.
  *      Every decision reads the canonical type and the stable node
@@ -7562,7 +7665,7 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
         return NULL;
     if (!GlslIRType(context, expr->type, &type, &expr->loc)) {
         GlslRecordFailureKind(context, GLSL_ERROR_UNSUPPORTED_TYPE,
-                              "GLSL 1.10 expression type");
+                              "GLSL profile expression type");
         return NULL;
     }
     if (GlslIsSamplerType(&type)) {
@@ -7572,6 +7675,9 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
     }
     switch (expr->kind) {
     case CGIR_EXPR_SYMBOL:
+        target = GlslIRGeometryBuiltinArray(context, expr, &type);
+        if (target != NULL)
+            return target;
         decl = GlslFindDecl(context, expr->u.symbol);
         if (decl == NULL)
             return NULL;
@@ -7611,73 +7717,23 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
         target->u.member.name = decl->name;
         return target;
     case CGIR_EXPR_INDEX:
-        if (context->module->stage == GLSL_STAGE_GEOMETRY &&
-            context->entry != NULL &&
-            expr->u.index.object != NULL &&
+        if (expr->u.index.object != NULL &&
             expr->u.index.object->kind == CGIR_EXPR_SYMBOL)
         {
             const CgIRDecl *param;
 
-            for (param = context->entry->parameters; param != NULL;
-                 param = param->next)
-            {
-                if (param->symbol == expr->u.index.object->u.symbol)
-                    break;
-            }
+            param = GlslIRGeometryEntryParameter(
+                context, expr->u.index.object->u.symbol);
             if (param != NULL && CgIsAttribArray(param->type) &&
-                param->semantic != 0)
+                GlslGeometryInputMemberName(context->profile,
+                                            param->semantic) != NULL)
             {
-                const char *interfaceName;
+                GlslExpr *indexExpr;
 
-                interfaceName = GlslCanonicalInterfaceName(
-                    context->profile, param->semantic, 0);
-                if (interfaceName != NULL &&
-                    !strcmp(interfaceName, "gl_in"))
-                {
-                    GlslType perVertexType;
-                    GlslType glInType;
-                    GlslType *element;
-                    GlslDecl *glInDecl;
-                    GlslExpr *glIn;
-                    GlslExpr *indexExpr;
-                    GlslExpr *indexed;
-                    GlslExpr *memberExpr;
-
-                    perVertexType = GlslNumericType(GLSL_BASE_STRUCT, 0);
-                    perVertexType.structName = "gl_PerVertex";
-                    element = (GlslType *) context->module->alloc(
-                        context->module->allocArg, sizeof(GlslType));
-                    if (element == NULL)
-                        return NULL;
-                    *element = perVertexType;
-                    glInType = GlslNumericType(GLSL_BASE_VOID, 0);
-                    glInType.arraySize = context->module->geometry->
-                                         inputVertexCount;
-                    glInType.elementType = element;
-                    glInDecl = GlslNewDecl(context->module,
-                        GLSL_STORAGE_BUILTIN, glInType, "gl_in");
-                    glIn = GlslNewExpr(context->module,
-                        GLSL_EXPR_SYMBOL, glInType);
-                    indexExpr = GlslIRLowerExpr(context,
-                                                expr->u.index.index);
-                    indexed = GlslNewExpr(context->module,
-                        GLSL_EXPR_INDEX, perVertexType);
-                    memberExpr = GlslNewExpr(context->module,
-                        GLSL_EXPR_MEMBER, type);
-                    if (glInDecl == NULL || glIn == NULL ||
-                        indexExpr == NULL || indexed == NULL ||
-                        memberExpr == NULL)
-                    {
-                        return NULL;
-                    }
-                    glIn->u.symbol = glInDecl;
-                    indexed->u.index.object = glIn;
-                    indexed->u.index.index = indexExpr;
-                    memberExpr->u.member.object = indexed;
-                    memberExpr->u.member.name = "gl_Position";
-                    GlslSetLoc(&memberExpr->loc, &expr->loc);
-                    return memberExpr;
-                }
+                indexExpr = GlslIRLowerExpr(context,
+                                            expr->u.index.index);
+                return GlslIRGeometryBuiltinElement(context, param,
+                    indexExpr, &type, &expr->loc);
             }
         }
         /* A two-level constant-index chain over a square matrix that
@@ -7731,7 +7787,7 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
     case CGIR_EXPR_LENGTH:
         /* The legacy path had no array-length lowering either; the
          * generic unsupported-expression reason keeps that behavior. */
-        GlslRecordFailure(context, "GLSL 1.10 expression");
+        GlslRecordFailure(context, "GLSL profile expression");
         return NULL;
     case CGIR_EXPR_SWIZZLE:
         return GlslIRLowerSwizzle(context, expr);
@@ -7900,7 +7956,7 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
                 IsScalar(expr->type) &&
                 IsVector(expr->u.assign.value->type, NULL))
             {
-                GlslRecordFailure(context, "GLSL 1.10 expression");
+                GlslRecordFailure(context, "GLSL profile expression");
                 return NULL;
             }
             target = GlslNewExpr(context->module, GLSL_EXPR_BINARY, type);
@@ -7961,7 +8017,7 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
         }
         op = GlslIRBinaryOperator(expr->u.binary.op);
         if (op == GLSL_OP_NONE) {
-            GlslRecordFailure(context, "GLSL 1.10 expression");
+            GlslRecordFailure(context, "GLSL profile expression");
             return NULL;
         }
         if ((op == GLSL_OP_LESS || op == GLSL_OP_GREATER ||
@@ -8029,12 +8085,12 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
                                    expr->u.intrinsicCall.signature,
                                    expr->u.intrinsicCall.arguments, &type);
     case CGIR_EXPR_INTERFACE_CALL:
-        /* Interface dispatch has no GLSL 1.10 meaning; profile
+        /* Interface dispatch has no focused GLSL profile meaning; profile
          * validation rejects it with the historical reason. */
         GlslRecordFailure(context, "interface dispatch");
         return NULL;
     default:
-        GlslRecordFailure(context, "GLSL 1.10 expression");
+        GlslRecordFailure(context, "GLSL profile expression");
         return NULL;
     }
 } // GlslIRLowerExpr
@@ -8508,7 +8564,7 @@ static int GlslIRLowerStatement(GlslLowerContext *context,
     case CGIR_STMT_DECL:
         /* Declarations are consumed by the enclosing block walker;
          * reaching this point means an unexpected producer shape. */
-        GlslRecordFailure(context, "GLSL 1.10 declaration placement");
+        GlslRecordFailure(context, "GLSL profile declaration placement");
         return 0;
     case CGIR_STMT_EXPR:
         if (source->u.expression == NULL)
@@ -8724,7 +8780,7 @@ static int GlslIRLowerStatement(GlslLowerContext *context,
             return 0;
         break;
     default:
-        GlslRecordFailure(context, "GLSL 1.10 statement");
+        GlslRecordFailure(context, "GLSL profile statement");
         return 0;
     }
     if (target == NULL)

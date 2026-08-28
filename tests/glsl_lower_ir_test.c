@@ -43,7 +43,7 @@ DAMAGE.
 \****************************************************************************/
 // glsl_lower_ir_test.c
 //
-// Unit seam for the Cg IR -> GLSL 1.10 lowering (GlslLowerCgIR).
+// Unit seam for the Cg IR -> GLSL 1.50 lowering (GlslLowerCgIR).
 // Shader-level fixtures cannot produce two sibling stores sharing one
 // base expression node -- every source statement lowers its own nodes
 // -- so the matrix group-write recognizer branches below are driven by
@@ -755,7 +755,7 @@ static void lScenarioVectorIntoScalarFailsLoud(
     assert(!GlslLowerCgIR(&out, profile, &ir));
     assert(out.errors > 0);
     assert(out.errorReason != NULL);
-    assert(!strcmp(out.errorReason, "GLSL 1.10 expression"));
+    assert(!strcmp(out.errorReason, "GLSL profile expression"));
     printf("glsl-lower-ir: vector-into-scalar fails loudly\n");
 } // lScenarioVectorIntoScalarFailsLoud
 

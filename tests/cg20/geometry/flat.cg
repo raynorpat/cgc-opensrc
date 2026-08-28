@@ -12,6 +12,7 @@ uniform FlatState state;
 void main(AttribArray<float4> p : POSITION)
 {
     flatAttrib(state.tint : COLOR0);
+    flatAttrib(state.tint * 0.5 : COLOR0);
     emitVertex(p[0] : POSITION, p[1] : TEXCOORD0);
     restartStrip();
 }

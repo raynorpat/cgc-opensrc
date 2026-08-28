@@ -328,7 +328,7 @@ struct GlslStmt_Rec {
             GlslStmt *body;
         } forStmt;
         GlslStmt *block;
-        GlslStmt *returnExpr;
+        GlslExpr *returnExpr;
         struct {
             GlslStmt *assignments;
             GlslFlatReplay *replay;

@@ -75,8 +75,8 @@ The compiler provides these profiles:
 
 - `generic` is the complete neutral backend: under Cg 2.0 it accepts every
   valid program and emits the normalized IR described above.
-- `glslv` translates a Cg vertex entry point to strict GLSL 1.10.
-- `glslf` translates a Cg fragment entry point to strict GLSL 1.10.
+- `glslv`, `glslg`, and `glslf` translate Cg vertex, geometry, and fragment
+  entry points to core GLSL 1.50.
 - `arbvp1` emits base `!!ARBvp1.0` vertex assembly.
 - `arbfp1` emits base `!!ARBfp1.0` fragment assembly.
 
@@ -85,7 +85,10 @@ For a single-config build, use:
 ```sh
 ./build/cgc -quiet -profile generic position.cg
 ./build/cgc -quiet -profile glslv -entry main -o shader.vert shader.cg
+./build/cgc -quiet -profile glslg -entry main -po TRIANGLE \
+  -po TRIANGLE_OUT -po Vertices=3 -o shader.geom geometry.cg
 ./build/cgc -quiet -profile glslf -entry main -o shader.frag shader.cg
+glslangValidator -l shader.vert shader.geom shader.frag
 ```
 
 For a multi-config Release build on Windows, use:
@@ -93,15 +96,38 @@ For a multi-config Release build on Windows, use:
 ```powershell
 .\build\Release\cgc.exe -quiet -profile generic position.cg
 .\build\Release\cgc.exe -quiet -profile glslv -entry main -o shader.vert shader.cg
+.\build\Release\cgc.exe -quiet -profile glslg -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o shader.geom geometry.cg
 .\build\Release\cgc.exe -quiet -profile glslf -entry main -o shader.frag shader.cg
+glslangValidator -l shader.vert shader.geom shader.frag
 ```
 
-GLSL output begins with exactly `#version 110`, uses no extensions, and keeps
-source structures and helper functions readable where base GLSL 1.10 permits.
+GLSL output begins with exactly `#version 150`, uses no extensions, and keeps
+source structures and helper functions readable where core GLSL 1.50 permits.
+There is no GLSL version selector and no retained GLSL 1.10 output mode.
 Vertex inputs are generated named attributes such as `cg_ATTRIB0`. Vertex
 outputs and fragment inputs use matching canonical semantic names such as
 `cg_COLOR0` and `cg_TEXCOORD0`. Vertex `POSITION`, fragment `COLOR0`, and
-fragment `DEPTH` map to `gl_Position`, `gl_FragColor`, and `gl_FragDepth`.
+fragment `DEPTH` map to `gl_Position`, a generated core output such as
+`cg_COLOR0`, and `gl_FragDepth`.
+
+Geometry entries require an input topology and `-po Vertices=N`. The input
+topology may be a source modifier or one of the exact profile options
+`POINT`, `LINE`, `LINE_ADJ`, `TRIANGLE`, and `TRIANGLE_ADJ`. Output modifiers
+and options are `POINT_OUT`, `LINE_OUT`, and `TRIANGLE_OUT`; when omitted,
+the output defaults to the point, line-strip, or triangle-strip family of the
+input. Source and option settings may agree but conflicting settings are
+diagnosed. The neutral `generic` profile retains an unknown maximum in its IR,
+whereas `glslg` requires a positive known maximum.
+
+Geometry inputs use `AttribArray<T>` for per-vertex values and its resolved
+length is fixed by topology (1, 2, 4, 3, or 6 vertices respectively).
+`POSITION` maps through `gl_in[].gl_Position` and `gl_Position`;
+`PRIMITIVEID` and `LAYER` use the core geometry built-ins. A vertex-stage
+`VERTEXID` read comes from `gl_VertexID` and is exported as a flat integer
+varying so geometry can consume the matching `AttribArray<int>`—geometry does
+not read `gl_VertexID` directly. `emitVertex`, `flatAttrib`, and
+`restartStrip` provide explicit emission, persistent flat-output state, and
+strip restart operations.
 
 The generated `// cgc-bind` comments record attributes, varyings, built-ins,
 uniforms, and canonical Cg semantics. A `// cgc-default` comment records a Cg
@@ -110,11 +136,12 @@ defaults after linking. Matrix uniforms follow GLSL's column-major upload
 convention. Applications that previously supplied Cg row-oriented data must
 adapt or transpose it when uploading the GLSL uniform.
 
-The practical supported subset includes vertex and fragment entry points,
-scalars and vectors, square matrices, fixed arrays, structs, uniforms,
+The practical supported subset includes vertex, geometry, and fragment entry
+points, scalars and vectors, square matrices, fixed arrays, structs, uniforms,
 readable helpers and overloads, structured conditionals and loops,
 `break`/`continue`, common numeric and geometric intrinsics, fragment
-`discard`, and base 1D, 2D, 3D, and cube texture sampling in fragment shaders.
+`discard`, and base 1D, 2D, 3D, and cube texture sampling in geometry and
+fragment shaders.
 
 Valid Cg 2.0 constructs outside that subset are never frontend errors: the
 language accepts them (the neutral `generic` profile compiles every one of
@@ -122,10 +149,14 @@ them), and a GLSL profile instead reports a profile diagnostic naming the
 unsupported operation — for example non-square matrices, interface
 dispatch, dynamic unsized arrays, bitwise operators on vectors, vertex
 texture sampling, recursion, rectangle samplers, or operations without an
-exact base-1.10 translation. Their portable OpenGL 2.0
-limits are 16 vertex attributes, 32 varying floating-point components, 512
-vertex and 64 fragment uniform components, zero vertex texture units, two
-fragment texture units, and one fragment color output.
+exact core-1.50 translation. The enforced portable limits are 16 attributes,
+64 vertex output components, 1,024 vertex uniform components, and 16 vertex
+texture units; geometry allows 64 input components per input vertex, 128
+output components per emitted vertex, 256 output vertices, 1,024 total output
+components, 1,024 uniform components, and 16 texture units; fragment allows
+128 input components, 1,024 uniform components, 16 texture units, and one
+focused color output. Limit and capability failures are profile diagnostics
+that report the rejected resource or operation before publishing output.
 
 `glslangValidator` is an optional test dependency. CMake discovers it once
 when tests are configured and adds stage-correct validation for every
@@ -158,6 +189,10 @@ instructions, 12 vertex temporaries, 96 vertex parameter vectors, and 16
 vertex attributes; and on the fragment side, 72 total instructions (48 ALU,
 24 texture), 4 texture indirections, 16 temporaries, 24 parameter vectors,
 10 attributes, and 2 texture units.
+
+Cg 2.0 geometry modules are verified by the shared front end and then rejected
+by both ARB profiles with controlled diagnostic C6011 before legacy lowering;
+the base ARB program languages have no geometry stage.
 
 Windows test builds additionally compile a hidden-window WGL smoke test that
 loads generated assembly with `glProgramStringARB`; CTest skips it when the
@@ -196,9 +231,11 @@ ctest --test-dir build -C Release -R "cg20|stdlib_regeneration|parser" --output-
 
 ## Compiler Internals
 
-Under the default Cg 2.0 language every profile consumes the backend-neutral
-typed IR built by `cg_ir.c` and verified by `cg_ir_verify.c` before any
-target code runs; `generic` prints it through `cg_ir_print.c`. The
+Under the default Cg 2.0 language every profile first builds and verifies the
+backend-neutral typed IR in `cg_ir.c` and `cg_ir_verify.c` before any target
+code runs. `generic` prints it through `cg_ir_print.c`, the GLSL profiles
+lower it to their structured source IR, and the ARB profiles use it for stage
+validation before retaining their historical tree lowering. The
 historical tree-printing back end remains in `generic_hal.[ch]` for explicit
 `-version 1.1` compiles. The GLSL profiles share a structured source backend
 in `glsl_ir.[ch]`, `glsl_lower.c`, and `glsl_codegen.c`, with stage-specific

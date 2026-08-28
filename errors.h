@@ -313,18 +313,19 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR___ARB_REQUIRED_POSITION     6008, "ARB vertex program must write POSITION"
 #define ERROR___ARB_ATTRIBUTE_ALIAS       6009, "generic and conventional vertex attributes alias"
 #define ERROR_S_ARB_INVALID_MODIFIER      6010, "ARB instruction cannot represent modifier combination \"%s\""
+#define ERROR_S_ARB_UNSUPPORTED_STAGE     6011, "%s profile does not support geometry programs"
 #define ERROR___ARB_INVALID_IR            9010, "invalid ARB intermediate representation"
 
-#define ERROR_S_GLSL_UNSUPPORTED_TYPE       6200, "GLSL 1.10 does not support type \"%s\""
-#define ERROR_S_GLSL_UNSUPPORTED_OPERATION  6201, "GLSL 1.10 does not support operation \"%s\""
+#define ERROR_S_GLSL_UNSUPPORTED_TYPE       6200, "GLSL profile does not support type \"%s\""
+#define ERROR_S_GLSL_UNSUPPORTED_OPERATION  6201, "GLSL profile does not support operation \"%s\""
 #define ERROR_SS_GLSL_STAGE_OPERATION       6202, "%s profile does not support operation \"%s\""
 #define ERROR_S_GLSL_SEMANTIC               6203, "GLSL profile cannot bind semantic \"%s\""
 #define ERROR_S_GLSL_INTERFACE_CONFLICT     6204, "GLSL interface conflicts at semantic \"%s\""
 #define ERROR_S_GLSL_NAME_COLLISION         6205, "GLSL name cannot be resolved for \"%s\""
-#define ERROR_S_GLSL_INTRINSIC              6206, "GLSL 1.10 has no exact intrinsic for \"%s\""
+#define ERROR_S_GLSL_INTRINSIC              6206, "GLSL profile has no exact intrinsic for \"%s\""
 #define ERROR_SII_GLSL_RESOURCE_LIMIT       6207, "GLSL portable %s limit exceeded: %d used, %d available"
-#define ERROR_S_GLSL_SAMPLER                6208, "GLSL 1.10 does not support sampler feature \"%s\""
-#define ERROR_S_GLSL_NON_SQUARE_MATRIX      6209, "GLSL 1.10 requires a square matrix, found \"%s\""
+#define ERROR_S_GLSL_SAMPLER                6208, "GLSL profile does not support sampler feature \"%s\""
+#define ERROR_S_GLSL_NON_SQUARE_MATRIX      6209, "GLSL profile requires a square matrix, found \"%s\""
 
 // Numbers 6300 to 6319 are reserved for geometry programs
 

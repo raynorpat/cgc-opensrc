@@ -3195,6 +3195,7 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
     stmt *lStmt;
     CgIRModule irModule;
     CgReachGraph reachGraph;
+    int errorsBeforeIRHook;
     int useIR;
 
     memset(&reachGraph, 0, sizeof(reachGraph));
@@ -3229,6 +3230,22 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
 
             useIR = (Cg->options.languageVersion == CG_LANGUAGE_2_0 &&
                      theHAL->ValidateIR && theHAL->GenerateIR);
+
+            // Profiles with a validation hook but no IR generator keep
+            // their legacy code path for supported stages.  The hook still
+            // gets first refusal for Cg 2.0 stages that path cannot encode.
+
+            if (Cg->options.languageVersion == CG_LANGUAGE_2_0 &&
+                !useIR && theHAL->ValidateIR) {
+                errorsBeforeIRHook = GetErrorCount();
+                if (!theHAL->ValidateIR(loc, &irModule)) {
+                    if (GetErrorCount() == errorsBeforeIRHook) {
+                        InternalError(loc, ERROR_S_CG_IR_INVARIANT,
+                                      "profile validation of Cg IR");
+                    }
+                    goto done;
+                }
+            }
 
             if (!useIR) {
 

@@ -173,6 +173,7 @@ const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
         case GLSL_INTERFACE_USER:
             return GlslConnectorName(profile, desc, index, isOutput);
         case GLSL_INTERFACE_GEOMETRY_POSITION_IN:
+        case GLSL_INTERFACE_GEOMETRY_POINT_SIZE_IN:
             return "gl_in";
         case GLSL_INTERFACE_PRIMITIVE_ID_IN:
             return "gl_PrimitiveIDIn";
@@ -187,6 +188,49 @@ const char *GlslCanonicalInterfaceName(const GlslProfileDesc *profile,
              * route through GLSL_INTERFACE_COLOR_OUTPUT instead. */
             return "gl_FragColor";
         }
+    }
+    return NULL;
+}
+
+const char *GlslGeometryInputMemberName(const GlslProfileDesc *profile,
+                                        int semantic)
+{
+    const GlslSemanticDesc *desc;
+    const char *name;
+    int i;
+    int index;
+    int rootLength;
+
+    if (profile == NULL || semantic == 0)
+        return NULL;
+    name = GetAtomString(atable, semantic);
+    if (name == NULL)
+        return NULL;
+    for (i = 0; i < profile->numAliases; i++) {
+        if (!strcmp(name, profile->aliases[i].alias)) {
+            name = profile->aliases[i].canonical;
+            break;
+        }
+    }
+    if (!GlslSemanticParts(name, &rootLength, &index))
+        return NULL;
+    for (i = 0; i < profile->numSemanticMap; i++) {
+        desc = &profile->semanticMap[i];
+        if (!(desc->properties & SEM_IN) ||
+            !GlslSemanticRootEquals(name, rootLength, desc->root) ||
+            index < desc->firstIndex ||
+            index >= desc->firstIndex + desc->count)
+        {
+            continue;
+        }
+        if (desc->interfaceKind == GLSL_INTERFACE_GEOMETRY_POSITION_IN)
+            return "gl_Position";
+        if (desc->interfaceKind ==
+                GLSL_INTERFACE_GEOMETRY_POINT_SIZE_IN)
+        {
+            return "gl_PointSize";
+        }
+        return NULL;
     }
     return NULL;
 }
@@ -582,7 +626,7 @@ static int GlslResolvedType(Type *source, GlslType *target)
         return 0;
     if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
         /* Adapter: canonical language samplers map onto the GLSL
-         * texture-object bases; kinds with no GLSL 1.10 spelling do not
+         * texture-object bases; kinds outside the focused GLSL profile do not
          * resolve and are rejected by the caller. */
         switch (source->samp.samplerKind) {
         case CG_SAMPLER_1D:
@@ -865,7 +909,7 @@ static int GlslReportLowerFailure(const GlslProfileDesc *profile,
                       module->resourceAvailable);
     } else {
         failureReason = module->errorReason != NULL ?
-                        module->errorReason : "GLSL 1.10 program";
+                        module->errorReason : "GLSL profile program";
         switch (module->errorKind) {
         case GLSL_ERROR_UNSUPPORTED_TYPE:
             SemanticError(&failureLoc, ERROR_S_GLSL_UNSUPPORTED_TYPE,
@@ -929,7 +973,7 @@ static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
             writerLoc = program->loc;
             SemanticError(&writerLoc,
                           ERROR_S_GLSL_UNSUPPORTED_OPERATION,
-                          "GLSL 1.10 module writer");
+                          "GLSL module writer");
         }
         return 0;
     }
@@ -1024,7 +1068,7 @@ static int GenerateIR_glsl(SourceLoc *loc, const CgIRModule *source)
             writerLoc = program->loc;
             SemanticError(&writerLoc,
                           ERROR_S_GLSL_UNSUPPORTED_OPERATION,
-                          "GLSL 1.10 module writer");
+                          "GLSL module writer");
         }
         return 0;
     }

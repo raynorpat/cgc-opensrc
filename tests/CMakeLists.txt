@@ -661,16 +661,13 @@ add_cg20_failure(cg20_ambiguous_overload
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
 # Geometry topology modifiers (Task 2): positives compile under the
-# neutral generic profile; negatives pin exact code and line.  The
-# modifiers fixture keeps its DISABLED pin: its empty function bodies
-# still trip the pre-existing C1108 "has no statements" rule, which is
-# a language-policy question outside Task 5's scope.
+# neutral generic profile; negatives pin exact code and line.
 
 add_cg20_success(cg20_geometry_modifiers
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-entry\;point_main"
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/modifiers.cg
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-set_tests_properties(cg20_geometry_modifiers PROPERTIES DISABLED TRUE)
 
 add_cg20_success(cg20_geometry_options_only
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
@@ -721,10 +718,8 @@ add_cg20_failure(cg20_geometry_cg11
 
 # Attribute arrays (Task 3): canonical read-only AttribArray<T> types.
 # The entry-input positives compile once Task 5's selected-program
-# analysis supplies the resolved type views and folds .length; the
-# helper-passing positive stays DISABLED because a helper formal still
-# needs the lowering-side admission Task 6/7 own.  Every negative
-# fixture fires at declaration or analysis time and is enabled now.
+# analysis supplies the resolved type views and folds .length.  Every
+# negative fixture fires at declaration or analysis time.
 
 add_cg20_success(cg20_geometry_attrib_array
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
@@ -740,9 +735,12 @@ add_cg20_success(cg20_geometry_attrib_array_aggregate
 
 add_cg20_success(cg20_geometry_attrib_array_helper
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    "-DEXTRA_ARGS=-entry\;triangle_helper\;-po\;TRIANGLE\;-po\;Vertices=3"
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/geometry/attrib_array_helper.cg
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20.cmake)
-set_tests_properties(cg20_geometry_attrib_array_helper PROPERTIES DISABLED TRUE)
+add_glsl_geometry_validation(glsl_geometry_attrib_array_helper
+    tests/cg20/geometry/attrib_array_helper.cg triangle_helper
+    "TRIANGLE;Vertices=3")
 
 function(add_cg20_geometry_attrib_array_length name entry)
     add_cg20_success(${name}
@@ -1038,6 +1036,8 @@ add_cg20_geometry_success(cg20_geometry_layered generic
 add_cg20_geometry_success(glsl_geometry_lower_pass glslg
     tests/glsl/geometry/topologies.cg main ""
     "TRIANGLE;Vertices=3")
+add_glsl_geometry_validation(glsl_geometry_lower_pass
+    tests/glsl/geometry/topologies.cg main "TRIANGLE;Vertices=3")
 add_cg20_geometry_success(glsl_geometry_flat_lower glslg
     tests/cg20/geometry/flat.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/operations.expected
@@ -1080,33 +1080,52 @@ add_cg20_geometry_success(glsl_geometry_topology_points glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_points.expected
     "POINT;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_topology_points
+    tests/cg20/geometry/pass_through.cg main "POINT;Vertices=1")
 add_cg20_geometry_success(glsl_geometry_topology_lines glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_lines.expected
     "LINE;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_topology_lines
+    tests/cg20/geometry/pass_through.cg main "LINE;Vertices=1")
 add_cg20_geometry_success(glsl_geometry_topology_lines_adjacency glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_lines_adjacency.expected
     "LINE_ADJ;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_topology_lines_adjacency
+    tests/cg20/geometry/pass_through.cg main "LINE_ADJ;Vertices=1")
 add_cg20_geometry_success(glsl_geometry_topology_triangles glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_triangles.expected
     "TRIANGLE;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_topology_triangles
+    tests/cg20/geometry/pass_through.cg main "TRIANGLE;Vertices=1")
 add_cg20_geometry_success(glsl_geometry_topology_triangles_adjacency glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/topology_triangles_adjacency.expected
     "TRIANGLE_ADJ;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_topology_triangles_adjacency
+    tests/cg20/geometry/pass_through.cg main "TRIANGLE_ADJ;Vertices=1")
 add_cg20_geometry_success(glsl_geometry_output_points glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/output_points.expected
+    "POINT;POINT_OUT;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_output_points
+    tests/cg20/geometry/pass_through.cg main
     "POINT;POINT_OUT;Vertices=1")
 add_cg20_geometry_success(glsl_geometry_output_line_strip glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/output_line_strip.expected
     "POINT;LINE_OUT;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_output_line_strip
+    tests/cg20/geometry/pass_through.cg main
+    "POINT;LINE_OUT;Vertices=1")
 add_cg20_geometry_success(glsl_geometry_output_triangle_strip glslg
     tests/cg20/geometry/pass_through.cg main
     ${PROJECT_SOURCE_DIR}/tests/glsl/geometry/output_triangle_strip.expected
+    "POINT;TRIANGLE_OUT;Vertices=1")
+add_glsl_geometry_validation(glsl_geometry_output_triangle_strip
+    tests/cg20/geometry/pass_through.cg main
     "POINT;TRIANGLE_OUT;Vertices=1")
 add_glsl150_contract(glslv_vertex_id_bridge glslv
     tests/glsl/geometry/vertex_id_bridge.cg)
@@ -1127,6 +1146,14 @@ add_cg20_geometry_failure(glslv_geometry_stage_mismatch glslv
 add_cg20_geometry_failure(glslf_geometry_stage_mismatch glslf
     tests/glsl/geometry/diagnostics/wrong_stage_fragment.cg main
     6318 1 "cannot.compile.a.geometry.program" "Vertices=1")
+add_cg20_geometry_failure(arbvp1_geometry_stage_reject arbvp1
+    tests/cg20/geometry/pass_through.cg main
+    6011 6 "does.not.support.geometry.programs"
+    "TRIANGLE;Vertices=1")
+add_cg20_geometry_failure(arbfp1_geometry_stage_reject arbfp1
+    tests/cg20/geometry/pass_through.cg main
+    6011 6 "does.not.support.geometry.programs"
+    "TRIANGLE;Vertices=1")
 add_cg20_geometry_failure(glslg_unsupported_type glslg
     tests/glsl/geometry/diagnostics/unsupported_type.cg main
     6200 5 "does.not.support.type.*matrix" "Vertices=1")
@@ -1205,6 +1232,19 @@ foreach(transaction missing_vertices input_components_65 output_vertices_257)
             "-DPROFILE_OPTIONS=${transaction_options_escaped}"
             -DCODE=${transaction_code}
             "-DDESTINATION=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslg_${transaction}_transaction.glsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_output_transaction.cmake)
+endforeach()
+
+foreach(arb_profile arbvp1 arbfp1)
+    add_test(NAME ${arb_profile}_geometry_transaction
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${arb_profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/glsl/link/gp_geometry_link.cg
+            -DENTRY=main
+            -DPROFILE_OPTIONS=Vertices=1
+            -DCODE=6011
+            "-DDESTINATION=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${arb_profile}_geometry_transaction.out"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_output_transaction.cmake)
 endforeach()
 
@@ -1864,6 +1904,15 @@ foreach(cg20_external_test
     set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${cg20_external_test}")
 endforeach()
 
+# The three-stage pipeline runners are declared with the GLSL link
+# fixtures below; expose their stable names to this earlier manifest
+# snapshot just like the other externally registered witnesses.
+foreach(cg20_pipeline_test glsl_pipeline_geometry
+        glsl_pipeline_vertex_id glsl_pipeline_type_mismatch)
+    set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES
+        "${cg20_pipeline_test}")
+endforeach()
+
 get_property(cg20_test_names GLOBAL PROPERTY CG20_TEST_NAMES)
 add_test(
     NAME cg20_manifest
@@ -1988,6 +2037,64 @@ add_glsl_validation(glsl_link_vertex glslv vert
     tests/glsl/link/vp_link.cg)
 add_glsl_validation(glsl_link_fragment glslf frag
     tests/glsl/link/fp_link.cg)
+
+function(add_glsl_geometry_pipeline name vertex geometry fragment)
+    set(pipeline_args
+        -DCGC=$<TARGET_FILE:cgc>
+        "-DVALIDATOR=${GLSLANG_VALIDATOR}"
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/${vertex}
+        -DGEOMETRY_SOURCE=${PROJECT_SOURCE_DIR}/${geometry}
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/${fragment}
+        "-DGEOMETRY_OPTIONS=Vertices=3"
+        "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.vert"
+        "-DGEOMETRY_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.geom"
+        "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.frag")
+    add_cg20_success(${name} ${pipeline_args} ${ARGN}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_pipeline.cmake)
+    if(NOT GLSLANG_VALIDATOR)
+        set_tests_properties(${name} PROPERTIES DISABLED TRUE)
+    endif()
+endfunction()
+
+add_glsl_geometry_pipeline(glsl_pipeline_geometry
+    tests/glsl/link/vp_geometry_link.cg
+    tests/glsl/link/gp_geometry_link.cg
+    tests/glsl/link/fp_geometry_link.cg
+    -DCHECK_POINT_SIZE_BRIDGE=ON)
+add_glsl_geometry_pipeline(glsl_pipeline_vertex_id
+    tests/glsl/link/vp_vertex_id.cg
+    tests/glsl/link/gp_vertex_id.cg
+    tests/glsl/link/fp_vertex_id.cg
+    -DCHECK_VERTEX_ID_BRIDGE=ON)
+add_glsl_geometry_pipeline(glsl_pipeline_type_mismatch
+    tests/glsl/link/vp_geometry_link.cg
+    tests/glsl/link/gp_type_mismatch.cg
+    tests/glsl/link/fp_type_mismatch.cg
+    -DEXPECT_LINK_FAILURE=ON
+    "-DLINK_FAILURE_PATTERN=Types.must.match")
+add_glsl_geometry_pipeline(glsl_pipeline_interpolation_mismatch
+    tests/glsl/link/vp_vertex_id.cg
+    tests/glsl/link/gp_vertex_id.cg
+    tests/glsl/link/fp_vertex_id.cg
+    -DINJECT_INTERPOLATION_MISMATCH=ON
+    -DEXPECT_LINK_FAILURE=ON
+    "-DLINK_FAILURE_PATTERN=interpolation.qualifiers.do.not.match")
+add_glsl_validation(glsl_pipeline_geometry_vertex glslv vert
+    tests/glsl/link/vp_geometry_link.cg)
+add_glsl_geometry_validation(glsl_pipeline_geometry_geometry
+    tests/glsl/link/gp_geometry_link.cg main "Vertices=3")
+add_glsl_validation(glsl_pipeline_geometry_fragment glslf frag
+    tests/glsl/link/fp_geometry_link.cg)
+add_glsl_validation(glsl_pipeline_vertex_id_vertex glslv vert
+    tests/glsl/link/vp_vertex_id.cg)
+add_glsl_geometry_validation(glsl_pipeline_vertex_id_geometry
+    tests/glsl/link/gp_vertex_id.cg main "Vertices=3")
+add_glsl_validation(glsl_pipeline_vertex_id_fragment glslf frag
+    tests/glsl/link/fp_vertex_id.cg)
+add_glsl_geometry_validation(glsl_pipeline_type_mismatch_geometry
+    tests/glsl/link/gp_type_mismatch.cg main "Vertices=3")
+add_glsl_validation(glsl_pipeline_type_mismatch_fragment glslf frag
+    tests/glsl/link/fp_type_mismatch.cg)
 
 add_test(
     NAME glsl_validator_failure_propagates
@@ -2269,7 +2376,7 @@ add_glsl_profile_failure(glslv_impure_array_aggregate glslv
 # component target -- so the count cap keeps the loud failure.
 add_glsl_profile_failure(glslv_matrix_group_write_cap glslv
     tests/glsl/diagnostics/vp_matrix_group_write_cap.cg 6201 13
-    "GLSL.1.10.program")
+    "GLSL.profile.program")
 add_glsl_profile_failure(glslv_builtin_position_width glslv
     tests/glsl/diagnostics/vp_builtin_position_width.cg 6203 2 POSITION)
 add_glsl_profile_failure(glslf_builtin_position_width glslf

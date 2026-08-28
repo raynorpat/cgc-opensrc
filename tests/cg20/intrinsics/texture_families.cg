@@ -3,7 +3,7 @@
 // Declares every canonical sampler kind and routes every base,
 // projected, explicit-gradient, h4, and x4 texture family through
 // helpers over global uniform samplers.  Compiled through the generic
-// profile only; the GLSL 1.10 profiles have no lowering for most of
+// profile only; the focused GLSL profiles have no lowering for most of
 // these forms.
 
 uniform sampler1D   image1D;

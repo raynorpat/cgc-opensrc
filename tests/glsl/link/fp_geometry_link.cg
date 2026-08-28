@@ -1,0 +1,13 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+FragmentOut main(float4 color : COLOR1,
+                 float2 texcoord : TEXCOORD1,
+                 int primitive : PRIMITIVEID)
+{
+    FragmentOut output;
+    output.color = color *
+        float4(texcoord.x, texcoord.y, float(primitive), 1.0);
+    return output;
+}

@@ -1,0 +1,10 @@
+TRIANGLE TRIANGLE_OUT void main(
+    AttribArray<float4> position : POSITION,
+    AttribArray<int> vertexId : VERTEXID)
+{
+    int i;
+    for (i = 0; i < position.length; ++i) {
+        emitVertex(position[i] : POSITION,
+                   float4(float(vertexId[i]), 0.0, 0.0, 1.0) : COLOR0);
+    }
+}

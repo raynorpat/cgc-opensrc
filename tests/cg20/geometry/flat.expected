@@ -16,6 +16,9 @@ void main(varying AttribArray<float4,3> p : POSITION)
   flat_attribute {
     COLOR0 = %state.tint
   }
+  flat_attribute {
+    COLOR0 = %state.tint * (float)0.500000
+  }
   emit_vertex {
     POSITION = %p[0]
     TEXCOORD0 = %p[1]

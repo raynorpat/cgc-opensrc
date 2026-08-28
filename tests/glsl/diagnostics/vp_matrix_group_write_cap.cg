@@ -8,7 +8,7 @@
 // a single `_m` selector write: selector targets carry CG_SCALAR_INT
 // coordinates and match the recognizer shape, unlike explicit [r][c]
 // chains whose folded constants are CG_SCALAR_CINT.  Expected: error
-// C6201 at the entry ("GLSL 1.10 program"), no output published.
+// C6201 at the entry ("GLSL profile program"), no output published.
 
 void main(float4 position : POSITION,
           out float4 clip : POSITION)

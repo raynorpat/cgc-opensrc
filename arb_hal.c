@@ -50,6 +50,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_ir.h"
 #include "arb_ir.h"
 #include "arb_hal.h"
 
@@ -78,6 +79,7 @@ static int BindVaryingSemantic_arb(SourceLoc *loc, Symbol *fSymb,
 static int BindVaryingPragma_arb(SourceLoc *loc, Symbol *fSymb, Binding *lBind,
                                  const Binding *fBind, int IsOutVal);
 static int PrintCodeHeader_arb(FILE *out);
+static int ValidateIR_arb(SourceLoc *loc, const CgIRModule *module);
 
 /*
  * FindConnector_arb() - Return the input or output connector descriptor
@@ -173,6 +175,7 @@ int InitHAL_arb(slHAL *fHAL, const ArbProfileDesc *profile)
     fHAL->BindVaryingSemantic = BindVaryingSemantic_arb;
     fHAL->BindVaryingPragma = BindVaryingPragma_arb;
     fHAL->PrintCodeHeader = PrintCodeHeader_arb;
+    fHAL->ValidateIR = ValidateIR_arb;
     fHAL->GenerateCode = GenerateCode_arb;
 
     fHAL->vendor = "NVIDIA Corporation";
@@ -195,6 +198,29 @@ int InitHAL_arb(slHAL *fHAL, const ArbProfileDesc *profile)
     fHAL->localData = data;
     return 1;
 } // InitHAL_arb
+
+/*
+ * ValidateIR_arb() - Reject Cg 2.0 stages that the legacy ARB profiles
+ *         cannot represent.  Vertex and fragment modules continue through
+ *         the established tree backend because these profiles deliberately
+ *         do not install GenerateIR.
+ */
+
+static int ValidateIR_arb(SourceLoc *loc, const CgIRModule *module)
+{
+    ArbHALData *data = (ArbHALData *) Cg->theHAL->localData;
+
+    if (module->stage == CGIR_STAGE_GEOMETRY) {
+        SourceLoc *diagnosticLoc = loc;
+
+        if (module->entry)
+            diagnosticLoc = &module->entry->loc;
+        SemanticError(diagnosticLoc, ERROR_S_ARB_UNSUPPORTED_STAGE,
+                      data->profile->name);
+        return 0;
+    }
+    return 1;
+} // ValidateIR_arb
 
 /*
  * FreeHAL_arb()

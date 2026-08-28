@@ -254,6 +254,13 @@ int main(void)
         assert(resolved == CgGetAttribArrayType(Float4Type, 3));
         assert(resolved != CgGetAttribArrayType(Float4Type, 6));
         assert(!IsArray(resolved));
+        assert(CgClassifyConversion(resolved, resolved, 0) ==
+               CG_CONVERSION_EXACT);
+        assert(CgClassifyConversion(resolved,
+                   CgGetAttribArrayType(Float4Type, 6), 0) ==
+               CG_CONVERSION_NONE);
+        assert(CgClassifyConversion(resolved, unresolved, 0) ==
+               CG_CONVERSION_NONE);
     }
 
     {

@@ -23,6 +23,10 @@ void main()
         cg_flat_COLOR0 = state.tint;
         cg_flat_COLOR0_defined = true;
     }
+    {
+        cg_flat_COLOR0 = state.tint * 0.5;
+        cg_flat_COLOR0_defined = true;
+    }
     gl_Position = gl_in[0].gl_Position;
     cg_TEXCOORD0 = gl_in[1].gl_Position;
     if (cg_flat_COLOR0_defined) {
