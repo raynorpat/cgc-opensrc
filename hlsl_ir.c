@@ -57,30 +57,34 @@ static const int defaultNameNamespace = 0;
  * and names owned by the generated entry-point ABI. */
 static const char *reservedNames[] = {
     "AttribArray", "LINE", "LINE_ADJ", "LINE_OUT", "POINT", "POINT_OUT",
-    "TRIANGLE", "TRIANGLE_ADJ", "TRIANGLE_OUT", "__internal", "__packed",
+    "PixelShader", "TRIANGLE", "TRIANGLE_ADJ", "TRIANGLE_OUT",
+    "VertexShader", "__internal", "__packed",
     "asm", "asm_fragment", "attribute", "auto", "bool", "break", "case",
-    "cast", "catch",
+    "cast", "catch", "const_cast",
     "centroid", "char", "class", "column_major", "compile",
     "compile_fragment", "const", "continue", "default", "discard",
-    "decl", "do", "double", "dword", "else", "emit", "enum", "explicit",
-    "extern", "external", "false", "fixed", "float", "for", "foreach",
+    "decl", "delete", "do", "double", "dword", "dynamic_cast", "else",
+    "emit", "enum", "explicit", "export", "extern", "external", "false",
+    "fixed", "float", "for", "foreach",
     "friend", "get", "goto", "half", "if", "in", "inline", "inout",
     "input", "int", "interface", "invariant", "is", "long", "main",
-    "matrix", "namespace", "new", "noinline", "null", "nointerpolation",
+    "matrix", "mutable", "namespace", "new", "noinline", "null",
+    "nointerpolation",
     "operator", "out", "output", "packoffset", "packed", "pass",
-    "pixelshader", "precise", "private", "protected", "public", "ref",
+    "pixelfragment", "pixelshader", "precise", "private", "protected",
+    "public", "ref",
     "register", "reinterpret_cast", "return", "row_major", "sampler",
     "sampler1D",
     "sampler2D", "sampler3D", "samplerCUBE", "samplerCube",
     "samplerRECT", "sampler_state", "set", "shared", "short", "signed",
     "sizeof", "snorm", "stateblock", "stateblock_state", "static",
-    "string", "struct", "switch", "technique", "technique10",
+    "static_cast", "string", "struct", "switch", "technique", "technique10",
     "technique11", "template", "texture", "texture1D", "texture2D",
     "texture3D", "textureCUBE", "textureCube", "textureRECT", "this",
     "throw", "true", "try", "typedef", "typename", "uchar", "uint",
     "ulong", "uniform", "union", "unorm", "unsigned", "ushort", "using",
-    "varying", "vector", "vertexshader", "virtual", "void", "volatile",
-    "while", "yield"
+    "varying", "vector", "vertexfragment", "vertexshader", "virtual",
+    "void", "volatile", "while", "yield"
 };
 
 static const char *reservedTypeBases[] = {
@@ -465,24 +469,109 @@ const char *HlslTypeName(const HlslType *type)
     return NULL;
 }
 
-int HlslTypeRegisterSpan(const HlslType *type)
-{
-    if (type == NULL)
-        return 0;
-    if (type->arraySize > 0)
-        return type->arraySize * HlslTypeRegisterSpan(type->elementType);
-    if (type->base == HLSL_BASE_STRUCT) {
-        int span;
-        HlslDecl *member;
+typedef struct HlslTypeSpanFrame_Rec {
+    const struct HlslTypeSpanFrame_Rec *parent;
+    const HlslType *type;
+} HlslTypeSpanFrame;
 
+static int HlslTypeSpanContains(const HlslTypeSpanFrame *frame,
+    const HlslType *type)
+{
+    for (; frame != NULL; frame = frame->parent) {
+        if (frame->type == type)
+            return 1;
+    }
+    return 0;
+}
+
+static int HlslDeclListHasCycle(const HlslDecl *list)
+{
+    const HlslDecl *slow;
+    const HlslDecl *fast;
+
+    slow = list;
+    fast = list;
+    while (fast != NULL && fast->next != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast)
+            return 1;
+    }
+    return 0;
+}
+
+static int HlslTypeRegisterSpanInner(const HlslType *type,
+    const HlslTypeSpanFrame *parent)
+{
+    HlslTypeSpanFrame frame;
+    const HlslDecl *member;
+    int memberSpan;
+    int span;
+
+    if (type == NULL || type->arraySize < 0 ||
+        HlslTypeSpanContains(parent, type))
+    {
+        return 0;
+    }
+    frame.parent = parent;
+    frame.type = type;
+    if (type->arraySize > 0) {
+        if (type->elementType == NULL)
+            return 0;
+        span = HlslTypeRegisterSpanInner(type->elementType, &frame);
+        if (span <= 0 || type->arraySize > INT_MAX / span)
+            return 0;
+        return type->arraySize * span;
+    }
+    if (type->elementType != NULL)
+        return 0;
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->len != 0 || type->rows != 0 || type->cols != 0 ||
+            type->structName == NULL || type->structName[0] == '\0' ||
+            HlslDeclListHasCycle(type->members))
+        {
+            return 0;
+        }
         span = 0;
-        for (member = type->members; member != NULL; member = member->next)
-            span += HlslTypeRegisterSpan(&member->type);
+        for (member = type->members; member != NULL; member = member->next) {
+            memberSpan = HlslTypeRegisterSpanInner(&member->type, &frame);
+            if (memberSpan <= 0 || span > INT_MAX - memberSpan)
+                return 0;
+            span += memberSpan;
+        }
         return span;
     }
-    if (type->rows > 0 && type->cols > 0)
+    if (type->structName != NULL || type->members != NULL)
+        return 0;
+    if (type->rows != 0 || type->cols != 0) {
+        if (type->base != HLSL_BASE_FLOAT || type->len != 0 ||
+            type->rows < 1 || type->rows > 4 ||
+            type->cols < 1 || type->cols > 4)
+        {
+            return 0;
+        }
         return type->rows;
-    return 1;
+    }
+    switch (type->base) {
+    case HLSL_BASE_FLOAT:
+    case HLSL_BASE_INT:
+    case HLSL_BASE_BOOL:
+        return type->len >= 1 && type->len <= 4 ? 1 : 0;
+    case HLSL_BASE_SAMPLER1D:
+    case HLSL_BASE_SAMPLER2D:
+    case HLSL_BASE_SAMPLER3D:
+    case HLSL_BASE_SAMPLERCUBE:
+        return type->len == 1 ? 1 : 0;
+    case HLSL_BASE_VOID:
+    case HLSL_BASE_STRUCT:
+        return 0;
+    }
+    return 0;
+}
+
+int HlslTypeRegisterSpan(const HlslType *type)
+{
+    return HlslTypeRegisterSpanInner(type, NULL);
 }
 
 int HlslIsReservedName(const char *name)
@@ -510,8 +599,7 @@ int HlslIsReservedName(const char *name)
             return 1;
         if (suffix[0] >= '1' && suffix[0] <= '4' && suffix[1] == '\0')
             return 1;
-        if (!strcmp(reservedTypeBases[i], "float") &&
-            suffix[0] >= '1' && suffix[0] <= '4' && suffix[1] == 'x' &&
+        if (suffix[0] >= '1' && suffix[0] <= '4' && suffix[1] == 'x' &&
             suffix[2] >= '1' && suffix[2] <= '4' && suffix[3] == '\0')
         {
             return 1;

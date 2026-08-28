@@ -424,6 +424,28 @@ static int HlslRecordUnsupported(HlslModule *module, const HlslLoc *loc,
     return 0;
 } // HlslRecordUnsupported
 
+static int HlslIsIdentifier(const char *name)
+{
+    const char *current;
+
+    if (name == NULL ||
+        !((name[0] >= 'A' && name[0] <= 'Z') ||
+          (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
+    {
+        return 0;
+    }
+    for (current = name + 1; *current != '\0'; current++) {
+        if (!((*current >= 'A' && *current <= 'Z') ||
+              (*current >= 'a' && *current <= 'z') ||
+              (*current >= '0' && *current <= '9') || *current == '_'))
+        {
+            return 0;
+        }
+    }
+    return !HlslIsReservedName(name) || !strcmp(name, "main") ||
+           !strncmp(name, "cg_", 3);
+}
+
 static int HlslHasEmptyEntry(const HlslModule *module)
 {
     const HlslFunction *entry;
@@ -434,6 +456,7 @@ static int HlslHasEmptyEntry(const HlslModule *module)
     if (module->structs != NULL || module->globals != NULL ||
         module->bindings != NULL || module->wrapper != NULL ||
         module->functions != entry || entry->next != NULL ||
+        !HlslIsIdentifier(entry->name) || !entry->isEntry ||
         entry->parameters != NULL || entry->locals != NULL ||
         entry->body != NULL)
     {
@@ -519,7 +542,11 @@ int HlslValidateModule(HlslModule *module,
                        const HlslProfileDesc *profile)
 {
     if (profile == NULL || module == NULL ||
-        module->stage != profile->stage || !HlslHasEmptyEntry(module))
+        (module->stage != HLSL_STAGE_VERTEX &&
+         module->stage != HLSL_STAGE_PIXEL) ||
+        module->stage != profile->stage || profile->name == NULL ||
+        profile->name[0] == '\0' || profile->target == NULL ||
+        profile->target[0] == '\0' || !HlslHasEmptyEntry(module))
     {
         return HlslRecordUnsupported(module, NULL,
                                      "nonempty HLSL validation");

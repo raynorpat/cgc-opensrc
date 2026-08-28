@@ -94,14 +94,23 @@ typedef enum HlslErrorKind_Enum {
 
 typedef enum HlslStorage_Enum {
     HLSL_STORAGE_NONE,
-    HLSL_STORAGE_STATIC,
-    HLSL_STORAGE_CONST,
     HLSL_STORAGE_INPUT,
     HLSL_STORAGE_OUTPUT,
     HLSL_STORAGE_UNIFORM,
     HLSL_STORAGE_SAMPLER,
     HLSL_STORAGE_BUILTIN
 } HlslStorage;
+
+typedef enum HlslStorageClass_Enum {
+    HLSL_STORAGE_CLASS_AUTO,
+    HLSL_STORAGE_CLASS_STATIC,
+    HLSL_STORAGE_CLASS_EXTERN
+} HlslStorageClass;
+
+typedef enum HlslTypeQualifier_Enum {
+    HLSL_TYPE_QUALIFIER_NONE,
+    HLSL_TYPE_QUALIFIER_CONST
+} HlslTypeQualifier;
 
 typedef enum HlslParameterQualifier_Enum {
     HLSL_PARAMETER_IN,
@@ -303,6 +312,8 @@ struct HlslStmt_Rec {
 struct HlslDecl_Rec {
     HlslDecl *next;
     HlslStorage storage;
+    HlslStorageClass storageClass;
+    HlslTypeQualifier typeQualifier;
     HlslType type;
     const char *name;
     const char *semantic;

@@ -45,37 +45,85 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
 #include <stdio.h>
+#include <string.h>
 
 #include "slglobals.h"
 #include "hlsl_hal.h"
 
-static int HlslWriteEmptyEntry(FILE *out, const HlslFunction *entry)
+static int HlslIsIdentifier(const char *name)
 {
-    const char *resultName;
+    const char *current;
 
-    if (entry == NULL || entry->name == NULL || entry->parameters != NULL ||
-        entry->locals != NULL || entry->body != NULL)
+    if (name == NULL ||
+        !((name[0] >= 'A' && name[0] <= 'Z') ||
+          (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
     {
         return 0;
     }
-    resultName = HlslTypeName(&entry->result);
-    if (resultName == NULL)
+    for (current = name + 1; *current != '\0'; current++) {
+        if (!((*current >= 'A' && *current <= 'Z') ||
+              (*current >= 'a' && *current <= 'z') ||
+              (*current >= '0' && *current <= '9') || *current == '_'))
+        {
+            return 0;
+        }
+    }
+    return !HlslIsReservedName(name) || !strcmp(name, "main") ||
+           !strncmp(name, "cg_", 3);
+}
+
+static int HlslCanWriteModule(const HlslModule *module,
+    const HlslProfileDesc *profile, const char **resultName)
+{
+    const HlslFunction *entry;
+    const char *name;
+
+    if (module == NULL || profile == NULL || resultName == NULL ||
+        (module->stage != HLSL_STAGE_VERTEX &&
+         module->stage != HLSL_STAGE_PIXEL) ||
+        module->stage != profile->stage || profile->name == NULL ||
+        profile->name[0] == '\0' || profile->target == NULL ||
+        profile->target[0] == '\0' || module->entry == NULL)
+    {
         return 0;
-    return fprintf(out, "%s %s()\n{\n}\n", resultName, entry->name) >= 0;
+    }
+    entry = module->entry;
+    if (module->structs != NULL || module->globals != NULL ||
+        module->bindings != NULL || module->wrapper != NULL ||
+        module->functions != entry || entry->next != NULL ||
+        !HlslIsIdentifier(entry->name) || !entry->isEntry ||
+        entry->parameters != NULL || entry->locals != NULL ||
+        entry->body != NULL)
+    {
+        return 0;
+    }
+    if (entry->result.base != HLSL_BASE_VOID || entry->result.len != 0 ||
+        entry->result.rows != 0 || entry->result.cols != 0 ||
+        entry->result.arraySize != 0 || entry->result.structName != NULL ||
+        entry->result.elementType != NULL || entry->result.members != NULL)
+    {
+        return 0;
+    }
+    name = HlslTypeName(&entry->result);
+    if (name == NULL || strcmp(name, "void"))
+        return 0;
+    *resultName = name;
+    return 1;
 }
 
 int HlslWriteModule(FILE *out, const HlslModule *module,
     const HlslProfileDesc *profile)
 {
-    if (out == NULL || module == NULL || profile == NULL ||
-        module->entry == NULL)
-    {
+    const char *resultName;
+
+    if (out == NULL || !HlslCanWriteModule(module, profile, &resultName))
         return 0;
-    }
     if (fprintf(out, "// profile %s\n", profile->name) < 0 ||
-        fprintf(out, "// target %s\n", profile->target) < 0)
+        fprintf(out, "// target %s\n", profile->target) < 0 ||
+        fprintf(out, "%s %s()\n{\n}\n", resultName,
+                module->entry->name) < 0)
     {
         return 0;
     }
-    return HlslWriteEmptyEntry(out, module->entry);
+    return 1;
 }
