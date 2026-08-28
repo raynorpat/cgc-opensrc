@@ -1396,6 +1396,7 @@ add_test(
 )
 
 add_executable(hlsl_ir_unit
+    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
     ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
@@ -1424,6 +1425,11 @@ add_test(
 )
 
 add_test(
+    NAME hlsl_binding_register_sampler_unit
+    COMMAND hlsl_ir_unit
+)
+
+add_test(
     NAME hlsl_semantic_canonicalization
     COMMAND hlsl_ir_unit
 )
@@ -1437,6 +1443,7 @@ add_test(
 
 add_executable(hlsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlslv_hal.c

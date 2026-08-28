@@ -709,6 +709,7 @@ HlslBinding *HlslNewBinding(HlslModule *module, HlslStorage storage,
         binding->storage = storage;
         binding->type = type;
         binding->name = name;
+        binding->publicName = name;
         binding->semantic = semantic;
     }
     return binding;

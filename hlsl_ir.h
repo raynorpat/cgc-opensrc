@@ -50,6 +50,11 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stddef.h>
 #include <stdio.h>
 
+#define HLSL_MAX_FLOAT_CONSTANTS 256
+#define HLSL_MAX_INT_CONSTANTS    16
+#define HLSL_MAX_BOOL_CONSTANTS   16
+#define HLSL_MAX_SAMPLERS         16
+
 typedef enum HlslStage_Enum {
     HLSL_STAGE_VERTEX,
     HLSL_STAGE_PIXEL
@@ -342,12 +347,18 @@ struct HlslFunction_Rec {
 
 struct HlslBinding_Rec {
     HlslBinding *next;
+    HlslBinding *allocationNext;
+    HlslBinding *leafBindings;
     HlslStorage storage;
     HlslType type;
     const char *name;
+    const char *publicName;
     const char *semantic;
     HlslLoc loc;
     int sourceOrdinal;
+    int recursiveOffset;
+    int hasExplicitRegister;
+    int isAllocated;
     HlslDecl *declaration;
     int isOutput;
     int defaultCount;
@@ -367,6 +378,11 @@ struct HlslModule_Rec {
     HlslFunction *entry;
     HlslFunction *wrapper;
     HlslBinding *bindings;
+    HlslBinding *allocatedBindings;
+    unsigned char cRegisterUsed[HLSL_MAX_FLOAT_CONSTANTS];
+    unsigned char iRegisterUsed[HLSL_MAX_INT_CONSTANTS];
+    unsigned char bRegisterUsed[HLSL_MAX_BOOL_CONSTANTS];
+    unsigned char sRegisterUsed[HLSL_MAX_SAMPLERS];
     HlslLoc errorLoc;
     HlslErrorKind errorKind;
     const char *errorReason;
@@ -410,6 +426,9 @@ void HlslAppendExpr(HlslExpr **list, HlslExpr *expr);
 void HlslAppendStmt(HlslStmt **list, HlslStmt *stmt);
 void HlslAppendFunction(HlslFunction **list, HlslFunction *function);
 void HlslAppendBinding(HlslBinding **list, HlslBinding *binding);
+
+int HlslAllocateOneBinding(HlslModule *module,
+    const HlslProfileDesc *profile, HlslBinding *binding);
 
 int HlslWriteModule(FILE *out, const HlslModule *module,
     const HlslProfileDesc *profile);

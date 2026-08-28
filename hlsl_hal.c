@@ -479,7 +479,7 @@ static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb,
 {
     (void) loc;
     (void) fSymb;
-    fBind->none.properties |= BIND_IS_BOUND;
+    fBind->none.properties |= BIND_IS_BOUND | BIND_UNIFORM;
     return 1;
 } // BindUniformUnbound_hlsl
 
@@ -933,16 +933,6 @@ int HlslLegalizeModule(HlslModule *module,
                                      "nonempty HLSL legalization");
     return 1;
 } // HlslLegalizeModule
-
-int HlslAllocateBindings(HlslModule *module,
-                         const HlslProfileDesc *profile)
-{
-    (void) profile;
-    if (!HlslHasEmptyEntry(module))
-        return HlslRecordUnsupported(module, NULL,
-                                     "nonempty HLSL bindings");
-    return 1;
-} // HlslAllocateBindings
 
 int HlslValidateModule(HlslModule *module,
                        const HlslProfileDesc *profile)
