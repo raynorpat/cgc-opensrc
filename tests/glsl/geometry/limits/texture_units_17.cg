@@ -1,0 +1,40 @@
+uniform sampler2D s0;
+uniform sampler2D s1;
+uniform sampler2D s2;
+uniform sampler2D s3;
+uniform sampler2D s4;
+uniform sampler2D s5;
+uniform sampler2D s6;
+uniform sampler2D s7;
+uniform sampler2D s8;
+uniform sampler2D s9;
+uniform sampler2D s10;
+uniform sampler2D s11;
+uniform sampler2D s12;
+uniform sampler2D s13;
+uniform sampler2D s14;
+uniform sampler2D s15;
+uniform sampler2D s16;
+
+POINT void main(AttribArray<float4> position : POSITION,
+                AttribArray<float2> uv : TEXCOORD0)
+{
+    float4 value = tex2D(s0, uv[0]);
+    value += tex2D(s1, uv[0]);
+    value += tex2D(s2, uv[0]);
+    value += tex2D(s3, uv[0]);
+    value += tex2D(s4, uv[0]);
+    value += tex2D(s5, uv[0]);
+    value += tex2D(s6, uv[0]);
+    value += tex2D(s7, uv[0]);
+    value += tex2D(s8, uv[0]);
+    value += tex2D(s9, uv[0]);
+    value += tex2D(s10, uv[0]);
+    value += tex2D(s11, uv[0]);
+    value += tex2D(s12, uv[0]);
+    value += tex2D(s13, uv[0]);
+    value += tex2D(s14, uv[0]);
+    value += tex2D(s15, uv[0]);
+    value += tex2D(s16, uv[0]);
+    emitVertex(position[0] + value : POSITION);
+}

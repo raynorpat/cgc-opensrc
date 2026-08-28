@@ -150,7 +150,7 @@ static GlslProfileDesc profile_glslv = {
     /* Core 1.50 portable minima: 16 vertex attributes, 1,024 numeric
      * uniform components, 64 vertex output components, 16 texture
      * units. */
-    { 16, 1024, 64, 16, 0 }
+    { 16, 0, 64, 0, 0, 1024, 16, 0 }
 };
 
 int InitHAL_glslv(slHAL *hal)

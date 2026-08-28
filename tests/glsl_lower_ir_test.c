@@ -502,6 +502,53 @@ static void lScenarioGeometryPassThrough(void)
     assert(strstr(textBuffer, "EndPrimitive();") != NULL);
 }
 
+static void lScenarioGeometryProfilePreflight(void)
+{
+    CgIRModule ir;
+    CgIRGeometryInfo info;
+    GlslProfileDiagnostic diagnostic;
+    const GlslProfileDesc *profile;
+
+    profile = GlslGeometryProfileDesc();
+    assert(profile != NULL);
+    lInitModule(&ir);
+    assert(CgIRSetStage(&ir, CGIR_STAGE_VERTEX));
+    lAddEntry(&ir, NULL);
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    assert(!GlslValidateCgIR(profile, &ir, &diagnostic));
+    assert(diagnostic.kind == GLSL_ERROR_PROFILE_STAGE);
+    assert(!strcmp(diagnostic.reason, "vertex"));
+
+    lInitModule(&ir);
+    assert(CgIRSetStage(&ir, CGIR_STAGE_GEOMETRY));
+    memset(&info, 0, sizeof(info));
+    info.inputTopology = CG_GEOMETRY_INPUT_POINT;
+    info.outputTopology = CG_GEOMETRY_OUTPUT_POINTS;
+    info.inputVertexCount = 1;
+    info.inputLoc = nodeLoc;
+    info.outputLoc = nodeLoc;
+    assert(CgIRSetGeometryInfo(&ir, &info));
+    lAddEntry(&ir, NULL);
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    assert(!GlslValidateCgIR(profile, &ir, &diagnostic));
+    assert(diagnostic.kind == GLSL_ERROR_GEOMETRY_MAXIMUM);
+
+    ir.geometry->hasMaxOutputVertices = 1;
+    ir.geometry->maxOutputVertices = 256;
+    ir.geometry->maxVerticesLoc = nodeLoc;
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    assert(GlslValidateCgIR(profile, &ir, &diagnostic));
+
+    ir.geometry->maxOutputVertices = 257;
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    assert(!GlslValidateCgIR(profile, &ir, &diagnostic));
+    assert(diagnostic.kind == GLSL_ERROR_RESOURCE_LIMIT);
+    assert(!strcmp(diagnostic.resourceName,
+                   "geometry output vertices"));
+    assert(diagnostic.resourceUsed == 257);
+    assert(diagnostic.resourceAvailable == 256);
+}
+
 ///////////////////////////////// Assertions //////////////////////////////////
 
 /*
@@ -763,6 +810,7 @@ int main(int argc, char **argv)
     lScenarioUserFillFallsBack(profile);
     lScenarioVectorIntoScalarFailsLoud(profile);
     lScenarioGeometryPassThrough();
+    lScenarioGeometryProfilePreflight();
 
     return 0;
 }

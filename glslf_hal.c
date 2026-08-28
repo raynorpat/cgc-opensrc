@@ -113,7 +113,7 @@ static GlslProfileDesc profile_glslf = {
     /* Core 1.50 portable minima: 1,024 numeric uniform components,
      * 128 fragment input components, 16 texture units, and the
      * existing focused limit of one fragment color output. */
-    { 0, 1024, 128, 16, 1 }
+    { 0, 128, 0, 0, 0, 1024, 16, 1 }
 };
 
 int InitHAL_glslf(slHAL *hal)

@@ -1,0 +1,6 @@
+POINT void main(AttribArray<float4> position : POSITION)
+{
+    int layer = 0;
+
+    emitVertex(position[0] : POSITION, layer : LAYER);
+}

@@ -7,9 +7,21 @@ endforeach()
 include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${ACTUAL}")
 
+set(profile_args)
+if(DEFINED PROFILE_OPTIONS)
+    foreach(option IN LISTS PROFILE_OPTIONS)
+        list(APPEND profile_args -po "${option}")
+    endforeach()
+endif()
+set(entry_args)
+if(DEFINED ENTRY)
+    list(APPEND entry_args -entry "${ENTRY}")
+endif()
+
 file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
 execute_process(
-    COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
+    COMMAND "${CGC}" -quiet -profile "${PROFILE}" ${profile_args}
+        ${entry_args} -o "${ACTUAL}" "${SOURCE}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr

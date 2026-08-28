@@ -54,6 +54,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_ir.h"
 #include "glsl_hal.h"
 
 #define NUMELS(x) ((int) (sizeof(x) / sizeof((x)[0])))
@@ -937,10 +938,9 @@ static void CheckIRHooks(void)
     Symbol program;
     SymbolList programList;
     SourceLoc loc;
-    /* Opaque to this test: the hooks only forward it to the lowering
-     * entry point, which is stubbed here. */
-    static int dummyIRModule;
-    const CgIRModule *irModule = (const CgIRModule *) &dummyIRModule;
+    CgIRModule irStorage;
+    CgIRFunction irEntry;
+    const CgIRModule *irModule;
     FILE *out;
 
     InitStage(&hal, 1);
@@ -948,10 +948,16 @@ static void CheckIRHooks(void)
     memset(&program, 0, sizeof(program));
     memset(&programList, 0, sizeof(programList));
     memset(&loc, 0, sizeof(loc));
+    memset(&irStorage, 0, sizeof(irStorage));
+    memset(&irEntry, 0, sizeof(irEntry));
     program.loc.line = 37;
     programList.symb = &program;
     scope.programs = &programList;
     CurrentScope = &scope;
+    irStorage.stage = CGIR_STAGE_VERTEX;
+    irStorage.entry = &irEntry;
+    irEntry.loc = program.loc;
+    irModule = &irStorage;
 
     /* Successful scratch validation writes nothing and stays silent. */
     out = tmpfile();

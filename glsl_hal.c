@@ -47,8 +47,10 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "slglobals.h"
+#include "cg_ir.h"
 #include "glsl_hal.h"
 
 static const GlslProfileDesc *GetProfile_glsl(void)
@@ -730,6 +732,115 @@ static void *GlslCompilerAlloc(void *arg, size_t size)
     return mem_Calloc((MemoryPool *) arg, size, 1);
 }
 
+static GlslStage GlslStageForCgIR(CgIRStage stage)
+{
+    switch (stage) {
+    case CGIR_STAGE_VERTEX:
+        return GLSL_STAGE_VERTEX;
+    case CGIR_STAGE_GEOMETRY:
+        return GLSL_STAGE_GEOMETRY;
+    case CGIR_STAGE_FRAGMENT:
+        return GLSL_STAGE_FRAGMENT;
+    default:
+        return (GlslStage) -1;
+    }
+}
+
+static const char *GlslCgIRStageName(CgIRStage stage)
+{
+    switch (stage) {
+    case CGIR_STAGE_VERTEX:
+        return "vertex";
+    case CGIR_STAGE_GEOMETRY:
+        return "geometry";
+    case CGIR_STAGE_FRAGMENT:
+        return "fragment";
+    case CGIR_STAGE_NEUTRAL:
+        return "neutral";
+    default:
+        return "unknown";
+    }
+}
+
+int GlslValidateCgIR(const GlslProfileDesc *profile,
+                     const CgIRModule *source,
+                     GlslProfileDiagnostic *diagnostic)
+{
+    if (diagnostic == NULL)
+        return 0;
+    memset(diagnostic, 0, sizeof(*diagnostic));
+    if (profile == NULL || source == NULL || source->entry == NULL) {
+        diagnostic->kind = GLSL_ERROR_UNSUPPORTED_OPERATION;
+        diagnostic->reason = "Cg IR module";
+        return 0;
+    }
+    diagnostic->loc = source->entry->loc;
+    if (GlslStageForCgIR(source->stage) != profile->stage) {
+        diagnostic->kind = GLSL_ERROR_PROFILE_STAGE;
+        diagnostic->reason = GlslCgIRStageName(source->stage);
+        return 0;
+    }
+    if (profile->stage != GLSL_STAGE_GEOMETRY)
+        return 1;
+    if (source->geometry == NULL ||
+        !source->geometry->hasMaxOutputVertices ||
+        source->geometry->maxOutputVertices == 0)
+    {
+        diagnostic->kind = GLSL_ERROR_GEOMETRY_MAXIMUM;
+        if (source->geometry != NULL)
+            diagnostic->loc = source->geometry->maxVerticesLoc;
+        return 0;
+    }
+    if (profile->limits.maxOutputVertices <= 0) {
+        diagnostic->kind = GLSL_ERROR_UNSUPPORTED_OPERATION;
+        diagnostic->reason = "geometry output vertex limit";
+        return 0;
+    }
+    if (source->geometry->maxOutputVertices >
+        (unsigned int) profile->limits.maxOutputVertices)
+    {
+        diagnostic->kind = GLSL_ERROR_RESOURCE_LIMIT;
+        diagnostic->loc = source->geometry->maxVerticesLoc;
+        diagnostic->resourceName = "geometry output vertices";
+        diagnostic->resourceUsed =
+            source->geometry->maxOutputVertices > INT_MAX ? INT_MAX :
+            (int) source->geometry->maxOutputVertices;
+        diagnostic->resourceAvailable =
+            profile->limits.maxOutputVertices;
+        return 0;
+    }
+    return 1;
+}
+
+static int GlslReportProfileFailure(const GlslProfileDesc *profile,
+    const GlslProfileDiagnostic *diagnostic)
+{
+    SourceLoc loc;
+
+    loc = diagnostic->loc;
+    switch (diagnostic->kind) {
+    case GLSL_ERROR_PROFILE_STAGE:
+        SemanticError(&loc, ERROR_SS_GLSL_PROFILE_STAGE,
+                      profile->name, diagnostic->reason);
+        break;
+    case GLSL_ERROR_GEOMETRY_MAXIMUM:
+        SemanticError(&loc, ERROR___GLSL_GEOMETRY_MAX_REQUIRED);
+        break;
+    case GLSL_ERROR_RESOURCE_LIMIT:
+        SemanticError(&loc, ERROR_SII_GLSL_RESOURCE_LIMIT,
+                      diagnostic->resourceName,
+                      diagnostic->resourceUsed,
+                      diagnostic->resourceAvailable);
+        break;
+    default:
+        SemanticError(&loc, ERROR_S_GLSL_UNSUPPORTED_OPERATION,
+                      diagnostic->reason != NULL ? diagnostic->reason :
+                      "Cg IR module");
+        break;
+    }
+    return 0;
+}
+
 /*
  * GlslReportLowerFailure() - One profile diagnostic for a failed
  *          lowering, translated from the module error fields; layered
@@ -834,6 +945,8 @@ static int GenerateCode_glsl(SourceLoc *loc, Scope *scope, Symbol *program)
 static int ValidateIR_glsl(SourceLoc *loc, const CgIRModule *source)
 {
     const GlslProfileDesc *profile;
+    GlslProfileDiagnostic profileDiagnostic;
+    GlslVerifyDiagnostic verifyDiagnostic;
     MemoryPool *pool;
     GlslModule module;
     Symbol *program;
@@ -845,11 +958,20 @@ static int ValidateIR_glsl(SourceLoc *loc, const CgIRModule *source)
               CurrentScope->programs->symb : NULL;
     if (program == NULL)
         return 0;
+    if (!GlslValidateCgIR(profile, source, &profileDiagnostic))
+        return GlslReportProfileFailure(profile, &profileDiagnostic);
     pool = mem_CreatePool(16 * 1024, 8);
     if (pool == NULL)
         return 0;
     GlslInitModule(&module, profile->stage, GlslCompilerAlloc, pool);
     OK = GlslLowerCgIR(&module, profile, source);
+    if (OK && !GlslVerifyModule(&module, &verifyDiagnostic)) {
+        module.errorReason = "GLSL 1.50 module verification";
+        module.errorKind = GLSL_ERROR_UNSUPPORTED_OPERATION;
+        module.errorLoc = verifyDiagnostic.loc;
+        module.errors++;
+        OK = 0;
+    }
     if (!OK)
     {
         /* Translate the recorded diagnostic FIRST: the reason strings
@@ -869,6 +991,8 @@ static int ValidateIR_glsl(SourceLoc *loc, const CgIRModule *source)
 static int GenerateIR_glsl(SourceLoc *loc, const CgIRModule *source)
 {
     const GlslProfileDesc *profile;
+    GlslProfileDiagnostic profileDiagnostic;
+    GlslVerifyDiagnostic verifyDiagnostic;
     GlslModule module;
     Symbol *program;
     int errorCount;
@@ -879,10 +1003,19 @@ static int GenerateIR_glsl(SourceLoc *loc, const CgIRModule *source)
               CurrentScope->programs->symb : NULL;
     if (program == NULL)
         return 0;
+    if (!GlslValidateCgIR(profile, source, &profileDiagnostic))
+        return GlslReportProfileFailure(profile, &profileDiagnostic);
     GlslInitModule(&module, profile->stage, GlslCompilerAlloc,
                    CurrentScope->pool);
     if (!GlslLowerCgIR(&module, profile, source))
         return GlslReportLowerFailure(profile, &module, program);
+    if (!GlslVerifyModule(&module, &verifyDiagnostic)) {
+        module.errorReason = "GLSL 1.50 module verification";
+        module.errorKind = GLSL_ERROR_UNSUPPORTED_OPERATION;
+        module.errorLoc = verifyDiagnostic.loc;
+        module.errors++;
+        return GlslReportLowerFailure(profile, &module, program);
+    }
     errorCount = GetErrorCount();
     if (!GlslWriteModule(Cg->options.outfd, &module)) {
         if (GetErrorCount() == errorCount) {

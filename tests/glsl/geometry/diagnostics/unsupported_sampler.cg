@@ -1,0 +1,7 @@
+uniform samplerRECT image;
+
+POINT void main(AttribArray<float4> position : POSITION,
+                AttribArray<float2> uv : TEXCOORD0)
+{
+    emitVertex(position[0] + texRECT(image, uv[0]) : POSITION);
+}

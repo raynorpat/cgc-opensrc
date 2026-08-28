@@ -1,0 +1,11 @@
+POINT void main(AttribArray<float4x4> value : ATTRIB0)
+{
+    emitVertex(value[0] : TEXCOORD0,
+               value[0] : TEXCOORD1,
+               value[0] : TEXCOORD2,
+               value[0] : TEXCOORD3,
+               value[0] : TEXCOORD4,
+               value[0] : TEXCOORD5,
+               value[0] : TEXCOORD6,
+               value[0] : TEXCOORD7);
+}

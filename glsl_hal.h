@@ -79,11 +79,23 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 typedef struct GlslLimits_Rec {
     int attributes;
+    int inputComponents;
+    int outputComponents;
+    int maxOutputVertices;
+    int totalOutputComponents;
     int uniformComponents;
-    int varyingComponents;
     int textureUnits;
     int colorOutputs;
 } GlslLimits;
+
+typedef struct GlslProfileDiagnostic_Rec {
+    GlslErrorKind kind;
+    SourceLoc loc;
+    const char *reason;
+    const char *resourceName;
+    int resourceUsed;
+    int resourceAvailable;
+} GlslProfileDiagnostic;
 
 typedef enum GlslInterface_Enum {
     GLSL_INTERFACE_ATTRIBUTE,
@@ -147,6 +159,8 @@ int InitHAL_glslv(slHAL *hal);
 int InitHAL_glslf(slHAL *hal);
 int InitHAL_glslg(slHAL *hal);
 const GlslProfileDesc *GlslGeometryProfileDesc(void);
+int GlslValidateCgIR(const GlslProfileDesc *profile,
+    const CgIRModule *source, GlslProfileDiagnostic *diagnostic);
 /* Cg 2.0 boundary: lower a verified Cg IR module into the GLSL module. */
 int GlslLowerCgIR(GlslModule *module, const GlslProfileDesc *profile,
     const CgIRModule *source);

@@ -1,0 +1,7 @@
+typedef packed int2 int2x2[2];
+
+POINT void main(AttribArray<float4> position : POSITION)
+{
+    int2x2 localMatrix;
+    emitVertex(position[0] : POSITION);
+}

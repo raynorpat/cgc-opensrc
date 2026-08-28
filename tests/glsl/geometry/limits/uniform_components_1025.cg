@@ -1,0 +1,10 @@
+uniform float4 values[255];
+uniform float3 extra3;
+uniform float2 extra2;
+
+POINT void main(AttribArray<float4> position : POSITION)
+{
+    emitVertex(position[0] + values[0] + values[254] +
+               float4(extra3.x, extra3.y, extra3.z, 1.0) +
+               float4(extra2.x, extra2.y, 0.0, 1.0) : POSITION);
+}

@@ -1117,6 +1117,97 @@ add_glsl150_contract(glslf_primitive_id_input glslf
 add_glsl_validation(glslf_primitive_id_input glslf frag
     tests/glsl/geometry/fragment_primitive_id.cg)
 
+# Geometry profile preflight and exact portable resource boundaries.
+add_cg20_geometry_failure(glslg_geometry_missing_vertices glslg
+    tests/glsl/geometry/diagnostics/missing_vertices.cg main
+    6319 0 "requires.-po.Vertices" "")
+add_cg20_geometry_failure(glslv_geometry_stage_mismatch glslv
+    tests/glsl/geometry/diagnostics/wrong_stage_vertex.cg main
+    6318 1 "cannot.compile.a.geometry.program" "Vertices=1")
+add_cg20_geometry_failure(glslf_geometry_stage_mismatch glslf
+    tests/glsl/geometry/diagnostics/wrong_stage_fragment.cg main
+    6318 1 "cannot.compile.a.geometry.program" "Vertices=1")
+add_cg20_geometry_failure(glslg_unsupported_type glslg
+    tests/glsl/geometry/diagnostics/unsupported_type.cg main
+    6200 5 "does.not.support.type.*matrix" "Vertices=1")
+add_cg20_geometry_failure(glslg_unsupported_intrinsic glslg
+    tests/glsl/geometry/diagnostics/unsupported_intrinsic.cg main
+    6206 1 "no.exact.intrinsic.*rsqrt" "Vertices=1")
+add_cg20_geometry_failure(glslg_unsupported_sampler glslg
+    tests/glsl/geometry/diagnostics/unsupported_sampler.cg main
+    6200 1 "does.not.support.type.*samplerRECT" "Vertices=1")
+
+add_cg20_geometry_success(glslg_input_components_64 glslg
+    tests/glsl/geometry/limits/input_components_64.cg main "" "Vertices=1")
+add_glsl_geometry_validation(glslg_input_components_64
+    tests/glsl/geometry/limits/input_components_64.cg main "Vertices=1")
+add_cg20_geometry_failure(glslg_input_components_65 glslg
+    tests/glsl/geometry/limits/input_components_65.cg main
+    6207 1 "65.used,.64.available" "Vertices=1")
+add_cg20_geometry_success(glslg_output_components_128 glslg
+    tests/glsl/geometry/limits/output_components_128.cg main "" "Vertices=1")
+add_glsl_geometry_validation(glslg_output_components_128
+    tests/glsl/geometry/limits/output_components_128.cg main "Vertices=1")
+add_cg20_geometry_failure(glslg_output_components_129 glslg
+    tests/glsl/geometry/limits/output_components_129.cg main
+    6207 5 "129.used,.128.available" "Vertices=1")
+add_cg20_geometry_success(glslg_output_vertices_256 glslg
+    tests/glsl/geometry/limits/output_vertices.cg main "" "Vertices=256")
+add_glsl_geometry_validation(glslg_output_vertices_256
+    tests/glsl/geometry/limits/output_vertices.cg main "Vertices=256")
+add_cg20_geometry_failure(glslg_output_vertices_257 glslg
+    tests/glsl/geometry/limits/output_vertices.cg main
+    6207 1 "257.used,.256.available" "Vertices=257")
+add_cg20_geometry_success(glslg_total_components_1024 glslg
+    tests/glsl/geometry/limits/total_components_1024.cg main "" "Vertices=256")
+add_glsl_geometry_validation(glslg_total_components_1024
+    tests/glsl/geometry/limits/total_components_1024.cg main "Vertices=256")
+add_cg20_geometry_failure(glslg_total_components_1025 glslg
+    tests/glsl/geometry/limits/total_components_1025.cg main
+    6207 1 "1025.used,.1024.available" "Vertices=205")
+add_cg20_geometry_success(glslg_uniform_components_1024 glslg
+    tests/glsl/geometry/limits/uniform_components_1024.cg main "" "Vertices=1")
+add_glsl_geometry_validation(glslg_uniform_components_1024
+    tests/glsl/geometry/limits/uniform_components_1024.cg main "Vertices=1")
+add_cg20_geometry_failure(glslg_uniform_components_1025 glslg
+    tests/glsl/geometry/limits/uniform_components_1025.cg main
+    6207 3 "1025.used,.1024.available" "Vertices=1")
+add_cg20_geometry_success(glslg_texture_units_16 glslg
+    tests/glsl/geometry/limits/texture_units_16.cg main "" "Vertices=1")
+add_glsl_geometry_validation(glslg_texture_units_16
+    tests/glsl/geometry/limits/texture_units_16.cg main "Vertices=1")
+add_cg20_geometry_failure(glslg_texture_units_17 glslg
+    tests/glsl/geometry/limits/texture_units_17.cg main
+    6207 17 "17.used,.16.available" "Vertices=1")
+
+foreach(transaction missing_vertices input_components_65 output_vertices_257)
+    if(transaction STREQUAL missing_vertices)
+        set(transaction_source tests/glsl/geometry/diagnostics/missing_vertices.cg)
+        set(transaction_options "")
+        set(transaction_code 6319)
+    elseif(transaction STREQUAL input_components_65)
+        set(transaction_source tests/glsl/geometry/limits/input_components_65.cg)
+        set(transaction_options "Vertices=1")
+        set(transaction_code 6207)
+    else()
+        set(transaction_source tests/glsl/geometry/limits/output_vertices.cg)
+        set(transaction_options "Vertices=257")
+        set(transaction_code 6207)
+    endif()
+    string(REPLACE ";" "\\;" transaction_options_escaped
+        "${transaction_options}")
+    add_test(NAME glslg_${transaction}_transaction
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=glslg
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${transaction_source}
+            -DENTRY=main
+            "-DPROFILE_OPTIONS=${transaction_options_escaped}"
+            -DCODE=${transaction_code}
+            "-DDESTINATION=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/glslg_${transaction}_transaction.glsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_output_transaction.cmake)
+endforeach()
+
 # Geometry semantic negatives (Step 7): one fixture per wrong direction,
 # type, or shape, each pinning exact code and line.
 
@@ -1268,6 +1359,7 @@ add_executable(glsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
     ${PROJECT_SOURCE_DIR}/glsl_hal.c
+    ${PROJECT_SOURCE_DIR}/glsl_verify.c
     ${PROJECT_SOURCE_DIR}/glslv_hal.c
     ${PROJECT_SOURCE_DIR}/glslf_hal.c
     ${PROJECT_SOURCE_DIR}/glslg_hal.c

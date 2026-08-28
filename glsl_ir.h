@@ -79,7 +79,9 @@ typedef enum GlslErrorKind_Enum {
     GLSL_ERROR_INTRINSIC,
     GLSL_ERROR_RESOURCE_LIMIT,
     GLSL_ERROR_SAMPLER,
-    GLSL_ERROR_NON_SQUARE_MATRIX
+    GLSL_ERROR_NON_SQUARE_MATRIX,
+    GLSL_ERROR_PROFILE_STAGE,
+    GLSL_ERROR_GEOMETRY_MAXIMUM
 } GlslErrorKind;
 
 typedef void *(*GlslAllocFn)(void *arg, size_t size);

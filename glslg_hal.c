@@ -164,7 +164,11 @@ static GlslProfileDesc profile_glslg = {
     aliases_glslg, NUMELS(aliases_glslg),
     inputRegs_glslg, NUMELS(inputRegs_glslg),
     outputRegs_glslg, NUMELS(outputRegs_glslg),
-    { 0, 1024, 128, 16, 0 }
+    /* Core 1.50 portable geometry minima: 64 input components per
+     * vertex, 128 output components per emitted vertex, 256 output
+     * vertices, 1,024 total output components, 1,024 uniform
+     * components, and 16 texture units. */
+    { 0, 64, 128, 256, 1024, 1024, 16, 0 }
 };
 
 const GlslProfileDesc *GlslGeometryProfileDesc(void)

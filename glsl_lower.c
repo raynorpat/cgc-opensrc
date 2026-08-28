@@ -102,6 +102,12 @@ typedef struct GlslGeometryInputBinding_Rec {
     GlslDecl *declaration;
 } GlslGeometryInputBinding;
 
+typedef struct GlslGeometryOutputBinding_Rec {
+    struct GlslGeometryOutputBinding_Rec *next;
+    const char *interfaceKey;
+    GlslDecl *declaration;
+} GlslGeometryOutputBinding;
+
 typedef struct GlslLowerContext_Rec {
     GlslModule *module;
     const GlslProfileDesc *profile;
@@ -120,6 +126,7 @@ typedef struct GlslLowerContext_Rec {
     GlslGeometryFlat *geometryFlat;
     GlslGeometryFlat *lastGeometryFlat;
     GlslGeometryInputBinding *geometryInputs;
+    GlslGeometryOutputBinding *geometryOutputs;
     SourceLoc statementLoc;
     int loopDepth;
 } GlslLowerContext;
@@ -1088,6 +1095,8 @@ static int GlslValidateUniformLimit(GlslLowerContext *context)
     }
     resourceName = context->profile->stage == GLSL_STAGE_FRAGMENT ?
                    "fragment uniform components" :
+                   context->profile->stage == GLSL_STAGE_GEOMETRY ?
+                   "geometry uniform components" :
                    "vertex uniform components";
     used = 0;
     for (binding = context->module->bindings; binding != NULL;
@@ -1133,6 +1142,108 @@ static int GlslRecordResourceLimit(GlslLowerContext *context,
     return 0;
 }
 
+static int GlslRecordResourceLimitAt(GlslLowerContext *context,
+                                     const GlslLoc *loc,
+                                     const char *resourceName,
+                                     int used, int available)
+{
+    context->module->errorKind = GLSL_ERROR_RESOURCE_LIMIT;
+    if (loc != NULL)
+        context->module->errorLoc = *loc;
+    context->module->resourceName = resourceName;
+    context->module->resourceUsed = used;
+    context->module->resourceAvailable = available;
+    return 0;
+}
+
+static int GlslValidateGeometryInterfaceLimits(
+    GlslLowerContext *context)
+{
+    GlslGeometryInputBinding *input;
+    GlslGeometryInputBinding *prior;
+    GlslGeometryOutputBinding *output;
+    int inputComponents;
+    int outputComponents;
+    int components;
+    int total;
+
+    if (context->profile->limits.inputComponents <= 0 ||
+        context->profile->limits.outputComponents <= 0 ||
+        context->profile->limits.totalOutputComponents <= 0 ||
+        context->module->geometry == NULL)
+    {
+        GlslRecordFailure(context, "geometry resource limits");
+        return 0;
+    }
+    inputComponents = 0;
+    for (input = context->geometryInputs; input != NULL;
+         input = input->next)
+    {
+        for (prior = context->geometryInputs; prior != input;
+             prior = prior->next)
+        {
+            if (prior->declaration == input->declaration)
+                break;
+        }
+        if (prior != input)
+            continue;
+        if (input->declaration->type.elementType != NULL)
+            components = GlslTypeComponentCount(
+                input->declaration->type.elementType);
+        else
+            components = GlslTypeComponentCount(
+                &input->declaration->type);
+        if (components <= 0 || components > INT_MAX - inputComponents) {
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                "geometry input component count", NULL);
+            return 0;
+        }
+        inputComponents += components;
+        if (inputComponents > context->profile->limits.inputComponents) {
+            return GlslRecordResourceLimitAt(context,
+                &input->declaration->loc,
+                "geometry input components", inputComponents,
+                context->profile->limits.inputComponents);
+        }
+    }
+
+    outputComponents = 0;
+    for (output = context->geometryOutputs; output != NULL;
+         output = output->next)
+    {
+        components = GlslTypeComponentCount(&output->declaration->type);
+        if (components <= 0 || components > INT_MAX - outputComponents) {
+            GlslRecordFailureKindAt(context, GLSL_ERROR_UNSUPPORTED_TYPE,
+                "geometry output component count", NULL);
+            return 0;
+        }
+        outputComponents += components;
+        if (outputComponents >
+            context->profile->limits.outputComponents)
+        {
+            return GlslRecordResourceLimitAt(context,
+                &output->declaration->loc, "geometry output components",
+                outputComponents,
+                context->profile->limits.outputComponents);
+        }
+    }
+    if (outputComponents > INT_MAX /
+        context->module->geometry->maxOutputVertices)
+    {
+        total = INT_MAX;
+    } else {
+        total = outputComponents *
+                context->module->geometry->maxOutputVertices;
+    }
+    if (total > context->profile->limits.totalOutputComponents) {
+        return GlslRecordResourceLimitAt(context,
+            &context->module->geometry->maxVerticesLoc,
+            "geometry total output components", total,
+            context->profile->limits.totalOutputComponents);
+    }
+    return 1;
+}
+
 static int GlslValidateInterfaceLimits(GlslLowerContext *context)
 {
     GlslBinding *binding;
@@ -1142,6 +1253,8 @@ static int GlslValidateInterfaceLimits(GlslLowerContext *context)
     int components;
     const char *componentResource;
 
+    if (context->profile->stage == GLSL_STAGE_GEOMETRY)
+        return GlslValidateGeometryInterfaceLimits(context);
     attributes = 0;
     interfaceComponents = 0;
     fragmentColors = 0;
@@ -1180,12 +1293,13 @@ static int GlslValidateInterfaceLimits(GlslLowerContext *context)
                 return 0;
             }
             interfaceComponents += components;
-            if (interfaceComponents >
-                context->profile->limits.varyingComponents)
+            if (context->profile->limits.outputComponents <= 0 ||
+                interfaceComponents >
+                context->profile->limits.outputComponents)
             {
                 return GlslRecordResourceLimit(context, binding,
                     componentResource, interfaceComponents,
-                    context->profile->limits.varyingComponents);
+                    context->profile->limits.outputComponents);
             }
         } else if (context->profile->stage == GLSL_STAGE_FRAGMENT &&
                    binding->storage == GLSL_STORAGE_INPUT)
@@ -1205,12 +1319,13 @@ static int GlslValidateInterfaceLimits(GlslLowerContext *context)
                 return 0;
             }
             interfaceComponents += components;
-            if (interfaceComponents >
-                context->profile->limits.varyingComponents)
+            if (context->profile->limits.inputComponents <= 0 ||
+                interfaceComponents >
+                context->profile->limits.inputComponents)
             {
                 return GlslRecordResourceLimit(context, binding,
                     componentResource, interfaceComponents,
-                    context->profile->limits.varyingComponents);
+                    context->profile->limits.inputComponents);
             }
         } else if (context->profile->stage == GLSL_STAGE_FRAGMENT &&
                    binding->isOutput &&
@@ -1246,7 +1361,9 @@ static int GlslAllocateTextureUnits(GlslLowerContext *context)
 
     limit = context->profile->limits.textureUnits;
     resourceName = context->profile->stage == GLSL_STAGE_FRAGMENT ?
-                   "fragment texture units" : "vertex texture units";
+                   "fragment texture units" :
+                   context->profile->stage == GLSL_STAGE_GEOMETRY ?
+                   "geometry texture units" : "vertex texture units";
     used = 0;
     for (binding = context->module->bindings; binding != NULL;
          binding = binding->next)
@@ -4452,6 +4569,7 @@ static int GlslIRRegisterGeometryInput(GlslLowerContext *context,
     GlslDecl *decl;
     GlslBinding *binding;
     GlslGeometryInputBinding *record;
+    GlslGeometryInputBinding *existing;
     char generatedName[256];
 
     if (param->semantic == 0 || param->symbol == NULL) {
@@ -4464,8 +4582,6 @@ static int GlslIRRegisterGeometryInput(GlslLowerContext *context,
         GlslRecordFailure(context, "geometry input semantic");
         return 0;
     }
-    if (!strcmp(interfaceName, "gl_in"))
-        return 1;
     if (!GlslIRType(context, param->type, &type, &param->loc)) {
         if (context->module->errorReason == NULL)
             GlslRecordFailure(context, "geometry input type");
@@ -4496,7 +4612,20 @@ static int GlslIRRegisterGeometryInput(GlslLowerContext *context,
             return 0;
         }
     }
-    decl = GlslNewDecl(context->module, storage, type, name);
+    decl = NULL;
+    for (existing = context->geometryInputs; existing != NULL;
+         existing = existing->next)
+    {
+        if (existing->declaration != NULL &&
+            existing->declaration->name != NULL &&
+            !strcmp(existing->declaration->name, name))
+        {
+            decl = existing->declaration;
+            break;
+        }
+    }
+    if (decl == NULL)
+        decl = GlslNewDecl(context->module, storage, type, name);
     record = (GlslGeometryInputBinding *) context->module->alloc(
         context->module->allocArg, sizeof(GlslGeometryInputBinding));
     if (decl == NULL || record == NULL) {
@@ -4504,10 +4633,12 @@ static int GlslIRRegisterGeometryInput(GlslLowerContext *context,
         return 0;
     }
     memset(record, 0, sizeof(GlslGeometryInputBinding));
-    decl->identity = param->symbol;
-    decl->interpolation = GlslInterpolationForType(&type);
-    GlslSetLoc(&decl->loc, &param->loc);
-    decl->sourceOrdinal = param->symbol->sourceOrdinal;
+    if (existing == NULL) {
+        decl->identity = param->symbol;
+        decl->interpolation = GlslInterpolationForType(&type);
+        GlslSetLoc(&decl->loc, &param->loc);
+        decl->sourceOrdinal = param->symbol->sourceOrdinal;
+    }
     record->source = param->symbol;
     record->declaration = decl;
     record->next = context->geometryInputs;
@@ -4531,6 +4662,7 @@ static GlslDecl *GlslIRGeometryOutputDecl(GlslLowerContext *context,
     GlslType type;
     GlslDecl *decl;
     GlslBinding *binding;
+    GlslGeometryOutputBinding *output;
 
     if (!GlslIRType(context, sourceType, &type, loc))
         return NULL;
@@ -4539,19 +4671,20 @@ static GlslDecl *GlslIRGeometryOutputDecl(GlslLowerContext *context,
         GlslRecordFailure(context, "geometry output interface");
         return NULL;
     }
-    if (!strncmp(name, "gl_", 3))
-        return GlslNewDecl(context->module, GLSL_STORAGE_BUILTIN,
-                           type, name);
-    for (binding = context->module->bindings; binding != NULL;
-         binding = binding->next)
+    for (output = context->geometryOutputs; output != NULL;
+         output = output->next)
     {
-        if (binding->isOutput && binding->interfaceKey != NULL &&
-            !strcmp(binding->interfaceKey, name))
-        {
-            return binding->declaration;
-        }
+        if (output->interfaceKey != NULL &&
+            !strcmp(output->interfaceKey, name))
+            return output->declaration;
     }
-    {
+    if (!strncmp(name, "gl_", 3)) {
+        decl = GlslNewDecl(context->module, GLSL_STORAGE_BUILTIN,
+                           type, name);
+        if (decl == NULL)
+            return NULL;
+        GlslSetLoc(&decl->loc, loc);
+    } else {
         char generatedName[256];
         const char *declName;
         const char *canonical;
@@ -4579,6 +4712,14 @@ static GlslDecl *GlslIRGeometryOutputDecl(GlslLowerContext *context,
         GlslAppendDecl(&context->module->globals, decl);
         GlslInsertBinding(&context->module->bindings, binding);
     }
+    output = (GlslGeometryOutputBinding *) context->module->alloc(
+        context->module->allocArg, sizeof(GlslGeometryOutputBinding));
+    if (output == NULL)
+        return NULL;
+    output->interfaceKey = name;
+    output->declaration = decl;
+    output->next = context->geometryOutputs;
+    context->geometryOutputs = output;
     return decl;
 }
 

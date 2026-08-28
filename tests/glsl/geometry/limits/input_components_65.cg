@@ -1,0 +1,8 @@
+POINT void main(AttribArray<float4x4> a : ATTRIB0,
+                AttribArray<float4x4> b : ATTRIB1,
+                AttribArray<float4x4> c : ATTRIB2,
+                AttribArray<float4x4> d : ATTRIB3,
+                AttribArray<int> vertexId : VERTEXID)
+{
+    emitVertex(a[0][0] : POSITION);
+}
