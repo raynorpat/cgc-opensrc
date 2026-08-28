@@ -71,6 +71,12 @@ typedef struct HlslLeafPlan_Rec {
     int span;
 } HlslLeafPlan;
 
+typedef struct HlslLeafPlanList_Rec {
+    HlslLeafPlan *head;
+    HlslLeafPlan *tail;
+    int count;
+} HlslLeafPlanList;
+
 static void *HlslBindAlloc(HlslModule *module, size_t size)
 {
     void *memory;
@@ -291,25 +297,24 @@ static const char *HlslIndexPublicPath(HlslModule *module,
     return path;
 } // HlslIndexPublicPath
 
-static int HlslAppendLeafPlan(HlslLeafPlan **list, HlslLeafPlan *plan)
+static int HlslAppendLeafPlan(HlslLeafPlanList *list, HlslLeafPlan *plan)
 {
-    HlslLeafPlan *current;
-
     if (list == NULL || plan == NULL)
         return 0;
-    if (*list == NULL) {
-        *list = plan;
-        return 1;
-    }
-    for (current = *list; current->next != NULL; current = current->next)
-        ;
-    current->next = plan;
+    if (list->count == INT_MAX)
+        return 0;
+    if (list->tail != NULL)
+        list->tail->next = plan;
+    else
+        list->head = plan;
+    list->tail = plan;
+    list->count++;
     return 1;
 } // HlslAppendLeafPlan
 
 static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
                           const char *path, int recursiveOffset,
-                          int defaultOffset, HlslLeafPlan **plans)
+                          int defaultOffset, HlslLeafPlanList *plans)
 {
     const HlslDecl *member;
     HlslLeafPlan *plan;
@@ -319,6 +324,7 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
     int componentCount;
     int elementComponents;
     int elementSpan;
+    int homogeneous;
     int i;
     int memberComponents;
     int memberSpan;
@@ -327,7 +333,8 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
     span = HlslTypeRegisterSpan(type);
     if (span <= 0)
         return 0;
-    if (!HlslHomogeneousBank(type, &homogeneousBank) &&
+    homogeneous = HlslHomogeneousBank(type, &homogeneousBank);
+    if (!homogeneous &&
         type->arraySize == 0 && type->base == HLSL_BASE_STRUCT)
     {
         for (member = type->members; member != NULL; member = member->next) {
@@ -351,8 +358,7 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
         }
         return 1;
     }
-    if (!HlslHomogeneousBank(type, &homogeneousBank) &&
-        type->arraySize > 0)
+    if (!homogeneous && type->arraySize > 0)
     {
         elementSpan = HlslTypeRegisterSpan(type->elementType);
         elementComponents = HlslTypeComponentCount(type->elementType);
@@ -371,6 +377,8 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
         }
         return 1;
     }
+    if (!homogeneous)
+        return 0;
 
     plan = (HlslLeafPlan *) HlslBindAlloc(module, sizeof(HlslLeafPlan));
     componentCount = HlslTypeComponentCount(type);
@@ -577,6 +585,61 @@ static int HlslReservePlan(HlslModule *module,
     HlslMarkRange(used, first, plan->span);
     return 1;
 } // HlslReservePlan
+
+static int HlslPreflightImplicitType(HlslModule *module,
+                                     const HlslProfileDesc *profile,
+                                     const HlslBinding *binding,
+                                     HlslBankState *state,
+                                     const HlslType *type)
+{
+    const HlslDecl *member;
+    HlslLeafPlan plan;
+    HlslRegisterBank bank;
+    int i;
+
+    if (HlslHomogeneousBank(type, &bank)) {
+        memset(&plan, 0, sizeof(plan));
+        plan.bank = bank;
+        plan.span = HlslTypeRegisterSpan(type);
+        return plan.span > 0 &&
+               HlslReservePlan(module, profile, binding, state, &plan, 0);
+    }
+    if (type->arraySize > 0) {
+        for (i = 0; i < type->arraySize; i++) {
+            if (!HlslPreflightImplicitType(module, profile, binding, state,
+                                           type->elementType))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslPreflightImplicitType(module, profile, binding, state,
+                                           &member->type))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    return HlslBindFailure(module, binding, HLSL_ERROR_UNSUPPORTED_TYPE,
+                           binding->name);
+} // HlslPreflightImplicitType
+
+static int HlslPreflightImplicitBinding(HlslModule *module,
+                                        const HlslProfileDesc *profile,
+                                        const HlslBinding *binding)
+{
+    HlslBankState state;
+
+    /* Each leaf consumes at least one register, so this walk fails within
+       the active banks' finite capacity without materializing leaf plans. */
+    HlslLoadBankState(module, &state);
+    return HlslPreflightImplicitType(module, profile, binding, &state,
+                                     &binding->type);
+} // HlslPreflightImplicitBinding
 
 static char *HlslGlobalSourceName(HlslModule *module, const char *path)
 {
@@ -823,17 +886,20 @@ int HlslAllocateOneBinding(HlslModule *module,
                            HlslBinding *binding)
 {
     HlslBankState state;
+    HlslLeafPlanList plans;
     HlslName *savedNames;
-    HlslLeafPlan *plans;
     HlslLeafPlan *plan;
     HlslBinding *records;
     HlslBinding *record;
     HlslBinding *nextRecord;
     HlslDecl *globals;
     const char *publicName;
+    HlslRegisterBank homogeneousBank;
     int defaultComponents;
     int explicitRegno;
+    int homogeneous;
     int planCount;
+    int typeSpan;
 
     if (module == NULL || profile == NULL || profile->limits == NULL ||
         binding == NULL || binding->name == NULL ||
@@ -846,7 +912,8 @@ int HlslAllocateOneBinding(HlslModule *module,
     if (publicName == NULL)
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "invalid HLSL public binding name");
-    if (HlslTypeRegisterSpan(&binding->type) <= 0)
+    typeSpan = HlslTypeRegisterSpan(&binding->type);
+    if (typeSpan <= 0)
         return HlslBindFailure(module, binding,
                                HLSL_ERROR_UNSUPPORTED_TYPE, binding->name);
     defaultComponents = HlslTypeComponentCount(&binding->type);
@@ -859,33 +926,38 @@ int HlslAllocateOneBinding(HlslModule *module,
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "invalid HLSL binding default");
     }
-    plans = NULL;
+    if (binding->hasExplicitRegister) {
+        homogeneous = HlslHomogeneousBank(&binding->type,
+                                           &homogeneousBank);
+        if (binding->physical.bank == HLSL_REGISTER_NONE ||
+            (homogeneous && binding->physical.span != 0 &&
+             binding->physical.span != typeSpan))
+        {
+            return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
+                                   binding->name);
+        }
+        if (!homogeneous ||
+            homogeneousBank != binding->physical.bank)
+        {
+            return HlslBindFailure(module, binding,
+                                   HLSL_ERROR_UNSUPPORTED_TYPE,
+                                   binding->name);
+        }
+    } else if (!HlslPreflightImplicitBinding(module, profile, binding)) {
+        return 0;
+    }
+
+    memset(&plans, 0, sizeof(plans));
     if (!HlslPlanLeaves(module, &binding->type, publicName, 0, 0,
                         &plans))
     {
         return HlslBindFailure(module, binding,
                                HLSL_ERROR_UNSUPPORTED_TYPE, binding->name);
     }
-    planCount = 0;
-    for (plan = plans; plan != NULL; plan = plan->next)
-        planCount++;
-    if (binding->hasExplicitRegister) {
-        if (binding->physical.bank == HLSL_REGISTER_NONE ||
-            (binding->physical.span != 0 && planCount == 1 &&
-             binding->physical.span != plans->span))
-        {
-            return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
-                                   binding->name);
-        }
-        for (plan = plans; plan != NULL; plan = plan->next) {
-            if (plan->bank != binding->physical.bank)
-                return HlslBindFailure(module, binding,
-                    HLSL_ERROR_UNSUPPORTED_TYPE, binding->name);
-        }
-    }
+    planCount = plans.count;
 
     HlslLoadBankState(module, &state);
-    for (plan = plans; plan != NULL; plan = plan->next) {
+    for (plan = plans.head; plan != NULL; plan = plan->next) {
         if (binding->hasExplicitRegister &&
             binding->physical.regno < 0)
         {
@@ -908,7 +980,9 @@ int HlslAllocateOneBinding(HlslModule *module,
     records = NULL;
     globals = NULL;
     savedNames = module->names;
-    if (!HlslBuildLeafRecords(module, binding, plans, &records, &globals)) {
+    if (!HlslBuildLeafRecords(module, binding, plans.head, &records,
+                              &globals))
+    {
         module->names = savedNames;
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "HLSL binding allocation");

@@ -93,6 +93,22 @@ static void *InitializerFaultAlloc(void *arg, size_t size)
     return calloc(1, size);
 }
 
+typedef struct LimitedAllocState_Rec {
+    int calls;
+    int limit;
+} LimitedAllocState;
+
+static void *LimitedAlloc(void *arg, size_t size)
+{
+    LimitedAllocState *state;
+
+    state = (LimitedAllocState *) arg;
+    state->calls++;
+    if (state->calls > state->limit)
+        return NULL;
+    return calloc(1, size);
+}
+
 static void TestReservedNames(void)
 {
     static const char *explicitReservedNames[] = {
@@ -1099,6 +1115,80 @@ static void TestBindingDiagnosticArithmetic(void)
     assert(module.resourceUsed == INT_MAX);
 }
 
+static void TestOversizedMixedArrayPreflight(void)
+{
+    HlslModule module;
+    HlslBinding binding;
+    HlslBinding bindingBefore;
+    HlslProfileDesc profile;
+    HlslLimits limits;
+    HlslDecl floatMember;
+    HlslDecl intMember;
+    HlslType elementType;
+    HlslType arrayType;
+    LimitedAllocState allocState;
+    unsigned char cBefore[HLSL_MAX_FLOAT_CONSTANTS];
+    unsigned char iBefore[HLSL_MAX_INT_CONSTANTS];
+    unsigned char bBefore[HLSL_MAX_BOOL_CONSTANTS];
+    unsigned char sBefore[HLSL_MAX_SAMPLERS];
+
+    allocState.calls = 0;
+    allocState.limit = 32;
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, LimitedAlloc, &allocState);
+    profile = HlslProfile_hlslv;
+    limits = *profile.limits;
+    limits.floatConstants = 1;
+    limits.intConstants = 1;
+    profile.limits = &limits;
+
+    memset(&floatMember, 0, sizeof(floatMember));
+    memset(&intMember, 0, sizeof(intMember));
+    floatMember.name = "weight";
+    floatMember.type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    floatMember.next = &intMember;
+    intMember.name = "index";
+    intMember.type = HlslNumericType(HLSL_BASE_INT, 1);
+    memset(&elementType, 0, sizeof(elementType));
+    elementType.base = HLSL_BASE_STRUCT;
+    elementType.structName = "HugeMixedElement";
+    elementType.members = &floatMember;
+    memset(&arrayType, 0, sizeof(arrayType));
+    arrayType.arraySize = INT_MAX / 2;
+    arrayType.elementType = &elementType;
+    memset(&binding, 0, sizeof(binding));
+    binding.storage = HLSL_STORAGE_UNIFORM;
+    binding.type = arrayType;
+    binding.name = "internalHugeMixed";
+    binding.publicName = "publicHugeMixed";
+    binding.loc.file = 11;
+    binding.loc.line = 52;
+    bindingBefore = binding;
+    memcpy(cBefore, module.cRegisterUsed, sizeof(cBefore));
+    memcpy(iBefore, module.iRegisterUsed, sizeof(iBefore));
+    memcpy(bBefore, module.bRegisterUsed, sizeof(bBefore));
+    memcpy(sBefore, module.sRegisterUsed, sizeof(sBefore));
+
+    assert(!HlslAllocateOneBinding(&module, &profile, &binding));
+    if (module.errorKind != HLSL_ERROR_RESOURCE_LIMIT) {
+        fprintf(stderr,
+                "oversized mixed array: error %d after %d allocations\n",
+                module.errorKind, allocState.calls);
+        exit(1);
+    }
+    assert(!strcmp(module.resourceName, "c"));
+    assert(module.resourceUsed == 2);
+    assert(module.resourceAvailable == 1);
+    assert(module.errorLoc.file == 11 && module.errorLoc.line == 52);
+    assert(allocState.calls == 0);
+    assert(!memcmp(&binding, &bindingBefore, sizeof(binding)));
+    assert(!memcmp(module.cRegisterUsed, cBefore, sizeof(cBefore)));
+    assert(!memcmp(module.iRegisterUsed, iBefore, sizeof(iBefore)));
+    assert(!memcmp(module.bRegisterUsed, bBefore, sizeof(bBefore)));
+    assert(!memcmp(module.sRegisterUsed, sBefore, sizeof(sBefore)));
+    assert(module.names == NULL && module.globals == NULL &&
+           module.allocatedBindings == NULL);
+}
+
 static void TestDefaultValidationIsTransactional(void)
 {
     HlslModule module;
@@ -1299,6 +1389,7 @@ int main(int argc, char **argv)
     TestCyclicBindingListIsRejected();
     TestAggregateBankClassification();
     TestBindingDiagnosticArithmetic();
+    TestOversizedMixedArrayPreflight();
     TestDefaultValidationIsTransactional();
     TestPublicBindingNames();
     return 0;
