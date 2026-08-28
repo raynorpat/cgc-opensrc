@@ -45,13 +45,161 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "slglobals.h"
 #include "hlsl_hal.h"
 
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
+#define HLSL_SEMANTIC_NAME_MAX 128
+
+/*
+ * HlslParseSemantic() - Split a semantic name into its root and optional
+ *         decimal index.  An omitted index denotes zero.  The caller owns
+ *         all storage; malformed, overflowing, or truncated names fail.
+ */
+
+int HlslParseSemantic(const char *semantic, char *root, size_t rootSize,
+                      int *index)
+{
+    size_t length, rootLength, current;
+    int value, digit;
+
+    if (semantic == NULL || root == NULL || rootSize == 0 || index == NULL)
+        return 0;
+    length = strlen(semantic);
+    if (length == 0)
+        return 0;
+    rootLength = length;
+    while (rootLength > 0 && semantic[rootLength - 1] >= '0' &&
+           semantic[rootLength - 1] <= '9')
+    {
+        rootLength--;
+    }
+    if (rootLength == 0 || rootLength >= rootSize)
+        return 0;
+
+    value = 0;
+    for (current = rootLength; current < length; current++) {
+        digit = semantic[current] - '0';
+        if (value > (INT_MAX - digit) / 10)
+            return 0;
+        value = value * 10 + digit;
+    }
+    memcpy(root, semantic, rootLength);
+    root[rootLength] = '\0';
+    *index = value;
+    return 1;
+} // HlslParseSemantic
+
+static int HlslUpperSemantic(const char *source, char *target, size_t size)
+{
+    size_t index;
+    char ch;
+
+    if (source == NULL || target == NULL || size == 0)
+        return 0;
+    for (index = 0; source[index] != '\0'; index++) {
+        if (index + 1 >= size)
+            return 0;
+        ch = source[index];
+        if (ch >= 'a' && ch <= 'z')
+            ch = (char) (ch - 'a' + 'A');
+        target[index] = ch;
+    }
+    if (index == 0)
+        return 0;
+    target[index] = '\0';
+    return 1;
+} // HlslUpperSemantic
+
+/*
+ * HlslCanonicalSemantic() - Return the stage-and-direction canonical
+ *         connector spelling for a source semantic, or NULL when no legal
+ *         DirectX 9 interface location exists.  Returned strings are owned
+ *         by the immutable stage descriptor.
+ */
+
+const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
+                                  const char *semantic, int IsOutVal)
+{
+    const HlslSemanticDesc *semantics;
+    const HlslSemanticAlias *aliases;
+    ConnectorRegisters *registers;
+    const char *candidate;
+    char upper[HLSL_SEMANTIC_NAME_MAX];
+    char root[HLSL_SEMANTIC_NAME_MAX];
+    char registerRoot[HLSL_SEMANTIC_NAME_MAX];
+    int numSemantics, numAliases, numRegisters;
+    int semanticIndex, registerIndex, i, j;
+
+    if (profile == NULL ||
+        (profile->stage != HLSL_STAGE_VERTEX &&
+         profile->stage != HLSL_STAGE_PIXEL) ||
+        !HlslUpperSemantic(semantic, upper, sizeof(upper)))
+    {
+        return NULL;
+    }
+    if (IsOutVal) {
+        semantics = profile->outputSemantics;
+        numSemantics = profile->numOutputSemantics;
+        aliases = profile->outputAliases;
+        numAliases = profile->numOutputAliases;
+        registers = profile->outputRegs;
+        numRegisters = profile->numOutputRegs;
+    } else {
+        semantics = profile->inputSemantics;
+        numSemantics = profile->numInputSemantics;
+        aliases = profile->inputAliases;
+        numAliases = profile->numInputAliases;
+        registers = profile->inputRegs;
+        numRegisters = profile->numInputRegs;
+    }
+    candidate = upper;
+    for (i = 0; i < numAliases; i++) {
+        if (!strcmp(upper, aliases[i].source)) {
+            candidate = aliases[i].target;
+            break;
+        }
+    }
+    if (!HlslParseSemantic(candidate, root, sizeof(root), &semanticIndex))
+        return NULL;
+    for (i = 0; i < numSemantics; i++) {
+        if (strcmp(root, semantics[i].root) ||
+            semanticIndex < semantics[i].firstIndex ||
+            semanticIndex >= semantics[i].firstIndex + semantics[i].count)
+        {
+            continue;
+        }
+        for (j = 0; j < numRegisters; j++) {
+            if (HlslParseSemantic(registers[j].sname, registerRoot,
+                                  sizeof(registerRoot), &registerIndex) &&
+                !strcmp(registerRoot, root) &&
+                registerIndex == semanticIndex)
+            {
+                return registers[j].sname;
+            }
+        }
+        return NULL;
+    }
+    return NULL;
+} // HlslCanonicalSemantic
+
+#if !defined(HLSL_CANONICALIZATION_ONLY)
+
+#define HLSL_MAX_INTERFACE_REGISTERS 32
+
+typedef struct HlslHALData_Rec {
+    const HlslProfileDesc *profile;
+    Binding *inputUsed[HLSL_MAX_INTERFACE_REGISTERS];
+    Binding *outputUsed[HLSL_MAX_INTERFACE_REGISTERS];
+    HlslErrorKind errorKind;
+    const char *errorReason;
+    SourceLoc errorLoc;
+} HlslHALData;
 
 // Static HAL callbacks:
 static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile);
@@ -66,12 +214,30 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group);
 static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, Binding *fBind);
 static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb, int semantic,
                                     Binding *fBind, int IsOutVal);
+static int BindVaryingUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, int name,
+                                   int semantic, Binding *fBind,
+                                   int IsOutVal);
 static int PrintCodeHeader_hlsl(FILE *out);
 static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program);
 static void *HlslCompilerAlloc(void *arg, size_t size);
 static int ReportHlslFailure(const HlslModule *module,
                              const HlslProfileDesc *profile,
                              const Symbol *program);
+
+static HlslHALData *GetHlslData(void)
+{
+    if (Cg == NULL || Cg->theHAL == NULL)
+        return NULL;
+    return (HlslHALData *) Cg->theHAL->localData;
+} // GetHlslData
+
+static const HlslProfileDesc *GetHlslProfile(void)
+{
+    HlslHALData *data;
+
+    data = GetHlslData();
+    return data != NULL ? data->profile : NULL;
+} // GetHlslProfile
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////// Profile Registration //////////////////////////////
@@ -96,6 +262,16 @@ int RegisterProfiles_hlsl(void)
 
 static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
 {
+    HlslHALData *data;
+
+    data = (HlslHALData *) malloc(sizeof(HlslHALData));
+    if (data == NULL) {
+        FatalError("malloc failed");
+        return 0;
+    }
+    memset(data, 0, sizeof(HlslHALData));
+    data->profile = profile;
+
     // Override only the callbacks the HLSL profiles need.
     // The default HAL (hal.c) supplies the others.
     fHAL->FreeHAL = FreeHAL_hlsl;
@@ -108,6 +284,7 @@ static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
     fHAL->CheckInternalFunction = CheckInternalFunction_hlsl;
     fHAL->BindUniformUnbound = BindUniformUnbound_hlsl;
     fHAL->BindVaryingSemantic = BindVaryingSemantic_hlsl;
+    fHAL->BindVaryingUnbound = BindVaryingUnbound_hlsl;
     fHAL->PrintCodeHeader = PrintCodeHeader_hlsl;
     fHAL->GenerateCode = GenerateCode_hlsl;
 
@@ -116,8 +293,14 @@ static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
     fHAL->version = VERSION_STRING_HLSL;
     fHAL->comment = "//";
 
-    // Point to the stage descriptor:
-    fHAL->localData = (void *) profile;
+    // Point to per-compilation state and expose the stage connectors:
+    fHAL->localData = data;
+    fHAL->incid = profile->inputCid;
+    fHAL->inputCRegs = profile->inputRegs;
+    fHAL->numInputCRegs = profile->numInputRegs;
+    fHAL->outcid = profile->outputCid;
+    fHAL->outputCRegs = profile->outputRegs;
+    fHAL->numOutputCRegs = profile->numOutputRegs;
 
     return 1;
 } // InitHAL_hlsl
@@ -128,28 +311,46 @@ static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
 
 static int FreeHAL_hlsl(slHAL *fHAL)
 {
-    (void) fHAL;
+    free(fHAL->localData);
+    fHAL->localData = NULL;
     return 1;
 } // FreeHAL_hlsl
 
 /*
- * RegisterNames_hlsl() - Register atoms for connectors and connector registers.
- * For the skeleton, there are no connectors yet, so this is a no-op.
- * Task 3 replaces this with real atom registration.
+ * RegisterNames_hlsl() - Register every connector, canonical semantic, and
+ *         accepted source alias as an atom.
  */
 
 static int RegisterNames_hlsl(slHAL *fHAL)
 {
+    HlslHALData *data;
     const HlslProfileDesc *profile;
     int i, j;
 
-    profile = (const HlslProfileDesc *) fHAL->localData;
+    data = (HlslHALData *) fHAL->localData;
+    profile = data->profile;
     for (i = 0; i < profile->numConnectors; i++) {
         ConnectorDescriptor *conn = &profile->connectors[i];
         conn->name = AddAtom(atable, conn->sname);
         for (j = 0; j < conn->numregs; j++)
             conn->registers[j].name = AddAtom(atable, conn->registers[j].sname);
     }
+    for (i = 0; i < profile->numInputSemantics; i++)
+        AddAtom(atable, profile->inputSemantics[i].root);
+    for (i = 0; i < profile->numOutputSemantics; i++)
+        AddAtom(atable, profile->outputSemantics[i].root);
+    for (i = 0; i < profile->numInputAliases; i++) {
+        AddAtom(atable, profile->inputAliases[i].source);
+        AddAtom(atable, profile->inputAliases[i].target);
+    }
+    for (i = 0; i < profile->numOutputAliases; i++) {
+        AddAtom(atable, profile->outputAliases[i].source);
+        AddAtom(atable, profile->outputAliases[i].target);
+    }
+    assert(fHAL->GetConnectorRegister(profile->inputCid, 1, -1, NULL) ==
+           profile->numInputRegs);
+    assert(fHAL->GetConnectorRegister(profile->outputCid, 1, -1, NULL) ==
+           profile->numOutputRegs);
     return 1;
 } // RegisterNames_hlsl
 
@@ -162,7 +363,7 @@ static int GetConnectorID_hlsl(int name)
     int i;
     const HlslProfileDesc *profile;
 
-    profile = (const HlslProfileDesc *) Cg->theHAL->localData;
+    profile = GetHlslProfile();
     for (i = 0; i < profile->numConnectors; i++)
         if (name == profile->connectors[i].name)
             return profile->connectors[i].cid;
@@ -179,7 +380,7 @@ static int GetConnectorAtom_hlsl(int name)
     const HlslProfileDesc *profile;
     const ConnectorDescriptor *conn;
 
-    profile = (const HlslProfileDesc *) Cg->theHAL->localData;
+    profile = GetHlslProfile();
     conn = LookupConnectorHAL(profile->connectors, name, profile->numConnectors);
     return conn ? conn->name : 0;
 } // GetConnectorAtom_hlsl
@@ -194,7 +395,7 @@ static int GetConnectorUses_hlsl(int cid, int pid)
     const ConnectorDescriptor *conn;
 
     (void) pid;
-    profile = (const HlslProfileDesc *) Cg->theHAL->localData;
+    profile = GetHlslProfile();
     conn = LookupConnectorHAL(profile->connectors, cid, profile->numConnectors);
     return conn ? conn->properties : CONNECTOR_IS_USELESS;
 } // GetConnectorUses_hlsl
@@ -210,8 +411,7 @@ static int GetConnectorRegister_hlsl(int cid, int ByIndex, int ratom, Binding *f
     ConnectorRegisters *regs;
     int i;
 
-    (void) ByIndex;
-    profile = (const HlslProfileDesc *) Cg->theHAL->localData;
+    profile = GetHlslProfile();
     conn = LookupConnectorHAL(profile->connectors, cid, profile->numConnectors);
     if (!conn)
         return 0;
@@ -220,13 +420,22 @@ static int GetConnectorRegister_hlsl(int cid, int ByIndex, int ratom, Binding *f
     if (!regs)
         return 0;
 
-    for (i = 0; i < conn->numregs; i++) {
-        if (ratom == regs[i].name) {
-            SetSymbolConnectorBindingHAL(fBind, &regs[i]);
-            return 1;
+    if (ByIndex) {
+        if (ratom < 0)
+            return conn->numregs;
+        i = ratom;
+    } else {
+        for (i = 0; i < conn->numregs; i++) {
+            if (ratom == regs[i].name)
+                break;
         }
     }
-    return 0;
+    if (fBind == NULL)
+        return 0;
+    if (i < 0 || i >= conn->numregs)
+        return 0;
+    SetSymbolConnectorBindingHAL(fBind, &regs[i]);
+    return 1;
 } // GetConnectorRegister_hlsl
 
 /*
@@ -273,23 +482,204 @@ static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb,
     return 1;
 } // BindUniformUnbound_hlsl
 
+static void RecordHlslHALError(HlslHALData *data, SourceLoc *loc,
+                               HlslErrorKind kind, const char *reason)
+{
+    if (data == NULL || data->errorKind != HLSL_ERROR_NONE)
+        return;
+    data->errorKind = kind;
+    data->errorReason = reason;
+    if (loc != NULL)
+        data->errorLoc = *loc;
+} // RecordHlslHALError
+
+static int ReportHlslInterfaceError(SourceLoc *loc, HlslErrorKind kind,
+                                    const char *reason)
+{
+    HlslHALData *data;
+
+    data = GetHlslData();
+    RecordHlslHALError(data, loc, kind, reason);
+    if (kind == HLSL_ERROR_INTERFACE_CONFLICT)
+        SemanticError(loc, ERROR_S_HLSL_INTERFACE_CONFLICT, reason);
+    else
+        SemanticError(loc, ERROR_S_HLSL_SEMANTIC, reason);
+    return 0;
+} // ReportHlslInterfaceError
+
+static const HlslSemanticDesc *FindHlslSemanticDesc(
+    const HlslProfileDesc *profile, const char *canonical, int IsOutVal)
+{
+    const HlslSemanticDesc *semantics;
+    char root[HLSL_SEMANTIC_NAME_MAX];
+    int count, index, i;
+
+    if (!HlslParseSemantic(canonical, root, sizeof(root), &index))
+        return NULL;
+    if (IsOutVal) {
+        semantics = profile->outputSemantics;
+        count = profile->numOutputSemantics;
+    } else {
+        semantics = profile->inputSemantics;
+        count = profile->numInputSemantics;
+    }
+    for (i = 0; i < count; i++) {
+        if (!strcmp(root, semantics[i].root) &&
+            index >= semantics[i].firstIndex &&
+            index < semantics[i].firstIndex + semantics[i].count)
+        {
+            return &semantics[i];
+        }
+    }
+    return NULL;
+} // FindHlslSemanticDesc
+
+static ConnectorRegisters *FindHlslSemanticRegister(
+    const HlslProfileDesc *profile, const char *canonical, int IsOutVal,
+    int *slot)
+{
+    ConnectorRegisters *registers;
+    int count, i;
+
+    if (IsOutVal) {
+        registers = profile->outputRegs;
+        count = profile->numOutputRegs;
+    } else {
+        registers = profile->inputRegs;
+        count = profile->numInputRegs;
+    }
+    for (i = 0; i < count; i++) {
+        if (!strcmp(registers[i].sname, canonical)) {
+            *slot = i;
+            return &registers[i];
+        }
+    }
+    return NULL;
+} // FindHlslSemanticRegister
+
+static int HlslSemanticTypeIsValid(const HlslSemanticDesc *semantic,
+                                   const Type *type)
+{
+    int len, isScalar;
+
+    isScalar = IsScalar(type);
+    if (isScalar)
+        len = 1;
+    else if (!IsVector(type, &len))
+        return 0;
+    if (GetBase(type) != TYPE_BASE_FLOAT)
+        return 0;
+
+    switch (semantic->interfaceKind) {
+    case HLSL_INTERFACE_POSITION:
+    case HLSL_INTERFACE_PIXEL_POSITION:
+    case HLSL_INTERFACE_COLOR:
+        return !isScalar && len == semantic->width;
+    case HLSL_INTERFACE_POINT_SIZE:
+    case HLSL_INTERFACE_FACE:
+    case HLSL_INTERFACE_DEPTH:
+        return isScalar && semantic->width == 1;
+    case HLSL_INTERFACE_VARYING:
+    default:
+        return len <= semantic->width;
+    }
+} // HlslSemanticTypeIsValid
+
 /*
- * BindVaryingSemantic_hlsl()
+ * BindVaryingSemantic_hlsl() - Canonicalize and claim one stage interface
+ *         location transactionally.  Every failure is reported here so the
+ *         common semantic layer's error-count guards suppress fallbacks.
  */
 
 static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb,
                                     int semantic, Binding *fBind,
                                     int IsOutVal)
 {
-    // Skeleton: accept nothing; report unknown semantic.
-    // Task 3 implements the full table.
-    (void) loc;
-    (void) fSymb;
+    HlslHALData *data;
+    const HlslProfileDesc *profile;
+    const HlslSemanticDesc *descriptor;
+    ConnectorRegisters *reg;
+    Binding **used;
+    const char *source, *canonical;
+    int slot;
+
+    data = GetHlslData();
+    profile = data != NULL ? data->profile : NULL;
+    source = GetAtomString(atable, semantic);
+    if (source == NULL)
+        source = "unknown semantic";
+    canonical = HlslCanonicalSemantic(profile, source, IsOutVal);
+    if (canonical == NULL) {
+        /* A varying-domain global has no declared direction.  The common
+         * front end probes input first, then output; keep only that known
+         * opposite-direction probe silent. */
+        if (fBind != NULL && fBind->none.gname == 0 &&
+            HlslCanonicalSemantic(profile, source, !IsOutVal) != NULL)
+        {
+            return 0;
+        }
+        return ReportHlslInterfaceError(loc, HLSL_ERROR_SEMANTIC, source);
+    }
+    descriptor = FindHlslSemanticDesc(profile, canonical, IsOutVal);
+    reg = FindHlslSemanticRegister(profile, canonical, IsOutVal, &slot);
+    if (fSymb == NULL || fBind == NULL || descriptor == NULL || reg == NULL ||
+        slot < 0 || slot >= HLSL_MAX_INTERFACE_REGISTERS ||
+        !HlslSemanticTypeIsValid(descriptor, fSymb->type))
+    {
+        return ReportHlslInterfaceError(loc, HLSL_ERROR_SEMANTIC, source);
+    }
+
+    used = IsOutVal ? data->outputUsed : data->inputUsed;
+    if (used[slot] != NULL && used[slot] != fBind) {
+        return ReportHlslInterfaceError(loc,
+                                        HLSL_ERROR_INTERFACE_CONFLICT,
+                                        canonical);
+    }
+
+    used[slot] = fBind;
+    fBind->conn.kind = BK_CONNECTOR;
+    fBind->conn.rname = reg->name;
+    fBind->conn.regno = reg->regno;
+    fBind->conn.base = reg->base;
+    fBind->conn.size = descriptor->width;
+    fBind->conn.properties |= BIND_IS_BOUND;
+    if (descriptor->properties & SEM_VARYING)
+        fBind->conn.properties |= BIND_VARYING;
+    if (descriptor->properties & SEM_IN)
+        fBind->conn.properties |= BIND_INPUT;
+    if (descriptor->properties & SEM_OUT)
+        fBind->conn.properties |= BIND_OUTPUT;
+    if (descriptor->properties & SEM_HIDDEN)
+        fBind->conn.properties |= BIND_HIDDEN;
+    if (descriptor->properties & SEM_REQUIRED)
+        fBind->conn.properties |= BIND_WRITE_REQUIRED;
+    fSymb->properties |= SYMB_IS_CONNECTOR_REGISTER |
+                         SYMB_CONNECTOR_CAN_READ |
+                         SYMB_CONNECTOR_CAN_WRITE;
+    return 1;
+} // BindVaryingSemantic_hlsl
+
+/*
+ * BindVaryingUnbound_hlsl() - HLSL public interface members always require
+ *         an explicit semantic.
+ */
+
+static int BindVaryingUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, int name,
+                                   int semantic, Binding *fBind,
+                                   int IsOutVal)
+{
+    const char *source;
+
     (void) semantic;
     (void) fBind;
     (void) IsOutVal;
-    return 0;
-} // BindVaryingSemantic_hlsl
+    source = fSymb != NULL ? GetAtomString(atable, fSymb->name) : NULL;
+    if (source == NULL)
+        source = GetAtomString(atable, name);
+    if (source == NULL)
+        source = "anonymous interface member";
+    return ReportHlslInterfaceError(loc, HLSL_ERROR_SEMANTIC, source);
+} // BindVaryingUnbound_hlsl
 
 /*
  * PrintCodeHeader_hlsl() - Write nothing; header is part of codegen.
@@ -390,7 +780,7 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
     HlslModule module;
     const HlslProfileDesc *profile;
 
-    profile = (const HlslProfileDesc *) Cg->theHAL->localData;
+    profile = GetHlslProfile();
     HlslInitModule(&module, profile->stage, HlslCompilerAlloc,
                    CurrentScope->pool);
     if (!HlslLowerProgram(&module, profile, loc, fScope, program) ||
@@ -579,3 +969,5 @@ int InitHAL_hlslf(slHAL *fHAL)
 ///////////////////////////////////////////////////////////////////////////////
 ////////////////////////// End of hlsl_hal.c //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+
+#endif // !defined(HLSL_CANONICALIZATION_ONLY)

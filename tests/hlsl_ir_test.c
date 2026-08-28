@@ -648,6 +648,8 @@ int main(int argc, char **argv)
     HlslType scalar;
     HlslType vector;
     HlslType matrix;
+    char semanticRoot[32];
+    int semanticIndex;
     int firstIdentity;
     int secondIdentity;
     int cfloatIdentity;
@@ -686,6 +688,28 @@ int main(int argc, char **argv)
     assert(HlslIsReservedName("samplerRECT"));
     assert(HlslIsReservedName("cfloat"));
     assert(HlslIsReservedName("cint"));
+    assert(HlslParseSemantic("TEXCOORD15", semanticRoot,
+                             sizeof(semanticRoot), &semanticIndex));
+    assert(!strcmp(semanticRoot, "TEXCOORD") && semanticIndex == 15);
+    assert(HlslParseSemantic("VPOS", semanticRoot,
+                             sizeof(semanticRoot), &semanticIndex));
+    assert(!strcmp(semanticRoot, "VPOS") && semanticIndex == 0);
+    assert(!HlslParseSemantic("", semanticRoot, sizeof(semanticRoot),
+                              &semanticIndex));
+    assert(!HlslParseSemantic("TEXCOORD0", semanticRoot, 4,
+                              &semanticIndex));
+    assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
+        "HPOS", 1), "POSITION0"));
+    assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
+        "ATTR7", 0), "TEXCOORD7"));
+    assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
+        "COL1", 1), "COLOR1"));
+    assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslf,
+        "WPOS", 0), "VPOS"));
+    assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslf,
+        "FACE", 0), "VFACE"));
+    assert(HlslCanonicalSemantic(&HlslProfile_hlslf,
+        "NORMAL0", 0) == NULL);
     assert(!strcmp(HlslAllocateSymbolName(&module, &cfloatIdentity,
                                           "cfloat"), "cg_cfloat"));
     assert(!strcmp(HlslAllocateSymbolName(&module, &cintIdentity,

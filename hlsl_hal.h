@@ -72,6 +72,30 @@ typedef struct HlslLimits_Rec {
     int colorOutputs;
 } HlslLimits;
 
+typedef enum HlslInterface_Enum {
+    HLSL_INTERFACE_VARYING,
+    HLSL_INTERFACE_POSITION,
+    HLSL_INTERFACE_POINT_SIZE,
+    HLSL_INTERFACE_PIXEL_POSITION,
+    HLSL_INTERFACE_FACE,
+    HLSL_INTERFACE_COLOR,
+    HLSL_INTERFACE_DEPTH
+} HlslInterface;
+
+typedef struct HlslSemanticDesc_Rec {
+    const char *root;
+    int firstIndex;
+    int count;
+    int properties;
+    int width;
+    HlslInterface interfaceKind;
+} HlslSemanticDesc;
+
+typedef struct HlslSemanticAlias_Rec {
+    const char *source;
+    const char *target;
+} HlslSemanticAlias;
+
 struct HlslProfileDesc_Rec {
     HlslStage stage;
     const char *name;
@@ -81,6 +105,14 @@ struct HlslProfileDesc_Rec {
     int outputCid;
     ConnectorDescriptor *connectors;
     int numConnectors;
+    const HlslSemanticDesc *inputSemantics;
+    int numInputSemantics;
+    const HlslSemanticAlias *inputAliases;
+    int numInputAliases;
+    const HlslSemanticDesc *outputSemantics;
+    int numOutputSemantics;
+    const HlslSemanticAlias *outputAliases;
+    int numOutputAliases;
     ConnectorRegisters *inputRegs;
     int numInputRegs;
     ConnectorRegisters *outputRegs;
@@ -96,6 +128,12 @@ extern const HlslProfileDesc HlslProfile_hlslf;
 int RegisterProfiles_hlsl(void);
 int InitHAL_hlslv(slHAL *hal);
 int InitHAL_hlslf(slHAL *hal);
+
+// Interface semantic helpers:
+int HlslParseSemantic(const char *semantic, char *root, size_t rootSize,
+    int *index);
+const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
+    const char *semantic, int IsOutVal);
 
 // HLSL backend phases:
 int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,

@@ -51,6 +51,9 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "hlsl_hal.h"
 
+#define NUMELS(x) ((int) (sizeof(x) / sizeof((x)[0])))
+#define FLT TYPE_BASE_FLOAT
+
 // Pixel Shader Model 3 limits:
 // 10 input registers, 5 output registers (4 colors + depth), 224 float constants,
 // 16 integer constants, 16 bool constants, 16 samplers, 4 color outputs.
@@ -64,18 +67,78 @@ static const HlslLimits limits_hlslf = {
     4     // colorOutputs
 };
 
-// Skeleton: zero registers; Task 3 fills the complete connectors.
-static ConnectorRegisters inputCRegs_hlslf[] = { { NULL, 0, 0, 0, 0, 0 } };
-static ConnectorRegisters outputCRegs_hlslf[] = { { NULL, 0, 0, 0, 0, 0 } };
-#define INPUT_REGS_hlslf_NUM 0
-#define OUTPUT_REGS_hlslf_NUM 0
+static ConnectorRegisters inputCRegs_hlslf[] = {
+    { "COLOR0",    0, FLT,  0, 4, REG_RESERVED | REG_INPUT },
+    { "COLOR1",    0, FLT,  1, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD0", 0, FLT,  2, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD1", 0, FLT,  3, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD2", 0, FLT,  4, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD3", 0, FLT,  5, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD4", 0, FLT,  6, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD5", 0, FLT,  7, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD6", 0, FLT,  8, 4, REG_RESERVED | REG_INPUT },
+    { "TEXCOORD7", 0, FLT,  9, 4, REG_RESERVED | REG_INPUT },
+    { "FOG0",      0, FLT, 10, 1, REG_RESERVED | REG_INPUT },
+    { "VPOS",      0, FLT, 11, 2, REG_RESERVED | REG_INPUT },
+    { "VFACE",     0, FLT, 12, 1, REG_RESERVED | REG_INPUT }
+};
+
+static ConnectorRegisters outputCRegs_hlslf[] = {
+    { "COLOR0", 0, FLT, 0, 4, REG_RESERVED | REG_OUTPUT },
+    { "COLOR1", 0, FLT, 1, 4, REG_RESERVED | REG_OUTPUT },
+    { "COLOR2", 0, FLT, 2, 4, REG_RESERVED | REG_OUTPUT },
+    { "COLOR3", 0, FLT, 3, 4, REG_RESERVED | REG_OUTPUT },
+    { "DEPTH0", 0, FLT, 4, 1, REG_RESERVED | REG_OUTPUT }
+};
+
+static const HlslSemanticDesc inputSemantics_hlslf[] = {
+    { "COLOR",    0, 2, SEM_IN | SEM_VARYING, 4,
+      HLSL_INTERFACE_COLOR },
+    { "TEXCOORD", 0, 8, SEM_IN | SEM_VARYING, 4,
+      HLSL_INTERFACE_VARYING },
+    { "FOG",      0, 1, SEM_IN | SEM_VARYING, 1,
+      HLSL_INTERFACE_VARYING },
+    { "VPOS",     0, 1, SEM_IN | SEM_VARYING, 2,
+      HLSL_INTERFACE_PIXEL_POSITION },
+    { "VFACE",    0, 1, SEM_IN | SEM_VARYING, 1,
+      HLSL_INTERFACE_FACE }
+};
+
+static const HlslSemanticDesc outputSemantics_hlslf[] = {
+    { "COLOR", 0, 4, SEM_OUT | SEM_VARYING, 4,
+      HLSL_INTERFACE_COLOR },
+    { "DEPTH", 0, 1, SEM_OUT | SEM_VARYING, 1,
+      HLSL_INTERFACE_DEPTH }
+};
+
+static const HlslSemanticAlias inputAliases_hlslf[] = {
+    { "COL0",  "COLOR0" },
+    { "COL1",  "COLOR1" },
+    { "TEX0",  "TEXCOORD0" },
+    { "TEX1",  "TEXCOORD1" },
+    { "TEX2",  "TEXCOORD2" },
+    { "TEX3",  "TEXCOORD3" },
+    { "TEX4",  "TEXCOORD4" },
+    { "TEX5",  "TEXCOORD5" },
+    { "TEX6",  "TEXCOORD6" },
+    { "TEX7",  "TEXCOORD7" },
+    { "WPOS",  "VPOS" },
+    { "FACE",  "VFACE" }
+};
+
+static const HlslSemanticAlias outputAliases_hlslf[] = {
+    { "COL0", "COLOR0" },
+    { "COL1", "COLOR1" },
+    { "COL2", "COLOR2" },
+    { "COL3", "COLOR3" }
+};
 
 // Connector descriptors with input/output CIDs:
 static ConnectorDescriptor connectors_hlslf[] = {
     { "hlslf_in",  0, CID_HLSLF_IN_ID,  CONNECTOR_IS_INPUT,
-      INPUT_REGS_hlslf_NUM,  inputCRegs_hlslf },
+      NUMELS(inputCRegs_hlslf),  inputCRegs_hlslf },
     { "hlslf_out", 0, CID_HLSLF_OUT_ID, CONNECTOR_IS_OUTPUT,
-      OUTPUT_REGS_hlslf_NUM, outputCRegs_hlslf },
+      NUMELS(outputCRegs_hlslf), outputCRegs_hlslf },
 };
 
 const HlslProfileDesc HlslProfile_hlslf = {
@@ -86,11 +149,19 @@ const HlslProfileDesc HlslProfile_hlslf = {
     CID_HLSLF_IN_ID,
     CID_HLSLF_OUT_ID,
     connectors_hlslf,
-    (int)(sizeof(connectors_hlslf) / sizeof(connectors_hlslf[0])),
+    NUMELS(connectors_hlslf),
+    inputSemantics_hlslf,
+    NUMELS(inputSemantics_hlslf),
+    inputAliases_hlslf,
+    NUMELS(inputAliases_hlslf),
+    outputSemantics_hlslf,
+    NUMELS(outputSemantics_hlslf),
+    outputAliases_hlslf,
+    NUMELS(outputAliases_hlslf),
     inputCRegs_hlslf,
-    INPUT_REGS_hlslf_NUM,
+    NUMELS(inputCRegs_hlslf),
     outputCRegs_hlslf,
-    OUTPUT_REGS_hlslf_NUM,
+    NUMELS(outputCRegs_hlslf),
     &limits_hlslf
 };
 

@@ -1,0 +1,11 @@
+struct VertexIn {
+    float4 generic : ATTR0;
+    float4 explicitTexcoord : TEXCOORD0;
+};
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(VertexIn input)
+{
+    VertexOut output;
+    output.position = input.generic + input.explicitTexcoord;
+    return output;
+}

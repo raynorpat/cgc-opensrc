@@ -1396,9 +1396,16 @@ add_test(
 )
 
 add_executable(hlsl_ir_unit
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
     ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
     hlsl_ir_test.c
+)
+
+target_compile_definitions(hlsl_ir_unit PRIVATE
+    HLSL_CANONICALIZATION_ONLY
 )
 
 target_include_directories(hlsl_ir_unit PRIVATE
@@ -1413,6 +1420,11 @@ set_target_properties(hlsl_ir_unit PROPERTIES
 
 add_test(
     NAME hlsl_ir_unit
+    COMMAND hlsl_ir_unit
+)
+
+add_test(
+    NAME hlsl_semantic_canonicalization
     COMMAND hlsl_ir_unit
 )
 
@@ -1735,6 +1747,80 @@ add_hlsl_fixture(hlslv_registration hlslv
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-vs.expected)
 add_hlsl_fixture(hlslf_registration hlslf
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-ps.expected)
+
+add_test(
+    NAME hlslv_interface_attr_texcoord_conflict
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_attr_texcoord_conflict.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_attr_texcoord_conflict.hlsl"
+        -DCODE=6404
+        -DEXPECTED_LINE=3
+        -DREASON=TEXCOORD0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_input.cg"
+    CONTENT [=[varying float4 globalTexcoord : TEXCOORD0;
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position + globalTexcoord;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_interface_global_input
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile hlslv
+        "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_input.cg"
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_output.cg"
+    CONTENT [=[varying float4 globalPosition : HPOS;
+float4 main(float4 position : POSITION) : COLOR0
+{
+    globalPosition = position;
+    return position;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_interface_global_output
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile hlslv
+        "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_output.cg"
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_invalid_semantic.cg"
+    CONTENT [=[struct VertexIn { float4 invalid : CLP0; };
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(VertexIn input)
+{
+    VertexOut output;
+    output.position = input.invalid;
+    return output;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_interface_invalid_semantic
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv
+        "-DSOURCE=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_invalid_semantic.cg"
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_invalid_semantic.hlsl"
+        -DCODE=6403
+        -DEXPECTED_LINE=1
+        -DREASON=CLP0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
 
 add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.cg
