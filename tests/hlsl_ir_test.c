@@ -68,6 +68,8 @@ int main(int argc, char **argv)
     HlslType matrix;
     int firstIdentity;
     int secondIdentity;
+    int cfloatIdentity;
+    int cintIdentity;
 
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
         int assertionsActive;
@@ -100,5 +102,11 @@ int main(int argc, char **argv)
     assert(HlslIsReservedName("uchar4"));
     assert(HlslIsReservedName("float3x4"));
     assert(HlslIsReservedName("samplerRECT"));
+    assert(HlslIsReservedName("cfloat"));
+    assert(HlslIsReservedName("cint"));
+    assert(!strcmp(HlslAllocateSymbolName(&module, &cfloatIdentity,
+                                          "cfloat"), "cg_cfloat"));
+    assert(!strcmp(HlslAllocateSymbolName(&module, &cintIdentity,
+                                          "cint"), "cg_cint"));
     return 0;
 }

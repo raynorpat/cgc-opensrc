@@ -506,6 +506,8 @@ int HlslIsReservedName(const char *name)
         if (strncmp(name, reservedTypeBases[i], length))
             continue;
         suffix = name + length;
+        if (suffix[0] == '\0')
+            return 1;
         if (suffix[0] >= '1' && suffix[0] <= '4' && suffix[1] == '\0')
             return 1;
         if (!strcmp(reservedTypeBases[i], "float") &&
