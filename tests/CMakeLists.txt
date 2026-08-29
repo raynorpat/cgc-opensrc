@@ -1433,6 +1433,22 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_phase_order.cmake
 )
 
+add_executable(hlsl_invariants_unit
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
+    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
+    hlsl_invariants_test.c
+)
+
+target_include_directories(hlsl_invariants_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+add_test(
+    NAME hlsl_invariants_unit
+    COMMAND hlsl_invariants_unit
+)
+
 add_test(
     NAME hlsl_binding_register_sampler_unit
     COMMAND hlsl_ir_unit

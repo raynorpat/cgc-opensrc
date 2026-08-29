@@ -218,17 +218,16 @@ static int HlslCountStatementCalls(HlslModule *module,
 } // HlslCountStatementCalls
 
 static int HlslValidateDeclarationExpressions(HlslModule *module,
-                                              const HlslDecl *decl)
+                                              const HlslDecl *decl,
+                                              int *entryCallCount)
 {
-    int entryCallCount;
-
     for (; decl != NULL; decl = decl->next) {
-        entryCallCount = 0;
         if ((decl->initializer != NULL &&
              !HlslCountEntryCalls(module, decl->initializer,
-                                  &entryCallCount)) ||
+                                  entryCallCount)) ||
             (decl->members != NULL &&
-             !HlslValidateDeclarationExpressions(module, decl->members)))
+             !HlslValidateDeclarationExpressions(module, decl->members,
+                                                  entryCallCount)))
         {
             return 0;
         }
@@ -291,6 +290,7 @@ int HlslValidateModule(HlslModule *module,
     HlslFunction *function;
     int functionCallCount;
     int entryCallCount;
+    int nonWrapperCallCount;
     int sawInput;
     int sawOutput;
 
@@ -315,8 +315,11 @@ int HlslValidateModule(HlslModule *module,
         return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR, NULL,
                                    "unowned HLSL entry function");
     }
-    if (!HlslValidateDeclarationExpressions(module, module->globals) ||
-        !HlslValidateDeclarationExpressions(module, module->structs))
+    nonWrapperCallCount = 0;
+    if (!HlslValidateDeclarationExpressions(module, module->globals,
+                                             &nonWrapperCallCount) ||
+        !HlslValidateDeclarationExpressions(module, module->structs,
+                                             &nonWrapperCallCount))
     {
         return 0;
     }
@@ -326,8 +329,10 @@ int HlslValidateModule(HlslModule *module,
     {
         functionCallCount = 0;
         if (!HlslValidateDeclarationExpressions(module,
-                                                function->parameters) ||
-            !HlslValidateDeclarationExpressions(module, function->locals) ||
+                                                function->parameters,
+                                                &functionCallCount) ||
+            !HlslValidateDeclarationExpressions(module, function->locals,
+                                                 &functionCallCount) ||
             !HlslCountStatementCalls(module, function->body,
                                      &functionCallCount))
         {
