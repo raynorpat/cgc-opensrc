@@ -169,6 +169,8 @@ struct slHAL_Rec {
     int (*CheckDefinition)(SourceLoc *loc, int name, const Type *fType);
     int (*CheckStatement)(SourceLoc *loc, stmt *fstmt);
     int (*CheckInternalFunction)(Symbol *fSymb, int *group);
+    int (*HandleParameterTypeError)(SourceLoc *loc, const Symbol *fSymb,
+                                    int paramno);
     int (*IsNumericBase)(int fBase);
     int (*IsIntegralBase)(int fBase);
     int (*IsTexobjBase)(int fBase);

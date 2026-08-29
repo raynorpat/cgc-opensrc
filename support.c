@@ -5013,7 +5013,14 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
             } else if (!CgTypeIsPoison(actualType) &&
                        !CgTypeIsPoison(formalType)) {
-                SemanticError(loc, ERROR_D_INCOMPATIBLE_PARAMETER, paramno);
+                if (Cg == NULL || Cg->theHAL == NULL ||
+                    Cg->theHAL->HandleParameterTypeError == NULL ||
+                    !Cg->theHAL->HandleParameterTypeError(loc, lSymb,
+                                                          paramno))
+                {
+                    SemanticError(loc, ERROR_D_INCOMPATIBLE_PARAMETER,
+                                  paramno);
+                }
             }
             lFormals = lFormals->next;
             lActuals = lActuals->bin.right;

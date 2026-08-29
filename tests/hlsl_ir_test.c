@@ -1704,12 +1704,15 @@ static void TestTextureBuiltinSignatures(void)
     HlslType s3;
     HlslType sc;
     HlslType params[5];
+    HlslType coord;
+    HlslType wrongCoord;
     HlslSourceType sf1;
     HlslSourceType sf2;
     HlslSourceType sf4;
     HlslSourceType ss2;
     HlslSourceType sourceParams[5];
     HlslSourceType sourceCoord;
+    HlslSourceType sourceWrongCoord;
     HlslSourceType sourceHalf4;
     HlslSourceType sourceFixed4;
     int i;
@@ -1808,9 +1811,49 @@ static void TestTextureBuiltinSignatures(void)
         assert(!strcmp(HlslBuiltinSpelling(biasIds[i]), biasNames[i]));
         assert(!strcmp(HlslBuiltinSpelling(lodIds[i]), lodNames[i]));
         assert(!strcmp(HlslBuiltinSpelling(gradIds[i]), gradNames[i]));
+        params[0] = HlslNumericType(normalizedSamplerBases[i], 1);
+        coord = HlslNumericType(HLSL_BASE_FLOAT, coordWidths[i]);
+        wrongCoord = HlslNumericType(HLSL_BASE_FLOAT,
+                                     coordWidths[i] == 2 ? 3 : 2);
+        params[1] = coord;
+        assert(HlslBuiltinAccepts(HLSL_STAGE_PIXEL, baseIds[i],
+                                  &f4, params, 2));
+        params[1] = wrongCoord;
+        assert(!HlslBuiltinAccepts(HLSL_STAGE_PIXEL, baseIds[i],
+                                   &f4, params, 2));
+        params[1] = f4;
+        assert(HlslBuiltinAccepts(HLSL_STAGE_PIXEL, projIds[i],
+                                  &f4, params, 2));
+        assert(HlslBuiltinAccepts(HLSL_STAGE_PIXEL, biasIds[i],
+                                  &f4, params, 2));
+        assert(HlslBuiltinAccepts(HLSL_STAGE_PIXEL, lodIds[i],
+                                  &f4, params, 2));
+        params[1] = f3;
+        assert(!HlslBuiltinAccepts(HLSL_STAGE_PIXEL, projIds[i],
+                                   &f4, params, 2));
+        assert(!HlslBuiltinAccepts(HLSL_STAGE_PIXEL, biasIds[i],
+                                   &f4, params, 2));
+        assert(!HlslBuiltinAccepts(HLSL_STAGE_PIXEL, lodIds[i],
+                                   &f4, params, 2));
+        params[1] = coord;
+        params[2] = coord;
+        params[3] = coord;
+        assert(HlslBuiltinAccepts(HLSL_STAGE_PIXEL, gradIds[i],
+                                  &f4, params, 4));
+        params[3] = wrongCoord;
+        assert(!HlslBuiltinAccepts(HLSL_STAGE_PIXEL, gradIds[i],
+                                   &f4, params, 4));
+        params[1] = wrongCoord;
+        params[3] = coord;
+        assert(!HlslBuiltinAccepts(HLSL_STAGE_PIXEL, gradIds[i],
+                                   &f4, params, 4));
+        assert(!HlslBuiltinAccepts(HLSL_STAGE_VERTEX, baseIds[i],
+                                   &f4, params, 2));
         sourceParams[0] = HlslSourceScalarType(samplerBases[i]);
         sourceCoord = coordWidths[i] == 1 ? sf1 :
             HlslSourceVectorType(HLSL_SOURCE_BASE_FLOAT, coordWidths[i]);
+        sourceWrongCoord = HlslSourceVectorType(HLSL_SOURCE_BASE_FLOAT,
+                                                coordWidths[i] == 2 ? 3 : 2);
         sourceParams[1] = sourceCoord;
         assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
             &sf4, sourceParams, 2) == baseIds[i]);
@@ -1822,6 +1865,13 @@ static void TestTextureBuiltinSignatures(void)
         sourceParams[3] = sourceCoord;
         assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
             &sf4, sourceParams, 4) == gradIds[i]);
+        sourceParams[3] = sourceWrongCoord;
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
+            &sf4, sourceParams, 4) == HLSL_BUILTIN_NONE);
+        sourceParams[1] = sourceWrongCoord;
+        sourceParams[3] = sourceCoord;
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
+            &sf4, sourceParams, 4) == HLSL_BUILTIN_NONE);
         sourceParams[1] = sf4;
         assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, projNames[i],
             &sf4, sourceParams, 2) == projIds[i]);
@@ -1835,6 +1885,15 @@ static void TestTextureBuiltinSignatures(void)
             &sf4, sourceParams, 2) == lodIds[i]);
         assert(HlslLookupSourceBuiltin(HLSL_STAGE_VERTEX, lodNames[i],
             &sf4, sourceParams, 2) == lodIds[i]);
+        sourceParams[1] = sourceWrongCoord;
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
+            &sf4, sourceParams, 2) == HLSL_BUILTIN_NONE);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, projNames[i],
+            &sf4, sourceParams, 2) == HLSL_BUILTIN_NONE);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, biasNames[i],
+            &sf4, sourceParams, 2) == HLSL_BUILTIN_NONE);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, lodNames[i],
+            &sf4, sourceParams, 2) == HLSL_BUILTIN_NONE);
         sourceParams[1] = sourceCoord;
         assert(HlslLookupSourceBuiltin(HLSL_STAGE_VERTEX, baseNames[i],
             &sf4, sourceParams, 2) == HLSL_BUILTIN_NONE);

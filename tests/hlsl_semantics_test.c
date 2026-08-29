@@ -55,6 +55,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_stdlib.h"
 #include "hlsl_hal.h"
 
 #define NUMELS(x) ((int) (sizeof(x) / sizeof((x)[0])))
@@ -949,6 +950,39 @@ static void CheckInternalFunctions(void)
     FreeStage(&hal);
 }
 
+static void CheckTextureParameterErrorHandling(void)
+{
+    slHAL hal;
+    Symbol symbol;
+    CgIntrinsicSignature signature;
+    SourceLoc loc;
+
+    InitStage(&hal, 0);
+    memset(&symbol, 0, sizeof(symbol));
+    memset(&signature, 0, sizeof(signature));
+    memset(&loc, 0, sizeof(loc));
+    loc.line = 61;
+    signature.name = "tex2D";
+    signature.flags = CG_INTRINSIC_TEXTURE;
+    symbol.details.fun.intrinsic = &signature;
+    semanticErrorCount = 0;
+    Require(hal.HandleParameterTypeError != NULL &&
+            hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 1 && lastSemanticError == 6409 &&
+            lastSemanticLoc.line == 61,
+            "HLSL did not handle catalog texture parameter diagnostics");
+    signature.flags = CG_INTRINSIC_PURE;
+    semanticErrorCount = 0;
+    Require(!hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 0,
+            "HLSL handled a nontexture intrinsic parameter diagnostic");
+    symbol.details.fun.intrinsic = NULL;
+    Require(!hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 0,
+            "HLSL handled a user function parameter diagnostic");
+    FreeStage(&hal);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
@@ -981,6 +1015,7 @@ int main(int argc, char **argv)
         CheckUnbound();
         CheckUniformUnbound();
         CheckInternalFunctions();
+        CheckTextureParameterErrorHandling();
     }
     FreeAtomTable(atable);
     return 0;

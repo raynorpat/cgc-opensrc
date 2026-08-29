@@ -1,0 +1,32 @@
+// profile hlslf
+// target ps_3_0
+// var sampler2D image : TEXUNIT0 : s[0] : 1 : 1
+
+sampler2D cg_image : register(s0);
+
+struct cg_PixelIn
+{
+    float2 coord : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_sampleImage(sampler2D image, float2 coord)
+{
+    return tex2D(image, coord);
+}
+
+float4 cg_entry(float2 coord, sampler2D image)
+{
+    return cg_sampleImage(image, coord);
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.coord, cg_image);
+    return output;
+}

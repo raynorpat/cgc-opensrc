@@ -63,6 +63,8 @@ static int CheckDeclarators_HAL(SourceLoc *loc, const dtype *fDtype);
 static int CheckDefinition_HAL(SourceLoc *loc, int name, const Type *fType);
 static int CheckStatement_HAL(SourceLoc *loc, stmt *fstmt);
 static int CheckInternalFunction_HAL(Symbol *fSymb, int *group);
+static int HandleParameterTypeError_HAL(SourceLoc *loc,
+                                        const Symbol *fSymb, int paramno);
 static int IsNumericBase_HAL(int fBase);
 static int IsIntegralBase_HAL(int fBase);
 static int IsTexobjBase_HAL(int fBase);
@@ -245,6 +247,7 @@ static void InitHAL_HAL(slHAL *fHAL)
     fHAL->CheckDefinition = CheckDefinition_HAL;
     fHAL->CheckStatement = CheckStatement_HAL;
     fHAL->CheckInternalFunction = CheckInternalFunction_HAL;
+    fHAL->HandleParameterTypeError = HandleParameterTypeError_HAL;
     fHAL->IsNumericBase = IsNumericBase_HAL;
     fHAL->IsTexobjBase = IsTexobjBase_HAL;
     fHAL->IsIntegralBase = IsIntegralBase_HAL;
@@ -574,6 +577,15 @@ static int CheckInternalFunction_HAL(Symbol *fSymb, int *group)
 {
     return 0;
 } // CheckInternalFunction_HAL
+
+static int HandleParameterTypeError_HAL(SourceLoc *loc,
+                                        const Symbol *fSymb, int paramno)
+{
+    (void) loc;
+    (void) fSymb;
+    (void) paramno;
+    return 0;
+} // HandleParameterTypeError_HAL
 
 /*
  * IsValidOperator_HAL() - Is this operator supported in this profile?  Print an error is not.

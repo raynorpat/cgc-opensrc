@@ -51,6 +51,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_stdlib.h"
 #include "hlsl_hal.h"
 
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
@@ -211,6 +212,8 @@ static int GetConnectorUses_hlsl(int cid, int pid);
 static int GetConnectorRegister_hlsl(int cid, int ByIndex, int ratom, Binding *fBind);
 static int GetCapsBit_hlsl(int bitNumber);
 static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group);
+static int HandleParameterTypeError_hlsl(SourceLoc *loc,
+                                         const Symbol *fSymb, int paramno);
 static void HlslAppendSignatureText(char *target, size_t size,
                                     size_t *used, const char *text);
 static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, Binding *fBind);
@@ -284,6 +287,7 @@ static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
     fHAL->GetConnectorRegister = GetConnectorRegister_hlsl;
     fHAL->GetCapsBit = GetCapsBit_hlsl;
     fHAL->CheckInternalFunction = CheckInternalFunction_hlsl;
+    fHAL->HandleParameterTypeError = HandleParameterTypeError_hlsl;
     fHAL->BindUniformUnbound = BindUniformUnbound_hlsl;
     fHAL->BindVaryingSemantic = BindVaryingSemantic_hlsl;
     fHAL->BindVaryingUnbound = BindVaryingUnbound_hlsl;
@@ -679,6 +683,23 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
     SemanticError(&fSymb->loc, ERROR_S_HLSL_INTRINSIC, signature);
     return 0;
 } // CheckInternalFunction_hlsl
+
+static int HandleParameterTypeError_hlsl(SourceLoc *loc,
+                                         const Symbol *fSymb, int paramno)
+{
+    const CgIntrinsicSignature *signature;
+
+    (void) paramno;
+    signature = fSymb != NULL ? fSymb->details.fun.intrinsic : NULL;
+    if (signature == NULL ||
+        (signature->flags & CG_INTRINSIC_TEXTURE) == 0 ||
+        !HlslIsTextureName(signature->name))
+    {
+        return 0;
+    }
+    SemanticError(loc, ERROR_S_HLSL_SAMPLER, signature->name);
+    return 1;
+} // HandleParameterTypeError_hlsl
 
 /*
  * BindUniformUnbound_hlsl() - Mark uniforms as bound.

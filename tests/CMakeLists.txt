@@ -1950,6 +1950,9 @@ add_hlsl_fixture(hlslf_texture_forms hlslf
 add_hlsl_fixture(hlslv_texture_lod hlslv
     tests/hlsl/textures/vp_tex2dlod.cg
     tests/hlsl/textures/vp_tex2dlod.expected)
+add_hlsl_fixture(hlslf_texture_sampler_helper_parameter hlslf
+    tests/hlsl/textures/fp_sampler_helper_parameter.cg
+    tests/hlsl/textures/fp_sampler_helper_parameter.expected)
 
 function(add_hlsl_failure name profile source code line reason)
     add_test(
@@ -1968,8 +1971,15 @@ endfunction()
 
 add_hlsl_failure(hlslv_texture_implicit_stage hlslv
     tests/hlsl/diagnostics/vp_implicit_texture.cg 6409 5 tex2D)
-add_hlsl_failure(hlslf_texture_sampler_mismatch hlslf
-    tests/hlsl/diagnostics/fp_sampler_mismatch.cg 6409 2 TEXUNIT0)
+add_hlsl_failure(hlslf_sampler_unit_type_conflict hlslf
+    tests/hlsl/diagnostics/fp_sampler_unit_type_conflict.cg 6409 2 TEXUNIT0)
+add_hlsl_failure(hlslf_texture_sampler_coord_mismatch hlslf
+    tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg 6409 4 tex2D)
+add_hlsl_failure(glslf_texture_sampler_coord_mismatch_unchanged glslf
+    tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg 1102 4
+    incompatible.type.for.parameter)
+add_hlsl_failure(hlslf_texture_local_sampler hlslf
+    tests/hlsl/diagnostics/fp_local_sampler.cg 1151 4 localImage)
 add_hlsl_failure(hlslf_texture_sampler_array hlslf
     tests/hlsl/diagnostics/fp_sampler_array.cg 6409 1 sampler.array)
 add_hlsl_failure(hlslf_texture_sampler_rect hlslf

@@ -1294,6 +1294,8 @@ static int HlslCollectParameters(HlslLowerContext *context,
         else if (qualifiers & TYPE_QUALIFIER_OUT)
             decl->parameterQualifier = HLSL_PARAMETER_OUT;
         if (!isEntry) {
+            if (GetCategory(formal->type) == TYPE_CATEGORY_SAMPLER)
+                decl->storage = HLSL_STORAGE_SAMPLER;
             HlslAppendDecl(&context->function->parameters, decl);
             continue;
         }
