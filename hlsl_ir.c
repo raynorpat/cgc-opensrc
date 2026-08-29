@@ -246,12 +246,7 @@ static const char *HlslBuildSuffixedName(HlslModule *module,
 static const char *HlslRaiseNameCollision(HlslModule *module,
     const char *source)
 {
-    if (module != NULL) {
-        module->errorKind = HLSL_ERROR_NAME_COLLISION;
-        module->errorReason = source;
-        memset(&module->errorLoc, 0, sizeof(module->errorLoc));
-        module->errors++;
-    }
+    HlslFail(module, HLSL_ERROR_NAME_COLLISION, NULL, source);
     return NULL;
 }
 
@@ -346,6 +341,44 @@ void HlslInitModule(HlslModule *module, HlslStage stage, HlslAllocFn alloc,
     module->alloc = alloc;
     module->allocArg = allocArg;
 }
+
+static const int hlslErrorCodes[] = {
+    0,
+    6400,
+    6401,
+    6402,
+    6403,
+    6404,
+    6405,
+    6406,
+    6407,
+    6408,
+    6409,
+    6410,
+    6411,
+    9013
+};
+
+int HlslErrorCode(HlslErrorKind kind)
+{
+    if (kind < HLSL_ERROR_NONE || kind > HLSL_ERROR_INVALID_IR)
+        return 0;
+    return hlslErrorCodes[(int) kind];
+} // HlslErrorCode
+
+int HlslFail(HlslModule *module, HlslErrorKind kind,
+             const HlslLoc *loc, const char *reason)
+{
+    if (module != NULL && module->errors == 0) {
+        module->errorKind = kind;
+        module->errorReason = reason;
+        if (loc != NULL)
+            module->errorLoc = *loc;
+    }
+    if (module != NULL)
+        module->errors++;
+    return 0;
+} // HlslFail
 
 const char *HlslAllocateName(HlslModule *module, const char *source)
 {

@@ -482,12 +482,14 @@ static int TestInitializerAndBodyEntryCalls(void)
     HlslDecl *local;
     HlslExpr *initializerCall;
     HlslExpr *bodyCall;
+    HlslType floatType;
     HlslType float4Type;
     HlslType inputType;
     HlslType outputType;
     HlslType voidType;
 
     HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    floatType = HlslNumericType(HLSL_BASE_FLOAT, 1);
     float4Type = HlslNumericType(HLSL_BASE_FLOAT, 4);
     voidType = HlslNumericType(HLSL_BASE_VOID, 0);
     inputType = HlslNumericType(HLSL_BASE_STRUCT, 0);
@@ -502,11 +504,11 @@ static int TestInitializerAndBodyEntryCalls(void)
                               "position");
     outputMember = HlslNewDecl(&module, HLSL_STORAGE_NONE, float4Type,
                                "position");
-    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    entry = HlslNewFunction(&module, floatType, "cg_entry");
     wrapper = HlslNewFunction(&module, outputType, "main");
-    local = HlslNewDecl(&module, HLSL_STORAGE_NONE, voidType, "local");
-    initializerCall = HlslNewExpr(&module, HLSL_EXPR_CALL, voidType);
-    bodyCall = HlslNewExpr(&module, HLSL_EXPR_CALL, voidType);
+    local = HlslNewDecl(&module, HLSL_STORAGE_NONE, floatType, "local");
+    initializerCall = HlslNewExpr(&module, HLSL_EXPR_CALL, floatType);
+    bodyCall = HlslNewExpr(&module, HLSL_EXPR_CALL, floatType);
     if (inputStruct == NULL || outputStruct == NULL || inputMember == NULL ||
         outputMember == NULL || entry == NULL || wrapper == NULL ||
         local == NULL || initializerCall == NULL || bodyCall == NULL)

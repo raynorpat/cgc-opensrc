@@ -92,15 +92,8 @@ static void *HlslBindAlloc(HlslModule *module, size_t size)
 static int HlslBindFailure(HlslModule *module, const HlslBinding *binding,
                            HlslErrorKind kind, const char *reason)
 {
-    if (module != NULL && module->errors == 0) {
-        module->errorKind = kind;
-        module->errorReason = reason;
-        if (binding != NULL)
-            module->errorLoc = binding->loc;
-    }
-    if (module != NULL)
-        module->errors++;
-    return 0;
+    return HlslFail(module, kind,
+                    binding != NULL ? &binding->loc : NULL, reason);
 } // HlslBindFailure
 
 static int HlslPublicIdentifierIsValid(const char *name)

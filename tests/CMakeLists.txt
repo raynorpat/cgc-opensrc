@@ -1434,10 +1434,15 @@ add_test(
 )
 
 add_executable(hlsl_invariants_unit
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
     ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
     ${PROJECT_SOURCE_DIR}/hlsl_validate.c
     hlsl_invariants_test.c
+)
+
+target_compile_definitions(hlsl_invariants_unit PRIVATE
+    HLSL_CANONICALIZATION_ONLY
 )
 
 target_include_directories(hlsl_invariants_unit PRIVATE
@@ -1825,6 +1830,10 @@ add_hlsl_fixture(hlslf_fp_passthrough hlslf
 add_hlsl_fixture(hlslv_vp_out_inout hlslv
     tests/hlsl/profile/vp_out_inout.cg
     tests/hlsl/profile/vp_out_inout.expected)
+# These historical "all semantics" fixtures retain every semantic family but
+# use a legal simultaneous SM3 boundary subset.  Exhaustive descriptor, alias,
+# and one-past coverage lives in hlsl_semantics_unit; the complete tables
+# cannot all occupy one 16-input VS or 10-input PS interface at once.
 add_hlsl_fixture(hlslv_vp_all_semantics hlslv
     tests/hlsl/interfaces/vp_all_semantics.cg
     tests/hlsl/interfaces/vp_all_semantics.expected)
@@ -1969,6 +1978,78 @@ function(add_hlsl_failure name profile source code line reason)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
 endfunction()
 
+function(add_hlsl_limit_success name profile source)
+    add_test(
+        NAME ${name}
+        COMMAND $<TARGET_FILE:cgc>
+            -quiet
+            -profile ${profile}
+            -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl
+            ${PROJECT_SOURCE_DIR}/${source}
+    )
+endfunction()
+
+add_hlsl_limit_success(hlslv_limit_inputs16 hlslv
+    tests/hlsl/limits/vp_inputs16.cg)
+add_hlsl_failure(hlslv_limit_inputs17 hlslv
+    tests/hlsl/limits/vp_inputs17.cg 6408 17
+    "HLSL inputs limit exceeded: 17 used, 16 available")
+add_hlsl_limit_success(hlslv_limit_outputs12 hlslv
+    tests/hlsl/limits/vp_outputs12.cg)
+add_hlsl_failure(hlslv_limit_outputs13 hlslv
+    tests/hlsl/limits/vp_outputs13.cg 6408 14
+    "HLSL outputs limit exceeded: 13 used, 12 available")
+add_hlsl_limit_success(hlslf_limit_inputs10 hlslf
+    tests/hlsl/limits/fp_inputs10.cg)
+add_hlsl_failure(hlslf_limit_inputs11 hlslf
+    tests/hlsl/limits/fp_inputs11.cg 6408 11
+    "HLSL inputs limit exceeded: 11 used, 10 available")
+add_hlsl_limit_success(hlslv_limit_constants256 hlslv
+    tests/hlsl/limits/vp_constants256.cg)
+add_hlsl_failure(hlslv_limit_constants257 hlslv
+    tests/hlsl/limits/vp_constants257.cg 6408 2
+    "HLSL c limit exceeded: 257 used, 256 available")
+add_hlsl_limit_success(hlslf_limit_constants224 hlslf
+    tests/hlsl/limits/fp_constants224.cg)
+add_hlsl_failure(hlslf_limit_constants225 hlslf
+    tests/hlsl/limits/fp_constants225.cg 6408 2
+    "HLSL c limit exceeded: 225 used, 224 available")
+add_hlsl_limit_success(hlslv_limit_int16 hlslv
+    tests/hlsl/limits/vp_int16.cg)
+add_hlsl_failure(hlslv_limit_int17 hlslv
+    tests/hlsl/limits/vp_int17.cg 6408 2
+    "HLSL i limit exceeded: 17 used, 16 available")
+add_hlsl_limit_success(hlslv_limit_bool16 hlslv
+    tests/hlsl/limits/vp_bool16.cg)
+add_hlsl_failure(hlslv_limit_bool17 hlslv
+    tests/hlsl/limits/vp_bool17.cg 6408 2
+    "HLSL b limit exceeded: 17 used, 16 available")
+add_hlsl_limit_success(hlslv_limit_samplers4 hlslv
+    tests/hlsl/limits/vp_samplers4.cg)
+add_hlsl_failure(hlslv_limit_samplers5 hlslv
+    tests/hlsl/limits/vp_samplers5.cg 6408 6
+    "HLSL s limit exceeded: 5 used, 4 available")
+add_hlsl_limit_success(hlslf_limit_samplers16 hlslf
+    tests/hlsl/limits/fp_samplers16.cg)
+add_hlsl_failure(hlslf_limit_samplers17 hlslf
+    tests/hlsl/limits/fp_samplers17.cg 6408 18
+    "HLSL s limit exceeded: 17 used, 16 available")
+add_hlsl_limit_success(hlslf_limit_colors4 hlslf
+    tests/hlsl/limits/fp_colors4.cg)
+add_hlsl_failure(hlslf_limit_colors5 hlslf
+    tests/hlsl/limits/fp_colors5.cg 6408 6
+    "HLSL color outputs limit exceeded: 5 used, 4 available")
+
+add_hlsl_failure(hlslv_diagnostic_unsupported_type hlslv
+    tests/hlsl/diagnostics/vp_unsupported_type.cg 6400 2
+    "HLSL Shader Model 3 does not support type")
+add_hlsl_failure(hlslv_diagnostic_missing_position hlslv
+    tests/hlsl/diagnostics/vp_missing_position.cg 6405 1
+    "HLSL vertex entry must write POSITION0")
+add_hlsl_failure(hlslv_diagnostic_entry_abi hlslv
+    tests/hlsl/diagnostics/vp_empty_input_abi.cg 6406 1
+    "HLSL entry interface cannot represent")
+
 add_hlsl_failure(hlslv_texture_implicit_stage hlslv
     tests/hlsl/diagnostics/vp_implicit_texture.cg 6409 5 tex2D)
 add_hlsl_failure(hlslf_sampler_unit_type_conflict hlslf
@@ -2012,8 +2093,8 @@ function(add_hlsl_interface_failure name source code line reason)
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -DCODE=${code}
             -DEXPECTED_LINE=${line}
-            -DREASON=${reason}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+            -DMESSAGE=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
     )
 endfunction()
 
@@ -2096,8 +2177,8 @@ add_test(
         "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_discard.hlsl"
         -DCODE=6402
         -DEXPECTED_LINE=3
-        -DREASON=discard
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+        -DMESSAGE=discard
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
 )
 
 add_test(
@@ -2110,8 +2191,8 @@ add_test(
         "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_attr_texcoord_conflict.hlsl"
         -DCODE=6404
         -DEXPECTED_LINE=3
-        -DREASON=TEXCOORD0
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+        -DMESSAGE=TEXCOORD0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
 )
 
 file(GENERATE
@@ -2170,8 +2251,8 @@ add_test(
         "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_invalid_semantic.hlsl"
         -DCODE=6403
         -DEXPECTED_LINE=1
-        -DREASON=CLP0
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+        -DMESSAGE=CLP0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
 )
 
 add_glsl_fixture(glslv_passthrough glslv

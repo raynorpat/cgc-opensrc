@@ -524,6 +524,10 @@ struct HlslModule_Rec {
     int errors;
 };
 
+int HlslErrorCode(HlslErrorKind kind);
+int HlslFail(HlslModule *module, HlslErrorKind kind,
+    const HlslLoc *loc, const char *reason);
+
 void HlslInitModule(HlslModule *module, HlslStage stage,
     HlslAllocFn alloc, void *allocArg);
 

@@ -356,7 +356,7 @@ static void CheckDescriptorFamilies(void)
           HLSL_INTERFACE_FACE }
     };
     static const ExpectedSemantic pixelOutput[] = {
-        { "COLOR", 0, 4, SEM_OUT | SEM_VARYING, 4,
+        { "COLOR", 0, 5, SEM_OUT | SEM_VARYING, 4,
           HLSL_INTERFACE_COLOR },
         { "DEPTH", 0, 1, SEM_OUT | SEM_VARYING, 1,
           HLSL_INTERFACE_DEPTH }
@@ -388,6 +388,9 @@ static void CheckCanonicalization(void)
     assert(HlslCanonicalSemantic(&HlslProfile_hlslv, "NORMAL0", 1) == NULL);
     assert(HlslCanonicalSemantic(&HlslProfile_hlslv, "VPOS", 0) == NULL);
     assert(HlslCanonicalSemantic(&HlslProfile_hlslf, "DEPTH0", 0) == NULL);
+    assert(HlslCanonicalSemantic(&HlslProfile_hlslf, "COLOR4", 1) != NULL);
+    assert(HlslCanonicalSemantic(&HlslProfile_hlslf, "COLOR5", 1) == NULL);
+    assert(HlslProfile_hlslf.limits->colorOutputs == 4);
     assert(HlslCanonicalSemantic(&HlslProfile_hlslf, "VFACE", 1) == NULL);
     assert(HlslCanonicalSemantic(&HlslProfile_hlslf, "NORMAL0", 0) == NULL);
     assert(HlslCanonicalSemantic(NULL, "POSITION0", 0) == NULL);
@@ -479,7 +482,7 @@ static void CheckConnectors(void)
 
     profile = InitStage(&hal, 0);
     assert(profile->numInputRegs == 13);
-    assert(profile->numOutputRegs == 5);
+    assert(profile->numOutputRegs == 6);
     for (i = 0; i < profile->numConnectors; i++)
         CheckConnector(&hal, &profile->connectors[i]);
     FreeStage(&hal);

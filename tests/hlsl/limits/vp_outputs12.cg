@@ -1,0 +1,32 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float psize : PSIZE;
+    float fog : FOG;
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 tex0 : TEXCOORD0;
+    float4 tex1 : TEXCOORD1;
+    float4 tex2 : TEXCOORD2;
+    float4 tex3 : TEXCOORD3;
+    float4 tex4 : TEXCOORD4;
+    float4 tex5 : TEXCOORD5;
+    float4 tex6 : TEXCOORD6;
+};
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    output.psize = position.x;
+    output.fog = position.y;
+    output.color0 = position;
+    output.color1 = position;
+    output.tex0 = position;
+    output.tex1 = position;
+    output.tex2 = position;
+    output.tex3 = position;
+    output.tex4 = position;
+    output.tex5 = position;
+    output.tex6 = position;
+    return output;
+}

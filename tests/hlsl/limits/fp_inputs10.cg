@@ -1,0 +1,14 @@
+float4 main(float4 color0 : COLOR0,
+            float4 color1 : COLOR1,
+            float4 tex0 : TEXCOORD0,
+            float4 tex1 : TEXCOORD1,
+            float4 tex2 : TEXCOORD2,
+            float4 tex3 : TEXCOORD3,
+            float4 tex4 : TEXCOORD4,
+            float4 tex5 : TEXCOORD5,
+            float4 tex6 : TEXCOORD6,
+            float4 tex7 : TEXCOORD7) : COLOR0
+{
+    return color0 + color1 + tex0 + tex1 + tex2 + tex3 + tex4 + tex5 +
+           tex6 + tex7;
+}

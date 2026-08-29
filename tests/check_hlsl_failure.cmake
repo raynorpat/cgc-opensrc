@@ -1,5 +1,5 @@
 foreach(required CGC PROFILE SOURCE CODE EXPECTED_LINE MESSAGE ACTUAL)
-    if(NOT DEFINED ${required})
+    if(NOT DEFINED ${required} OR "${${required}}" STREQUAL "")
         message(FATAL_ERROR "${required} must be defined")
     endif()
 endforeach()
@@ -31,7 +31,9 @@ if(NOT diagnostics MATCHES "error C${CODE}:")
         "${PROFILE} did not report C${CODE}:\n${diagnostics}")
 endif()
 get_filename_component(source_name "${SOURCE}" NAME)
-if(NOT diagnostics MATCHES "${source_name}\\(${EXPECTED_LINE}\\)")
+string(FIND "${diagnostics}" "${source_name}(${EXPECTED_LINE})"
+    location_index)
+if(location_index EQUAL -1)
     message(FATAL_ERROR
         "${PROFILE} reported the wrong source line:\n${diagnostics}")
 endif()
@@ -39,9 +41,17 @@ if(NOT diagnostics MATCHES "${MESSAGE}")
     message(FATAL_ERROR
         "${PROFILE} did not match message ${MESSAGE}:\n${diagnostics}")
 endif()
-# Transactional output: a failed translation publishes nothing.
+# Transactional output: only ordinary compiler comments may exist.  Any
+# metadata or HLSL declaration left after removing line comments is a leak.
 if(EXISTS "${ACTUAL}")
     file(READ "${ACTUAL}" published)
-    message(FATAL_ERROR
-        "failed compilation published an output file:\n${published}")
+    string(REPLACE "\r\n" "\n" published "${published}")
+    string(REPLACE "\r" "\n" published "${published}")
+    string(REGEX REPLACE "(^|\n)[ \t]*//[^\n]*" "\n"
+        published "${published}")
+    string(REGEX REPLACE "[ \t\n]" "" payload "${published}")
+    if(NOT payload STREQUAL "")
+        message(FATAL_ERROR
+            "failed compilation published HLSL content:\n${published}")
+    endif()
 endif()

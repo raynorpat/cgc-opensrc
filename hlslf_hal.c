@@ -88,7 +88,10 @@ static ConnectorRegisters outputCRegs_hlslf[] = {
     { "COLOR1", 0, FLT, 1, 4, REG_RESERVED | REG_OUTPUT },
     { "COLOR2", 0, FLT, 2, 4, REG_RESERVED | REG_OUTPUT },
     { "COLOR3", 0, FLT, 3, 4, REG_RESERVED | REG_OUTPUT },
-    { "DEPTH0", 0, FLT, 4, 1, REG_RESERVED | REG_OUTPUT }
+    { "DEPTH0", 0, FLT, 4, 1, REG_RESERVED | REG_OUTPUT },
+    /* Provisional one-over slot: Task 10 target validation rejects COLOR4
+     * against the active four-color limit with C6408. */
+    { "COLOR4", 0, FLT, 5, 4, REG_RESERVED | REG_OUTPUT }
 };
 
 static const HlslSemanticDesc inputSemantics_hlslf[] = {
@@ -105,7 +108,7 @@ static const HlslSemanticDesc inputSemantics_hlslf[] = {
 };
 
 static const HlslSemanticDesc outputSemantics_hlslf[] = {
-    { "COLOR", 0, 4, SEM_OUT | SEM_VARYING, 4,
+    { "COLOR", 0, 5, SEM_OUT | SEM_VARYING, 4,
       HLSL_INTERFACE_COLOR },
     { "DEPTH", 0, 1, SEM_OUT | SEM_VARYING, 1,
       HLSL_INTERFACE_DEPTH }

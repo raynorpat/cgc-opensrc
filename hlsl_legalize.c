@@ -53,15 +53,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static int HlslLegalizeFailure(HlslModule *module, HlslErrorKind kind,
                                const HlslLoc *loc, const char *reason)
 {
-    if (module != NULL && module->errors == 0) {
-        module->errorKind = kind;
-        module->errorReason = reason;
-        if (loc != NULL)
-            module->errorLoc = *loc;
-    }
-    if (module != NULL)
-        module->errors++;
-    return 0;
+    return HlslFail(module, kind, loc, reason);
 } // HlslLegalizeFailure
 
 static int HlslTypesEqualInner(const HlslType *left,

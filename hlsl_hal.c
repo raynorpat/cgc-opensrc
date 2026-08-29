@@ -193,6 +193,29 @@ const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
 
 #define HLSL_MAX_INTERFACE_REGISTERS 32
 
+typedef struct HlslDiagnosticMap_Rec {
+    HlslErrorKind kind;
+    int code;
+    const char *format;
+} HlslDiagnosticMap;
+
+static const HlslDiagnosticMap hlslDiagnosticMap[] = {
+    { HLSL_ERROR_NONE,                  0, NULL },
+    { HLSL_ERROR_UNSUPPORTED_TYPE,      ERROR_S_HLSL_UNSUPPORTED_TYPE },
+    { HLSL_ERROR_UNSUPPORTED_OPERATION, ERROR_S_HLSL_UNSUPPORTED_OPERATION },
+    { HLSL_ERROR_STAGE_OPERATION,       ERROR_SS_HLSL_STAGE_OPERATION },
+    { HLSL_ERROR_SEMANTIC,              ERROR_S_HLSL_SEMANTIC },
+    { HLSL_ERROR_INTERFACE_CONFLICT,    ERROR_S_HLSL_INTERFACE_CONFLICT },
+    { HLSL_ERROR_REQUIRED_POSITION,     ERROR___HLSL_REQUIRED_POSITION },
+    { HLSL_ERROR_ENTRY_ABI,             ERROR_S_HLSL_ENTRY_ABI },
+    { HLSL_ERROR_REGISTER_COLLISION,    ERROR_S_HLSL_REGISTER_COLLISION },
+    { HLSL_ERROR_RESOURCE_LIMIT,        ERROR_SII_HLSL_RESOURCE_LIMIT },
+    { HLSL_ERROR_SAMPLER,               ERROR_S_HLSL_SAMPLER },
+    { HLSL_ERROR_INTRINSIC,             ERROR_S_HLSL_INTRINSIC },
+    { HLSL_ERROR_NAME_COLLISION,        ERROR_S_HLSL_NAME_COLLISION },
+    { HLSL_ERROR_INVALID_IR,            ERROR___HLSL_INVALID_IR }
+};
+
 typedef struct HlslHALData_Rec {
     const HlslProfileDesc *profile;
     Symbol *inputUsed[HLSL_MAX_INTERFACE_REGISTERS];
@@ -976,8 +999,10 @@ static int ReportHlslFailure(const HlslModule *module,
                              const HlslProfileDesc *profile,
                              const Symbol *program)
 {
+    const HlslDiagnosticMap *mapping;
     SourceLoc failureLoc;
     const char *reason;
+    int i;
 
     if (program != NULL)
         failureLoc = program->loc;
@@ -991,9 +1016,23 @@ static int ReportHlslFailure(const HlslModule *module,
     }
     reason = module->errorReason != NULL ?
              module->errorReason : "HLSL profile program";
-    if (module->resourceName != NULL) {
+    mapping = NULL;
+    for (i = 0; i < (int) (sizeof(hlslDiagnosticMap) /
+                           sizeof(hlslDiagnosticMap[0])); i++) {
+        if (hlslDiagnosticMap[i].kind == module->errorKind) {
+            mapping = &hlslDiagnosticMap[i];
+            break;
+        }
+    }
+    if (mapping == NULL || mapping->code != HlslErrorCode(module->errorKind)) {
+        InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
+        return 0;
+    }
+    if (module->errorKind == HLSL_ERROR_RESOURCE_LIMIT) {
         SemanticError(&failureLoc, ERROR_SII_HLSL_RESOURCE_LIMIT,
-                      module->resourceName, module->resourceUsed,
+                      module->resourceName != NULL ?
+                          module->resourceName : "resource",
+                      module->resourceUsed,
                       module->resourceAvailable);
         return 0;
     }
@@ -1032,12 +1071,14 @@ static int ReportHlslFailure(const HlslModule *module,
     case HLSL_ERROR_INVALID_IR:
         InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
         break;
-    case HLSL_ERROR_NONE:
     case HLSL_ERROR_UNSUPPORTED_OPERATION:
-    case HLSL_ERROR_RESOURCE_LIMIT:
-    default:
         SemanticError(&failureLoc, ERROR_S_HLSL_UNSUPPORTED_OPERATION,
                       reason);
+        break;
+    case HLSL_ERROR_NONE:
+    case HLSL_ERROR_RESOURCE_LIMIT:
+    default:
+        InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
         break;
     }
     return 0;

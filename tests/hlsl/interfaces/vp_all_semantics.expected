@@ -14,7 +14,6 @@ struct cg_VertexOut
     float4 tex4;
     float4 tex5;
     float4 tex6;
-    float4 tex7;
 };
 
 struct cg_VertexIn
@@ -35,7 +34,6 @@ struct cg_VertexIn
     float4 tex4 : TEXCOORD4;
     float4 tex5 : TEXCOORD5;
     float4 tex6 : TEXCOORD6;
-    float4 tex7 : TEXCOORD7;
 };
 
 struct cg_VertexOut_1
@@ -52,10 +50,9 @@ struct cg_VertexOut_1
     float4 tex4 : TEXCOORD4;
     float4 tex5 : TEXCOORD5;
     float4 tex6 : TEXCOORD6;
-    float4 tex7 : TEXCOORD7;
 };
 
-cg_VertexOut cg_entry(float4 position, float4 blendWeight, float4 blendIndices, float3 normal, float psize, float3 tangent, float3 binormal, float4 color0, float4 color1, float4 tex0, float4 tex1, float4 tex2, float4 tex3, float4 tex4, float4 tex5, float4 tex6, float4 tex7)
+cg_VertexOut cg_entry(float4 position, float4 blendWeight, float4 blendIndices, float3 normal, float psize, float3 tangent, float3 binormal, float4 color0, float4 color1, float4 tex0, float4 tex1, float4 tex2, float4 tex3, float4 tex4, float4 tex5, float4 tex6)
 {
     cg_VertexOut cg_output;
     cg_output.position = position;
@@ -70,7 +67,6 @@ cg_VertexOut cg_entry(float4 position, float4 blendWeight, float4 blendIndices, 
     cg_output.tex4 = tex4;
     cg_output.tex5 = tex5;
     cg_output.tex6 = tex6;
-    cg_output.tex7 = tex7;
     return cg_output;
 }
 
@@ -78,7 +74,7 @@ cg_VertexOut_1 main(cg_VertexIn input)
 {
     cg_VertexOut_1 output;
     cg_VertexOut cg_result;
-    cg_result = cg_entry(input.position, input.blendWeight, input.blendIndices, input.normal, input.psize, input.tangent, input.binormal, input.color0, input.color1, input.tex0, input.tex1, input.tex2, input.tex3, input.tex4, input.tex5, input.tex6, input.tex7);
+    cg_result = cg_entry(input.position, input.blendWeight, input.blendIndices, input.normal, input.psize, input.tangent, input.binormal, input.color0, input.color1, input.tex0, input.tex1, input.tex2, input.tex3, input.tex4, input.tex5, input.tex6);
     output.position = cg_result.position;
     output.psize = cg_result.psize;
     output.fog = cg_result.fog;
@@ -91,6 +87,5 @@ cg_VertexOut_1 main(cg_VertexIn input)
     output.tex4 = cg_result.tex4;
     output.tex5 = cg_result.tex5;
     output.tex6 = cg_result.tex6;
-    output.tex7 = cg_result.tex7;
     return output;
 }
