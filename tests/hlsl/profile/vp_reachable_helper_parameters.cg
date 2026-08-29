@@ -1,0 +1,16 @@
+float4 adjust(float4 value, out float scale, inout float bias)
+{
+    scale = bias;
+    bias = scale;
+    return value * bias;
+}
+
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : POSITION)
+{
+    float scale;
+    float bias;
+    VertexOut output;
+    output.position = adjust(position, scale, bias);
+    return output;
+}

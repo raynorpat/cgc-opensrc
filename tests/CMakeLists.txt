@@ -1822,6 +1822,9 @@ add_hlsl_fixture(hlslv_global_entry_name_collision hlslv
 add_hlsl_fixture(hlslv_output_member_name_collision hlslv
     tests/hlsl/interfaces/vp_output_member_name_collision.cg
     tests/hlsl/interfaces/vp_output_member_name_collision.expected)
+add_hlsl_fixture(hlslv_reachable_helper_parameters hlslv
+    tests/hlsl/profile/vp_reachable_helper_parameters.cg
+    tests/hlsl/profile/vp_reachable_helper_parameters.expected)
 
 add_test(
     NAME generic_entry_inout_still_rejected

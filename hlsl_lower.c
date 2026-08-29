@@ -686,7 +686,7 @@ static int HlslCollectUniformTree(HlslLowerContext *context, Symbol *symbol)
 } // HlslCollectUniformTree
 
 static int HlslCollectParameters(HlslLowerContext *context,
-                                 Symbol *formal)
+                                 Symbol *formal, int isEntry)
 {
     HlslDecl *decl;
     int qualifiers;
@@ -702,6 +702,10 @@ static int HlslCollectParameters(HlslLowerContext *context,
             decl->parameterQualifier = HLSL_PARAMETER_INOUT;
         else if (qualifiers & TYPE_QUALIFIER_OUT)
             decl->parameterQualifier = HLSL_PARAMETER_OUT;
+        if (!isEntry) {
+            HlslAppendDecl(&context->function->parameters, decl);
+            continue;
+        }
         if (GetDomain(formal->type) == TYPE_DOMAIN_UNIFORM) {
             decl->storage = GetCategory(formal->type) ==
                             TYPE_CATEGORY_SAMPLER ?
@@ -1175,7 +1179,7 @@ static int HlslLowerFunction(HlslLowerContext *context,
     symbol = (Symbol *) function->identity;
     context->function = function;
     context->statementLoc = symbol->loc;
-    if (!HlslCollectParameters(context, symbol->details.fun.params) ||
+    if (!HlslCollectParameters(context, symbol->details.fun.params, 0) ||
         symbol->details.fun.locals == NULL ||
         !HlslCollectLocals(context,
                            symbol->details.fun.locals->symbols) ||
@@ -1285,7 +1289,7 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     module->entry = function;
     HlslAppendFunction(&module->functions, function);
     context.function = function;
-    if (!HlslCollectParameters(&context, program->details.fun.params) ||
+    if (!HlslCollectParameters(&context, program->details.fun.params, 1) ||
         program->details.fun.locals == NULL ||
         !HlslCollectLocals(&context,
                            program->details.fun.locals->symbols) ||
