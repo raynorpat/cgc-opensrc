@@ -26,6 +26,8 @@ VertexOut main(float4 position : POSITION)
     float trace;
     float binary;
     float called;
+    float readBinary;
+    float readCall;
 
     choose = position.x > 0.0;
     lanes = position.xy > float2(0.0, 0.0);
@@ -36,7 +38,11 @@ VertexOut main(float4 position : POSITION)
                      choose ? record(trace, 5.0) : record(trace, 6.0));
     comparison = record2(trace, 7.0) <
                  (lanes ? record2(trace, 8.0) : record2(trace, 9.0));
-    output.position = float4(binary, called,
+    readBinary = trace +
+                 (choose ? record(trace, 10.0) : record(trace, 11.0));
+    readCall = combine(trace,
+                       choose ? record(trace, 12.0) : record(trace, 13.0));
+    output.position = float4(binary + readBinary, called + readCall,
                              float(comparison.x), trace);
     return output;
 }

@@ -1147,17 +1147,39 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
 {
     HlslExpr *list;
     HlslExpr *item;
+    HlslExpr *rest;
+    HlslStmt *itemPrefix;
+    HlslStmt *restPrefix;
 
-    list = NULL;
-    for (; source != NULL; source = source->bin.right) {
-        if (source->common.kind != BINARY_N || source->bin.op != listOp)
+    if (source == NULL || source->common.kind != BINARY_N ||
+        source->bin.op != listOp)
+    {
+        return NULL;
+    }
+    itemPrefix = NULL;
+    restPrefix = NULL;
+    item = HlslLowerExpr(context, source->bin.left, &itemPrefix, 1);
+    if (item == NULL)
+        return NULL;
+    rest = NULL;
+    if (source->bin.right != NULL) {
+        rest = HlslLowerExprList(context, source->bin.right, listOp,
+                                 &restPrefix);
+        if (rest == NULL)
             return NULL;
-        item = HlslLowerOrderedValue(context, source->bin.left, prefix,
-                                     source->bin.right != NULL);
+    }
+    HlslAppendStmt(prefix, itemPrefix);
+    if (source->bin.right != NULL &&
+        (restPrefix != NULL ||
+         source->bin.right->common.HasSideEffects))
+    {
+        item = HlslCaptureValue(context, prefix, item);
         if (item == NULL)
             return NULL;
-        HlslAppendExpr(&list, item);
     }
+    HlslAppendStmt(prefix, restPrefix);
+    list = item;
+    HlslAppendExpr(&list, rest);
     return list;
 } // HlslLowerExprList
 
@@ -1352,6 +1374,8 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
     HlslExpr *left;
     HlslExpr *right;
     HlslStmt *leftStatement;
+    HlslStmt *leftPrefix;
+    HlslStmt *rightPrefix;
 
     if (source != NULL && source->common.kind == BINARY_N &&
         source->bin.op == COMMA_OP)
@@ -1477,13 +1501,25 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
                 return HlslLowerVectorComparison(context, source, &type,
                                                   op, prefix);
             }
-            left = HlslLowerOrderedValue(context, source->bin.left,
-                                         prefix,
-                                         op != HLSL_OP_ASSIGN);
-            right = HlslLowerOrderedValue(context, source->bin.right,
-                                          prefix, 0);
+            leftPrefix = NULL;
+            rightPrefix = NULL;
+            left = HlslLowerExpr(context, source->bin.left,
+                                 &leftPrefix, 1);
+            right = HlslLowerExpr(context, source->bin.right,
+                                  &rightPrefix, 1);
             if (left == NULL || right == NULL)
                 return NULL;
+            HlslAppendStmt(prefix, leftPrefix);
+            if (op != HLSL_OP_ASSIGN &&
+                (source->bin.left->common.HasSideEffects ||
+                 rightPrefix != NULL ||
+                 source->bin.right->common.HasSideEffects))
+            {
+                left = HlslCaptureValue(context, prefix, left);
+                if (left == NULL)
+                    return NULL;
+            }
+            HlslAppendStmt(prefix, rightPrefix);
             if (op == HLSL_OP_ASSIGN && valueRequired) {
                 right = HlslCaptureValue(context, prefix, right);
                 target = HlslNewAssignment(context, left, right);
