@@ -15,6 +15,18 @@ float combine(float left, float right)
     return left + right;
 }
 
+float modify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float replace(out float value, float amount)
+{
+    value = amount + 1.0;
+    return value;
+}
+
 struct VertexOut { float4 position : POSITION; };
 
 VertexOut main(float4 position : POSITION)
@@ -28,6 +40,10 @@ VertexOut main(float4 position : POSITION)
     float called;
     float readBinary;
     float readCall;
+    float aliasValue;
+    float aliasResult;
+    float outValue;
+    float outResult;
 
     choose = position.x > 0.0;
     lanes = position.xy > float2(0.0, 0.0);
@@ -42,7 +58,16 @@ VertexOut main(float4 position : POSITION)
                  (choose ? record(trace, 10.0) : record(trace, 11.0));
     readCall = combine(trace,
                        choose ? record(trace, 12.0) : record(trace, 13.0));
+    aliasValue = 1.0;
+    aliasResult = modify(aliasValue,
+                         choose ? record(aliasValue, 17.0) :
+                                  record(aliasValue, 18.0));
+    outValue = 2.0;
+    outResult = replace(outValue,
+                        choose ? record(outValue, 19.0) :
+                                 record(outValue, 20.0));
     output.position = float4(binary + readBinary, called + readCall,
-                             float(comparison.x), trace);
+                             float(comparison.x) + aliasValue,
+                             trace + aliasResult + outValue + outResult);
     return output;
 }

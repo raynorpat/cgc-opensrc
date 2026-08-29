@@ -1143,13 +1143,15 @@ static HlslExpr *HlslLowerSwizzle(HlslLowerContext *context, expr *source,
 } // HlslLowerSwizzle
 
 static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
-                                   opcode listOp, HlslStmt **prefix)
+                                   opcode listOp, HlslStmt **prefix,
+                                   HlslDecl *parameter)
 {
     HlslExpr *list;
     HlslExpr *item;
     HlslExpr *rest;
     HlslStmt *itemPrefix;
     HlslStmt *restPrefix;
+    int preserveLvalue;
 
     if (source == NULL || source->common.kind != BINARY_N ||
         source->bin.op != listOp)
@@ -1164,12 +1166,16 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
     rest = NULL;
     if (source->bin.right != NULL) {
         rest = HlslLowerExprList(context, source->bin.right, listOp,
-                                 &restPrefix);
+                                 &restPrefix,
+                                 parameter != NULL ? parameter->next : NULL);
         if (rest == NULL)
             return NULL;
     }
     HlslAppendStmt(prefix, itemPrefix);
-    if (source->bin.right != NULL &&
+    preserveLvalue = parameter != NULL &&
+        (parameter->parameterQualifier == HLSL_PARAMETER_OUT ||
+         parameter->parameterQualifier == HLSL_PARAMETER_INOUT);
+    if (!preserveLvalue && source->bin.right != NULL &&
         (restPrefix != NULL ||
          source->bin.right->common.HasSideEffects))
     {
@@ -1205,7 +1211,7 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     target->u.call.function = function;
     target->u.call.name = function->name;
     target->u.call.arguments = HlslLowerExprList(context,
-        source->bin.right, FUN_ARG_OP, prefix);
+        source->bin.right, FUN_ARG_OP, prefix, function->parameters);
     if (source->bin.right != NULL && target->u.call.arguments == NULL)
         return NULL;
     target->hasSideEffects = source->common.HasSideEffects;
@@ -1432,7 +1438,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
             if (target == NULL)
                 return NULL;
             target->u.construct.arguments = HlslLowerExprList(context,
-                source->un.arg, EXPR_LIST_OP, prefix);
+                source->un.arg, EXPR_LIST_OP, prefix, NULL);
             return target->u.construct.arguments != NULL ? target : NULL;
         }
         if (source->un.op == CAST_CS_OP ||

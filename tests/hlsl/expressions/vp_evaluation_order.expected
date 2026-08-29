@@ -32,6 +32,18 @@ float2 cg_record2(inout float trace, float digit)
     return float2(trace, trace + (float) 1.0);
 }
 
+float cg_modify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float cg_replace(out float value, float amount)
+{
+    value = amount + (float) 1.0;
+    return value;
+}
+
 cg_VertexOut cg_entry(float4 position)
 {
     cg_VertexOut cg_output;
@@ -43,6 +55,10 @@ cg_VertexOut cg_entry(float4 position)
     float called;
     float readBinary;
     float readCall;
+    float aliasValue;
+    float aliasResult;
+    float outValue;
+    float outResult;
     float2 temp1;
     float2 temp2;
     float temp3;
@@ -58,6 +74,8 @@ cg_VertexOut cg_entry(float4 position)
     float temp13;
     float temp14;
     float temp15;
+    float temp16;
+    float temp17;
     choose = position.x > 0.0;
     temp1 = position.xy;
     temp2 = float2(0.0, 0.0);
@@ -109,7 +127,27 @@ cg_VertexOut cg_entry(float4 position)
         temp14 = cg_record(trace, 13.0);
     }
     readCall = cg_combine(temp15, temp14);
-    cg_output.position = float4(binary + readBinary, called + readCall, (float) comparison.x, trace);
+    aliasValue = 1.0;
+    if (choose)
+    {
+        temp16 = cg_record(aliasValue, 17.0);
+    }
+    else
+    {
+        temp16 = cg_record(aliasValue, 18.0);
+    }
+    aliasResult = cg_modify(aliasValue, temp16);
+    outValue = 2.0;
+    if (choose)
+    {
+        temp17 = cg_record(outValue, 19.0);
+    }
+    else
+    {
+        temp17 = cg_record(outValue, 20.0);
+    }
+    outResult = cg_replace(outValue, temp17);
+    cg_output.position = float4(binary + readBinary, called + readCall, (float) comparison.x + aliasValue, trace + aliasResult + outValue + outResult);
     return cg_output;
 }
 
