@@ -1848,6 +1848,13 @@ static int HlslTypeNeedsIntegerReconstruction(const HlslType *type)
            type->rows == 0 && type->cols == 0 && type->len != 4;
 } // HlslTypeNeedsIntegerReconstruction
 
+static int HlslTypeIsScalarBoolean(const HlslType *type)
+{
+    return type != NULL && type->arraySize == 0 &&
+           type->base == HLSL_BASE_BOOL && type->len == 1 &&
+           type->rows == 0 && type->cols == 0;
+} // HlslTypeIsScalarBoolean
+
 static int HlslBindingNeedsReconstruction(const HlslBinding *binding)
 {
     return binding != NULL && binding->leafBindings != NULL &&
@@ -1855,7 +1862,7 @@ static int HlslBindingNeedsReconstruction(const HlslBinding *binding)
             (binding->leafBindings->physical.bank == HLSL_REGISTER_I &&
              HlslTypeNeedsIntegerReconstruction(&binding->type)) ||
             (binding->leafBindings->physical.bank == HLSL_REGISTER_B &&
-             binding->leafBindings->physical.span > 1));
+             !HlslTypeIsScalarBoolean(&binding->type)));
 } // HlslBindingNeedsReconstruction
 
 static int HlslInstallReconstructedBindingValue(HlslModule *module,

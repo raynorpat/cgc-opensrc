@@ -3,10 +3,10 @@ if(NOT DEFINED WORK_DIR)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/hlsl_oracle_records.cmake")
-file(REMOVE_RECURSE "${WORK_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")
 set(under "${WORK_DIR}/under.hlsl")
 set(reference "${WORK_DIR}/reference.hlsl")
+file(REMOVE "${under}" "${reference}")
 
 file(WRITE "${under}"
     "// cgc-bind interface in position float4 POSITION0\n")

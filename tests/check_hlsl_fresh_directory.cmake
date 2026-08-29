@@ -1,18 +1,41 @@
-foreach(required MODE CGC CONFIG WORK_DIR)
+foreach(required MODE CGC CONFIG WORK_DIR TEST_BINARY_ROOT)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} must be defined")
     endif()
 endforeach()
 
-get_filename_component(work_name "${WORK_DIR}" NAME)
+get_filename_component(test_root "${TEST_BINARY_ROOT}" REALPATH)
+get_filename_component(work_absolute "${WORK_DIR}" ABSOLUTE)
+get_filename_component(work_name "${work_absolute}" NAME)
 if(NOT work_name STREQUAL "fresh-link" AND
    NOT work_name STREQUAL "fresh-validate")
     message(FATAL_ERROR
         "refusing to clear unexpected fresh-directory probe ${WORK_DIR}")
 endif()
-file(REMOVE_RECURSE "${WORK_DIR}")
-if(EXISTS "${WORK_DIR}")
-    message(FATAL_ERROR "failed to remove fresh-directory probe ${WORK_DIR}")
+if(EXISTS "${work_absolute}")
+    get_filename_component(work_canonical "${work_absolute}" REALPATH)
+    get_filename_component(work_parent "${work_canonical}" DIRECTORY)
+else()
+    get_filename_component(work_parent "${work_absolute}" DIRECTORY)
+    get_filename_component(work_parent "${work_parent}" REALPATH)
+endif()
+if(WIN32)
+    string(TOLOWER "${test_root}" test_root_compare)
+    string(TOLOWER "${work_parent}" work_parent_compare)
+else()
+    set(test_root_compare "${test_root}")
+    set(work_parent_compare "${work_parent}")
+endif()
+if(test_root STREQUAL "" OR
+   NOT work_parent_compare STREQUAL test_root_compare)
+    message(FATAL_ERROR
+        "refusing to clear fresh-directory probe outside test binary root: "
+        "${WORK_DIR} (root ${TEST_BINARY_ROOT})")
+endif()
+file(REMOVE_RECURSE "${work_absolute}")
+if(EXISTS "${work_absolute}")
+    message(FATAL_ERROR
+        "failed to remove fresh-directory probe ${work_absolute}")
 endif()
 
 if(MODE STREQUAL "validate")
@@ -21,8 +44,8 @@ if(MODE STREQUAL "validate")
             message(FATAL_ERROR "${required} must be defined")
         endif()
     endforeach()
-    set(output "${WORK_DIR}/${CONFIG}/shader.hlsl")
-    set(bytecode "${WORK_DIR}/${CONFIG}/shader.fxc")
+    set(output "${work_absolute}/${CONFIG}/shader.hlsl")
+    set(bytecode "${work_absolute}/${CONFIG}/shader.fxc")
     execute_process(
         COMMAND "${CMAKE_COMMAND}"
             -DCGC=${CGC}
@@ -50,8 +73,8 @@ elseif(MODE STREQUAL "link")
             message(FATAL_ERROR "${required} must be defined")
         endif()
     endforeach()
-    set(vertex_output "${WORK_DIR}/${CONFIG}/shader.vs.hlsl")
-    set(fragment_output "${WORK_DIR}/${CONFIG}/shader.ps.hlsl")
+    set(vertex_output "${work_absolute}/${CONFIG}/shader.vs.hlsl")
+    set(fragment_output "${work_absolute}/${CONFIG}/shader.ps.hlsl")
     execute_process(
         COMMAND "${CMAKE_COMMAND}"
             -DCGC=${CGC}

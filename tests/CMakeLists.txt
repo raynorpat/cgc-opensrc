@@ -2090,6 +2090,7 @@ add_test(NAME hlsl_link_fresh_directory
         -DCGC=$<TARGET_FILE:cgc>
         "-DCONFIG=$<CONFIG>"
         "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-link"
+        "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
         -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/vp_link.cg
         -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/fp_link.cg
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
@@ -2104,9 +2105,16 @@ if(FXC_EXECUTABLE)
             -DTARGET=vs_3_0
             "-DCONFIG=$<CONFIG>"
             "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-validate"
+            "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
             -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_passthrough.cg
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
 endif()
+
+add_test(NAME hlsl_fresh_directory_cleanup_safety
+    COMMAND ${CMAKE_COMMAND}
+        "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}/fresh-safety/$<CONFIG>"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory_safety.cmake)
 
 add_test(NAME hlsl_metadata_direction_unit
     COMMAND ${CMAKE_COMMAND}

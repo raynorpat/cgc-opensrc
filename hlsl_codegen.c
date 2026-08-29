@@ -179,6 +179,13 @@ static int HlslIsScalarBooleanAggregate(const HlslType *type)
            type->cols == 0 && type->len >= 1 && type->len <= 4;
 } // HlslIsScalarBooleanAggregate
 
+static int HlslIsScalarBooleanType(const HlslType *type)
+{
+    return type != NULL && type->arraySize == 0 &&
+           type->base == HLSL_BASE_BOOL && type->len == 1 &&
+           type->rows == 0 && type->cols == 0;
+} // HlslIsScalarBooleanType
+
 static int HlslWriteDeclTypeAndName(FILE *out, const HlslDecl *decl)
 {
     const HlslType *element;
@@ -204,17 +211,18 @@ static int HlslWriteDeclTypeAndName(FILE *out, const HlslDecl *decl)
     }
     if (decl->storage == HLSL_STORAGE_UNIFORM &&
         decl->physical.bank == HLSL_REGISTER_B &&
-        decl->physical.span > 1)
+        !HlslIsScalarBooleanType(&decl->type))
     {
         /* Preserve one logical binding/default record for the runtime
            setter, but expose its contiguous SM3 b# span as scalar storage. */
         element = &decl->type;
-        if (HlslIsScalarBooleanAggregate(element) &&
-            fprintf(out, "bool %s[%d]", decl->name,
-                    decl->physical.span) >= 0)
-        {
-            return 1;
-        }
+        if (!HlslIsScalarBooleanAggregate(element))
+            return 0;
+        if (decl->physical.span == 1)
+            return fprintf(out, "bool %s", decl->name) >= 0;
+        if (decl->physical.span > 1)
+            return fprintf(out, "bool %s[%d]", decl->name,
+                           decl->physical.span) >= 0;
         return 0;
     }
     return HlslWriteTypeAndName(out, &decl->type, decl->name);
@@ -407,7 +415,8 @@ static const HlslDecl *HlslPhysicalBooleanDecl(
         declaration = expression->u.symbol;
         if (declaration == NULL ||
             declaration->physical.bank != HLSL_REGISTER_B ||
-            declaration->physical.span <= 1)
+            (declaration->physical.span <= 1 &&
+             HlslIsScalarBooleanType(&declaration->type)))
         {
             return NULL;
         }
@@ -482,9 +491,12 @@ static int HlslWritePhysicalBooleanValue(FILE *out,
     {
         return 0;
     }
-    if (expression->type.len == 1)
+    if (expression->type.len == 1) {
+        if (declaration->physical.span == 1)
+            return fputs(declaration->name, out) == EOF ? -1 : 1;
         return fprintf(out, "%s[%d]", declaration->name, offset) >= 0 ?
                1 : -1;
+    }
     typeName = HlslValueTypeName(&expression->type);
     if (typeName == NULL || fprintf(out, "%s(", typeName) < 0)
         return -1;

@@ -6,17 +6,30 @@
 // var bool3 flags : B0 : b[0] : 1 : 3
 // cgc-default flags 1.0 0.0 1.0
 // var cg_BoolConfig config : B7 : b[7] : 1 : 3
+// var cg_NestedBool single : B10 : b[10] : 1 : 1
+// cgc-default single 1.0
 // var bool2 masks :  : b[3] : 1 : 4
 // cgc-default masks 0.0 1.0 1.0 0.0
 
 uniform bool cg_flags[3] : register(b0);
 uniform bool cg_config[3] : register(b7);
+uniform bool cg_single : register(b10);
 uniform bool cg_masks[4] : register(b3);
 
 struct cg_BoolConfig
 {
     bool2 gates;
     bool enabled;
+};
+
+struct cg_OneBool
+{
+    bool enabled;
+};
+
+struct cg_NestedBool
+{
+    cg_OneBool inner;
 };
 
 struct cg_VertexOut
@@ -40,6 +53,7 @@ cg_VertexOut cg_entry(float4 position)
     bool3 flags;
     bool2 masks[2];
     cg_BoolConfig config;
+    cg_NestedBool single;
     cg_output.position = position;
     flags = bool3(cg_flags[0], cg_flags[1], cg_flags[2]);
     if (flags.x)
@@ -80,6 +94,11 @@ cg_VertexOut cg_entry(float4 position)
         {
             cg_output.position.w = cg_output.position.w + 1.0;
         }
+    }
+    single.inner.enabled = cg_single;
+    if (single.inner.enabled)
+    {
+        cg_output.position.x = cg_output.position.x + 1.0;
     }
     return cg_output;
 }

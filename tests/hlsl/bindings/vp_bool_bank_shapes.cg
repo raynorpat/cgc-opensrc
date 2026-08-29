@@ -3,6 +3,14 @@ struct BoolConfig {
     bool enabled;
 };
 
+struct OneBool {
+    bool enabled;
+};
+
+struct NestedBool {
+    OneBool inner;
+};
+
 uniform bool3 flags : B0 = bool3(true, false, true);
 uniform bool2 masks[2] = {
     bool2(false, true),
@@ -14,7 +22,8 @@ struct VertexOut {
     float4 position : POSITION;
 };
 
-VertexOut main(float4 position : POSITION)
+VertexOut main(float4 position : POSITION,
+               uniform NestedBool single : B10 = { { true } })
 {
     VertexOut output;
     output.position = position;
@@ -35,5 +44,7 @@ VertexOut main(float4 position : POSITION)
     if (config.gates.x)
         if (config.enabled)
             output.position.w += 1.0;
+    if (single.inner.enabled)
+        output.position.x += 1.0;
     return output;
 }
