@@ -1144,7 +1144,7 @@ static HlslExpr *HlslLowerSwizzle(HlslLowerContext *context, expr *source,
 
 static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
                                    opcode listOp, HlslStmt **prefix,
-                                   HlslDecl *parameter)
+                                   Symbol *formal)
 {
     HlslExpr *list;
     HlslExpr *item;
@@ -1167,16 +1167,16 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
     if (source->bin.right != NULL) {
         rest = HlslLowerExprList(context, source->bin.right, listOp,
                                  &restPrefix,
-                                 parameter != NULL ? parameter->next : NULL);
+                                 formal != NULL ? formal->next : NULL);
         if (rest == NULL)
             return NULL;
     }
     HlslAppendStmt(prefix, itemPrefix);
-    preserveLvalue = parameter != NULL &&
-        (parameter->parameterQualifier == HLSL_PARAMETER_OUT ||
-         parameter->parameterQualifier == HLSL_PARAMETER_INOUT);
+    preserveLvalue = formal != NULL &&
+        (GetQualifiers(formal->type) & TYPE_QUALIFIER_OUT);
     if (!preserveLvalue && source->bin.right != NULL &&
-        (restPrefix != NULL ||
+        (source->bin.left->common.HasSideEffects ||
+         restPrefix != NULL ||
          source->bin.right->common.HasSideEffects))
     {
         item = HlslCaptureValue(context, prefix, item);
@@ -1211,7 +1211,8 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     target->u.call.function = function;
     target->u.call.name = function->name;
     target->u.call.arguments = HlslLowerExprList(context,
-        source->bin.right, FUN_ARG_OP, prefix, function->parameters);
+        source->bin.right, FUN_ARG_OP, prefix,
+        symbol->details.fun.params);
     if (source->bin.right != NULL && target->u.call.arguments == NULL)
         return NULL;
     target->hasSideEffects = source->common.HasSideEffects;

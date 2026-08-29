@@ -15,6 +15,10 @@ struct cg_VertexOut_1
     float4 position : POSITION0;
 };
 
+float cg_nestedModify(inout float value, float amount);
+
+float cg_bumpValue(inout float value);
+
 float cg_record(inout float trace, float digit)
 {
     trace = trace * (float) 10.0 + digit;
@@ -44,6 +48,23 @@ float cg_replace(out float value, float amount)
     return value;
 }
 
+float cg_forwardWrapper(inout float value, inout float trace)
+{
+    return cg_nestedModify(value, cg_bumpValue(trace));
+}
+
+float cg_nestedModify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float cg_bumpValue(inout float value)
+{
+    value = value + (float) 1.0;
+    return value;
+}
+
 cg_VertexOut cg_entry(float4 position)
 {
     cg_VertexOut cg_output;
@@ -59,6 +80,13 @@ cg_VertexOut cg_entry(float4 position)
     float aliasResult;
     float outValue;
     float outResult;
+    float nestedValue;
+    float nestedTrace;
+    float nestedResult;
+    float effectTrace;
+    float effectRead;
+    float constructorTrace;
+    float2 constructed;
     float2 temp1;
     float2 temp2;
     float temp3;
@@ -76,6 +104,8 @@ cg_VertexOut cg_entry(float4 position)
     float temp15;
     float temp16;
     float temp17;
+    float temp18;
+    float temp19;
     choose = position.x > 0.0;
     temp1 = position.xy;
     temp2 = float2(0.0, 0.0);
@@ -147,7 +177,16 @@ cg_VertexOut cg_entry(float4 position)
         temp17 = cg_record(outValue, 20.0);
     }
     outResult = cg_replace(outValue, temp17);
-    cg_output.position = float4(binary + readBinary, called + readCall, (float) comparison.x + aliasValue, trace + aliasResult + outValue + outResult);
+    nestedValue = 3.0;
+    nestedTrace = 4.0;
+    nestedResult = cg_forwardWrapper(nestedValue, nestedTrace);
+    effectTrace = 5.0;
+    temp18 = cg_record(effectTrace, 21.0);
+    effectRead = cg_combine(temp18, effectTrace);
+    constructorTrace = 6.0;
+    temp19 = cg_record(constructorTrace, 22.0);
+    constructed = float2(temp19, constructorTrace);
+    cg_output.position = float4(binary + readBinary + effectRead, called + readCall + constructed.x + constructed.y, (float) comparison.x + aliasValue + nestedValue, trace + aliasResult + outValue + outResult + nestedTrace + nestedResult);
     return cg_output;
 }
 

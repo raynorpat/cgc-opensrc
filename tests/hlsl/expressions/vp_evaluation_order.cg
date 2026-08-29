@@ -27,6 +27,23 @@ float replace(out float value, float amount)
     return value;
 }
 
+float nestedModify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float bumpValue(inout float value)
+{
+    value = value + 1.0;
+    return value;
+}
+
+float forwardWrapper(inout float value, inout float trace)
+{
+    return nestedModify(value, bumpValue(trace));
+}
+
 struct VertexOut { float4 position : POSITION; };
 
 VertexOut main(float4 position : POSITION)
@@ -44,6 +61,13 @@ VertexOut main(float4 position : POSITION)
     float aliasResult;
     float outValue;
     float outResult;
+    float nestedValue;
+    float nestedTrace;
+    float nestedResult;
+    float effectTrace;
+    float effectRead;
+    float constructorTrace;
+    float2 constructed;
 
     choose = position.x > 0.0;
     lanes = position.xy > float2(0.0, 0.0);
@@ -66,8 +90,19 @@ VertexOut main(float4 position : POSITION)
     outResult = replace(outValue,
                         choose ? record(outValue, 19.0) :
                                  record(outValue, 20.0));
-    output.position = float4(binary + readBinary, called + readCall,
-                             float(comparison.x) + aliasValue,
-                             trace + aliasResult + outValue + outResult);
+    nestedValue = 3.0;
+    nestedTrace = 4.0;
+    nestedResult = forwardWrapper(nestedValue, nestedTrace);
+    effectTrace = 5.0;
+    effectRead = combine(record(effectTrace, 21.0), effectTrace);
+    constructorTrace = 6.0;
+    constructed = float2(record(constructorTrace, 22.0),
+                         constructorTrace);
+    output.position = float4(binary + readBinary + effectRead,
+                             called + readCall + constructed.x +
+                             constructed.y,
+                             float(comparison.x) + aliasValue + nestedValue,
+                             trace + aliasResult + outValue + outResult +
+                             nestedTrace + nestedResult);
     return output;
 }
