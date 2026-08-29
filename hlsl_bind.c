@@ -1438,22 +1438,126 @@ static int HlslStatementsUseDecl(const HlslStmt *statement,
     return 0;
 } // HlslStatementsUseDecl
 
-static int HlslNonEntryUsesDecl(const HlslModule *module,
-                                const HlslDecl *decl)
+static void HlslReplaceExpressionDecl(HlslExpr *expression,
+                                      const HlslDecl *source,
+                                      HlslDecl *replacement)
 {
-    const HlslFunction *function;
+    HlslExpr *argument;
 
-    for (function = module->functions; function != NULL;
-         function = function->next)
-    {
-        if (function != module->entry && function != module->wrapper &&
-            HlslStatementsUseDecl(function->body, decl))
-        {
-            return 1;
+    for (; expression != NULL; expression = expression->next) {
+        switch (expression->kind) {
+        case HLSL_EXPR_SYMBOL:
+            if (expression->u.symbol == source)
+                expression->u.symbol = replacement;
+            break;
+        case HLSL_EXPR_UNARY:
+            HlslReplaceExpressionDecl(expression->u.unary.operand,
+                                      source, replacement);
+            break;
+        case HLSL_EXPR_BINARY:
+            HlslReplaceExpressionDecl(expression->u.binary.left,
+                                      source, replacement);
+            HlslReplaceExpressionDecl(expression->u.binary.right,
+                                      source, replacement);
+            break;
+        case HLSL_EXPR_CONDITIONAL:
+            HlslReplaceExpressionDecl(
+                expression->u.conditional.condition, source, replacement);
+            HlslReplaceExpressionDecl(
+                expression->u.conditional.trueExpr, source, replacement);
+            HlslReplaceExpressionDecl(
+                expression->u.conditional.falseExpr, source, replacement);
+            break;
+        case HLSL_EXPR_CALL:
+            argument = expression->u.call.arguments;
+            HlslReplaceExpressionDecl(argument, source, replacement);
+            break;
+        case HLSL_EXPR_CONSTRUCT:
+            argument = expression->u.construct.arguments;
+            HlslReplaceExpressionDecl(argument, source, replacement);
+            break;
+        case HLSL_EXPR_CAST:
+            HlslReplaceExpressionDecl(expression->u.cast.expression,
+                                      source, replacement);
+            break;
+        case HLSL_EXPR_MEMBER:
+            HlslReplaceExpressionDecl(expression->u.member.object,
+                                      source, replacement);
+            break;
+        case HLSL_EXPR_INDEX:
+            HlslReplaceExpressionDecl(expression->u.index.object,
+                                      source, replacement);
+            HlslReplaceExpressionDecl(expression->u.index.index,
+                                      source, replacement);
+            break;
+        case HLSL_EXPR_SWIZZLE:
+            HlslReplaceExpressionDecl(expression->u.swizzle.object,
+                                      source, replacement);
+            break;
+        case HLSL_EXPR_INT:
+        case HLSL_EXPR_FLOAT:
+        case HLSL_EXPR_BOOL:
+        default:
+            break;
         }
     }
-    return 0;
-} // HlslNonEntryUsesDecl
+} // HlslReplaceExpressionDecl
+
+static void HlslReplaceStatementDecl(HlslStmt *statement,
+                                     const HlslDecl *source,
+                                     HlslDecl *replacement)
+{
+    for (; statement != NULL; statement = statement->next) {
+        switch (statement->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (statement->u.declaration != NULL) {
+                HlslReplaceExpressionDecl(
+                    statement->u.declaration->initializer,
+                    source, replacement);
+            }
+            break;
+        case HLSL_STMT_EXPRESSION:
+            HlslReplaceExpressionDecl(statement->u.expression,
+                                      source, replacement);
+            break;
+        case HLSL_STMT_IF:
+            HlslReplaceExpressionDecl(statement->u.ifStmt.condition,
+                                      source, replacement);
+            HlslReplaceStatementDecl(statement->u.ifStmt.trueBranch,
+                                     source, replacement);
+            HlslReplaceStatementDecl(statement->u.ifStmt.falseBranch,
+                                     source, replacement);
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            HlslReplaceExpressionDecl(statement->u.loop.condition,
+                                      source, replacement);
+            HlslReplaceStatementDecl(statement->u.loop.body,
+                                     source, replacement);
+            break;
+        case HLSL_STMT_FOR:
+            HlslReplaceStatementDecl(statement->u.forStmt.init,
+                                     source, replacement);
+            HlslReplaceExpressionDecl(statement->u.forStmt.condition,
+                                      source, replacement);
+            HlslReplaceStatementDecl(statement->u.forStmt.step,
+                                     source, replacement);
+            HlslReplaceStatementDecl(statement->u.forStmt.body,
+                                     source, replacement);
+            break;
+        case HLSL_STMT_BLOCK:
+            HlslReplaceStatementDecl(statement->u.block,
+                                     source, replacement);
+            break;
+        case HLSL_STMT_RETURN:
+            HlslReplaceExpressionDecl(statement->u.returnExpr,
+                                      source, replacement);
+            break;
+        default:
+            break;
+        }
+    }
+} // HlslReplaceStatementDecl
 
 static HlslExpr *HlslFindFunctionCallExpr(HlslExpr *expression,
                                           const HlslFunction *function)
@@ -1668,15 +1772,72 @@ static int HlslInsertBeforeFirstUse(HlslFunction *function,
     return 0;
 } // HlslInsertBeforeFirstUse
 
+static HlslDecl *HlslNewMixedBindingLocal(HlslModule *module,
+                                          HlslFunction *function,
+                                          const HlslBinding *binding,
+                                          const HlslDecl *source)
+{
+    HlslDecl *local;
+    const char *name;
+    const char *sourceName;
+    const void *nameSpace;
+
+    if (module == NULL || function == NULL || binding == NULL ||
+        source == NULL)
+    {
+        return NULL;
+    }
+    sourceName = HlslPublicBindingName(binding);
+    nameSpace = function->identity != NULL ? function->identity : function;
+    name = sourceName != NULL ?
+        HlslAllocateScopedSymbolName(module, nameSpace,
+                                     source->identity, sourceName) : NULL;
+    local = name != NULL ?
+        HlslNewDecl(module, HLSL_STORAGE_NONE, source->type, name) : NULL;
+    if (local != NULL) {
+        local->publicName = sourceName;
+        local->loc = source->loc;
+        local->sourceOrdinal = source->sourceOrdinal;
+        local->identity = source->identity;
+        local->parameterQualifier = HLSL_PARAMETER_IN;
+    }
+    return local;
+} // HlslNewMixedBindingLocal
+
+static int HlslInstallMixedBindingConsumer(HlslModule *module,
+                                           HlslFunction *function,
+                                           HlslBinding *binding,
+                                           HlslDecl *source)
+{
+    HlslBinding *leaf;
+    HlslDecl *local;
+    HlslStmt *initializers;
+
+    if (!HlslStatementsUseDecl(function->body, source))
+        return 1;
+    local = HlslNewMixedBindingLocal(module, function, binding, source);
+    if (local == NULL)
+        return 0;
+    HlslReplaceStatementDecl(function->body, source, local);
+    initializers = NULL;
+    leaf = binding->leafBindings;
+    if (!HlslAppendMixedBindingCopy(module, &binding->type,
+            HlslBindingSymbol(module, local), &leaf, &initializers) ||
+        leaf != NULL || initializers == NULL)
+    {
+        return 0;
+    }
+    HlslAppendDecl(&function->locals, local);
+    return HlslInsertBeforeFirstUse(function, local, initializers);
+} // HlslInstallMixedBindingConsumer
+
 static int HlslInstallMixedBindingValue(HlslModule *module,
                                         HlslBinding *binding)
 {
-    HlslBinding *leaf;
     HlslDecl **parameterPlace;
     HlslDecl *valueDecl;
-    HlslStmt *initializers;
+    HlslFunction *function;
     int ordinal;
-    int used;
 
     if (module == NULL || module->entry == NULL || binding == NULL ||
         binding->declaration == NULL || binding->leafBindings == NULL ||
@@ -1688,35 +1849,30 @@ static int HlslInstallMixedBindingValue(HlslModule *module,
     parameterPlace = HlslFindEntryParameter(module, binding, &ordinal);
     if (parameterPlace != NULL) {
         valueDecl = *parameterPlace;
-        used = HlslStatementsUseDecl(module->entry->body, valueDecl);
         if (!HlslRemoveEntryArgument(module, ordinal, binding))
             return 0;
         *parameterPlace = valueDecl->next;
         valueDecl->next = NULL;
-        if (!used)
-            return 1;
     } else {
         valueDecl = binding->declaration;
-        used = HlslStatementsUseDecl(module->entry->body, valueDecl);
-        if (!used)
-            return !HlslNonEntryUsesDecl(module, valueDecl);
     }
-    if (HlslNonEntryUsesDecl(module, valueDecl))
-        return 0;
-    valueDecl->storage = HLSL_STORAGE_NONE;
-    valueDecl->parameterQualifier = HLSL_PARAMETER_IN;
-    valueDecl->initializer = NULL;
-    initializers = NULL;
-    leaf = binding->leafBindings;
-    if (!HlslAppendMixedBindingCopy(module, &binding->type,
-            HlslBindingSymbol(module, valueDecl), &leaf,
-            &initializers) || leaf != NULL || initializers == NULL)
+    if (valueDecl == NULL ||
+        (module->wrapper != NULL &&
+         HlslStatementsUseDecl(module->wrapper->body, valueDecl)))
     {
         return 0;
     }
-    HlslAppendDecl(&module->entry->locals, valueDecl);
-    return HlslInsertBeforeFirstUse(module->entry, valueDecl,
-                                    initializers);
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (function != module->wrapper &&
+            !HlslInstallMixedBindingConsumer(module, function, binding,
+                                             valueDecl))
+        {
+            return 0;
+        }
+    }
+    return 1;
 } // HlslInstallMixedBindingValue
 
 int HlslAllocateBindings(HlslModule *module,

@@ -207,6 +207,109 @@ static int TestMultiplyResult(void)
                              "incorrect multiply result was accepted");
 }
 
+static int RejectMatrixArithmetic(HlslOperator op, const char *message)
+{
+    HlslModule module;
+    HlslFunction *entry;
+    HlslDecl *left;
+    HlslDecl *right;
+    HlslExpr *expression;
+    HlslType leftType;
+    HlslType rightType;
+    HlslType resultType;
+    HlslType voidType;
+
+    leftType = HlslMatrixType(2, 3);
+    rightType = HlslMatrixType(3, 2);
+    resultType = HlslMatrixType(2, 2);
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    entry = InitModule(&module, voidType);
+    left = HlslNewDecl(&module, HLSL_STORAGE_NONE, leftType, "left");
+    right = HlslNewDecl(&module, HLSL_STORAGE_NONE, rightType, "right");
+    expression = HlslNewExpr(&module, HLSL_EXPR_BINARY, resultType);
+    if (entry == NULL || left == NULL || right == NULL ||
+        expression == NULL)
+    {
+        return 0;
+    }
+    HlslAppendDecl(&entry->locals, left);
+    HlslAppendDecl(&entry->locals, right);
+    expression->u.binary.op = op;
+    expression->u.binary.left = SymbolExpr(&module, left);
+    expression->u.binary.right = SymbolExpr(&module, right);
+    entry->body = ExpressionStmt(&module, expression);
+    return RejectedAsInvalid(&module, message);
+}
+
+static int TestMatrixArithmeticShapes(void)
+{
+    return RejectMatrixArithmetic(HLSL_OP_ADD,
+               "incompatible matrix addition shapes were accepted") &&
+           RejectMatrixArithmetic(HLSL_OP_SUBTRACT,
+               "incompatible matrix subtraction shapes were accepted") &&
+           RejectMatrixArithmetic(HLSL_OP_MULTIPLY,
+               "linear-algebra matrix multiply was accepted for binary *") &&
+           RejectMatrixArithmetic(HLSL_OP_DIVIDE,
+               "incompatible matrix division shapes were accepted");
+}
+
+static int AcceptMatrixArithmetic(HlslOperator op, HlslType leftType,
+                                  HlslType rightType,
+                                  const char *message)
+{
+    HlslModule module;
+    HlslFunction *entry;
+    HlslDecl *left;
+    HlslDecl *right;
+    HlslExpr *expression;
+    HlslType matrixType;
+    HlslType voidType;
+
+    matrixType = HlslMatrixType(2, 3);
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    entry = InitModule(&module, voidType);
+    left = HlslNewDecl(&module, HLSL_STORAGE_NONE, leftType, "left");
+    right = HlslNewDecl(&module, HLSL_STORAGE_NONE, rightType, "right");
+    expression = HlslNewExpr(&module, HLSL_EXPR_BINARY, matrixType);
+    if (entry == NULL || left == NULL || right == NULL ||
+        expression == NULL)
+    {
+        return 0;
+    }
+    HlslAppendDecl(&entry->locals, left);
+    HlslAppendDecl(&entry->locals, right);
+    expression->u.binary.op = op;
+    expression->u.binary.left = SymbolExpr(&module, left);
+    expression->u.binary.right = SymbolExpr(&module, right);
+    entry->body = ExpressionStmt(&module, expression);
+    return Require(HlslLegalizeModule(&module, &profile), message);
+}
+
+static int TestMatrixArithmeticAccepted(void)
+{
+    HlslType matrixType;
+    HlslType scalarType;
+
+    matrixType = HlslMatrixType(2, 3);
+    scalarType = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    return AcceptMatrixArithmetic(HLSL_OP_ADD, matrixType, matrixType,
+               "same-shape matrix addition was rejected") &&
+           AcceptMatrixArithmetic(HLSL_OP_SUBTRACT, matrixType, matrixType,
+               "same-shape matrix subtraction was rejected") &&
+           AcceptMatrixArithmetic(HLSL_OP_MULTIPLY, matrixType, matrixType,
+               "component-wise matrix multiplication was rejected") &&
+           AcceptMatrixArithmetic(HLSL_OP_DIVIDE, matrixType, matrixType,
+               "same-shape matrix division was rejected") &&
+           AcceptMatrixArithmetic(HLSL_OP_ADD, matrixType, scalarType,
+               "matrix plus scalar was rejected") &&
+           AcceptMatrixArithmetic(HLSL_OP_SUBTRACT, scalarType, matrixType,
+               "scalar minus matrix was rejected") &&
+           AcceptMatrixArithmetic(HLSL_OP_MULTIPLY, matrixType, scalarType,
+               "matrix times scalar was rejected") &&
+           AcceptMatrixArithmetic(HLSL_OP_DIVIDE, scalarType, matrixType,
+               "scalar divided by matrix was rejected");
+}
+
 static int TestCallArity(void)
 {
     HlslModule module;
@@ -445,6 +548,8 @@ int main(void)
     return TestAssignmentTypes() &&
            TestMultiplyShapes() &&
            TestMultiplyResult() &&
+           TestMatrixArithmeticShapes() &&
+           TestMatrixArithmeticAccepted() &&
            TestCallArity() &&
            TestCallParameterType() &&
            TestMemberOwnership() &&

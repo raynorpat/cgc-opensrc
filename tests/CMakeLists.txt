@@ -1894,15 +1894,24 @@ add_hlsl_fixture(hlslv_struct_array hlslv
 add_hlsl_fixture(hlslv_nested_out hlslv
     tests/hlsl/aggregates/vp_nested_out.cg
     tests/hlsl/aggregates/vp_nested_out.expected)
+add_hlsl_fixture(hlslv_aliased_out hlslv
+    tests/hlsl/aggregates/vp_aliased_out.cg
+    tests/hlsl/aggregates/vp_aliased_out.expected)
 add_hlsl_fixture(hlslv_rectangular hlslv
     tests/hlsl/matrices/vp_rectangular.cg
     tests/hlsl/matrices/vp_rectangular.expected)
+add_hlsl_fixture(hlslv_matrix_arithmetic hlslv
+    tests/hlsl/matrices/vp_matrix_arithmetic.cg
+    tests/hlsl/matrices/vp_matrix_arithmetic.expected)
 add_hlsl_fixture(hlslv_matrix_order hlslv
     tests/hlsl/matrices/vp_matrix_order.cg
     tests/hlsl/matrices/vp_matrix_order.expected)
 add_hlsl_fixture(hlslv_defaults hlslv
     tests/hlsl/bindings/vp_defaults.cg
     tests/hlsl/bindings/vp_defaults.expected)
+add_hlsl_fixture(hlslv_mixed_struct_helpers hlslv
+    tests/hlsl/bindings/vp_mixed_struct_helpers.cg
+    tests/hlsl/bindings/vp_mixed_struct_helpers.expected)
 add_hlsl_fixture(hlslv_position hlslv
     position.cg tests/hlsl/vertex/position.expected)
 add_hlsl_fixture(hlslv_reflection hlslv

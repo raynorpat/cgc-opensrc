@@ -179,6 +179,54 @@ static int HlslMultiplyResult(const HlslType *left,
     return 1;
 } // HlslMultiplyResult
 
+static int HlslIsFloatMatrix(const HlslType *type)
+{
+    return type != NULL && type->arraySize == 0 &&
+           type->base == HLSL_BASE_FLOAT &&
+           type->rows >= 1 && type->rows <= 4 &&
+           type->cols >= 1 && type->cols <= 4;
+} // HlslIsFloatMatrix
+
+static int HlslArithmeticResult(const HlslType *left,
+                                const HlslType *right, HlslType *result)
+{
+    int leftMatrix;
+    int rightMatrix;
+    int length;
+
+    if (left == NULL || right == NULL || result == NULL)
+        return 0;
+    leftMatrix = HlslIsFloatMatrix(left);
+    rightMatrix = HlslIsFloatMatrix(right);
+    if (leftMatrix || rightMatrix) {
+        if (leftMatrix && rightMatrix &&
+            left->rows == right->rows && left->cols == right->cols)
+        {
+            *result = *left;
+            return 1;
+        }
+        if (leftMatrix && HlslIsScalar(right, HLSL_BASE_FLOAT)) {
+            *result = *left;
+            return 1;
+        }
+        if (rightMatrix && HlslIsScalar(left, HLSL_BASE_FLOAT)) {
+            *result = *right;
+            return 1;
+        }
+        return 0;
+    }
+    if (!HlslIsNumericScalarOrVector(left) ||
+        !HlslIsNumericScalarOrVector(right) ||
+        left->base != right->base ||
+        (left->len > 1 && right->len > 1 && left->len != right->len))
+    {
+        return 0;
+    }
+    length = left->len > right->len ? left->len : right->len;
+    *result = HlslNumericType(left->base, length);
+    return 1;
+} // HlslArithmeticResult
+
 static int HlslMemberInList(const HlslDecl *members,
                             const HlslDecl *target)
 {
@@ -292,15 +340,21 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         } else if (expression->u.binary.op == HLSL_OP_ADD ||
                    expression->u.binary.op == HLSL_OP_SUBTRACT ||
                    expression->u.binary.op == HLSL_OP_MULTIPLY ||
-                   expression->u.binary.op == HLSL_OP_DIVIDE ||
-                   expression->u.binary.op == HLSL_OP_REMAINDER)
+                   expression->u.binary.op == HLSL_OP_DIVIDE)
         {
-            if (HlslMultiplyResult(&expression->u.binary.left->type,
-                                   &expression->u.binary.right->type,
-                                   &resultType) &&
-                HlslTypesEqual(&expression->type, &resultType) &&
-                (expression->u.binary.op != HLSL_OP_REMAINDER ||
-                 expression->type.base == HLSL_BASE_INT))
+            if (HlslArithmeticResult(&expression->u.binary.left->type,
+                                     &expression->u.binary.right->type,
+                                     &resultType) &&
+                HlslTypesEqual(&expression->type, &resultType))
+            {
+                return 1;
+            }
+        } else if (expression->u.binary.op == HLSL_OP_REMAINDER) {
+            if (HlslArithmeticResult(&expression->u.binary.left->type,
+                                     &expression->u.binary.right->type,
+                                     &resultType) &&
+                resultType.base == HLSL_BASE_INT &&
+                HlslTypesEqual(&expression->type, &resultType))
             {
                 return 1;
             }

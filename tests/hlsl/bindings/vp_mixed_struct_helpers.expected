@@ -1,0 +1,76 @@
+// profile hlslv
+// target vs_3_0
+// var float mixed.scalar :  : c[0] : 1 : 1
+// var int mixed.integer :  : i[0] : 1 : 1
+// var bool mixed.enabled :  : b[0] : 1 : 1
+
+float cg_mixed_scalar : register(c0);
+int cg_mixed_integer : register(i0);
+bool cg_mixed_enabled : register(b0);
+
+struct cg_Mixed
+{
+    float scalar;
+    int integer;
+    bool enabled;
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_consume_first(float value)
+{
+    float result;
+    cg_Mixed mixed;
+    result = value;
+    mixed.scalar = cg_mixed_scalar;
+    mixed.integer = cg_mixed_integer;
+    mixed.enabled = cg_mixed_enabled;
+    result = result + (mixed.enabled ? mixed.scalar : (float) mixed.integer);
+    return result;
+}
+
+float cg_consume_second(float value)
+{
+    float result;
+    cg_Mixed mixed;
+    result = value;
+    mixed.scalar = cg_mixed_scalar;
+    mixed.integer = cg_mixed_integer;
+    mixed.enabled = cg_mixed_enabled;
+    result = result + mixed.scalar + (float) mixed.integer;
+    return result;
+}
+
+float cg_consume_none(float value)
+{
+    return value + (float) 1.0;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output;
+    cg_output.position = position + float4(cg_consume_first(position.x), cg_consume_second(position.y), cg_consume_none(position.z), 0.0);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}
