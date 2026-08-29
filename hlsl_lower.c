@@ -72,6 +72,19 @@ static void HlslSetLoc(HlslLoc *target, const SourceLoc *source)
     }
 } // HlslSetLoc
 
+static HlslExpr *HlslNewSourceExpr(HlslLowerContext *context,
+                                   HlslExprKind kind, HlslType type)
+{
+    HlslLoc loc;
+
+    loc.file = 0;
+    loc.line = 0;
+    if (context != NULL)
+        HlslSetLoc(&loc, &context->statementLoc);
+    return context != NULL ?
+           HlslNewLocatedExpr(context->module, kind, type, &loc) : NULL;
+} // HlslNewSourceExpr
+
 static int HlslLowerFailure(HlslLowerContext *context, HlslErrorKind kind,
                             const char *reason, const SourceLoc *loc)
 {
@@ -766,7 +779,7 @@ static HlslExpr *HlslNewLiteral(HlslLowerContext *context, HlslBase base,
     type = HlslNumericType(base, 1);
     kind = base == HLSL_BASE_FLOAT ? HLSL_EXPR_FLOAT :
            base == HLSL_BASE_BOOL ? HLSL_EXPR_BOOL : HLSL_EXPR_INT;
-    target = HlslNewExpr(context->module, kind, type);
+    target = HlslNewSourceExpr(context, kind, type);
     if (target != NULL) {
         if (kind == HLSL_EXPR_FLOAT)
             target->u.literalFloat = floatValue;
@@ -804,7 +817,7 @@ static HlslExpr *HlslLowerConstant(HlslLowerContext *context, expr *source,
         return HlslNewLiteral(context, type->base,
                               (int) source->co.val[0].value.i, 0.0f);
     }
-    target = HlslNewExpr(context->module, HLSL_EXPR_CONSTRUCT, *type);
+    target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, *type);
     if (target == NULL)
         return NULL;
     for (i = 0; i < type->len; i++) {
@@ -870,7 +883,7 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     function = HlslFindFunction(context->module, symbol);
     if (function == NULL)
         return NULL;
-    target = HlslNewExpr(context->module, HLSL_EXPR_CALL, *type);
+    target = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
     if (target == NULL)
         return NULL;
     target->u.call.function = function;
@@ -900,7 +913,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
         decl = HlslFindDecl(context, source->sym.symbol);
         if (decl == NULL)
             return NULL;
-        target = HlslNewExpr(context->module, HLSL_EXPR_SYMBOL, type);
+        target = HlslNewSourceExpr(context, HLSL_EXPR_SYMBOL, type);
         if (target != NULL)
             target->u.symbol = decl;
         return target;
@@ -908,7 +921,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
     if (source->common.kind == CONST_N)
         return HlslLowerConstant(context, source, &type);
     if (source->common.kind == UNARY_N && source->un.op == VECTOR_V_OP) {
-        target = HlslNewExpr(context->module, HLSL_EXPR_CONSTRUCT, type);
+        target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, type);
         if (target == NULL)
             return NULL;
         target->u.construct.arguments = HlslLowerExprList(context,
@@ -927,7 +940,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
             decl = HlslFindDecl(context, member);
             if (decl == NULL)
                 return NULL;
-            target = HlslNewExpr(context->module, HLSL_EXPR_MEMBER, type);
+            target = HlslNewSourceExpr(context, HLSL_EXPR_MEMBER, type);
             if (target == NULL)
                 return NULL;
             target->u.member.object = HlslLowerExpr(context,
@@ -937,7 +950,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
             return target->u.member.object != NULL ? target : NULL;
         }
         if (source->bin.op == ARRAY_INDEX_OP) {
-            target = HlslNewExpr(context->module, HLSL_EXPR_INDEX, type);
+            target = HlslNewSourceExpr(context, HLSL_EXPR_INDEX, type);
             if (target == NULL)
                 return NULL;
             target->u.index.object = HlslLowerExpr(context,
@@ -951,7 +964,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
             return HlslLowerCall(context, source, &type);
         op = HlslBinaryOperator(source->bin.op);
         if (op != HLSL_OP_NONE) {
-            target = HlslNewExpr(context->module, HLSL_EXPR_BINARY, type);
+            target = HlslNewSourceExpr(context, HLSL_EXPR_BINARY, type);
             if (target == NULL)
                 return NULL;
             target->u.binary.op = op;

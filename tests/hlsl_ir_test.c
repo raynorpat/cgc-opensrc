@@ -1439,6 +1439,22 @@ static void TestPublicBindingNames(void)
     assert(module.errorKind == HLSL_ERROR_INVALID_IR);
 }
 
+static void TestLocatedExpression(void)
+{
+    HlslModule module;
+    HlslExpr *expression;
+    HlslLoc loc;
+    HlslType type;
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    loc.file = 7;
+    loc.line = 23;
+    expression = HlslNewLocatedExpr(&module, HLSL_EXPR_FLOAT, type, &loc);
+    assert(expression != NULL);
+    assert(expression->loc.file == 7 && expression->loc.line == 23);
+}
+
 int main(int argc, char **argv)
 {
     HlslModule module;
@@ -1537,5 +1553,6 @@ int main(int argc, char **argv)
     TestOversizedMixedArrayPreflight();
     TestDefaultValidationIsTransactional();
     TestPublicBindingNames();
+    TestLocatedExpression();
     return 0;
 }

@@ -694,6 +694,17 @@ HlslExpr *HlslNewExpr(HlslModule *module, HlslExprKind kind,
     return expr;
 }
 
+HlslExpr *HlslNewLocatedExpr(HlslModule *module, HlslExprKind kind,
+    HlslType type, const HlslLoc *loc)
+{
+    HlslExpr *expr;
+
+    expr = HlslNewExpr(module, kind, type);
+    if (expr != NULL && loc != NULL)
+        expr->loc = *loc;
+    return expr;
+}
+
 HlslStmt *HlslNewStmt(HlslModule *module, HlslStmtKind kind)
 {
     HlslStmt *stmt;

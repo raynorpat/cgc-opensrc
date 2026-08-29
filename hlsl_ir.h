@@ -422,6 +422,8 @@ HlslDecl *HlslNewDecl(HlslModule *module, HlslStorage storage,
     HlslType type, const char *name);
 HlslExpr *HlslNewExpr(HlslModule *module, HlslExprKind kind,
     HlslType type);
+HlslExpr *HlslNewLocatedExpr(HlslModule *module, HlslExprKind kind,
+    HlslType type, const HlslLoc *loc);
 HlslStmt *HlslNewStmt(HlslModule *module, HlslStmtKind kind);
 HlslFunction *HlslNewFunction(HlslModule *module, HlslType result,
     const char *name);
