@@ -296,6 +296,14 @@ unary *NewUnopNode(opcode op, expr *arg)
     pun->HasSideEffects = 0;
     if (arg)
         pun->HasSideEffects = arg->common.HasSideEffects;
+    if (arg != NULL && Cg->theHAL != NULL &&
+        Cg->theHAL->GetCapsBit(CAPS_TYPED_INC_DEC_EXPRESSIONS) &&
+        (op == PREINC_OP || op == PREDEC_OP ||
+         op == POSTINC_OP || op == POSTDEC_OP))
+    {
+        pun->type = arg->common.type;
+        pun->HasSideEffects = 1;
+    }
     pun->op = op;
     pun->subop = 0;
     pun->arg = arg;

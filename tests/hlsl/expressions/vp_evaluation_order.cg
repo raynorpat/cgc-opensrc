@@ -1,0 +1,42 @@
+float record(inout float trace, float digit)
+{
+    trace = trace * 10.0 + digit;
+    return trace;
+}
+
+float2 record2(inout float trace, float digit)
+{
+    trace = trace * 10.0 + digit;
+    return float2(trace, trace + 1.0);
+}
+
+float combine(float left, float right)
+{
+    return left + right;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    bool choose;
+    bool2 lanes;
+    bool2 comparison;
+    float trace;
+    float binary;
+    float called;
+
+    choose = position.x > 0.0;
+    lanes = position.xy > float2(0.0, 0.0);
+    trace = 0.0;
+    binary = record(trace, 1.0) +
+             (choose ? record(trace, 2.0) : record(trace, 3.0));
+    called = combine(record(trace, 4.0),
+                     choose ? record(trace, 5.0) : record(trace, 6.0));
+    comparison = record2(trace, 7.0) <
+                 (lanes ? record2(trace, 8.0) : record2(trace, 9.0));
+    output.position = float4(binary, called,
+                             float(comparison.x), trace);
+    return output;
+}

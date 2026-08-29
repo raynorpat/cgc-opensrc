@@ -1,0 +1,55 @@
+// profile hlslv
+// target vs_3_0
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output;
+    bool choose;
+    float left;
+    float right;
+    float selected;
+    float temp1;
+    float cg_temp;
+    float cg_temp_1;
+    choose = position.x > 0.0;
+    left = 1.0;
+    right = 2.0;
+    if (choose)
+    {
+        cg_temp = left;
+        left = left + 1.0;
+        temp1 = cg_temp;
+    }
+    else
+    {
+        cg_temp_1 = right;
+        right = right + 1.0;
+        temp1 = cg_temp_1;
+    }
+    selected = temp1;
+    cg_output.position = float4(selected, left, right, position.w);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

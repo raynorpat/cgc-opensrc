@@ -1858,6 +1858,12 @@ add_hlsl_fixture(hlslv_arithmetic hlslv
 add_hlsl_fixture(hlslv_side_effects hlslv
     tests/hlsl/expressions/vp_side_effects.cg
     tests/hlsl/expressions/vp_side_effects.expected)
+add_hlsl_fixture(hlslv_evaluation_order hlslv
+    tests/hlsl/expressions/vp_evaluation_order.cg
+    tests/hlsl/expressions/vp_evaluation_order.expected)
+add_hlsl_fixture(hlslv_nested_postinc hlslv
+    tests/hlsl/expressions/vp_nested_postinc.cg
+    tests/hlsl/expressions/vp_nested_postinc.expected)
 add_hlsl_fixture(hlslv_control hlslv
     tests/hlsl/control/vp_control.cg
     tests/hlsl/control/vp_control.expected)

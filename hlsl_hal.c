@@ -457,6 +457,8 @@ static int GetCapsBit_hlsl(int bitNumber)
     case CAPS_PRESERVE_TERMINAL_ENTRY_RETURN:
     case CAPS_DEFER_RECURSION_DIAGNOSTICS:
     case CAPS_CONDITIONAL_SIDE_EFFECTS:
+    case CAPS_TYPED_INC_DEC_EXPRESSIONS:
+    case CAPS_PRESERVE_COMMA_EXPRESSIONS:
         return 1;
     default:
         return 0;
