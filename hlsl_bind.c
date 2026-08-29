@@ -1865,6 +1865,10 @@ static int HlslInstallMixedBindingValue(HlslModule *module,
             return 0;
         }
     }
+    /* The aggregate identity declaration has been replaced by owned locals
+       in every consumer.  It is no longer part of the emitted module and
+       must not remain as a dangling binding declaration. */
+    binding->declaration = NULL;
     return 1;
 } // HlslInstallMixedBindingValue
 

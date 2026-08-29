@@ -1084,6 +1084,14 @@ static int ReportHlslFailure(const HlslModule *module,
     return 0;
 } // ReportHlslFailure
 
+#if defined(HLSL_DIAGNOSTIC_TESTING)
+int HlslReportFailureForTesting(const HlslModule *module,
+    const HlslProfileDesc *profile, const Symbol *program)
+{
+    return ReportHlslFailure(module, profile, program);
+} // HlslReportFailureForTesting
+#endif
+
 /*
  * GenerateCode_hlsl() - Orchestrate the backend pipeline.
  */

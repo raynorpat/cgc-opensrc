@@ -469,6 +469,17 @@ static int HlslWriteDecl(FILE *out, const HlslDecl *decl, int indent,
 {
     if (!HlslWriteIndent(out, indent))
         return 0;
+    /* FXC otherwise treats uninitialized SM3 i#/b# globals as local
+       constants and asks for a duplicate c-bank binding.  Keep initialized
+       default globals unchanged; their strict-FXC policy is Task 11. */
+    if (decl->storage == HLSL_STORAGE_UNIFORM &&
+        decl->initializer == NULL &&
+        (decl->physical.bank == HLSL_REGISTER_I ||
+         decl->physical.bank == HLSL_REGISTER_B) &&
+        fputs("uniform ", out) == EOF)
+    {
+        return 0;
+    }
     if (decl->storageClass == HLSL_STORAGE_CLASS_STATIC &&
         fputs("static ", out) == EOF)
     {

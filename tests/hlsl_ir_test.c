@@ -2542,6 +2542,250 @@ static void TestTargetValidatorInterfaceLimits(void)
     assert(fixture.module.errorKind == HLSL_ERROR_STAGE_OPERATION);
 }
 
+static void TestStructuralValidatorRejectsCyclicSignatureGraphs(void)
+{
+    ValidationFixture fixture;
+    HlslDecl leftMember;
+    HlslDecl rightMember;
+    HlslDecl *parameter;
+    HlslExpr *argument;
+    HlslExpr *call;
+    HlslFunction *callee;
+    HlslStmt *statement;
+    HlslType leftCycle;
+    HlslType rightCycle;
+    HlslType voidType;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    memset(&leftMember, 0, sizeof(leftMember));
+    memset(&rightMember, 0, sizeof(rightMember));
+    memset(&leftCycle, 0, sizeof(leftCycle));
+    memset(&rightCycle, 0, sizeof(rightCycle));
+    leftMember.name = "left";
+    leftMember.type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    leftMember.next = &leftMember;
+    rightMember.name = "right";
+    rightMember.type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    rightMember.next = &rightMember;
+    leftCycle.base = HLSL_BASE_STRUCT;
+    leftCycle.structName = "Cycle";
+    leftCycle.members = &leftMember;
+    rightCycle.base = HLSL_BASE_STRUCT;
+    rightCycle.structName = "Cycle";
+    rightCycle.members = &rightMember;
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    callee = HlslNewFunction(&fixture.module, voidType, "cyclicCallee");
+    parameter = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                            leftCycle, "value");
+    call = HlslNewExpr(&fixture.module, HLSL_EXPR_CALL, voidType);
+    argument = HlslNewExpr(&fixture.module, HLSL_EXPR_FLOAT, rightCycle);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(callee != NULL && parameter != NULL && call != NULL &&
+           argument != NULL && statement != NULL);
+    callee->parameters = parameter;
+    call->u.call.function = callee;
+    call->u.call.name = callee->name;
+    call->u.call.arguments = argument;
+    statement->u.expression = call;
+    fixture.entry->body = statement;
+    fixture.wrapper->next = callee;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    memset(&leftCycle, 0, sizeof(leftCycle));
+    memset(&rightCycle, 0, sizeof(rightCycle));
+    leftCycle.arraySize = 1;
+    leftCycle.elementType = &leftCycle;
+    rightCycle.arraySize = 1;
+    rightCycle.elementType = &rightCycle;
+    callee = HlslNewFunction(&fixture.module, voidType, "arrayCallee");
+    parameter = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                            leftCycle, "value");
+    call = HlslNewExpr(&fixture.module, HLSL_EXPR_CALL, voidType);
+    argument = HlslNewExpr(&fixture.module, HLSL_EXPR_FLOAT, rightCycle);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(callee != NULL && parameter != NULL && call != NULL &&
+           argument != NULL && statement != NULL);
+    callee->parameters = parameter;
+    call->u.call.function = callee;
+    call->u.call.name = callee->name;
+    call->u.call.arguments = argument;
+    statement->u.expression = call;
+    fixture.entry->body = statement;
+    fixture.wrapper->next = callee;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+}
+
+static HlslBinding *AddValidationBinding(ValidationFixture *fixture)
+{
+    HlslBinding *binding;
+
+    binding = HlslNewBinding(&fixture->module, HLSL_STORAGE_UNIFORM,
+        HlslNumericType(HLSL_BASE_FLOAT, 4), "uniformValue", NULL);
+    assert(binding != NULL);
+    fixture->module.bindings = binding;
+    assert(HlslAllocateBindings(&fixture->module, &HlslProfile_hlslv));
+    assert(binding->leafBindings != NULL &&
+           binding->leafBindings->allocationNext == NULL);
+    return binding;
+}
+
+static void TestTargetValidatorRejectsMalformedBindingGraphs(void)
+{
+    ValidationFixture fixture;
+    HlslBinding duplicate;
+    HlslBinding *binding;
+    HlslBinding *leaf;
+    HlslDecl foreign;
+    float defaultValue;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv));
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    memset(&foreign, 0, sizeof(foreign));
+    foreign.name = "foreign";
+    foreign.type = binding->type;
+    binding->declaration = &foreign;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    AddValidationBinding(&fixture);
+    fixture.module.bindings = NULL;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    AddValidationBinding(&fixture);
+    fixture.module.allocatedBindings = NULL;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    duplicate = *binding;
+    duplicate.next = NULL;
+    binding->next = &duplicate;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    binding->storage = HLSL_STORAGE_SAMPLER;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    binding->type = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    binding->name = "differentRootName";
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    binding->publicName = "different.public.name";
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    binding->sourceOrdinal++;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    binding->loc.line++;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    defaultValue = 1.0f;
+    binding->defaultCount = 1;
+    binding->defaultValues = &defaultValue;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    binding->physical.span++;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    leaf = binding->leafBindings;
+    leaf->declaration->name = "differentDeclarationName";
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    leaf = binding->leafBindings;
+    leaf->declaration->storage = HLSL_STORAGE_SAMPLER;
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    binding = AddValidationBinding(&fixture);
+    leaf = binding->leafBindings;
+    leaf->declaration->type = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+}
+
+static void AssertSemanticValidationFixture(ValidationFixture *fixture,
+                                            const HlslProfileDesc *profile)
+{
+    assert(!HlslValidateModule(&fixture->module, profile));
+    assert(fixture->module.errorKind == HLSL_ERROR_SEMANTIC);
+    assert(fixture->module.errors == 1);
+}
+
+static void TestTargetValidatorCanonicalResourcesAndTypes(void)
+{
+    static const char *mixedColors[] = {
+        "cOl1", "COL2", "col3", "color4"
+    };
+    ValidationFixture fixture;
+    HlslDecl *member;
+    char names[20][16];
+    char semantics[16][16];
+    int i;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_PIXEL);
+    fixture.outputStruct->members->semantic = "col0";
+    for (i = 0; i < 4; i++) {
+        sprintf(names[i], "color%d", i + 1);
+        AppendInterfaceMember(&fixture.module, fixture.outputStruct,
+                              names[i], mixedColors[i]);
+    }
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslf));
+    assert(fixture.module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(!strcmp(fixture.module.resourceName, "color outputs"));
+    assert(fixture.module.resourceUsed == 5);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_PIXEL);
+    fixture.outputStruct->members->semantic = "color4";
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslf));
+    assert(fixture.module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(fixture.module.resourceUsed == 5);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    member = fixture.outputStruct->members;
+    member->type = HlslNumericType(HLSL_BASE_FLOAT, 2);
+    AssertSemanticValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    member = fixture.outputStruct->members;
+    member->type = HlslNumericType(HLSL_BASE_INT, 4);
+    AssertSemanticValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    for (i = 0; i < 16; i++) {
+        sprintf(names[i], "input%d", i + 1);
+        sprintf(semantics[i], i == 15 ? "INVALID0" : "TEXCOORD%d", i);
+        AppendInterfaceMember(&fixture.module, fixture.inputStruct,
+                              names[i], semantics[i]);
+    }
+    AssertSemanticValidationFixture(&fixture, &HlslProfile_hlslv);
+}
+
 int main(int argc, char **argv)
 {
     HlslModule module;
@@ -2651,5 +2895,8 @@ int main(int argc, char **argv)
     TestHlslErrorMappingAndFirstFailure();
     TestStructuralValidatorRejectsMalformedGraphs();
     TestTargetValidatorInterfaceLimits();
+    TestStructuralValidatorRejectsCyclicSignatureGraphs();
+    TestTargetValidatorRejectsMalformedBindingGraphs();
+    TestTargetValidatorCanonicalResourcesAndTypes();
     return 0;
 }

@@ -150,4 +150,9 @@ int HlslValidateSamplerUsage(HlslModule *module,
 int HlslValidateModule(HlslModule *module,
     const HlslProfileDesc *profile);
 
+#if defined(HLSL_DIAGNOSTIC_TESTING)
+int HlslReportFailureForTesting(const HlslModule *module,
+    const HlslProfileDesc *profile, const Symbol *program);
+#endif
+
 #endif // !defined(__HLSL_HAL_H)

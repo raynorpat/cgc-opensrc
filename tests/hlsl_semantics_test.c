@@ -67,6 +67,8 @@ Scope *CurrentScope = NULL;
 static int semanticErrorCount;
 static int lastSemanticError;
 static SourceLoc lastSemanticLoc;
+static int emitDiagnosticText;
+static const char *diagnosticSource;
 
 static void Require(int condition, const char *message)
 {
@@ -1022,8 +1024,63 @@ static void CheckTextureParameterErrorHandling(void)
     FreeStage(&hal);
 }
 
+static const char *FindCommandArgument(int argc, char **argv,
+                                       const char *option)
+{
+    int i;
+
+    for (i = 1; i + 1 < argc; i++) {
+        if (!strcmp(argv[i], option))
+            return argv[i + 1];
+    }
+    return NULL;
+} // FindCommandArgument
+
+static int RunFailureReporter(int argc, char **argv)
+{
+    const char *actual;
+    const char *profileName;
+    const char *source;
+    HlslModule module;
+    FILE *output;
+
+    profileName = FindCommandArgument(argc, argv, "-profile");
+    source = argc > 1 ? argv[argc - 1] : NULL;
+    if (profileName == NULL || source == NULL)
+        return -1;
+    if (!strcmp(profileName, "hlsl-metadata-injection")) {
+        actual = FindCommandArgument(argc, argv, "-o");
+        output = actual != NULL ? fopen(actual, "w") : NULL;
+        if (output == NULL)
+            return 2;
+        fputs("// cgc-bind uniform injected : c0\n", output);
+        fclose(output);
+        fprintf(stderr,
+            "%s(3) : error C6411: HLSL name cannot be resolved for \"injected\"\n",
+            source);
+        return 1;
+    }
+    if (strcmp(profileName, "hlsl-report-name"))
+        return -1;
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, NULL, NULL);
+    module.errors = 1;
+    module.errorKind = HLSL_ERROR_NAME_COLLISION;
+    module.errorReason = "exhaustedName";
+    module.errorLoc.file = 1;
+    module.errorLoc.line = 3;
+    diagnosticSource = source;
+    emitDiagnosticText = 1;
+    HlslReportFailureForTesting(&module, &HlslProfile_hlslv, NULL);
+    emitDiagnosticText = 0;
+    assert(semanticErrorCount == 1 && lastSemanticError == 6411 &&
+           lastSemanticLoc.line == 3);
+    return 1;
+} // RunFailureReporter
+
 int main(int argc, char **argv)
 {
+    int reporterResult;
+
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
         int assertionsActive;
 
@@ -1036,6 +1093,11 @@ int main(int argc, char **argv)
     }
     memset(&testCg, 0, sizeof(testCg));
     assert(InitAtomTable(atable, 0));
+    reporterResult = RunFailureReporter(argc, argv);
+    if (reporterResult >= 0) {
+        FreeAtomTable(atable);
+        return reporterResult;
+    }
     if (argc == 2 && !strcmp(argv[1], "same-slot"))
         CheckSameOwnerSameSlot();
     else if (argc == 2 && !strcmp(argv[1], "different-slot"))
@@ -1172,13 +1234,22 @@ int GetBase(const Type *type)
 
 void SemanticError(SourceLoc *loc, int number, const char *message, ...)
 {
-    (void) message;
+    va_list args;
+
     semanticErrorCount++;
     lastSemanticError = number;
     if (loc != NULL)
         lastSemanticLoc = *loc;
     else
         memset(&lastSemanticLoc, 0, sizeof(lastSemanticLoc));
+    if (emitDiagnosticText) {
+        fprintf(stderr, "%s(%d) : error C%04d: ", diagnosticSource,
+                loc != NULL ? loc->line : 0, number);
+        va_start(args, message);
+        vfprintf(stderr, message, args);
+        va_end(args);
+        fputc('\n', stderr);
+    }
 }
 
 void InternalError(SourceLoc *loc, int number, const char *message, ...)

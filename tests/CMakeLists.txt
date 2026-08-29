@@ -4,6 +4,16 @@ if(NOT GLSLANG_VALIDATOR)
         "glslangValidator not found; GLSL source validation tests are disabled")
 endif()
 
+find_program(HLSL_FXC NAMES fxc)
+if(WIN32 AND NOT HLSL_FXC)
+    file(GLOB HLSL_FXC_CANDIDATES
+        "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*/x64/fxc.exe")
+    list(SORT HLSL_FXC_CANDIDATES COMPARE NATURAL ORDER DESCENDING)
+    if(HLSL_FXC_CANDIDATES)
+        list(GET HLSL_FXC_CANDIDATES 0 HLSL_FXC)
+    endif()
+endif()
+
 # Golden regeneration switch (Task 8 Step 7): used only by the fixture
 # registration below; flip to ON to rewrite the tracked GLSL
 # expectations, inspect every diff before committing, then turn it off.
@@ -1481,6 +1491,10 @@ add_executable(hlsl_semantics_unit
     hlsl_semantics_test.c
 )
 
+target_compile_definitions(hlsl_semantics_unit PRIVATE
+    HLSL_DIAGNOSTIC_TESTING
+)
+
 target_include_directories(hlsl_semantics_unit PRIVATE
     ${PROJECT_SOURCE_DIR}
 )
@@ -1492,6 +1506,27 @@ set_target_properties(hlsl_semantics_unit PROPERTIES
 )
 
 add_test(NAME hlsl_semantics_unit COMMAND hlsl_semantics_unit)
+add_test(
+    NAME hlsl_name_collision_reporting
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:hlsl_semantics_unit>
+        -DPROFILE=hlsl-report-name
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_name_collision_report.cg
+        -DCODE=6411
+        -DEXPECTED_LINE=3
+        "-DMESSAGE=HLSL name cannot be resolved for.*exhaustedName"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_name_collision_reporting.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+)
+add_test(
+    NAME hlsl_failure_runner_rejects_metadata
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_semantics_unit>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_name_collision_report.cg
+        -DCHECKER=${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_failure_runner_metadata.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure_rejects_metadata.cmake
+)
 add_test(
     NAME hlsl_semantics_assertions_active
     COMMAND ${CMAKE_COMMAND}
@@ -1989,6 +2024,22 @@ function(add_hlsl_limit_success name profile source)
     )
 endfunction()
 
+function(add_hlsl_bank_boundary name source expected bank type count)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=hlslv
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            "-DFXC=${HLSL_FXC}"
+            -DBANK=${bank}
+            -DTYPE=${type}
+            -DCOUNT=${count}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_bank_boundary.cmake)
+endfunction()
+
 add_hlsl_limit_success(hlslv_limit_inputs16 hlslv
     tests/hlsl/limits/vp_inputs16.cg)
 add_hlsl_failure(hlslv_limit_inputs17 hlslv
@@ -2014,15 +2065,17 @@ add_hlsl_limit_success(hlslf_limit_constants224 hlslf
 add_hlsl_failure(hlslf_limit_constants225 hlslf
     tests/hlsl/limits/fp_constants225.cg 6408 2
     "HLSL c limit exceeded: 225 used, 224 available")
-add_hlsl_limit_success(hlslv_limit_int16 hlslv
-    tests/hlsl/limits/vp_int16.cg)
+add_hlsl_bank_boundary(hlslv_limit_int16
+    tests/hlsl/limits/vp_int16.cg
+    tests/hlsl/limits/vp_int16.expected i int4 16)
 add_hlsl_failure(hlslv_limit_int17 hlslv
-    tests/hlsl/limits/vp_int17.cg 6408 2
+    tests/hlsl/limits/vp_int17.cg 6408 10
     "HLSL i limit exceeded: 17 used, 16 available")
-add_hlsl_limit_success(hlslv_limit_bool16 hlslv
-    tests/hlsl/limits/vp_bool16.cg)
+add_hlsl_bank_boundary(hlslv_limit_bool16
+    tests/hlsl/limits/vp_bool16.cg
+    tests/hlsl/limits/vp_bool16.expected b bool 16)
 add_hlsl_failure(hlslv_limit_bool17 hlslv
-    tests/hlsl/limits/vp_bool17.cg 6408 2
+    tests/hlsl/limits/vp_bool17.cg 6408 9
     "HLSL b limit exceeded: 17 used, 16 available")
 add_hlsl_limit_success(hlslv_limit_samplers4 hlslv
     tests/hlsl/limits/vp_samplers4.cg)
@@ -2039,6 +2092,12 @@ add_hlsl_limit_success(hlslf_limit_colors4 hlslf
 add_hlsl_failure(hlslf_limit_colors5 hlslf
     tests/hlsl/limits/fp_colors5.cg 6408 6
     "HLSL color outputs limit exceeded: 5 used, 4 available")
+add_hlsl_failure(hlslf_limit_colors5_alias_lowercase hlslf
+    tests/hlsl/limits/fp_colors5_alias_lowercase.cg 6408 6
+    "HLSL color outputs limit exceeded: 5 used, 4 available")
+add_hlsl_failure(hlslf_limit_sparse_color4 hlslf
+    tests/hlsl/limits/fp_sparse_color4.cg 6408 1
+    "HLSL color outputs limit exceeded: 5 used, 4 available")
 
 add_hlsl_failure(hlslv_diagnostic_unsupported_type hlslv
     tests/hlsl/diagnostics/vp_unsupported_type.cg 6400 2
@@ -2049,6 +2108,10 @@ add_hlsl_failure(hlslv_diagnostic_missing_position hlslv
 add_hlsl_failure(hlslv_diagnostic_entry_abi hlslv
     tests/hlsl/diagnostics/vp_empty_input_abi.cg 6406 1
     "HLSL entry interface cannot represent")
+add_hlsl_failure(hlslv_diagnostic_position_wrong_width hlslv
+    tests/hlsl/diagnostics/vp_position_wrong_width.cg 6403 2 POSITION)
+add_hlsl_failure(hlslv_diagnostic_position_wrong_base hlslv
+    tests/hlsl/diagnostics/vp_position_wrong_base.cg 6403 2 POSITION)
 
 add_hlsl_failure(hlslv_texture_implicit_stage hlslv
     tests/hlsl/diagnostics/vp_implicit_texture.cg 6409 5 tex2D)

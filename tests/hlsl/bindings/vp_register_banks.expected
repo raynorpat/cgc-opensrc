@@ -7,8 +7,8 @@
 
 float4 cg_color : register(c0);
 row_major float4x4 cg_matrix : register(c1);
-int4 cg_indices : register(i0);
-bool cg_enabled : register(b0);
+uniform int4 cg_indices : register(i0);
+uniform bool cg_enabled : register(b0);
 
 struct cg_VertexOut
 {

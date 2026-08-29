@@ -1,0 +1,16 @@
+uniform bool cg_b0 : register(b0);
+uniform bool cg_b1 : register(b1);
+uniform bool cg_b2 : register(b2);
+uniform bool cg_b3 : register(b3);
+uniform bool cg_b4 : register(b4);
+uniform bool cg_b5 : register(b5);
+uniform bool cg_b6 : register(b6);
+uniform bool cg_b7 : register(b7);
+uniform bool cg_b8 : register(b8);
+uniform bool cg_b9 : register(b9);
+uniform bool cg_b10 : register(b10);
+uniform bool cg_b11 : register(b11);
+uniform bool cg_b12 : register(b12);
+uniform bool cg_b13 : register(b13);
+uniform bool cg_b14 : register(b14);
+uniform bool cg_b15 : register(b15);

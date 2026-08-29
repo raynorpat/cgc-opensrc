@@ -1,0 +1,11 @@
+struct VertexOut {
+    int4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = int4(0, 0, 0, 0) + int4(position.x, position.y,
+                                               position.z, position.w);
+    return output;
+}

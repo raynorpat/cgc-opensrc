@@ -7,8 +7,8 @@
 // var float mixed.values :  : c[5] : 1 : 2
 
 float cg_mixed_scalar : register(c0);
-int cg_mixed_integer : register(i0);
-bool cg_mixed_enabled : register(b0);
+uniform int cg_mixed_integer : register(i0);
+uniform bool cg_mixed_enabled : register(b0);
 row_major float4x4 cg_mixed_matrix : register(c1);
 float cg_mixed_values[2] : register(c5);
 

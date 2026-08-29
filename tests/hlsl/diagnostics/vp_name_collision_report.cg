@@ -1,0 +1,3 @@
+// Ordinary source names are made distinct with deterministic suffixes.
+// This comment-only input drives the diagnostic-reporting integration seam.
+// The seam verifies otherwise unreachable C6411 formatting and cleanup.

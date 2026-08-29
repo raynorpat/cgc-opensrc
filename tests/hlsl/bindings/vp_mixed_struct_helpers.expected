@@ -5,8 +5,8 @@
 // var bool mixed.enabled :  : b[0] : 1 : 1
 
 float cg_mixed_scalar : register(c0);
-int cg_mixed_integer : register(i0);
-bool cg_mixed_enabled : register(b0);
+uniform int cg_mixed_integer : register(i0);
+uniform bool cg_mixed_enabled : register(b0);
 
 struct cg_Mixed
 {

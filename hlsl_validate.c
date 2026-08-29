@@ -1264,6 +1264,10 @@ static int HlslValidateStructuralModule(HlslModule *module,
     otherCalls = context.entryCalls;
     wrapperCalls = 0;
     entryFlags = 0;
+    /* Validate every callable signature before any body can compare an
+       argument against it.  Function lists are not guaranteed to place a
+       callee before its caller, and malformed recursive member lists must
+       never reach type equality. */
     for (function = module->functions; function != NULL;
          function = function->next)
     {
@@ -1281,6 +1285,10 @@ static int HlslValidateStructuralModule(HlslModule *module,
         }
         if (function->isEntry)
             entryFlags++;
+    }
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
         context.function = function;
         context.loopDepth = 0;
         context.entryCalls = 0;
@@ -1457,41 +1465,90 @@ static const HlslLoc *HlslLastDeclLoc(const HlslDecl *members)
     return &members->loc;
 } // HlslLastDeclLoc
 
-static int HlslSemanticHasRoot(const char *semantic, const char *expected)
+static const HlslSemanticDesc *HlslFindSemanticDescriptor(
+    const HlslProfileDesc *profile, const char *canonical, int isOutput)
 {
+    const HlslSemanticDesc *semantics;
     char root[64];
-    int index;
-
-    return HlslParseSemantic(semantic, root, sizeof(root), &index) &&
-           !strcmp(root, expected);
-} // HlslSemanticHasRoot
-
-static int HlslCountColorOutputs(const HlslDecl *members)
-{
     int count;
+    int index;
+    int i;
 
-    count = 0;
-    for (; members != NULL; members = members->next) {
-        if (HlslSemanticHasRoot(members->semantic, "COLOR"))
-            count++;
+    if (profile == NULL || canonical == NULL ||
+        !HlslParseSemantic(canonical, root, sizeof(root), &index))
+    {
+        return NULL;
     }
-    return count;
-} // HlslCountColorOutputs
+    if (isOutput) {
+        semantics = profile->outputSemantics;
+        count = profile->numOutputSemantics;
+    } else {
+        semantics = profile->inputSemantics;
+        count = profile->numInputSemantics;
+    }
+    for (i = 0; i < count; i++) {
+        if (!strcmp(root, semantics[i].root) &&
+            index >= semantics[i].firstIndex &&
+            index < semantics[i].firstIndex + semantics[i].count)
+        {
+            return &semantics[i];
+        }
+    }
+    return NULL;
+} // HlslFindSemanticDescriptor
+
+static int HlslInterfaceTypeIsValid(const HlslType *type,
+                                    const HlslSemanticDesc *descriptor,
+                                    int isOutput)
+{
+    int expectedDirection;
+    int oppositeDirection;
+
+    expectedDirection = isOutput ? SEM_OUT : SEM_IN;
+    oppositeDirection = isOutput ? SEM_IN : SEM_OUT;
+    if (type == NULL || descriptor == NULL || type->arraySize != 0 ||
+        type->base != HLSL_BASE_FLOAT || type->rows != 0 ||
+        type->cols != 0 || type->len < 1 || type->len > 4 ||
+        !(descriptor->properties & expectedDirection) ||
+        (descriptor->properties & oppositeDirection))
+    {
+        return 0;
+    }
+    switch (descriptor->interfaceKind) {
+    case HLSL_INTERFACE_POSITION:
+    case HLSL_INTERFACE_PIXEL_POSITION:
+    case HLSL_INTERFACE_COLOR:
+        return type->len == descriptor->width && type->len > 1;
+    case HLSL_INTERFACE_POINT_SIZE:
+    case HLSL_INTERFACE_FACE:
+    case HLSL_INTERFACE_DEPTH:
+        return type->len == 1 && descriptor->width == 1;
+    case HLSL_INTERFACE_VARYING:
+        return type->len <= descriptor->width;
+    }
+    return 0;
+} // HlslInterfaceTypeIsValid
 
 static int HlslValidateInterfaceSemantics(HlslModule *module,
     const HlslProfileDesc *profile, const HlslDecl *members, int isOutput)
 {
     const HlslDecl *left;
     const HlslDecl *right;
+    const HlslSemanticDesc *descriptor;
     const char *leftCanonical;
     const char *rightCanonical;
 
     for (left = members; left != NULL; left = left->next) {
         leftCanonical = HlslCanonicalSemantic(profile, left->semantic,
                                               isOutput);
-        if (leftCanonical == NULL)
+        descriptor = HlslFindSemanticDescriptor(profile, leftCanonical,
+                                                isOutput);
+        if (leftCanonical == NULL || descriptor == NULL ||
+            !HlslInterfaceTypeIsValid(&left->type, descriptor, isOutput))
+        {
             return HlslFail(module, HLSL_ERROR_SEMANTIC, &left->loc,
                             HlslBindingReason(NULL, left->semantic));
+        }
         for (right = left->next; right != NULL; right = right->next) {
             rightCanonical = HlslCanonicalSemantic(profile,
                                                     right->semantic,
@@ -1508,6 +1565,30 @@ static int HlslValidateInterfaceSemantics(HlslModule *module,
     }
     return 1;
 } // HlslValidateInterfaceSemantics
+
+static int HlslColorOutputUsage(const HlslProfileDesc *profile,
+                                const HlslDecl *members,
+                                const HlslLoc **failureLoc)
+{
+    const char *canonical;
+    char root[64];
+    int index;
+    int used;
+
+    used = 0;
+    for (; members != NULL; members = members->next) {
+        canonical = HlslCanonicalSemantic(profile, members->semantic, 1);
+        if (canonical != NULL &&
+            HlslParseSemantic(canonical, root, sizeof(root), &index) &&
+            !strcmp(root, "COLOR") && index < INT_MAX && index + 1 > used)
+        {
+            used = index + 1;
+            if (failureLoc != NULL)
+                *failureLoc = &members->loc;
+        }
+    }
+    return used;
+} // HlslColorOutputUsage
 
 static int HlslHasPosition(const HlslProfileDesc *profile,
                            const HlslDecl *members)
@@ -1528,6 +1609,7 @@ static int HlslValidateInterfaces(HlslModule *module,
     HlslDecl *structure;
     HlslDecl *input;
     HlslDecl *output;
+    const HlslLoc *colorLoc;
     int used;
     int colors;
 
@@ -1556,6 +1638,13 @@ static int HlslValidateInterfaces(HlslModule *module,
         return HlslFail(module, HLSL_ERROR_ENTRY_ABI, NULL,
                         "HLSL interface structures");
     }
+    if (!HlslValidateInterfaceSemantics(module, profile,
+                                        input->members, 0) ||
+        !HlslValidateInterfaceSemantics(module, profile,
+                                        output->members, 1))
+    {
+        return 0;
+    }
     used = HlslCountDeclarations(input->members);
     if (used > profile->limits->inputs)
         return HlslSetResourceFailure(module, "inputs", used,
@@ -1565,18 +1654,11 @@ static int HlslValidateInterfaces(HlslModule *module,
         return HlslSetResourceFailure(module, "outputs", used,
             profile->limits->outputs, HlslLastDeclLoc(output->members));
     if (profile->stage == HLSL_STAGE_PIXEL) {
-        colors = HlslCountColorOutputs(output->members);
+        colorLoc = NULL;
+        colors = HlslColorOutputUsage(profile, output->members, &colorLoc);
         if (colors > profile->limits->colorOutputs)
             return HlslSetResourceFailure(module, "color outputs", colors,
-                profile->limits->colorOutputs,
-                HlslLastDeclLoc(output->members));
-    }
-    if (!HlslValidateInterfaceSemantics(module, profile,
-                                        input->members, 0) ||
-        !HlslValidateInterfaceSemantics(module, profile,
-                                        output->members, 1))
-    {
-        return 0;
+                profile->limits->colorOutputs, colorLoc);
     }
     if (module->stage == HLSL_STAGE_VERTEX &&
         !HlslHasPosition(profile, output->members))
@@ -1681,10 +1763,191 @@ static const char *HlslBankName(HlslRegisterBank bank)
     return "register";
 } // HlslBankName
 
+static int HlslStringsEqual(const char *left, const char *right)
+{
+    if (left == NULL || left[0] == '\0')
+        return right == NULL || right[0] == '\0';
+    return right != NULL && !strcmp(left, right);
+} // HlslStringsEqual
+
+static int HlslPhysicalBindingsEqual(const HlslPhysicalBinding *left,
+                                     const HlslPhysicalBinding *right)
+{
+    return left->bank == right->bank && left->regno == right->regno &&
+           left->span == right->span &&
+           left->component == right->component;
+} // HlslPhysicalBindingsEqual
+
+static int HlslLocationsEqual(const HlslLoc *left, const HlslLoc *right)
+{
+    return left->file == right->file && left->line == right->line;
+} // HlslLocationsEqual
+
+static const char *HlslPublicBindingName(const HlslBinding *binding)
+{
+    if (binding == NULL)
+        return NULL;
+    if (binding->publicName != NULL && binding->publicName[0] != '\0')
+        return binding->publicName;
+    return binding->name;
+} // HlslPublicBindingName
+
+static int HlslPublicLeafBelongsToRoot(const HlslBinding *root,
+                                       const HlslBinding *leaf)
+{
+    const char *rootName;
+    const char *leafName;
+    size_t length;
+
+    rootName = HlslPublicBindingName(root);
+    leafName = HlslPublicBindingName(leaf);
+    if (rootName == NULL || rootName[0] == '\0' ||
+        leafName == NULL || leafName[0] == '\0')
+    {
+        return 0;
+    }
+    length = strlen(rootName);
+    return !strncmp(rootName, leafName, length) &&
+           (leafName[length] == '\0' || leafName[length] == '.' ||
+            leafName[length] == '[');
+} // HlslPublicLeafBelongsToRoot
+
+static int HlslNameOwnsEmission(const HlslModule *module,
+                                const HlslBinding *leaf,
+                                const char *emitted)
+{
+    const HlslName *name;
+
+    if (emitted == NULL || emitted[0] == '\0')
+        return 0;
+    for (name = module->names; name != NULL; name = name->next) {
+        if (name->identity == leaf && name->emitted != NULL &&
+            !strcmp(name->emitted, emitted))
+        {
+            return 1;
+        }
+    }
+    return 0;
+} // HlslNameOwnsEmission
+
+static int HlslAllocationOccurrences(const HlslModule *module,
+                                     const HlslBinding *target)
+{
+    const HlslBinding *binding;
+    int count;
+
+    count = 0;
+    for (binding = module->allocatedBindings; binding != NULL;
+         binding = binding->allocationNext)
+    {
+        if (binding == target)
+            count++;
+    }
+    return count;
+} // HlslAllocationOccurrences
+
+static int HlslRootLeafOccurrences(const HlslModule *module,
+                                   const HlslBinding *target)
+{
+    const HlslBinding *root;
+    const HlslBinding *leaf;
+    int count;
+
+    count = 0;
+    for (root = module->bindings; root != NULL; root = root->next) {
+        for (leaf = root->leafBindings; leaf != NULL; leaf = leaf->next) {
+            if (leaf == target)
+                count++;
+        }
+    }
+    return count;
+} // HlslRootLeafOccurrences
+
+static int HlslDefaultsEqual(const HlslBinding *root,
+                             const HlslBinding *leaf, int offset)
+{
+    int index;
+
+    if (leaf->defaultCount < 0 || offset < 0 ||
+        offset > root->defaultCount ||
+        leaf->defaultCount > root->defaultCount - offset)
+    {
+        return 0;
+    }
+    if (leaf->defaultCount == 0)
+        return leaf->defaultValues == NULL &&
+               leaf->defaultLiterals == NULL;
+    if ((root->defaultValues == NULL) !=
+        (leaf->defaultValues == NULL) ||
+        (root->defaultLiterals == NULL) !=
+        (leaf->defaultLiterals == NULL))
+    {
+        return 0;
+    }
+    for (index = 0; index < leaf->defaultCount; index++) {
+        if (root->defaultValues != NULL &&
+            root->defaultValues[offset + index] !=
+                leaf->defaultValues[index])
+        {
+            return 0;
+        }
+        if (root->defaultLiterals != NULL &&
+            (root->defaultLiterals[offset + index].base !=
+                 leaf->defaultLiterals[index].base ||
+             memcmp(&root->defaultLiterals[offset + index].value,
+                    &leaf->defaultLiterals[index].value,
+                    sizeof(leaf->defaultLiterals[index].value))))
+        {
+            return 0;
+        }
+    }
+    return 1;
+} // HlslDefaultsEqual
+
+static int HlslValidateBindingLeaf(HlslModule *module,
+    const HlslBinding *root, const HlslBinding *leaf,
+    int expectedOffset, int defaultOffset)
+{
+    const HlslDecl *declaration;
+
+    declaration = leaf->declaration;
+    if (leaf->leafBindings != NULL || !leaf->isAllocated ||
+        HlslAllocationOccurrences(module, leaf) != 1 ||
+        HlslRootLeafOccurrences(module, leaf) != 1 ||
+        declaration == NULL ||
+        !HlslDeclTreeContains(module->globals, declaration, 0) ||
+        leaf->storage != root->storage ||
+        declaration->storage != leaf->storage ||
+        !HlslTypesEqual(&leaf->type, &declaration->type) ||
+        !HlslStringsEqual(leaf->semantic, root->semantic) ||
+        !HlslStringsEqual(declaration->semantic, leaf->semantic) ||
+        !HlslLocationsEqual(&leaf->loc, &root->loc) ||
+        !HlslLocationsEqual(&declaration->loc, &leaf->loc) ||
+        leaf->sourceOrdinal != root->sourceOrdinal ||
+        declaration->sourceOrdinal != leaf->sourceOrdinal ||
+        leaf->recursiveOffset != expectedOffset ||
+        leaf->hasExplicitRegister != root->hasExplicitRegister ||
+        leaf->isOutput != root->isOutput ||
+        leaf->sourceBase != root->sourceBase ||
+        !HlslPublicLeafBelongsToRoot(root, leaf) ||
+        leaf->name == NULL ||
+        strcmp(leaf->name, HlslPublicBindingName(leaf)) ||
+        !HlslNameOwnsEmission(module, leaf, declaration->name) ||
+        !HlslDefaultsEqual(root, leaf, defaultOffset) ||
+        (leaf->defaultCount == 0) != (declaration->initializer == NULL) ||
+        !HlslPhysicalBindingsEqual(&leaf->physical,
+                                   &declaration->physical))
+    {
+        return 0;
+    }
+    return 1;
+} // HlslValidateBindingLeaf
+
 static int HlslValidateBindings(HlslModule *module,
                                 const HlslProfileDesc *profile)
 {
     HlslBinding *binding;
+    HlslBinding *leaf;
     unsigned char c[HLSL_MAX_FLOAT_CONSTANTS];
     unsigned char i[HLSL_MAX_INT_CONSTANTS];
     unsigned char b[HLSL_MAX_BOOL_CONSTANTS];
@@ -1695,6 +1958,9 @@ static int HlslValidateBindings(HlslModule *module,
     int limit;
     int maximum;
     int offset;
+    int defaultOffset;
+    int leafOffset;
+    int leafSpan;
 
     memset(c, 0, sizeof(c));
     memset(i, 0, sizeof(i));
@@ -1704,16 +1970,59 @@ static int HlslValidateBindings(HlslModule *module,
          binding = binding->next)
     {
         if (!binding->isAllocated || binding->leafBindings == NULL ||
-            binding->declaration == NULL ||
+            binding->name == NULL || binding->name[0] == '\0' ||
+            HlslPublicBindingName(binding) == NULL ||
+            strcmp(binding->name, HlslPublicBindingName(binding)) ||
             HlslBindingListHasCycle(binding->leafBindings))
         {
             return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
                             "unallocated HLSL binding");
         }
+        leafOffset = 0;
+        defaultOffset = 0;
+        for (leaf = binding->leafBindings; leaf != NULL;
+             leaf = leaf->next)
+        {
+            leafSpan = HlslTypeRegisterSpan(&leaf->type);
+            if (leafSpan <= 0 ||
+                !HlslValidateBindingLeaf(module, binding, leaf,
+                                         leafOffset, defaultOffset) ||
+                leafOffset > INT_MAX - leafSpan ||
+                defaultOffset > INT_MAX - leaf->defaultCount)
+            {
+                return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                                &binding->loc,
+                                "invalid HLSL binding graph");
+            }
+            leafOffset += leafSpan;
+            defaultOffset += leaf->defaultCount;
+        }
+        if (leafOffset != HlslTypeRegisterSpan(&binding->type) ||
+            defaultOffset != binding->defaultCount ||
+            (binding->leafBindings->next == NULL &&
+             (binding->declaration != binding->leafBindings->declaration ||
+              !HlslTypesEqual(&binding->type,
+                              &binding->declaration->type) ||
+              binding->storage != binding->declaration->storage ||
+              !HlslPhysicalBindingsEqual(&binding->physical,
+                  &binding->leafBindings->physical))) ||
+            (binding->leafBindings->next != NULL &&
+             (binding->declaration != NULL ||
+              binding->physical.bank != HLSL_REGISTER_NONE ||
+              binding->physical.regno != 0 ||
+              binding->physical.span != 0 ||
+              binding->physical.component != 0)))
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
+                            "invalid HLSL binding root");
+        }
     }
     for (binding = module->allocatedBindings; binding != NULL;
          binding = binding->allocationNext)
     {
+        if (HlslRootLeafOccurrences(module, binding) != 1)
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
+                            "orphaned HLSL binding leaf");
         bank = HlslTypeBankInner(&binding->type, NULL);
         expectedSpan = HlslTypeRegisterSpan(&binding->type);
         if (bank == HLSL_REGISTER_NONE || expectedSpan <= 0 ||

@@ -41,14 +41,13 @@ if(NOT diagnostics MATCHES "${MESSAGE}")
     message(FATAL_ERROR
         "${PROFILE} did not match message ${MESSAGE}:\n${diagnostics}")
 endif()
-# Transactional output: only ordinary compiler comments may exist.  Any
-# metadata or HLSL declaration left after removing line comments is a leak.
+# Transactional output: HLSL validation happens before publication, so a
+# failed compile may leave no content at all.  Comments can carry binding or
+# default metadata and are therefore content too; never discard them here.
 if(EXISTS "${ACTUAL}")
     file(READ "${ACTUAL}" published)
     string(REPLACE "\r\n" "\n" published "${published}")
     string(REPLACE "\r" "\n" published "${published}")
-    string(REGEX REPLACE "(^|\n)[ \t]*//[^\n]*" "\n"
-        published "${published}")
     string(REGEX REPLACE "[ \t\n]" "" payload "${published}")
     if(NOT payload STREQUAL "")
         message(FATAL_ERROR
