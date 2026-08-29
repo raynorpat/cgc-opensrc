@@ -1,0 +1,72 @@
+// profile hlslv
+// target vs_3_0
+// var row_major float3x3 object_matrix :  : c[0] : 1 : 3
+// var row_major float4x4 objviewproj_matrix :  : c[3] : 1 : 4
+// var float3 lightdir :  : c[7] : 1 : 4
+// var float3 lightcolor :  : c[11] : 1 : 4
+// var float3 ambientcolor :  : c[15] : 1 : 1
+
+row_major float3x3 cg_object_matrix : register(c0);
+row_major float4x4 cg_objviewproj_matrix : register(c3);
+float3 cg_lightdir[4] : register(c7);
+float3 cg_lightcolor[4] : register(c11);
+float3 cg_ambientcolor : register(c15);
+
+struct cg_appdata
+{
+    float4 position;
+    float3 normal;
+    float4 color;
+};
+
+struct cg_vf20
+{
+    float4 HPOS;
+    float4 COL0;
+    float4 TEX0;
+};
+
+struct cg_VertexIn
+{
+    float4 position : TEXCOORD0;
+    float3 normal : TEXCOORD1;
+    float4 color : TEXCOORD2;
+};
+
+struct cg_VertexOut
+{
+    float4 HPOS : POSITION0;
+    float4 COL0 : COLOR0;
+    float4 TEX0 : TEXCOORD0;
+};
+
+float3 cg_diffuse(float3 normal, float3 lightv, float3 color)
+{
+    return max(dot(normal, lightv), (float) 0) * color;
+}
+
+cg_vf20 cg_entry(cg_appdata I, row_major float3x3 object_matrix, row_major float4x4 objviewproj_matrix, float3 lightdir[4], float3 lightcolor[4], float3 ambientcolor)
+{
+    cg_vf20 O;
+    float3 norm;
+    O.HPOS = mul(objviewproj_matrix, I.position);
+    norm = mul(object_matrix, I.normal);
+    O.COL0.xyz = I.color.xyz * cg_diffuse(norm, lightdir[0], lightcolor[0]) * cg_diffuse(norm, lightdir[1], lightcolor[1]) * cg_diffuse(norm, lightdir[2], lightcolor[2]) * cg_diffuse(norm, lightdir[3], lightcolor[3]) + ambientcolor;
+    O.COL0.w = I.color.w;
+    return O;
+}
+
+cg_VertexOut main(cg_VertexIn input)
+{
+    cg_appdata I;
+    cg_VertexOut output;
+    cg_vf20 cg_result;
+    I.position = input.position;
+    I.normal = input.normal;
+    I.color = input.color;
+    cg_result = cg_entry(I, cg_object_matrix, cg_objviewproj_matrix, cg_lightdir, cg_lightcolor, cg_ambientcolor);
+    output.HPOS = cg_result.HPOS;
+    output.COL0 = cg_result.COL0;
+    output.TEX0 = cg_result.TEX0;
+    return output;
+}

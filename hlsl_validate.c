@@ -151,6 +151,22 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
                HlslCountEntryCalls(module,
                     expression->u.conditional.falseExpr, count);
     case HLSL_EXPR_CALL:
+        if (expression->u.call.function == NULL &&
+            expression->u.call.name != NULL &&
+            (!strcmp(expression->u.call.name, "mul") ||
+             !strcmp(expression->u.call.name, "dot") ||
+             !strcmp(expression->u.call.name, "max") ||
+             !strcmp(expression->u.call.name, "normalize") ||
+             !strcmp(expression->u.call.name, "rsqrt")))
+        {
+            for (argument = expression->u.call.arguments;
+                 argument != NULL; argument = argument->next)
+            {
+                if (!HlslCountEntryCalls(module, argument, count))
+                    return 0;
+            }
+            return 1;
+        }
         if (!HlslOwnsFunction(module, expression->u.call.function))
             return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
                                        &expression->loc,

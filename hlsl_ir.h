@@ -228,6 +228,15 @@ typedef struct HlslPhysicalBinding_Rec {
     int component;
 } HlslPhysicalBinding;
 
+typedef struct HlslDefaultLiteral_Rec {
+    HlslBase base;
+    union {
+        float floating;
+        int integer;
+        int boolean;
+    } value;
+} HlslDefaultLiteral;
+
 struct HlslName_Rec {
     HlslName *next;
     const void *nameSpace;
@@ -368,6 +377,7 @@ struct HlslBinding_Rec {
     int isOutput;
     int defaultCount;
     float *defaultValues;
+    HlslDefaultLiteral *defaultLiterals;
     int sourceBase;
     HlslPhysicalBinding physical;
 };

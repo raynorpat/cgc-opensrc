@@ -319,7 +319,7 @@ static void CheckDescriptorFamilies(void)
                            NUMELS(pixelInput), 0);
     CheckExpectedSemantics(&HlslProfile_hlslf, pixelOutput,
                            NUMELS(pixelOutput), 1);
-    assert(HlslProfile_hlslv.numInputAliases == 34);
+    assert(HlslProfile_hlslv.numInputAliases == 50);
     assert(HlslProfile_hlslv.numOutputAliases == 11);
     assert(HlslProfile_hlslf.numInputAliases == 12);
     assert(HlslProfile_hlslf.numOutputAliases == 4);
@@ -349,6 +349,14 @@ static void CheckCanonicalization(void)
         "TEX15", 0), "TEXCOORD15"));
     assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
         "ATTR15", 0), "TEXCOORD15"));
+    assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
+        "ATTRIB0", 0), "TEXCOORD0"));
+    assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
+        "ATTRIB15", 0), "TEXCOORD15"));
+    assert(HlslCanonicalSemantic(&HlslProfile_hlslv,
+        "ATTRIB16", 0) == NULL);
+    assert(HlslCanonicalSemantic(&HlslProfile_hlslv,
+        "ATTRIB0", 1) == NULL);
     assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
         "HPOS", 1), "POSITION0"));
     assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
@@ -406,6 +414,11 @@ static void CheckConnectors(void)
             "HLSL did not advertise entry inout support");
     Require(hal.GetCapsBit(CAPS_PRESERVE_TERMINAL_ENTRY_RETURN),
             "HLSL did not advertise native terminal entry returns");
+    Require(hal.GetCapsBit(CAPS_AGGREGATE_DEFAULT_INITIALIZERS),
+            "HLSL did not advertise aggregate default initializers");
+    Require(hal.GetCapsBit(
+                CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS),
+            "HLSL did not preserve side-effecting aggregate temporaries");
     assert(profile->numInputRegs == 25);
     assert(profile->numOutputRegs == 13);
     for (i = 0; i < profile->numConnectors; i++)
@@ -502,6 +515,8 @@ static void CheckBindingTypes(void)
     CheckOneBinding(1, "TEXCOORD0", 0, TYPE_BASE_FLOAT, 1, 0, 1,
                     inputProperties);
     CheckOneBinding(1, "TEXCOORD0", 0, TYPE_BASE_FLOAT, 5, 1, 0, 0);
+    CheckOneBinding(1, "ATTRIB0", 0, TYPE_BASE_FLOAT, 4, 1, 1,
+                    inputProperties);
     CheckOneBinding(1, "TEXCOORD0", 0, TYPE_BASE_INT, 4, 1, 0, 0);
     CheckOneBinding(1, "POSITION0", 1, TYPE_BASE_FLOAT, 4, 1, 1,
                     outputProperties | BIND_WRITE_REQUIRED);

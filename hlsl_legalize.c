@@ -141,6 +141,32 @@ static int HlslMultiplyResult(const HlslType *left,
 {
     int length;
 
+    if (left != NULL && right != NULL &&
+        left->base == HLSL_BASE_FLOAT &&
+        right->base == HLSL_BASE_FLOAT)
+    {
+        if (left->rows > 0 && left->cols > 0 &&
+            right->rows == 0 && right->cols == 0 &&
+            right->len == left->cols)
+        {
+            *result = HlslNumericType(HLSL_BASE_FLOAT, left->rows);
+            return 1;
+        }
+        if (left->rows == 0 && left->cols == 0 &&
+            right->rows > 0 && right->cols > 0 &&
+            left->len == right->rows)
+        {
+            *result = HlslNumericType(HLSL_BASE_FLOAT, right->cols);
+            return 1;
+        }
+        if (left->rows > 0 && left->cols > 0 &&
+            right->rows > 0 && right->cols > 0 &&
+            left->cols == right->rows)
+        {
+            *result = HlslMatrixType(left->rows, right->cols);
+            return 1;
+        }
+    }
     if (!HlslIsNumericScalarOrVector(left) ||
         !HlslIsNumericScalarOrVector(right) ||
         left->base != right->base ||
@@ -363,6 +389,82 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                                    &expression->loc,
                                    "HLSL conditional types");
     case HLSL_EXPR_CALL:
+        if (expression->u.call.function == NULL &&
+            expression->u.call.name != NULL &&
+            !strcmp(expression->u.call.name, "mul"))
+        {
+            argument = expression->u.call.arguments;
+            if (argument == NULL || argument->next == NULL ||
+                argument->next->next != NULL ||
+                !HlslLegalizeExpr(module, argument) ||
+                !HlslLegalizeExpr(module, argument->next) ||
+                !HlslMultiplyResult(&argument->type,
+                                    &argument->next->type,
+                                    &resultType) ||
+                !HlslTypesEqual(&expression->type, &resultType))
+            {
+                return HlslLegalizeFailure(module,
+                    HLSL_ERROR_INVALID_IR, &expression->loc,
+                    "HLSL mul arguments");
+            }
+            return 1;
+        }
+        if (expression->u.call.function == NULL &&
+            expression->u.call.name != NULL &&
+            (!strcmp(expression->u.call.name, "dot") ||
+             !strcmp(expression->u.call.name, "max") ||
+             !strcmp(expression->u.call.name, "normalize") ||
+             !strcmp(expression->u.call.name, "rsqrt")))
+        {
+            argument = expression->u.call.arguments;
+            if (argument == NULL || !HlslLegalizeExpr(module, argument))
+                return 0;
+            if (!strcmp(expression->u.call.name, "normalize")) {
+                if (argument->next == NULL &&
+                    argument->type.base == HLSL_BASE_FLOAT &&
+                    argument->type.len == 3 &&
+                    argument->type.rows == 0 && argument->type.cols == 0 &&
+                    HlslTypesEqual(&expression->type, &argument->type))
+                {
+                    return 1;
+                }
+            } else if (!strcmp(expression->u.call.name, "rsqrt")) {
+                if (argument->next == NULL &&
+                    HlslIsScalar(&argument->type, HLSL_BASE_FLOAT) &&
+                    HlslIsScalar(&expression->type, HLSL_BASE_FLOAT))
+                {
+                    return 1;
+                }
+            } else {
+                HlslExpr *second;
+
+                second = argument->next;
+                if (second == NULL || second->next != NULL ||
+                    !HlslLegalizeExpr(module, second))
+                {
+                    return HlslLegalizeFailure(module,
+                        HLSL_ERROR_INVALID_IR, &expression->loc,
+                        "HLSL bundled intrinsic arguments");
+                }
+                if (!strcmp(expression->u.call.name, "dot") &&
+                    argument->type.base == HLSL_BASE_FLOAT &&
+                    argument->type.len == 3 &&
+                    HlslTypesEqual(&argument->type, &second->type) &&
+                    HlslIsScalar(&expression->type, HLSL_BASE_FLOAT))
+                {
+                    return 1;
+                }
+                if (!strcmp(expression->u.call.name, "max") &&
+                    HlslIsScalar(&argument->type, HLSL_BASE_FLOAT) &&
+                    HlslIsScalar(&second->type, HLSL_BASE_FLOAT) &&
+                    HlslIsScalar(&expression->type, HLSL_BASE_FLOAT))
+                {
+                    return 1;
+                }
+            }
+            return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                &expression->loc, "HLSL bundled intrinsic overload");
+        }
         if (expression->u.call.function == NULL ||
             expression->u.call.name == NULL ||
             expression->u.call.function->name == NULL ||
@@ -465,6 +567,15 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
             {
                 return 1;
             }
+        } else if (expression->u.index.object->type.rows > 0 &&
+                   expression->u.index.object->type.cols > 0 &&
+                   expression->type.base == HLSL_BASE_FLOAT &&
+                   expression->type.rows == 0 &&
+                   expression->type.cols == 0 &&
+                   expression->type.len ==
+                       expression->u.index.object->type.cols)
+        {
+            return 1;
         } else if (HlslIsNumericScalarOrVector(
                        &expression->u.index.object->type) &&
                    expression->u.index.object->type.len > 1 &&

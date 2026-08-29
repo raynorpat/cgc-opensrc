@@ -1502,6 +1502,20 @@ decl *Function_Definition_Header(SourceLoc *loc, decl *fDecl)
  *         with variable.
  */
 
+static void lFindNextStructInitMember(Symbol *tree, int after,
+                                      Symbol **best)
+{
+    if (tree == NULL)
+        return;
+    lFindNextStructInitMember(tree->left, after, best);
+    if (tree->kind == VARIABLE_S && tree->sourceOrdinal > after &&
+        (*best == NULL || tree->sourceOrdinal < (*best)->sourceOrdinal))
+    {
+        *best = tree;
+    }
+    lFindNextStructInitMember(tree->right, after, best);
+} // lFindNextStructInitMember
+
 static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, int IsGlobal)
 {
     int category, base, ii, vlen, subop;
@@ -1608,8 +1622,46 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
             SemanticError(loc, ERROR___INVALID_INITIALIZATION);
         }
         return 0;
-    case TYPE_CATEGORY_FUNCTION:
     case TYPE_CATEGORY_STRUCT:
+        if (Cg->theHAL->GetCapsBit(
+                CAPS_AGGREGATE_DEFAULT_INITIALIZERS) &&
+            vType->str.members != NULL && dExpr->common.kind == BINARY_N &&
+            dExpr->bin.op == EXPR_LIST_OP)
+        {
+            Symbol *member;
+            Symbol *best;
+            expr *memberExpr;
+            int after;
+
+            memberExpr = dExpr->bin.left;
+            after = -1;
+            for (;;) {
+                best = NULL;
+                lFindNextStructInitMember(vType->str.members->symbols,
+                                          after, &best);
+                member = best;
+                if (member == NULL)
+                    break;
+                if (memberExpr == NULL ||
+                    memberExpr->common.kind != BINARY_N ||
+                    memberExpr->bin.op != EXPR_LIST_OP ||
+                    !lCheckInitializationData(loc, member->type,
+                                              memberExpr, IsGlobal))
+                {
+                    return 0;
+                }
+                after = member->sourceOrdinal;
+                memberExpr = memberExpr->bin.right;
+            }
+            if (memberExpr != NULL) {
+                SemanticError(loc, ERROR___TOO_MUCH_DATA);
+                return 0;
+            }
+            return 1;
+        }
+        SemanticError(loc, ERROR___INVALID_INITIALIZATION);
+        return 0;
+    case TYPE_CATEGORY_FUNCTION:
     case TYPE_CATEGORY_CONNECTOR:
         SemanticError(loc, ERROR___INVALID_INITIALIZATION);
         return 0;
@@ -1799,6 +1851,16 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                         } else {
                             lExpr = (expr *) NewSymbNode(VARIABLE_OP, lSymb);
                             lStmt = NewSimpleAssignmentStmt(loc, lExpr, fExpr->bin.left, 1);
+                        }
+                        break;
+                    case TYPE_CATEGORY_STRUCT:
+                        if (DontAssign && Cg->theHAL->GetCapsBit(
+                                CAPS_AGGREGATE_DEFAULT_INITIALIZERS))
+                        {
+                            lSymb->details.var.init = fExpr;
+                        } else {
+                            SemanticError(loc,
+                                          ERROR___INVALID_INITIALIZATION);
                         }
                         break;
                     }

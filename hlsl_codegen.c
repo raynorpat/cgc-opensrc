@@ -173,6 +173,33 @@ static int HlslWriteFloat(FILE *out, float value)
     return 1;
 } // HlslWriteFloat
 
+static int HlslWriteDefaultLiteral(FILE *out,
+                                   const HlslDefaultLiteral *value)
+{
+    if (value == NULL)
+        return 0;
+    switch (value->base) {
+    case HLSL_BASE_FLOAT:
+        return HlslWriteFloat(out, value->value.floating);
+    case HLSL_BASE_INT:
+        return fprintf(out, "%d.0", value->value.integer) >= 0;
+    case HLSL_BASE_BOOL:
+        return fputs(value->value.boolean ? "1.0" : "0.0", out) != EOF;
+    default:
+        return 0;
+    }
+} // HlslWriteDefaultLiteral
+
+static const char *HlslValueTypeName(const HlslType *type)
+{
+    const char *name;
+
+    name = HlslTypeName(type);
+    if (name != NULL && !strncmp(name, "row_major ", 10))
+        name += 10;
+    return name;
+} // HlslValueTypeName
+
 static int HlslExprPrecedence(const HlslExpr *expression)
 {
     if (expression == NULL)
@@ -370,9 +397,16 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
             return 0;
         break;
     case HLSL_EXPR_CONSTRUCT:
-        text = HlslTypeName(&expression->type);
-        if (text == NULL || fprintf(out, "%s(", text) < 0)
-            return 0;
+        if (expression->type.arraySize > 0 ||
+            expression->type.base == HLSL_BASE_STRUCT)
+        {
+            if (fputs("{ ", out) == EOF)
+                return 0;
+        } else {
+            text = HlslValueTypeName(&expression->type);
+            if (text == NULL || fprintf(out, "%s(", text) < 0)
+                return 0;
+        }
         first = 1;
         for (argument = expression->u.construct.arguments;
              argument != NULL; argument = argument->next)
@@ -384,11 +418,13 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
             }
             first = 0;
         }
-        if (fputc(')', out) == EOF)
+        if (fputs(expression->type.arraySize > 0 ||
+                  expression->type.base == HLSL_BASE_STRUCT ?
+                  " }" : ")", out) == EOF)
             return 0;
         break;
     case HLSL_EXPR_CAST:
-        text = HlslTypeName(&expression->type);
+        text = HlslValueTypeName(&expression->type);
         if (text == NULL || fprintf(out, "(%s) ", text) < 0 ||
             !HlslWriteExpr(out, expression->u.cast.expression,
                            precedence))
@@ -720,6 +756,24 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
                 binding->physical.regno, binding->physical.span) < 0)
         {
             return 0;
+        }
+        if (binding->defaultCount > 0) {
+            int i;
+
+            if (fprintf(out, "// cgc-default %s", binding->publicName) < 0)
+                return 0;
+            for (i = 0; i < binding->defaultCount; i++) {
+                if (fputc(' ', out) == EOF ||
+                    (binding->defaultLiterals != NULL ?
+                     !HlslWriteDefaultLiteral(
+                         out, &binding->defaultLiterals[i]) :
+                     !HlslWriteFloat(out, binding->defaultValues[i])))
+                {
+                    return 0;
+                }
+            }
+            if (fputc('\n', out) == EOF)
+                return 0;
         }
     }
     wroteSection = module->allocatedBindings != NULL;

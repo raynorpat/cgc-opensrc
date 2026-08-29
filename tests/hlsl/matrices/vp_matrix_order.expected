@@ -1,0 +1,36 @@
+// profile hlslv
+// target vs_3_0
+// var row_major float4x4 transform : C4 : c[4] : 1 : 4
+
+row_major float4x4 cg_transform : register(c4);
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position, row_major float4x4 transform)
+{
+    cg_VertexOut cg_output;
+    cg_output.position = mul(transform, position);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, cg_transform);
+    output.position = cg_result.position;
+    return output;
+}

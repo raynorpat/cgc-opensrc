@@ -180,7 +180,23 @@ static const HlslSemanticAlias inputAliases_hlslv[] = {
     { "ATTR12", "TEXCOORD12" },
     { "ATTR13", "TEXCOORD13" },
     { "ATTR14", "TEXCOORD14" },
-    { "ATTR15", "TEXCOORD15" }
+    { "ATTR15", "TEXCOORD15" },
+    { "ATTRIB0",  "TEXCOORD0" },
+    { "ATTRIB1",  "TEXCOORD1" },
+    { "ATTRIB2",  "TEXCOORD2" },
+    { "ATTRIB3",  "TEXCOORD3" },
+    { "ATTRIB4",  "TEXCOORD4" },
+    { "ATTRIB5",  "TEXCOORD5" },
+    { "ATTRIB6",  "TEXCOORD6" },
+    { "ATTRIB7",  "TEXCOORD7" },
+    { "ATTRIB8",  "TEXCOORD8" },
+    { "ATTRIB9",  "TEXCOORD9" },
+    { "ATTRIB10", "TEXCOORD10" },
+    { "ATTRIB11", "TEXCOORD11" },
+    { "ATTRIB12", "TEXCOORD12" },
+    { "ATTRIB13", "TEXCOORD13" },
+    { "ATTRIB14", "TEXCOORD14" },
+    { "ATTRIB15", "TEXCOORD15" }
 };
 
 static const HlslSemanticAlias outputAliases_hlslv[] = {

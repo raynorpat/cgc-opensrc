@@ -2456,7 +2456,9 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
                         rExpr = eExpr->bin.right;
                         if (data->normalizeOperands &&
                             AggregateExprNeedsMaterialization(rExpr) &&
-                            AggregateContainsArray(lType))
+                            AggregateContainsArray(lType) &&
+                            !Cg->theHAL->GetCapsBit(
+                                CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS))
                         {
                             if (Cg->theHAL->pid == PROFILE_GLSLV_ID ||
                                 Cg->theHAL->pid == PROFILE_GLSLF_ID)

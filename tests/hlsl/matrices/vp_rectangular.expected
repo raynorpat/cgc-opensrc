@@ -1,0 +1,42 @@
+// profile hlslv
+// target vs_3_0
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output;
+    row_major float2x3 rows2;
+    row_major float3x2 rows3;
+    float3 selected;
+    float2 matrixVector;
+    float2 vectorMatrix;
+    rows2 = float2x3(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+    rows3 = float3x2(7.0, 8.0, 9.0, 10.0, 11.0, 12.0);
+    selected = rows2[1];
+    matrixVector = mul(rows2, position.xyz);
+    vectorMatrix = mul(position.xyz, rows3);
+    cg_output.position = float4(matrixVector.x, matrixVector.y, vectorMatrix.x, vectorMatrix.y) + float4(selected.x, selected.y, selected.z, 0.0);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

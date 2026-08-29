@@ -1,0 +1,77 @@
+// profile hlslv
+// target vs_3_0
+// var row_major float4x4 modelview_matrix :  : c[0] : 1 : 4
+// var row_major float4x4 projection_matrix :  : c[4] : 1 : 4
+// var float3 lightdir :  : c[8] : 1 : 1
+// var float3 lightcolor :  : c[9] : 1 : 1
+// var float3 ambientcolor :  : c[10] : 1 : 1
+
+row_major float4x4 cg_modelview_matrix : register(c0);
+row_major float4x4 cg_projection_matrix : register(c4);
+float3 cg_lightdir : register(c8);
+float3 cg_lightcolor : register(c9);
+float3 cg_ambientcolor : register(c10);
+
+struct cg_appdata
+{
+    float4 position;
+    float3 normal;
+};
+
+struct cg_vf20
+{
+    float4 HPOS;
+    float4 COL0;
+    float4 TEX0;
+};
+
+struct cg_VertexIn
+{
+    float4 position : TEXCOORD0;
+    float3 normal : TEXCOORD1;
+};
+
+struct cg_VertexOut
+{
+    float4 HPOS : POSITION0;
+    float4 COL0 : COLOR0;
+    float4 TEX0 : TEXCOORD0;
+};
+
+cg_vf20 cg_entry(cg_appdata I, row_major float4x4 modelview_matrix, row_major float4x4 projection_matrix, float3 lightdir, float3 lightcolor, float3 ambientcolor)
+{
+    cg_vf20 O;
+    float3 n;
+    float3 u;
+    float3 r;
+    float4 v;
+    float m;
+    row_major float3x3 m3;
+    v = mul(modelview_matrix, I.position);
+    u = normalize(v.xyz);
+    m3[0].xyz = modelview_matrix[0].xyz;
+    m3[1].xyz = modelview_matrix[1].xyz;
+    m3[2].xyz = modelview_matrix[2].xyz;
+    n = mul(m3, I.normal);
+    r = u - 2.0 * n * dot(n, u);
+    r.z = r.z + 1.0;
+    m = 0.5 * rsqrt(dot(r, r));
+    O.TEX0.x = r.x * m + 0.5;
+    O.TEX0.y = r.y * m + 0.5;
+    O.HPOS = mul(projection_matrix, v);
+    return O;
+}
+
+cg_VertexOut main(cg_VertexIn input)
+{
+    cg_appdata I;
+    cg_VertexOut output;
+    cg_vf20 cg_result;
+    I.position = input.position;
+    I.normal = input.normal;
+    cg_result = cg_entry(I, cg_modelview_matrix, cg_projection_matrix, cg_lightdir, cg_lightcolor, cg_ambientcolor);
+    output.HPOS = cg_result.HPOS;
+    output.COL0 = cg_result.COL0;
+    output.TEX0 = cg_result.TEX0;
+    return output;
+}

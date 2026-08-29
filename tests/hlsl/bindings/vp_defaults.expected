@@ -1,0 +1,68 @@
+// profile hlslv
+// target vs_3_0
+// var float scale :  : c[0] : 1 : 1
+// cgc-default scale 2.0
+// var float3 bias :  : c[1] : 1 : 1
+// cgc-default bias 3.0 4.0 5.0
+// var row_major float2x3 transform :  : c[2] : 1 : 2
+// cgc-default transform 6.0 7.0 8.0 9.0 10.0 11.0
+// var float weights :  : c[4] : 1 : 2
+// cgc-default weights 12.0 13.0
+// var float2 settings.offset :  : c[6] : 1 : 1
+// cgc-default settings.offset 14.0 15.0
+// var int settings.count :  : i[0] : 1 : 1
+// cgc-default settings.count 2147483647.0
+// var bool settings.enabled :  : b[0] : 1 : 1
+// cgc-default settings.enabled 1.0
+
+float cg_scale : register(c0) = 2.0;
+float3 cg_bias : register(c1) = float3(3.0, 4.0, 5.0);
+row_major float2x3 cg_transform : register(c2) = float2x3(6.0, 7.0, 8.0, 9.0, 10.0, 11.0);
+float cg_weights[2] : register(c4) = { 12.0, 13.0 };
+float2 cg_settings_offset : register(c6) = float2(14.0, 15.0);
+int cg_settings_count : register(i0) = 2147483647;
+bool cg_settings_enabled : register(b0) = true;
+
+struct cg_Settings
+{
+    float2 offset;
+    int count;
+    bool enabled;
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position, float scale, float3 bias, row_major float2x3 transform, float weights[2])
+{
+    cg_VertexOut cg_output;
+    float2 transformed;
+    cg_Settings settings;
+    transformed = mul(transform, position.xyz);
+    settings.offset = cg_settings_offset;
+    settings.count = cg_settings_count;
+    settings.enabled = cg_settings_enabled;
+    cg_output.position = position * scale + float4(transformed.x + settings.offset.x, transformed.y + settings.offset.y, bias.x + weights[settings.enabled ? 1 : 0], (float) settings.count);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, cg_scale, cg_bias, cg_transform, cg_weights);
+    output.position = cg_result.position;
+    return output;
+}

@@ -1,0 +1,66 @@
+// profile hlslv
+// target vs_3_0
+// var row_major float3x3 object_matrix :  : c[0] : 1 : 3
+// var row_major float4x4 objviewproj_matrix :  : c[3] : 1 : 4
+// var float3 lightdir :  : c[7] : 1 : 1
+// var float3 lightcolor :  : c[8] : 1 : 1
+// var float3 ambientcolor :  : c[9] : 1 : 1
+
+row_major float3x3 cg_object_matrix : register(c0);
+row_major float4x4 cg_objviewproj_matrix : register(c3);
+float3 cg_lightdir : register(c7);
+float3 cg_lightcolor : register(c8);
+float3 cg_ambientcolor : register(c9);
+
+struct cg_appdata
+{
+    float4 position;
+    float4 color;
+    float4 texcoord;
+};
+
+struct cg_vf20
+{
+    float4 HPOS;
+    float4 COL0;
+    float4 TEX0;
+};
+
+struct cg_VertexIn
+{
+    float4 position : TEXCOORD0;
+    float4 color : TEXCOORD1;
+    float4 texcoord : TEXCOORD2;
+};
+
+struct cg_VertexOut
+{
+    float4 HPOS : POSITION0;
+    float4 COL0 : COLOR0;
+    float4 TEX0 : TEXCOORD0;
+};
+
+cg_vf20 cg_entry(cg_appdata I, row_major float3x3 object_matrix, row_major float4x4 objviewproj_matrix, float3 lightdir, float3 lightcolor, float3 ambientcolor)
+{
+    cg_vf20 O;
+    float diffuse;
+    O.HPOS = mul(objviewproj_matrix, I.position);
+    O.COL0 = I.color;
+    O.TEX0 = I.texcoord;
+    return O;
+}
+
+cg_VertexOut main(cg_VertexIn input)
+{
+    cg_appdata I;
+    cg_VertexOut output;
+    cg_vf20 cg_result;
+    I.position = input.position;
+    I.color = input.color;
+    I.texcoord = input.texcoord;
+    cg_result = cg_entry(I, cg_object_matrix, cg_objviewproj_matrix, cg_lightdir, cg_lightcolor, cg_ambientcolor);
+    output.HPOS = cg_result.HPOS;
+    output.COL0 = cg_result.COL0;
+    output.TEX0 = cg_result.TEX0;
+    return output;
+}

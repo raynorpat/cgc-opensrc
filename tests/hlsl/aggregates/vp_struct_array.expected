@@ -1,0 +1,78 @@
+// profile hlslv
+// target vs_3_0
+struct cg_Item
+{
+    float4 value;
+};
+
+struct cg_Batch
+{
+    cg_Item items[2];
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+int cg_mul(int left, int right)
+{
+    return left + right;
+}
+
+int cg_next_index(inout int index)
+{
+    int result;
+    result = index;
+    index = index + (int) 1;
+    return result;
+}
+
+cg_Batch cg_select_batch(cg_Batch source, inout int callCount)
+{
+    callCount = callCount + (int) 1;
+    return source;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output;
+    cg_Batch source;
+    cg_Batch batches[2];
+    cg_Batch selected;
+    int writeIndex;
+    int callCount;
+    int cg_cg_index;
+    cg_Batch cg_cg_aggregate;
+    source.items[0].value = position;
+    source.items[1].value = position * 2.0;
+    writeIndex = cg_mul(0, 0);
+    cg_cg_index = cg_next_index(writeIndex);
+    batches[cg_cg_index].items[0].value = source.items[0].value;
+    batches[cg_cg_index].items[1].value = source.items[1].value;
+    callCount = 0;
+    cg_cg_aggregate = cg_select_batch(batches[0], callCount);
+    selected.items[0].value = cg_cg_aggregate.items[0].value;
+    selected.items[1].value = cg_cg_aggregate.items[1].value;
+    cg_output.position = selected.items[0].value + selected.items[1].value + float4((float) callCount, 0.0, 0.0, 0.0);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

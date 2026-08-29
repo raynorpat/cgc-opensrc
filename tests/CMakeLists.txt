@@ -1888,6 +1888,29 @@ add_hlsl_fixture(hlslv_helpers hlslv
 add_hlsl_fixture(hlslv_inline_helper hlslv
     tests/hlsl/functions/vp_inline_helper.cg
     tests/hlsl/functions/vp_inline_helper.expected)
+add_hlsl_fixture(hlslv_struct_array hlslv
+    tests/hlsl/aggregates/vp_struct_array.cg
+    tests/hlsl/aggregates/vp_struct_array.expected)
+add_hlsl_fixture(hlslv_nested_out hlslv
+    tests/hlsl/aggregates/vp_nested_out.cg
+    tests/hlsl/aggregates/vp_nested_out.expected)
+add_hlsl_fixture(hlslv_rectangular hlslv
+    tests/hlsl/matrices/vp_rectangular.cg
+    tests/hlsl/matrices/vp_rectangular.expected)
+add_hlsl_fixture(hlslv_matrix_order hlslv
+    tests/hlsl/matrices/vp_matrix_order.cg
+    tests/hlsl/matrices/vp_matrix_order.expected)
+add_hlsl_fixture(hlslv_defaults hlslv
+    tests/hlsl/bindings/vp_defaults.cg
+    tests/hlsl/bindings/vp_defaults.expected)
+add_hlsl_fixture(hlslv_position hlslv
+    position.cg tests/hlsl/vertex/position.expected)
+add_hlsl_fixture(hlslv_reflection hlslv
+    reflection.cg tests/hlsl/vertex/reflection.expected)
+add_hlsl_fixture(hlslv_vertexlight hlslv
+    vertexlight.cg tests/hlsl/vertex/vertexlight.expected)
+add_hlsl_fixture(hlslv_vertexlight4 hlslv
+    vertexlight4.cg tests/hlsl/vertex/vertexlight4.expected)
 
 add_test(
     NAME generic_entry_inout_still_rejected

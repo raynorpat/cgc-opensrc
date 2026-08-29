@@ -460,6 +460,8 @@ static int GetCapsBit_hlsl(int bitNumber)
     case CAPS_TYPED_INC_DEC_EXPRESSIONS:
     case CAPS_PRESERVE_COMMA_EXPRESSIONS:
     case CAPS_PRESERVE_INLINE_HELPERS:
+    case CAPS_AGGREGATE_DEFAULT_INITIALIZERS:
+    case CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS:
         return 1;
     default:
         return 0;

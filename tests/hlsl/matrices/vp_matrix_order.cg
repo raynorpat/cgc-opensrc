@@ -1,0 +1,11 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION,
+               uniform float4x4 transform : C4)
+{
+    VertexOut output;
+    output.position = mul(transform, position);
+    return output;
+}

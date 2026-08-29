@@ -50,6 +50,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "cg_stdlib.h"
 #include "hlsl_hal.h"
 
 typedef struct HlslLowerContext_Rec {
@@ -72,6 +73,35 @@ typedef enum HlslValueMode_Enum {
 static int HlslEnsureType(HlslLowerContext *context, Type *type);
 static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
                                HlslStmt **prefix, HlslValueMode valueMode);
+
+static const char *HlslNativeIntrinsicName(HlslLowerContext *context,
+                                           Symbol *symbol)
+{
+    const CgIntrinsicSignature *signature;
+    const char *fileName;
+    const char *name;
+
+    if (context == NULL || symbol == NULL || symbol->kind != FUNCTION_S)
+        return NULL;
+    signature = CgIntrinsicSignatureForSymbol(symbol);
+    if (signature != NULL) {
+        switch (signature->intrinsic) {
+        case CG_INTRINSIC_DOT:
+        case CG_INTRINSIC_MAX:
+        case CG_INTRINSIC_MUL:
+        case CG_INTRINSIC_NORMALIZE:
+        case CG_INTRINSIC_RSQRT:
+            return signature->name;
+        default:
+            return NULL;
+        }
+    }
+    name = GetAtomString(atable, symbol->name);
+    fileName = GetAtomString(atable, symbol->loc.file);
+    return name != NULL && !strcmp(name, "mul") &&
+           fileName != NULL && !strcmp(fileName, "<stdlib>") ?
+           "mul" : NULL;
+} // HlslNativeIntrinsicName
 
 static void HlslSetLoc(HlslLoc *target, const SourceLoc *source)
 {
@@ -456,6 +486,7 @@ static int HlslCollectMembers(HlslLowerContext *context, Scope *memberScope,
         if (decl == NULL)
             return 0;
         decl->semantic = HlslSourceSemantic(context, symbol, 1);
+        decl->inputSemantic = HlslSourceSemantic(context, symbol, 0);
         HlslInsertDecl(members, decl);
     }
     return HlslCollectMembers(context, memberScope, symbol->right, members);
@@ -713,6 +744,427 @@ static int HlslCollectUniformTree(HlslLowerContext *context, Symbol *symbol)
     return HlslCollectUniformTree(context, symbol->right);
 } // HlslCollectUniformTree
 
+typedef struct HlslDefaultValue_Rec {
+    int base;
+    scalar_constant value;
+} HlslDefaultValue;
+
+typedef enum HlslDefaultClass_Enum {
+    HLSL_DEFAULT_INVALID,
+    HLSL_DEFAULT_FLOAT,
+    HLSL_DEFAULT_INT,
+    HLSL_DEFAULT_BOOL
+} HlslDefaultClass;
+
+static HlslDefaultClass HlslDefaultClassOf(int base)
+{
+    switch (base) {
+    case TYPE_BASE_CFLOAT:
+    case TYPE_BASE_FLOAT:
+        return HLSL_DEFAULT_FLOAT;
+    case TYPE_BASE_CINT:
+    case TYPE_BASE_INT:
+        return HLSL_DEFAULT_INT;
+    case TYPE_BASE_BOOLEAN:
+        return HLSL_DEFAULT_BOOL;
+    default:
+        return Cg->theHAL->IsNumericBase(base) ? HLSL_DEFAULT_FLOAT :
+                                                HLSL_DEFAULT_INVALID;
+    }
+} // HlslDefaultClassOf
+
+static int HlslFiniteDefaultFloat(float value)
+{
+    return value == value && value <= FLT_MAX && value >= -FLT_MAX;
+} // HlslFiniteDefaultFloat
+
+static int HlslAppendTypedDefault(HlslLowerContext *context,
+                                  HlslDefaultValue *values, int capacity,
+                                  int *count, int base,
+                                  const scalar_constant *value)
+{
+    if (values == NULL || count == NULL || value == NULL ||
+        *count < 0 || *count >= capacity ||
+        HlslDefaultClassOf(base) == HLSL_DEFAULT_INVALID ||
+        (HlslDefaultClassOf(base) == HLSL_DEFAULT_FLOAT &&
+         !HlslFiniteDefaultFloat((float) value->value.f)))
+    {
+        return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                "uniform default value", NULL);
+    }
+    values[*count].base = base;
+    values[*count].value = *value;
+    (*count)++;
+    return 1;
+} // HlslAppendTypedDefault
+
+static int HlslConvertDefault(HlslLowerContext *context,
+                              HlslDefaultValue *value, int targetBase)
+{
+    HlslDefaultClass sourceClass;
+    HlslDefaultClass targetClass;
+    scalar_constant converted;
+    double floating;
+
+    if (value == NULL)
+        return 0;
+    sourceClass = HlslDefaultClassOf(value->base);
+    targetClass = HlslDefaultClassOf(targetBase);
+    if (sourceClass == HLSL_DEFAULT_INVALID ||
+        targetClass == HLSL_DEFAULT_INVALID)
+    {
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+                                "uniform default conversion", NULL);
+    }
+    if (sourceClass == HLSL_DEFAULT_FLOAT &&
+        !HlslFiniteDefaultFloat((float) value->value.value.f))
+    {
+        return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                "uniform default finite value", NULL);
+    }
+    switch (targetClass) {
+    case HLSL_DEFAULT_FLOAT:
+        converted.value.f = sourceClass == HLSL_DEFAULT_FLOAT ?
+            value->value.value.f :
+            (sourceClass == HLSL_DEFAULT_INT ?
+             (float) value->value.value.i :
+             (value->value.value.i ? 1.0f : 0.0f));
+        if (!HlslFiniteDefaultFloat((float) converted.value.f))
+            return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                    "uniform default finite value", NULL);
+        break;
+    case HLSL_DEFAULT_INT:
+        if (sourceClass == HLSL_DEFAULT_FLOAT) {
+            floating = (double) value->value.value.f;
+            if (floating < (double) INT_MIN || floating > (double) INT_MAX)
+                return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                        "uniform default range", NULL);
+            converted.value.i = (int) floating;
+        } else if (sourceClass == HLSL_DEFAULT_INT) {
+            converted.value.i = (int) value->value.value.i;
+        } else {
+            converted.value.i = value->value.value.i ? 1 : 0;
+        }
+        break;
+    case HLSL_DEFAULT_BOOL:
+        converted.value.i = sourceClass == HLSL_DEFAULT_FLOAT ?
+            value->value.value.f != 0.0f : value->value.value.i != 0;
+        break;
+    default:
+        return 0;
+    }
+    value->base = targetBase;
+    value->value = converted;
+    return 1;
+} // HlslConvertDefault
+
+static int HlslFlattenDefaultExpr(HlslLowerContext *context,
+                                  const expr *source,
+                                  HlslDefaultValue *values, int capacity,
+                                  int *count)
+{
+    const expr *item;
+    int base;
+    int componentCount;
+    int i;
+    int len;
+    int start;
+    int targetBase;
+
+    if (source == NULL)
+        return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                "uniform default initializer", NULL);
+    if (source->common.kind == BINARY_N &&
+        source->bin.op == EXPR_LIST_OP)
+    {
+        item = source;
+        while (item != NULL && item->common.kind == BINARY_N &&
+               item->bin.op == EXPR_LIST_OP)
+        {
+            if (item->bin.left == NULL ||
+                !HlslFlattenDefaultExpr(context, item->bin.left, values,
+                                        capacity, count))
+            {
+                return 0;
+            }
+            item = item->bin.right;
+        }
+        return item == NULL ||
+               HlslFlattenDefaultExpr(context, item, values, capacity,
+                                      count);
+    }
+    if (source->common.kind == UNARY_N) {
+        if (source->un.op == VECTOR_V_OP)
+            return HlslFlattenDefaultExpr(context, source->un.arg, values,
+                                          capacity, count);
+        if (source->un.op == CAST_CS_OP || source->un.op == CAST_CV_OP ||
+            source->un.op == CAST_CM_OP)
+        {
+            start = *count;
+            if (!HlslFlattenDefaultExpr(context, source->un.arg, values,
+                                        capacity, count))
+            {
+                return 0;
+            }
+            componentCount = *count - start;
+            if (source->un.op == CAST_CS_OP) {
+                len = 1;
+            } else if (source->un.op == CAST_CV_OP) {
+                len = SUBOP_GET_S1(source->un.subop);
+            } else {
+                len = SUBOP_GET_S1(source->un.subop);
+                if (len <= 0 || SUBOP_GET_S2(source->un.subop) <= 0 ||
+                    len > INT_MAX / SUBOP_GET_S2(source->un.subop))
+                {
+                    return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                            "uniform default cast shape",
+                                            NULL);
+                }
+                len *= SUBOP_GET_S2(source->un.subop);
+            }
+            if (len <= 0 || componentCount != len)
+                return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                        "uniform default cast shape", NULL);
+            targetBase = SUBOP_GET_T2(source->un.subop);
+            for (i = start; i < *count; i++) {
+                if (!HlslConvertDefault(context, &values[i], targetBase))
+                    return 0;
+            }
+            return 1;
+        }
+    }
+    if (source->common.kind == CONST_N) {
+        base = GetBase(source->common.type);
+        len = SUBOP_GET_S1(source->co.subop);
+        if (len == 0)
+            len = 1;
+        if (len < 1 || len > 4)
+            return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                    "uniform default initializer", NULL);
+        for (i = 0; i < len; i++) {
+            switch (source->co.op) {
+            case FCONST_OP:
+            case FCONST_V_OP:
+            case HCONST_OP:
+            case HCONST_V_OP:
+            case XCONST_OP:
+            case XCONST_V_OP:
+            case ICONST_OP:
+            case ICONST_V_OP:
+            case BCONST_OP:
+            case BCONST_V_OP:
+                if (!HlslAppendTypedDefault(context, values, capacity,
+                                            count, base,
+                                            &source->co.val[i]))
+                {
+                    return 0;
+                }
+                break;
+            default:
+                return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                        "uniform default initializer",
+                                        NULL);
+            }
+        }
+        return 1;
+    }
+    if (source->common.kind == SYMB_N && source->sym.symbol != NULL &&
+        GetBase(source->common.type) == TYPE_BASE_BOOLEAN)
+    {
+        scalar_constant value;
+        const char *name;
+
+        name = GetAtomString(atable, source->sym.symbol->name);
+        memset(&value, 0, sizeof(value));
+        if (name != NULL && (!strcmp(name, "true") ||
+                             !strcmp(name, "false")))
+        {
+            value.value.i = !strcmp(name, "true");
+            return HlslAppendTypedDefault(context, values, capacity, count,
+                                          TYPE_BASE_BOOLEAN, &value);
+        }
+    }
+    return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                            "uniform default expression shape", NULL);
+} // HlslFlattenDefaultExpr
+
+static int HlslDefaultComponentCount(const HlslType *type)
+{
+    const HlslDecl *member;
+    int count;
+    int memberCount;
+
+    if (type == NULL)
+        return -1;
+    if (type->arraySize > 0) {
+        count = HlslDefaultComponentCount(type->elementType);
+        return count > 0 && count <= INT_MAX / type->arraySize ?
+               count * type->arraySize : -1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        count = 0;
+        for (member = type->members; member != NULL; member = member->next) {
+            memberCount = HlslDefaultComponentCount(&member->type);
+            if (memberCount < 0 || count > INT_MAX - memberCount)
+                return -1;
+            count += memberCount;
+        }
+        return count;
+    }
+    if (type->rows > 0 && type->cols > 0)
+        return type->rows <= INT_MAX / type->cols ?
+               type->rows * type->cols : -1;
+    return type->len;
+} // HlslDefaultComponentCount
+
+static int HlslDefaultTargetBase(HlslBase base)
+{
+    switch (base) {
+    case HLSL_BASE_FLOAT: return TYPE_BASE_FLOAT;
+    case HLSL_BASE_INT: return TYPE_BASE_INT;
+    case HLSL_BASE_BOOL: return TYPE_BASE_BOOLEAN;
+    default: return TYPE_BASE_NO_TYPE;
+    }
+} // HlslDefaultTargetBase
+
+static int HlslStoreDefaultType(HlslLowerContext *context,
+                                const HlslType *type,
+                                HlslDefaultValue *typedValues,
+                                int capacity, int *index,
+                                HlslDefaultLiteral *values)
+{
+    const HlslDecl *member;
+    HlslDefaultClass targetClass;
+    int len;
+    int targetBase;
+    int i;
+
+    if (type == NULL)
+        return 0;
+    if (type->arraySize > 0) {
+        for (i = 0; i < type->arraySize; i++) {
+            if (!HlslStoreDefaultType(context, type->elementType,
+                                      typedValues, capacity, index, values))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslStoreDefaultType(context, &member->type, typedValues,
+                                      capacity, index, values))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    len = type->rows > 0 && type->cols > 0 ?
+          type->rows * type->cols : type->len;
+    targetBase = HlslDefaultTargetBase(type->base);
+    targetClass = HlslDefaultClassOf(targetBase);
+    if (targetBase == TYPE_BASE_NO_TYPE || len <= 0 || *index < 0 ||
+        *index > capacity - len)
+    {
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+                                "uniform default destination", NULL);
+    }
+    for (i = 0; i < len; i++) {
+        if (!HlslConvertDefault(context, &typedValues[*index], targetBase))
+            return 0;
+        values[*index].base = type->base;
+        if (targetClass == HLSL_DEFAULT_FLOAT) {
+            values[*index].value.floating =
+                (float) typedValues[*index].value.value.f;
+        } else if (targetClass == HLSL_DEFAULT_INT) {
+            values[*index].value.integer =
+                (int) typedValues[*index].value.value.i;
+        } else {
+            values[*index].value.boolean =
+                typedValues[*index].value.value.i != 0;
+        }
+        (*index)++;
+    }
+    return 1;
+} // HlslStoreDefaultType
+
+static int HlslCollectDefaults(HlslLowerContext *context)
+{
+    BindingList *item;
+    HlslBinding *binding;
+    HlslDefaultValue *typedValues;
+    Symbol *symbol;
+    int componentCount;
+    int typedCount;
+    int typedIndex;
+
+    for (item = Cg->theHAL->defaultBindings; item != NULL;
+         item = item->next)
+    {
+        if (item->binding == NULL ||
+            item->binding->none.kind != BK_DEFAULT)
+        {
+            continue;
+        }
+        for (binding = context->module->bindings; binding != NULL;
+             binding = binding->next)
+        {
+            if (binding->storage != HLSL_STORAGE_UNIFORM ||
+                binding->declaration == NULL || binding->defaultCount != 0)
+            {
+                continue;
+            }
+            symbol = (Symbol *) binding->declaration->identity;
+            if (symbol == NULL || item->identity != symbol)
+                continue;
+            context->statementLoc = symbol->loc;
+            componentCount = HlslDefaultComponentCount(&binding->type);
+            if (componentCount <= 0 || item->initializer == NULL ||
+                item->type != symbol->type ||
+                (size_t) componentCount >
+                    (size_t) -1 / sizeof(HlslDefaultValue) ||
+                (size_t) componentCount > (size_t) -1 / sizeof(float))
+            {
+                return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                        "uniform default initializer",
+                                        &symbol->loc);
+            }
+            typedValues = (HlslDefaultValue *) HlslLowerAlloc(context,
+                (size_t) componentCount * sizeof(HlslDefaultValue));
+            binding->defaultLiterals =
+                (HlslDefaultLiteral *) HlslLowerAlloc(context,
+                    (size_t) componentCount * sizeof(HlslDefaultLiteral));
+            if (typedValues == NULL || binding->defaultLiterals == NULL)
+                return 0;
+            typedCount = 0;
+            if (!HlslFlattenDefaultExpr(context,
+                    (const expr *) item->initializer, typedValues,
+                    componentCount, &typedCount))
+            {
+                return 0;
+            }
+            if (typedCount != componentCount)
+                return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                    "uniform default component count", &symbol->loc);
+            typedIndex = 0;
+            if (!HlslStoreDefaultType(context, &binding->type, typedValues,
+                                      componentCount, &typedIndex,
+                                      binding->defaultLiterals))
+            {
+                return 0;
+            }
+            if (typedIndex != componentCount)
+                return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                    "uniform default component count", &symbol->loc);
+            binding->defaultCount = componentCount;
+            break;
+        }
+    }
+    return 1;
+} // HlslCollectDefaults
+
 static int HlslCollectParameters(HlslLowerContext *context,
                                  Symbol *formal, int isEntry)
 {
@@ -744,8 +1196,14 @@ static int HlslCollectParameters(HlslLowerContext *context,
             isOutput = decl->parameterQualifier != HLSL_PARAMETER_IN;
             decl->storage = isOutput ? HLSL_STORAGE_OUTPUT :
                                        HLSL_STORAGE_INPUT;
-            decl->semantic = HlslSourceSemantic(context, formal, isOutput);
-            if (decl->semantic == NULL)
+            if (decl->type.base == HLSL_BASE_STRUCT) {
+                decl->semantic = NULL;
+            } else {
+                decl->semantic = HlslSourceSemantic(context, formal,
+                                                     isOutput);
+            }
+            if (decl->type.base != HLSL_BASE_STRUCT &&
+                decl->semantic == NULL)
                 return HlslLowerFailure(context, HLSL_ERROR_SEMANTIC,
                     GetAtomString(atable, formal->name), &formal->loc);
             if (decl->parameterQualifier == HLSL_PARAMETER_INOUT) {
@@ -1062,6 +1520,130 @@ static int HlslStabilizeLvalueAddress(HlslLowerContext *context,
     }
 } // HlslStabilizeLvalueAddress
 
+static int HlslTypeNeedsRecursiveCopy(const HlslType *type)
+{
+    const HlslDecl *member;
+
+    if (type == NULL)
+        return 0;
+    if (type->arraySize > 0)
+        return 1;
+    if (type->base != HLSL_BASE_STRUCT)
+        return 0;
+    for (member = type->members; member != NULL; member = member->next) {
+        if (HlslTypeNeedsRecursiveCopy(&member->type))
+            return 1;
+    }
+    return 0;
+} // HlslTypeNeedsRecursiveCopy
+
+static int HlslIsNativeAggregateTempAssignment(const expr *source)
+{
+    const expr *left;
+
+    if (source == NULL || source->common.kind != BINARY_N ||
+        HlslBinaryOperator(source->bin.op) != HLSL_OP_ASSIGN)
+    {
+        return 0;
+    }
+    left = source->bin.left;
+    return left != NULL && left->common.kind == SYMB_N &&
+           left->sym.symbol != NULL &&
+           (left->sym.symbol->properties &
+            SYMB_IS_NATIVE_AGGREGATE_TEMP) != 0;
+} // HlslIsNativeAggregateTempAssignment
+
+static HlslExpr *HlslCopyMember(HlslLowerContext *context,
+                                HlslExpr *object, HlslDecl *member)
+{
+    HlslExpr *expression;
+
+    expression = object != NULL && member != NULL ?
+        HlslNewSourceExpr(context, HLSL_EXPR_MEMBER, member->type) : NULL;
+    if (expression != NULL) {
+        expression->u.member.object = object;
+        expression->u.member.decl = member;
+        expression->u.member.name = member->name;
+    }
+    return expression;
+} // HlslCopyMember
+
+static HlslExpr *HlslCopyIndex(HlslLowerContext *context,
+                               HlslExpr *object,
+                               const HlslType *elementType, int index)
+{
+    HlslExpr *expression;
+    HlslExpr *subscript;
+
+    expression = object != NULL && elementType != NULL ?
+        HlslNewSourceExpr(context, HLSL_EXPR_INDEX, *elementType) : NULL;
+    subscript = HlslNewLiteral(context, HLSL_BASE_INT, index, 0.0f);
+    if (expression == NULL || subscript == NULL)
+        return NULL;
+    expression->u.index.object = object;
+    expression->u.index.index = subscript;
+    return expression;
+} // HlslCopyIndex
+
+static int HlslAppendRecursiveCopy(HlslLowerContext *context,
+                                   const HlslType *type,
+                                   HlslExpr *target, HlslExpr *source,
+                                   HlslStmt **statements)
+{
+    HlslDecl *member;
+    HlslExpr *assignment;
+    int i;
+
+    if (type == NULL || target == NULL || source == NULL)
+        return 0;
+    if (type->arraySize > 0) {
+        for (i = 0; i < type->arraySize; i++) {
+            if (!HlslAppendRecursiveCopy(context, type->elementType,
+                    HlslCopyIndex(context, target, type->elementType, i),
+                    HlslCopyIndex(context, source, type->elementType, i),
+                    statements))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslAppendRecursiveCopy(context, &member->type,
+                    HlslCopyMember(context, target, member),
+                    HlslCopyMember(context, source, member), statements))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    assignment = HlslNewAssignment(context, target, source);
+    return assignment != NULL &&
+           HlslAppendExpression(context, statements, assignment);
+} // HlslAppendRecursiveCopy
+
+static HlslExpr *HlslDetachLastExpression(HlslStmt **statements)
+{
+    HlslStmt **place;
+    HlslStmt *statement;
+    HlslExpr *expression;
+
+    if (statements == NULL || *statements == NULL)
+        return NULL;
+    place = statements;
+    while ((*place)->next != NULL)
+        place = &(*place)->next;
+    statement = *place;
+    if (statement->kind != HLSL_STMT_EXPRESSION)
+        return NULL;
+    *place = NULL;
+    expression = statement->u.expression;
+    statement->u.expression = NULL;
+    return expression;
+} // HlslDetachLastExpression
+
 static HlslExpr *HlslLowerOrderedValue(HlslLowerContext *context,
                                        expr *source, HlslStmt **prefix,
                                        int captureSideEffects)
@@ -1194,6 +1776,62 @@ static HlslExpr *HlslLowerSwizzle(HlslLowerContext *context, expr *source,
     return HlslNewSwizzle(context, object, type, maskText);
 } // HlslLowerSwizzle
 
+static HlslExpr *HlslLowerMatrixSwizzle(HlslLowerContext *context,
+                                        expr *source,
+                                        const HlslType *type,
+                                        HlslStmt **prefix,
+                                        HlslValueMode valueMode)
+{
+    HlslExpr *object;
+    HlslExpr *rowExpression;
+    HlslExpr *index;
+    HlslType rowType;
+    int count;
+    int mask;
+    int selector;
+    int row;
+    int column;
+    int i;
+    char columns[5];
+
+    object = HlslLowerExpr(context, source->un.arg, prefix,
+        valueMode == HLSL_VALUE_LVALUE ? HLSL_VALUE_LVALUE :
+                                        HLSL_VALUE_RVALUE);
+    if (object == NULL || object->type.rows <= 0 ||
+        object->type.cols <= 0)
+    {
+        return NULL;
+    }
+    count = SUBOP_GET_T2(source->un.subop);
+    if (count == 0)
+        count = 1;
+    if (count < 1 || count > 4)
+        return NULL;
+    mask = SUBOP_GET_MASK16(source->un.subop);
+    selector = mask & 15;
+    row = (selector >> 2) & 3;
+    if (row >= object->type.rows)
+        return NULL;
+    for (i = 0; i < count; i++) {
+        selector = (mask >> (i * 4)) & 15;
+        if (((selector >> 2) & 3) != row)
+            return NULL;
+        column = selector & 3;
+        if (column >= object->type.cols)
+            return NULL;
+        columns[i] = "xyzw"[column];
+    }
+    columns[count] = '\0';
+    rowType = HlslNumericType(HLSL_BASE_FLOAT, object->type.cols);
+    rowExpression = HlslNewSourceExpr(context, HLSL_EXPR_INDEX, rowType);
+    index = HlslNewLiteral(context, HLSL_BASE_INT, row, 0.0f);
+    if (rowExpression == NULL || index == NULL)
+        return NULL;
+    rowExpression->u.index.object = object;
+    rowExpression->u.index.index = index;
+    return HlslNewSwizzle(context, rowExpression, type, columns);
+} // HlslLowerMatrixSwizzle
+
 static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
                                    opcode listOp, HlslStmt **prefix,
                                    Symbol *formal)
@@ -1253,9 +1891,27 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
 static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
                                const HlslType *type, HlslStmt **prefix)
 {
+    typedef struct HlslCopyOut_Rec {
+        struct HlslCopyOut_Rec *next;
+        HlslExpr *target;
+        HlslDecl *temporary;
+        HlslType type;
+    } HlslCopyOut;
+
     HlslExpr *target;
+    HlslExpr *argument;
+    HlslExpr *nextArgument;
+    HlslExpr **argumentPlace;
+    HlslExpr *replacement;
+    HlslExpr *result;
+    HlslDecl *temporary;
     HlslFunction *function;
+    HlslCopyOut *copyOut;
+    HlslCopyOut **copyOutTail;
+    HlslStmt *copies;
     Symbol *symbol;
+    Symbol *formal;
+    const char *intrinsicName;
 
     if (source->bin.left == NULL ||
         source->bin.left->common.kind != SYMB_N)
@@ -1263,6 +1919,22 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
         return NULL;
     }
     symbol = source->bin.left->sym.symbol;
+    intrinsicName = HlslNativeIntrinsicName(context, symbol);
+    if (intrinsicName != NULL) {
+        target = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
+        if (target == NULL)
+            return NULL;
+        target->u.call.name = intrinsicName;
+        target->u.call.arguments = HlslLowerExprList(context,
+            source->bin.right, FUN_ARG_OP, prefix, NULL);
+        if (source->bin.right != NULL &&
+            target->u.call.arguments == NULL)
+        {
+            return NULL;
+        }
+        target->hasSideEffects = source->common.HasSideEffects;
+        return target;
+    }
     function = HlslFindFunction(context->module, symbol);
     if (function == NULL)
         return NULL;
@@ -1277,7 +1949,80 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     if (source->bin.right != NULL && target->u.call.arguments == NULL)
         return NULL;
     target->hasSideEffects = source->common.HasSideEffects;
-    return target;
+
+    copyOut = NULL;
+    copyOutTail = &copyOut;
+    argumentPlace = &target->u.call.arguments;
+    formal = symbol->details.fun.params;
+    while (*argumentPlace != NULL && formal != NULL) {
+        argument = *argumentPlace;
+        nextArgument = argument->next;
+        if ((GetQualifiers(formal->type) & TYPE_QUALIFIER_OUT) &&
+            HlslTypeNeedsRecursiveCopy(&argument->type))
+        {
+            argument->next = NULL;
+            temporary = HlslNewTemporary(context, &argument->type);
+            replacement = temporary != NULL ?
+                HlslNewSymbolExpr(context, temporary) : NULL;
+            *copyOutTail = (HlslCopyOut *) HlslLowerAlloc(
+                context, sizeof(HlslCopyOut));
+            if (replacement == NULL || *copyOutTail == NULL)
+                return NULL;
+            (*copyOutTail)->target = argument;
+            (*copyOutTail)->temporary = temporary;
+            (*copyOutTail)->type = argument->type;
+            copyOutTail = &(*copyOutTail)->next;
+            if ((GetQualifiers(formal->type) & TYPE_QUALIFIER_INOUT) ==
+                    TYPE_QUALIFIER_INOUT &&
+                !HlslAppendRecursiveCopy(context, &argument->type,
+                    HlslNewSymbolExpr(context, temporary), argument,
+                    prefix))
+            {
+                return NULL;
+            }
+            replacement->next = nextArgument;
+            *argumentPlace = replacement;
+        }
+        argumentPlace = &(*argumentPlace)->next;
+        formal = formal->next;
+    }
+    if (*argumentPlace != NULL || formal != NULL)
+        return NULL;
+    if (copyOut == NULL)
+        return target;
+
+    if (type->base == HLSL_BASE_VOID) {
+        if (!HlslAppendExpression(context, prefix, target))
+            return NULL;
+        result = NULL;
+    } else {
+        temporary = HlslNewTemporary(context, type);
+        result = temporary != NULL ?
+            HlslNewSymbolExpr(context, temporary) : NULL;
+        if (temporary == NULL || result == NULL ||
+            !HlslAppendExpression(context, prefix,
+                HlslNewAssignment(context,
+                    HlslNewSymbolExpr(context, temporary), target)))
+        {
+            return NULL;
+        }
+    }
+    copies = NULL;
+    for (; copyOut != NULL; copyOut = copyOut->next) {
+        if (!HlslAppendRecursiveCopy(context, &copyOut->type,
+                copyOut->target,
+                HlslNewSymbolExpr(context, copyOut->temporary), &copies))
+        {
+            return NULL;
+        }
+    }
+    if (type->base != HLSL_BASE_VOID) {
+        HlslAppendStmt(prefix, copies);
+        return result;
+    }
+    result = HlslDetachLastExpression(&copies);
+    HlslAppendStmt(prefix, copies);
+    return result;
 } // HlslLowerCall
 
 static HlslExpr *HlslLowerConditional(HlslLowerContext *context,
@@ -1476,6 +2221,9 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
         if (source->un.op == SWIZZLE_Z_OP)
             return HlslLowerSwizzle(context, source, &type, prefix,
                                     valueMode);
+        if (source->un.op == SWIZMAT_Z_OP)
+            return HlslLowerMatrixSwizzle(context, source, &type, prefix,
+                                          valueMode);
         if (source->un.op == VECTOR_V_OP) {
             target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, type);
             if (target == NULL)
@@ -1562,7 +2310,8 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
             HlslAppendStmt(prefix, rightPrefix);
             return target;
         }
-        if (source->bin.op == FUN_CALL_OP)
+        if (source->bin.op == FUN_CALL_OP ||
+            source->bin.op == FUN_INTRINSIC_OP)
             return HlslLowerCall(context, source, &type, prefix);
         op = HlslBinaryOperator(source->bin.op);
         if (op != HLSL_OP_NONE) {
@@ -1599,6 +2348,52 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
                 return NULL;
             }
             HlslAppendStmt(prefix, rightPrefix);
+            if (op == HLSL_OP_ASSIGN &&
+                HlslTypeNeedsRecursiveCopy(&type) &&
+                HlslIsNativeAggregateTempAssignment(source))
+            {
+                target = HlslNewSourceExpr(context, HLSL_EXPR_BINARY, type);
+                if (target == NULL)
+                    return NULL;
+                target->u.binary.op = op;
+                target->u.binary.left = left;
+                target->u.binary.right = right;
+                target->hasSideEffects = source->common.HasSideEffects;
+                return target;
+            }
+            if (op == HLSL_OP_ASSIGN &&
+                HlslTypeNeedsRecursiveCopy(&type))
+            {
+                HlslStmt *copies;
+
+                if (!HlslStabilizeLvalueAddress(context, prefix, left))
+                    return NULL;
+                copies = NULL;
+                if (valueMode == HLSL_VALUE_RVALUE) {
+                    HlslDecl *temporary;
+
+                    temporary = HlslNewTemporary(context, &type);
+                    if (temporary == NULL ||
+                        !HlslAppendRecursiveCopy(context, &type,
+                            HlslNewSymbolExpr(context, temporary), right,
+                            &copies) ||
+                        !HlslAppendRecursiveCopy(context, &type, left,
+                            HlslNewSymbolExpr(context, temporary), &copies))
+                    {
+                        return NULL;
+                    }
+                    HlslAppendStmt(prefix, copies);
+                    return HlslNewSymbolExpr(context, temporary);
+                }
+                if (!HlslAppendRecursiveCopy(context, &type, left, right,
+                                             &copies))
+                {
+                    return NULL;
+                }
+                target = HlslDetachLastExpression(&copies);
+                HlslAppendStmt(prefix, copies);
+                return target;
+            }
             if (op == HLSL_OP_ASSIGN &&
                 valueMode == HLSL_VALUE_RVALUE)
             {
@@ -2188,6 +2983,8 @@ static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
                   GetExprCallSite(source) : NULL;
         if (source->bin.op == FUN_CALL_OP && source->bin.left != NULL &&
             source->bin.left->common.kind == SYMB_N &&
+            HlslNativeIntrinsicName(context,
+                source->bin.left->sym.symbol) == NULL &&
             !HlslCollectHelper(context, source->bin.left->sym.symbol,
                                callLoc))
         {
@@ -2208,18 +3005,29 @@ static int HlslLowerFunction(HlslLowerContext *context,
                              HlslFunction *function)
 {
     Symbol *symbol;
+    const char *name;
 
     symbol = (Symbol *) function->identity;
+    name = symbol != NULL ? GetAtomString(atable, symbol->name) : NULL;
     context->function = function;
     context->statementLoc = symbol->loc;
-    if (!HlslCollectParameters(context, symbol->details.fun.params, 0) ||
-        symbol->details.fun.locals == NULL ||
-        !HlslCollectLocals(context,
-                           symbol->details.fun.locals->symbols) ||
-        !HlslLowerStatements(context, symbol->details.fun.statements,
+    if (!HlslCollectParameters(context, symbol->details.fun.params, 0))
+        return context->module->errors != 0 ? 0 :
+            HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                             name, &symbol->loc);
+    if (symbol->details.fun.locals == NULL)
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                name, &symbol->loc);
+    if (!HlslCollectLocals(context, symbol->details.fun.locals->symbols))
+        return context->module->errors != 0 ? 0 :
+            HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                             name, &symbol->loc);
+    if (!HlslLowerStatements(context, symbol->details.fun.statements,
                              &function->body))
     {
-        return 0;
+        return context->module->errors != 0 ? 0 :
+            HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                             name, &symbol->loc);
     }
     return 1;
 } // HlslLowerFunction
@@ -2298,7 +3106,7 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
         !HlslCollectUniformList(&context, Cg->theHAL->uniformParam) ||
         !HlslCollectUniformList(&context, Cg->theHAL->uniformGlobal) ||
         !HlslCollectUniformTree(&context, scope->symbols) ||
-        !HlslSortStructs(&context))
+        !HlslCollectDefaults(&context))
     {
         return 0;
     }
@@ -2332,5 +3140,5 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     {
         return 0;
     }
-    return module->errors == 0;
+    return HlslSortStructs(&context) && module->errors == 0;
 } // HlslLowerProgram
