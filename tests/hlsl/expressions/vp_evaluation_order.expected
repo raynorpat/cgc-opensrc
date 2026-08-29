@@ -65,6 +65,12 @@ float cg_bumpValue(inout float value)
     return value;
 }
 
+float cg_moveIndex(inout int index, int next)
+{
+    index = next;
+    return (float) index;
+}
+
 cg_VertexOut cg_entry(float4 position)
 {
     cg_VertexOut cg_output;
@@ -87,6 +93,9 @@ cg_VertexOut cg_entry(float4 position)
     float effectRead;
     float constructorTrace;
     float2 constructed;
+    float4 indexedValues;
+    int indexedPosition;
+    float indexedResult;
     float2 temp1;
     float2 temp2;
     float temp3;
@@ -106,6 +115,10 @@ cg_VertexOut cg_entry(float4 position)
     float temp17;
     float temp18;
     float temp19;
+    float temp20;
+    int temp21;
+    float temp22;
+    int temp23;
     choose = position.x > 0.0;
     temp1 = position.xy;
     temp2 = float2(0.0, 0.0);
@@ -186,7 +199,30 @@ cg_VertexOut cg_entry(float4 position)
     constructorTrace = 6.0;
     temp19 = cg_record(constructorTrace, 22.0);
     constructed = float2(temp19, constructorTrace);
-    cg_output.position = float4(binary + readBinary + effectRead, called + readCall + constructed.x + constructed.y, (float) comparison.x + aliasValue + nestedValue, trace + aliasResult + outValue + outResult + nestedTrace + nestedResult);
+    indexedValues = float4(1.0, 2.0, 3.0, 4.0);
+    indexedPosition = 0;
+    temp21 = indexedPosition;
+    if (choose)
+    {
+        temp20 = cg_moveIndex(indexedPosition, 1);
+    }
+    else
+    {
+        temp20 = cg_moveIndex(indexedPosition, 2);
+    }
+    indexedResult = cg_modify(indexedValues[temp21], temp20);
+    indexedPosition = 0;
+    temp23 = indexedPosition;
+    if (choose)
+    {
+        temp22 = cg_moveIndex(indexedPosition, 2);
+    }
+    else
+    {
+        temp22 = cg_moveIndex(indexedPosition, 3);
+    }
+    indexedValues[temp23] = temp22;
+    cg_output.position = float4(binary + readBinary + effectRead, called + readCall + constructed.x + constructed.y, (float) comparison.x + aliasValue + nestedValue + indexedValues.x + indexedValues.y, trace + aliasResult + outValue + outResult + nestedTrace + nestedResult + indexedResult + indexedValues.z + indexedValues.w);
     return cg_output;
 }
 

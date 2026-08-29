@@ -39,6 +39,12 @@ float bumpValue(inout float value)
     return value;
 }
 
+float moveIndex(inout int index, int next)
+{
+    index = next;
+    return float(index);
+}
+
 float forwardWrapper(inout float value, inout float trace)
 {
     return nestedModify(value, bumpValue(trace));
@@ -68,6 +74,9 @@ VertexOut main(float4 position : POSITION)
     float effectRead;
     float constructorTrace;
     float2 constructed;
+    float4 indexedValues;
+    int indexedPosition;
+    float indexedResult;
 
     choose = position.x > 0.0;
     lanes = position.xy > float2(0.0, 0.0);
@@ -98,11 +107,22 @@ VertexOut main(float4 position : POSITION)
     constructorTrace = 6.0;
     constructed = float2(record(constructorTrace, 22.0),
                          constructorTrace);
+    indexedValues = float4(1.0, 2.0, 3.0, 4.0);
+    indexedPosition = 0;
+    indexedResult = modify(indexedValues[indexedPosition],
+                           choose ? moveIndex(indexedPosition, 1) :
+                                    moveIndex(indexedPosition, 2));
+    indexedPosition = 0;
+    indexedValues[indexedPosition] =
+        choose ? moveIndex(indexedPosition, 2) :
+                 moveIndex(indexedPosition, 3);
     output.position = float4(binary + readBinary + effectRead,
                              called + readCall + constructed.x +
                              constructed.y,
-                             float(comparison.x) + aliasValue + nestedValue,
+                             float(comparison.x) + aliasValue + nestedValue +
+                             indexedValues.x + indexedValues.y,
                              trace + aliasResult + outValue + outResult +
-                             nestedTrace + nestedResult);
+                             nestedTrace + nestedResult + indexedResult +
+                             indexedValues.z + indexedValues.w);
     return output;
 }

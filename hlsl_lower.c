@@ -893,6 +893,21 @@ static HlslOperator HlslBinaryOperator(opcode op)
     }
 } // HlslBinaryOperator
 
+static int HlslIsAssignmentOperator(HlslOperator op)
+{
+    return op == HLSL_OP_ASSIGN ||
+           op == HLSL_OP_ADD_ASSIGN ||
+           op == HLSL_OP_SUBTRACT_ASSIGN ||
+           op == HLSL_OP_MULTIPLY_ASSIGN ||
+           op == HLSL_OP_DIVIDE_ASSIGN ||
+           op == HLSL_OP_REMAINDER_ASSIGN ||
+           op == HLSL_OP_BITWISE_OR_ASSIGN ||
+           op == HLSL_OP_BITWISE_XOR_ASSIGN ||
+           op == HLSL_OP_BITWISE_AND_ASSIGN ||
+           op == HLSL_OP_SHIFT_LEFT_ASSIGN ||
+           op == HLSL_OP_SHIFT_RIGHT_ASSIGN;
+} // HlslIsAssignmentOperator
+
 static HlslOperator HlslUnaryOperator(opcode op)
 {
     switch (op) {
@@ -1012,6 +1027,34 @@ static HlslExpr *HlslCaptureValue(HlslLowerContext *context,
     }
     return result;
 } // HlslCaptureValue
+
+static int HlslStabilizeLvalueAddress(HlslLowerContext *context,
+                                      HlslStmt **list, HlslExpr *value)
+{
+    if (value == NULL)
+        return 0;
+    switch (value->kind) {
+    case HLSL_EXPR_SYMBOL:
+        return 1;
+    case HLSL_EXPR_MEMBER:
+        return HlslStabilizeLvalueAddress(context, list,
+                                           value->u.member.object);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslStabilizeLvalueAddress(context, list,
+                                           value->u.swizzle.object);
+    case HLSL_EXPR_INDEX:
+        if (!HlslStabilizeLvalueAddress(context, list,
+                                        value->u.index.object))
+        {
+            return 0;
+        }
+        value->u.index.index = HlslCaptureValue(context, list,
+                                                value->u.index.index);
+        return value->u.index.index != NULL;
+    default:
+        return 0;
+    }
+} // HlslStabilizeLvalueAddress
 
 static HlslExpr *HlslLowerOrderedValue(HlslLowerContext *context,
                                        expr *source, HlslStmt **prefix,
@@ -1174,14 +1217,22 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
     HlslAppendStmt(prefix, itemPrefix);
     preserveLvalue = formal != NULL &&
         (GetQualifiers(formal->type) & TYPE_QUALIFIER_OUT);
-    if (!preserveLvalue && source->bin.right != NULL &&
-        (source->bin.left->common.HasSideEffects ||
-         restPrefix != NULL ||
-         source->bin.right->common.HasSideEffects))
-    {
-        item = HlslCaptureValue(context, prefix, item);
-        if (item == NULL)
-            return NULL;
+    if (source->bin.right != NULL) {
+        if (preserveLvalue &&
+            (restPrefix != NULL ||
+             source->bin.right->common.HasSideEffects))
+        {
+            if (!HlslStabilizeLvalueAddress(context, prefix, item))
+                return NULL;
+        } else if (!preserveLvalue &&
+                   (source->bin.left->common.HasSideEffects ||
+                    restPrefix != NULL ||
+                    source->bin.right->common.HasSideEffects))
+        {
+            item = HlslCaptureValue(context, prefix, item);
+            if (item == NULL)
+                return NULL;
+        }
     }
     HlslAppendStmt(prefix, restPrefix);
     list = item;
@@ -1517,7 +1568,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
             if (left == NULL || right == NULL)
                 return NULL;
             HlslAppendStmt(prefix, leftPrefix);
-            if (op != HLSL_OP_ASSIGN &&
+            if (!HlslIsAssignmentOperator(op) &&
                 (source->bin.left->common.HasSideEffects ||
                  rightPrefix != NULL ||
                  source->bin.right->common.HasSideEffects))
@@ -1525,6 +1576,13 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
                 left = HlslCaptureValue(context, prefix, left);
                 if (left == NULL)
                     return NULL;
+            }
+            if (HlslIsAssignmentOperator(op) &&
+                (rightPrefix != NULL ||
+                 source->bin.right->common.HasSideEffects) &&
+                !HlslStabilizeLvalueAddress(context, prefix, left))
+            {
+                return NULL;
             }
             HlslAppendStmt(prefix, rightPrefix);
             if (op == HLSL_OP_ASSIGN && valueRequired) {
