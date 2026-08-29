@@ -1256,18 +1256,11 @@ static int HlslValidateStructuralModule(HlslModule *module,
     memset(&context, 0, sizeof(context));
     context.module = module;
     context.profile = profile;
-    if (!HlslValidateDeclInitializers(&context, module->globals, 0) ||
-        !HlslValidateDeclInitializers(&context, module->structs, 0))
-    {
-        return 0;
-    }
-    otherCalls = context.entryCalls;
-    wrapperCalls = 0;
     entryFlags = 0;
-    /* Validate every callable signature before any body can compare an
-       argument against it.  Function lists are not guaranteed to place a
-       callee before its caller, and malformed recursive member lists must
-       never reach type equality. */
+    /* Validate every callable signature before any initializer or body can
+       compare an argument against it.  Function lists are not guaranteed
+       to place a callee before its caller, and malformed recursive member
+       lists must never reach type equality. */
     for (function = module->functions; function != NULL;
          function = function->next)
     {
@@ -1286,6 +1279,13 @@ static int HlslValidateStructuralModule(HlslModule *module,
         if (function->isEntry)
             entryFlags++;
     }
+    if (!HlslValidateDeclInitializers(&context, module->globals, 0) ||
+        !HlslValidateDeclInitializers(&context, module->structs, 0))
+    {
+        return 0;
+    }
+    otherCalls = context.entryCalls;
+    wrapperCalls = 0;
     for (function = module->functions; function != NULL;
          function = function->next)
     {
@@ -1836,15 +1836,36 @@ static int HlslAllocationOccurrences(const HlslModule *module,
     const HlslBinding *binding;
     int count;
 
+    if (module == NULL || target == NULL ||
+        HlslAllocationListHasCycle(module->allocatedBindings))
+    {
+        return -1;
+    }
     count = 0;
     for (binding = module->allocatedBindings; binding != NULL;
          binding = binding->allocationNext)
     {
-        if (binding == target)
+        if (binding == target) {
+            if (count == INT_MAX)
+                return -1;
             count++;
+        }
     }
     return count;
 } // HlslAllocationOccurrences
+
+static int HlslBindingLeafListsAreAcyclic(const HlslModule *module)
+{
+    const HlslBinding *root;
+
+    if (module == NULL || HlslBindingListHasCycle(module->bindings))
+        return 0;
+    for (root = module->bindings; root != NULL; root = root->next) {
+        if (HlslBindingListHasCycle(root->leafBindings))
+            return 0;
+    }
+    return 1;
+} // HlslBindingLeafListsAreAcyclic
 
 static int HlslRootLeafOccurrences(const HlslModule *module,
                                    const HlslBinding *target)
@@ -1853,11 +1874,16 @@ static int HlslRootLeafOccurrences(const HlslModule *module,
     const HlslBinding *leaf;
     int count;
 
+    if (target == NULL || !HlslBindingLeafListsAreAcyclic(module))
+        return -1;
     count = 0;
     for (root = module->bindings; root != NULL; root = root->next) {
         for (leaf = root->leafBindings; leaf != NULL; leaf = leaf->next) {
-            if (leaf == target)
+            if (leaf == target) {
+                if (count == INT_MAX)
+                    return -1;
                 count++;
+            }
         }
     }
     return count;
@@ -1966,14 +1992,16 @@ static int HlslValidateBindings(HlslModule *module,
     memset(i, 0, sizeof(i));
     memset(b, 0, sizeof(b));
     memset(s, 0, sizeof(s));
+    if (!HlslBindingLeafListsAreAcyclic(module))
+        return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
+                        "cyclic HLSL binding leaf list");
     for (binding = module->bindings; binding != NULL;
          binding = binding->next)
     {
         if (!binding->isAllocated || binding->leafBindings == NULL ||
             binding->name == NULL || binding->name[0] == '\0' ||
             HlslPublicBindingName(binding) == NULL ||
-            strcmp(binding->name, HlslPublicBindingName(binding)) ||
-            HlslBindingListHasCycle(binding->leafBindings))
+            strcmp(binding->name, HlslPublicBindingName(binding)))
         {
             return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
                             "unallocated HLSL binding");

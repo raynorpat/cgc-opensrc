@@ -2616,6 +2616,71 @@ static void TestStructuralValidatorRejectsCyclicSignatureGraphs(void)
     AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
 }
 
+static void InstallCyclicCallInitializer(ValidationFixture *fixture,
+    HlslDecl *target, HlslDecl *leftMember, HlslDecl *rightMember)
+{
+    HlslDecl *parameter;
+    HlslExpr *argument;
+    HlslExpr *call;
+    HlslFunction *callee;
+    HlslType leftCycle;
+    HlslType rightCycle;
+
+    memset(leftMember, 0, sizeof(*leftMember));
+    memset(rightMember, 0, sizeof(*rightMember));
+    memset(&leftCycle, 0, sizeof(leftCycle));
+    memset(&rightCycle, 0, sizeof(rightCycle));
+    leftMember->name = "leftInitializerMember";
+    leftMember->type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    leftMember->next = leftMember;
+    rightMember->name = "rightInitializerMember";
+    rightMember->type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    rightMember->next = rightMember;
+    leftCycle.base = HLSL_BASE_STRUCT;
+    leftCycle.structName = "InitializerCycle";
+    leftCycle.members = leftMember;
+    rightCycle.base = HLSL_BASE_STRUCT;
+    rightCycle.structName = "InitializerCycle";
+    rightCycle.members = rightMember;
+    callee = HlslNewFunction(&fixture->module, target->type,
+                             "cyclicInitializerCallee");
+    parameter = HlslNewDecl(&fixture->module, HLSL_STORAGE_NONE,
+                            leftCycle, "value");
+    call = HlslNewExpr(&fixture->module, HLSL_EXPR_CALL, target->type);
+    argument = HlslNewExpr(&fixture->module, HLSL_EXPR_FLOAT,
+                           rightCycle);
+    assert(callee != NULL && parameter != NULL && call != NULL &&
+           argument != NULL);
+    callee->parameters = parameter;
+    call->u.call.function = callee;
+    call->u.call.name = callee->name;
+    call->u.call.arguments = argument;
+    target->initializer = call;
+    fixture->wrapper->next = callee;
+} // InstallCyclicCallInitializer
+
+static void TestStructuralValidatorPreflightsBeforeInitializers(void)
+{
+    ValidationFixture fixture;
+    HlslDecl leftMember;
+    HlslDecl rightMember;
+    HlslDecl *global;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    global = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 4), "globalInitializer");
+    assert(global != NULL);
+    fixture.module.globals = global;
+    InstallCyclicCallInitializer(&fixture, global, &leftMember,
+                                 &rightMember);
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    InstallCyclicCallInitializer(&fixture,
+        fixture.inputStruct->members, &leftMember, &rightMember);
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+}
+
 static HlslBinding *AddValidationBinding(ValidationFixture *fixture)
 {
     HlslBinding *binding;
@@ -2726,6 +2791,25 @@ static void TestTargetValidatorRejectsMalformedBindingGraphs(void)
     binding = AddValidationBinding(&fixture);
     leaf = binding->leafBindings;
     leaf->declaration->type = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
+}
+
+static void TestTargetValidatorPreflightsAllBindingLeafLists(void)
+{
+    ValidationFixture fixture;
+    HlslBinding secondLeaf;
+    HlslBinding secondRoot;
+    HlslBinding *firstRoot;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    firstRoot = AddValidationBinding(&fixture);
+    secondRoot = *firstRoot;
+    secondLeaf = *firstRoot->leafBindings;
+    secondRoot.next = NULL;
+    secondRoot.leafBindings = &secondLeaf;
+    secondLeaf.next = &secondLeaf;
+    secondLeaf.allocationNext = NULL;
+    firstRoot->next = &secondRoot;
     AssertInvalidValidationFixture(&fixture, &HlslProfile_hlslv);
 }
 
@@ -2896,7 +2980,9 @@ int main(int argc, char **argv)
     TestStructuralValidatorRejectsMalformedGraphs();
     TestTargetValidatorInterfaceLimits();
     TestStructuralValidatorRejectsCyclicSignatureGraphs();
+    TestStructuralValidatorPreflightsBeforeInitializers();
     TestTargetValidatorRejectsMalformedBindingGraphs();
+    TestTargetValidatorPreflightsAllBindingLeafLists();
     TestTargetValidatorCanonicalResourcesAndTypes();
     return 0;
 }
