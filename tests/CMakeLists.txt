@@ -1975,6 +1975,12 @@ add_hlsl_failure(hlslf_sampler_unit_type_conflict hlslf
     tests/hlsl/diagnostics/fp_sampler_unit_type_conflict.cg 6409 2 TEXUNIT0)
 add_hlsl_failure(hlslf_texture_sampler_coord_mismatch hlslf
     tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg 6409 4 tex2D)
+add_hlsl_failure(hlslf_texture_bias_coord_mismatch hlslf
+    tests/hlsl/diagnostics/fp_tex2dbias_coord_mismatch.cg 6409 4 tex2Dbias)
+add_hlsl_failure(hlslf_texture_lod_coord_mismatch hlslf
+    tests/hlsl/diagnostics/fp_tex2dlod_coord_mismatch.cg 6409 4 tex2Dlod)
+add_hlsl_failure(hlslv_texture_lod_coord_mismatch hlslv
+    tests/hlsl/diagnostics/vp_tex2dlod_coord_mismatch.cg 6409 5 tex2Dlod)
 add_hlsl_failure(glslf_texture_sampler_coord_mismatch_unchanged glslf
     tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg 1102 4
     incompatible.type.for.parameter)

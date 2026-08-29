@@ -956,11 +956,13 @@ static void CheckTextureParameterErrorHandling(void)
     Symbol symbol;
     CgIntrinsicSignature signature;
     SourceLoc loc;
+    Type functionType;
 
     InitStage(&hal, 0);
     memset(&symbol, 0, sizeof(symbol));
     memset(&signature, 0, sizeof(signature));
     memset(&loc, 0, sizeof(loc));
+    memset(&functionType, 0, sizeof(functionType));
     loc.line = 61;
     signature.name = "tex2D";
     signature.flags = CG_INTRINSIC_TEXTURE;
@@ -980,6 +982,40 @@ static void CheckTextureParameterErrorHandling(void)
     Require(!hal.HandleParameterTypeError(&loc, &symbol, 2) &&
             semanticErrorCount == 0,
             "HLSL handled a user function parameter diagnostic");
+
+    functionType.properties = TYPE_CATEGORY_FUNCTION | TYPE_MISC_INTERNAL;
+    symbol.name = AddAtom(atable, "tex2Dbias");
+    symbol.type = &functionType;
+    symbol.kind = FUNCTION_S;
+    symbol.properties = SYMB_IS_BUILTIN | SYMB_IS_DEFINED;
+    symbol.details.fun.group = HLSL_BUILTIN_GROUP;
+    symbol.details.fun.index = HLSL_BUILTIN_TEX2DBIAS;
+    semanticErrorCount = 0;
+    Require(hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 1 && lastSemanticError == 6409,
+            "HLSL did not handle a standard-library texture marker");
+    symbol.name = AddAtom(atable, "tex2Dlod");
+    symbol.details.fun.index = HLSL_BUILTIN_TEX2DLOD;
+    semanticErrorCount = 0;
+    Require(hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 1 && lastSemanticError == 6409,
+            "HLSL did not handle a vertex standard-library texture marker");
+    symbol.name = AddAtom(atable, "tex2Dbias");
+    semanticErrorCount = 0;
+    Require(!hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 0,
+            "HLSL handled a mismatched texture marker identity");
+    symbol.properties = 0;
+    semanticErrorCount = 0;
+    Require(!hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 0,
+            "HLSL handled a user function with a texture marker name");
+    symbol.name = AddAtom(atable, "dot");
+    symbol.properties = SYMB_IS_BUILTIN | SYMB_IS_DEFINED;
+    symbol.details.fun.index = HLSL_BUILTIN_DOT;
+    Require(!hal.HandleParameterTypeError(&loc, &symbol, 2) &&
+            semanticErrorCount == 0,
+            "HLSL handled a nontexture builtin marker");
     FreeStage(&hal);
 }
 

@@ -688,16 +688,41 @@ static int HandleParameterTypeError_hlsl(SourceLoc *loc,
                                          const Symbol *fSymb, int paramno)
 {
     const CgIntrinsicSignature *signature;
+    const char *name;
 
     (void) paramno;
     signature = fSymb != NULL ? fSymb->details.fun.intrinsic : NULL;
-    if (signature == NULL ||
-        (signature->flags & CG_INTRINSIC_TEXTURE) == 0 ||
-        !HlslIsTextureName(signature->name))
+    if (signature != NULL &&
+        (signature->flags & CG_INTRINSIC_TEXTURE) != 0 &&
+        HlslIsTextureName(signature->name))
     {
-        return 0;
+        name = signature->name;
+    } else {
+        HlslBuiltin builtin;
+        const char *spelling;
+
+        if (fSymb == NULL || fSymb->kind != FUNCTION_S ||
+            fSymb->type == NULL ||
+            GetCategory(fSymb->type) != TYPE_CATEGORY_FUNCTION ||
+            (fSymb->type->properties & TYPE_MISC_INTERNAL) == 0 ||
+            (fSymb->properties & (SYMB_IS_BUILTIN | SYMB_IS_DEFINED)) !=
+                (SYMB_IS_BUILTIN | SYMB_IS_DEFINED) ||
+            fSymb->details.fun.group != HLSL_BUILTIN_GROUP ||
+            fSymb->details.fun.index <= HLSL_BUILTIN_NONE ||
+            fSymb->details.fun.index >= HLSL_BUILTIN_COUNT)
+        {
+            return 0;
+        }
+        builtin = (HlslBuiltin) fSymb->details.fun.index;
+        spelling = HlslBuiltinSpelling(builtin);
+        name = GetAtomString(atable, fSymb->name);
+        if (!HlslBuiltinIsTexture(builtin) || spelling == NULL ||
+            name == NULL || strcmp(name, spelling) != 0)
+        {
+            return 0;
+        }
     }
-    SemanticError(loc, ERROR_S_HLSL_SAMPLER, signature->name);
+    SemanticError(loc, ERROR_S_HLSL_SAMPLER, name);
     return 1;
 } // HandleParameterTypeError_hlsl
 
