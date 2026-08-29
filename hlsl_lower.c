@@ -290,7 +290,9 @@ static int HlslLowerType(HlslLowerContext *context, Type *source,
         case CG_SAMPLER_3D: base = HLSL_BASE_SAMPLER3D; break;
         case CG_SAMPLER_CUBE: base = HLSL_BASE_SAMPLERCUBE; break;
         default:
-            return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+            return HlslLowerFailure(context,
+                source->samp.samplerKind == CG_SAMPLER_RECT ?
+                HLSL_ERROR_SAMPLER : HLSL_ERROR_UNSUPPORTED_TYPE,
                 source->samp.samplerKind == CG_SAMPLER_RECT ?
                 "samplerRECT" : "sampler", loc);
         }
@@ -373,7 +375,7 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
     Type *sourceResult;
     const char *name;
     HlslSourceType sourceResultType;
-    HlslSourceType sourceParams[3];
+    HlslSourceType sourceParams[HLSL_MAX_BUILTIN_ARGS];
     HlslBuiltin resolved;
     HlslBuiltin otherStage;
     int count;
@@ -405,15 +407,20 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
         return -1;
     }
     if (!HlslDescribeSourceType(sourceResult, &sourceResultType)) {
-        HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
+        HlslLowerFailure(context,
+            HlslIsTextureName(name) ? HLSL_ERROR_SAMPLER :
+                                      HLSL_ERROR_INTRINSIC,
+            name, callLoc);
         return -1;
     }
     count = 0;
     for (; parameter != NULL; parameter = parameter->next) {
-        if (count >= 3 ||
+        if (count >= HLSL_MAX_BUILTIN_ARGS ||
             !HlslDescribeSourceType(parameter->type, &sourceParams[count]))
         {
-            HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+            HlslLowerFailure(context,
+                HlslIsTextureName(name) ? HLSL_ERROR_SAMPLER :
+                                          HLSL_ERROR_INTRINSIC,
                              name, callLoc);
             return -1;
         }
@@ -427,10 +434,14 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
             HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
             name, &sourceResultType, sourceParams, count);
         if (otherStage != HLSL_BUILTIN_NONE) {
-            HlslLowerFailure(context, HLSL_ERROR_STAGE_OPERATION,
+            HlslLowerFailure(context,
+                HlslBuiltinIsTexture(otherStage) ? HLSL_ERROR_SAMPLER :
+                                                   HLSL_ERROR_STAGE_OPERATION,
                              name, callLoc);
         } else {
-            HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+            HlslLowerFailure(context,
+                HlslIsTextureName(name) ? HLSL_ERROR_SAMPLER :
+                                          HLSL_ERROR_INTRINSIC,
                              name, callLoc);
         }
         return -1;
@@ -447,12 +458,14 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
                 symbol->type->fun.paramtypes;
     count = 0;
     for (; parameter != NULL; parameter = parameter->next) {
-        if (count >= 3 ||
+        if (count >= HLSL_MAX_BUILTIN_ARGS ||
             !HlslLowerType(context, parameter->type, &params[count],
                            callLoc))
         {
             if (context->module->errors == 0)
-                HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+                HlslLowerFailure(context,
+                    HlslIsTextureName(name) ? HLSL_ERROR_SAMPLER :
+                                              HLSL_ERROR_INTRINSIC,
                                  name, callLoc);
             return -1;
         }
@@ -461,7 +474,10 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
     if (!HlslBuiltinAccepts(context->profile->stage, resolved,
                             result, params, count))
     {
-        HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
+        HlslLowerFailure(context,
+            HlslIsTextureName(name) ? HLSL_ERROR_SAMPLER :
+                                      HLSL_ERROR_INTRINSIC,
+            name, callLoc);
         return -1;
     }
     *builtin = resolved;
@@ -2138,7 +2154,7 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     HlslBuiltin builtin;
     HlslBuiltinLowering lowering;
     HlslType builtinResult;
-    HlslType builtinParams[3];
+    HlslType builtinParams[HLSL_MAX_BUILTIN_ARGS];
     int builtinParamCount;
     int builtinStatus;
 
@@ -3218,7 +3234,7 @@ static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
     const SourceLoc *callLoc;
     HlslBuiltin builtin;
     HlslType result;
-    HlslType params[3];
+    HlslType params[HLSL_MAX_BUILTIN_ARGS];
     int paramCount;
     int builtinStatus;
 

@@ -1,0 +1,37 @@
+// profile hlslv
+// target vs_3_0
+// var sampler2D image : TEXUNIT0 : s[0] : 1 : 1
+
+sampler2D cg_image : register(s0);
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+    float4 coord : TEXCOORD0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position, float4 coord, sampler2D image)
+{
+    cg_VertexOut cg_output;
+    cg_output.position = position + tex2Dlod(image, coord);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, input.coord, cg_image);
+    output.position = cg_result.position;
+    return output;
+}

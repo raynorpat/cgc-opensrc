@@ -1,0 +1,10 @@
+float4 main(float4 coord : TEXCOORD0,
+            uniform sampler2D image : TEXUNIT0) : COLOR0
+{
+    float2 uv = coord.xy;
+    float4 projected = tex2Dproj(image, coord);
+    float4 biased = tex2Dbias(image, coord);
+    float4 leveled = tex2Dlod(image, coord);
+    float4 gradient = tex2D(image, uv, ddx(uv), ddy(uv));
+    return projected + biased + leveled + gradient;
+}

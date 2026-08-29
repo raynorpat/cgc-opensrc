@@ -1,0 +1,27 @@
+// profile hlslf
+// target ps_3_0
+// var samplerCUBE image : TEXUNIT0 : s[0] : 1 : 1
+
+samplerCUBE cg_image : register(s0);
+
+struct cg_PixelIn
+{
+    float3 coord : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_entry(float3 coord, samplerCUBE image)
+{
+    return texCUBE(image, coord);
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.coord, cg_image);
+    return output;
+}

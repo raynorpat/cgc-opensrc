@@ -54,6 +54,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HLSL_MAX_INT_CONSTANTS    16
 #define HLSL_MAX_BOOL_CONSTANTS   16
 #define HLSL_MAX_SAMPLERS         16
+#define HLSL_MAX_BUILTIN_ARGS     4
 
 typedef enum HlslStage_Enum {
     HLSL_STAGE_VERTEX,
@@ -126,6 +127,26 @@ typedef enum HlslBuiltin_Enum {
     HLSL_BUILTIN_ALL,
     HLSL_BUILTIN_DDX,
     HLSL_BUILTIN_DDY,
+    HLSL_BUILTIN_TEX1D,
+    HLSL_BUILTIN_TEX1DPROJ,
+    HLSL_BUILTIN_TEX1DBIAS,
+    HLSL_BUILTIN_TEX1DLOD,
+    HLSL_BUILTIN_TEX1DGRAD,
+    HLSL_BUILTIN_TEX2D,
+    HLSL_BUILTIN_TEX2DPROJ,
+    HLSL_BUILTIN_TEX2DBIAS,
+    HLSL_BUILTIN_TEX2DLOD,
+    HLSL_BUILTIN_TEX2DGRAD,
+    HLSL_BUILTIN_TEX3D,
+    HLSL_BUILTIN_TEX3DPROJ,
+    HLSL_BUILTIN_TEX3DBIAS,
+    HLSL_BUILTIN_TEX3DLOD,
+    HLSL_BUILTIN_TEX3DGRAD,
+    HLSL_BUILTIN_TEXCUBE,
+    HLSL_BUILTIN_TEXCUBEPROJ,
+    HLSL_BUILTIN_TEXCUBEBIAS,
+    HLSL_BUILTIN_TEXCUBELOD,
+    HLSL_BUILTIN_TEXCUBEGRAD,
     HLSL_BUILTIN_COUNT
 } HlslBuiltin;
 
@@ -143,8 +164,21 @@ typedef enum HlslSourceBase_Enum {
     HLSL_SOURCE_BASE_INT,
     HLSL_SOURCE_BASE_FIXED,
     HLSL_SOURCE_BASE_HALF,
-    HLSL_SOURCE_BASE_FLOAT
+    HLSL_SOURCE_BASE_FLOAT,
+    HLSL_SOURCE_BASE_SAMPLER1D,
+    HLSL_SOURCE_BASE_SAMPLER2D,
+    HLSL_SOURCE_BASE_SAMPLER3D,
+    HLSL_SOURCE_BASE_SAMPLERCUBE
 } HlslSourceBase;
+
+typedef enum HlslTextureForm_Enum {
+    HLSL_TEXTURE_NONE,
+    HLSL_TEXTURE_IMPLICIT,
+    HLSL_TEXTURE_PROJECTED,
+    HLSL_TEXTURE_BIAS,
+    HLSL_TEXTURE_LOD,
+    HLSL_TEXTURE_GRADIENT
+} HlslTextureForm;
 
 typedef enum HlslSourceShape_Enum {
     HLSL_SOURCE_SHAPE_VOID,
@@ -522,6 +556,11 @@ int HlslBuiltinAccepts(HlslStage stage, HlslBuiltin builtin,
 int HlslIsBuiltinName(const char *name);
 const char *HlslBuiltinSpelling(HlslBuiltin builtin);
 HlslBuiltinLowering HlslBuiltinLoweringKind(HlslBuiltin builtin);
+int HlslBuiltinIsTexture(HlslBuiltin builtin);
+int HlslIsTextureName(const char *name);
+HlslTextureForm HlslBuiltinTextureForm(HlslBuiltin builtin);
+HlslBase HlslBuiltinSamplerBase(HlslBuiltin builtin);
+int HlslBuiltinTextureCoordWidth(HlslBuiltin builtin);
 int HlslTypeRegisterSpan(const HlslType *type);
 int HlslIsReservedName(const char *name);
 int HlslReservedNameCount(void);

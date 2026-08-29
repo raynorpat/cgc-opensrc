@@ -568,7 +568,8 @@ HlslSourceType HlslSourceMatrixType(HlslSourceBase base,
 const char *HlslSourceTypeName(const HlslSourceType *type)
 {
     static const char *baseNames[] = {
-        NULL, "float", "int", "bool", "int", "fixed", "half", "float"
+        NULL, "float", "int", "bool", "int", "fixed", "half", "float",
+        "sampler1D", "sampler2D", "sampler3D", "samplerCUBE"
     };
     static char names[4][32];
     static int nextName;
@@ -576,12 +577,18 @@ const char *HlslSourceTypeName(const HlslSourceType *type)
     char *name;
 
     if (type == NULL || type->base <= HLSL_SOURCE_BASE_NONE ||
-        type->base > HLSL_SOURCE_BASE_FLOAT)
+        type->base > HLSL_SOURCE_BASE_SAMPLERCUBE)
     {
         return type != NULL && type->shape == HLSL_SOURCE_SHAPE_VOID ?
                "void" : NULL;
     }
     base = baseNames[type->base];
+    if (type->base >= HLSL_SOURCE_BASE_SAMPLER1D &&
+        (type->shape != HLSL_SOURCE_SHAPE_SCALAR ||
+         type->rows != 0 || type->cols != 0))
+    {
+        return NULL;
+    }
     if (type->shape == HLSL_SOURCE_SHAPE_SCALAR)
         return base;
     name = names[nextName++ % 4];
@@ -645,7 +652,19 @@ typedef struct HlslBuiltinDesc_Rec {
     const char *hlsl;
     HlslBuiltinLowering lowering;
     unsigned sourceBaseMask;
+    HlslTextureForm textureForm;
+    HlslBase samplerBase;
+    HlslSourceBase sourceSamplerBase;
+    int coordWidth;
+    unsigned sourceResultMask;
 } HlslBuiltinDesc;
+
+#define HLSL_TEXTURE_ROW(src, id, count, sampler, sourceSampler, width, \
+                         stages, target, form, resultMask) \
+    { src, id, count, 0, HLSL_BUILTIN_WIDTH_MATCH, \
+      HLSL_BUILTIN_RESULT_SAME, stages, target, \
+      HLSL_BUILTIN_LOWER_NATIVE, 0, form, sampler, sourceSampler, width, \
+      resultMask }
 
 /*
  * The signature table is the sole spelling-to-operation map.  A row
@@ -791,7 +810,162 @@ static const HlslBuiltinDesc hlslBuiltinTable[] = {
       HLSL_BUILTIN_STAGE_PIXEL, "ddx", HLSL_BUILTIN_LOWER_NATIVE },
     { "ddy", HLSL_BUILTIN_DDY, 1, HLSL_BUILTIN_BASE_FLOAT,
       HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
-      HLSL_BUILTIN_STAGE_PIXEL, "ddy", HLSL_BUILTIN_LOWER_NATIVE }
+      HLSL_BUILTIN_STAGE_PIXEL, "ddy", HLSL_BUILTIN_LOWER_NATIVE },
+
+    HLSL_TEXTURE_ROW("tex1D", HLSL_BUILTIN_TEX1D, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 1,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4tex1D", HLSL_BUILTIN_TEX1D, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 1,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4tex1D", HLSL_BUILTIN_TEX1D, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 1,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("tex1Dproj", HLSL_BUILTIN_TEX1DPROJ, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4tex1Dproj", HLSL_BUILTIN_TEX1DPROJ, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4tex1Dproj", HLSL_BUILTIN_TEX1DPROJ, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("tex1Dbias", HLSL_BUILTIN_TEX1DBIAS, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1Dbias", HLSL_TEXTURE_BIAS,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("tex1Dlod", HLSL_BUILTIN_TEX1DLOD, 2,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 4,
+      HLSL_BUILTIN_STAGE_BOTH, "tex1Dlod", HLSL_TEXTURE_LOD,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("tex1D", HLSL_BUILTIN_TEX1DGRAD, 4,
+      HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 1,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex1Dgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+
+    HLSL_TEXTURE_ROW("tex2D", HLSL_BUILTIN_TEX2D, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 2,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4tex2D", HLSL_BUILTIN_TEX2D, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 2,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4tex2D", HLSL_BUILTIN_TEX2D, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 2,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("tex2Dproj", HLSL_BUILTIN_TEX2DPROJ, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4tex2Dproj", HLSL_BUILTIN_TEX2DPROJ, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4tex2Dproj", HLSL_BUILTIN_TEX2DPROJ, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("tex2Dbias", HLSL_BUILTIN_TEX2DBIAS, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2Dbias", HLSL_TEXTURE_BIAS,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("tex2Dlod", HLSL_BUILTIN_TEX2DLOD, 2,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 4,
+      HLSL_BUILTIN_STAGE_BOTH, "tex2Dlod", HLSL_TEXTURE_LOD,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("tex2D", HLSL_BUILTIN_TEX2DGRAD, 4,
+      HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 2,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex2Dgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+
+    HLSL_TEXTURE_ROW("tex3D", HLSL_BUILTIN_TEX3D, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4tex3D", HLSL_BUILTIN_TEX3D, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4tex3D", HLSL_BUILTIN_TEX3D, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3D", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("tex3Dproj", HLSL_BUILTIN_TEX3DPROJ, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4tex3Dproj", HLSL_BUILTIN_TEX3DPROJ, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4tex3Dproj", HLSL_BUILTIN_TEX3DPROJ, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3Dproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("tex3Dbias", HLSL_BUILTIN_TEX3DBIAS, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3Dbias", HLSL_TEXTURE_BIAS,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("tex3Dlod", HLSL_BUILTIN_TEX3DLOD, 2,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 4,
+      HLSL_BUILTIN_STAGE_BOTH, "tex3Dlod", HLSL_TEXTURE_LOD,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("tex3D", HLSL_BUILTIN_TEX3DGRAD, 4,
+      HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "tex3Dgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+
+    HLSL_TEXTURE_ROW("texCUBE", HLSL_BUILTIN_TEXCUBE, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBE", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4texCUBE", HLSL_BUILTIN_TEXCUBE, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBE", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4texCUBE", HLSL_BUILTIN_TEXCUBE, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBE", HLSL_TEXTURE_IMPLICIT,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("texCUBEproj", HLSL_BUILTIN_TEXCUBEPROJ, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBEproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("h4texCUBEproj", HLSL_BUILTIN_TEXCUBEPROJ, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBEproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_HALF),
+    HLSL_TEXTURE_ROW("x4texCUBEproj", HLSL_BUILTIN_TEXCUBEPROJ, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBEproj", HLSL_TEXTURE_PROJECTED,
+      HLSL_BUILTIN_SOURCE_FIXED),
+    HLSL_TEXTURE_ROW("texCUBEbias", HLSL_BUILTIN_TEXCUBEBIAS, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 4,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBEbias", HLSL_TEXTURE_BIAS,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("texCUBElod", HLSL_BUILTIN_TEXCUBELOD, 2,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 4,
+      HLSL_BUILTIN_STAGE_BOTH, "texCUBElod", HLSL_TEXTURE_LOD,
+      HLSL_BUILTIN_SOURCE_FLOAT),
+    HLSL_TEXTURE_ROW("texCUBE", HLSL_BUILTIN_TEXCUBEGRAD, 4,
+      HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 3,
+      HLSL_BUILTIN_STAGE_PIXEL, "texCUBEgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_SOURCE_FLOAT)
+};
+
+#undef HLSL_TEXTURE_ROW
+
+static const char *hlslRejectedTextureNames[] = {
+    "texRECT", "texRECTproj", "h4texRECT", "x4texRECT",
+    "h4texRECTproj", "x4texRECTproj"
 };
 
 #define HLSL_BUILTIN_TABLE_COUNT \
@@ -838,6 +1012,34 @@ static int HlslBuiltinTypeEqual(const HlslType *left,
            left->elementType == right->elementType &&
            left->members == right->members;
 } // HlslBuiltinTypeEqual
+
+static int HlslBuiltinMatchesTexture(const HlslBuiltinDesc *desc,
+                                     const HlslType *result,
+                                     const HlslType *params, int count)
+{
+    HlslType expected;
+    int i;
+
+    if (desc == NULL || desc->textureForm == HLSL_TEXTURE_NONE ||
+        result == NULL || params == NULL || count != desc->arity ||
+        count < 2 || count > HLSL_MAX_BUILTIN_ARGS)
+    {
+        return 0;
+    }
+    expected = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    if (!HlslBuiltinTypeEqual(result, &expected))
+        return 0;
+    expected = HlslNumericType(desc->samplerBase, 1);
+    if (!HlslBuiltinTypeEqual(&params[0], &expected))
+        return 0;
+    expected = HlslNumericType(HLSL_BASE_FLOAT, desc->coordWidth);
+    for (i = 1; i < count; i++) {
+        if (!HlslBuiltinTypeEqual(&params[i], &expected))
+            return 0;
+    }
+    return desc->textureForm == HLSL_TEXTURE_GRADIENT ? count == 4 :
+           count == 2;
+} // HlslBuiltinMatchesTexture
 
 static int HlslBuiltinMulResult(const HlslType *left,
                                 const HlslType *right,
@@ -909,6 +1111,8 @@ static int HlslBuiltinMatchesNormalized(const HlslBuiltinDesc *desc,
     {
         return 0;
     }
+    if (desc->textureForm != HLSL_TEXTURE_NONE)
+        return HlslBuiltinMatchesTexture(desc, result, params, count);
     if (desc->widthPattern == HLSL_BUILTIN_WIDTH_MUL)
         return HlslBuiltinMulResult(&params[0], &params[1], result);
     if (desc->widthPattern == HLSL_BUILTIN_WIDTH_CROSS) {
@@ -989,6 +1193,38 @@ static int HlslSourceTypeEqual(const HlslSourceType *left,
            left->base == right->base && left->shape == right->shape &&
            left->rows == right->rows && left->cols == right->cols;
 } // HlslSourceTypeEqual
+
+static int HlslBuiltinMatchesSourceTexture(const HlslBuiltinDesc *desc,
+                                           const HlslSourceType *result,
+                                           const HlslSourceType *params,
+                                           int count)
+{
+    HlslSourceType expected;
+    int i;
+
+    if (desc == NULL || desc->textureForm == HLSL_TEXTURE_NONE ||
+        result == NULL || params == NULL || count != desc->arity ||
+        count < 2 || count > HLSL_MAX_BUILTIN_ARGS ||
+        result->shape != HLSL_SOURCE_SHAPE_VECTOR ||
+        result->rows != 0 || result->cols != 4 ||
+        (HlslBuiltinSourceBaseMask(result->base) &
+         desc->sourceResultMask) == 0)
+    {
+        return 0;
+    }
+    expected = HlslSourceScalarType(desc->sourceSamplerBase);
+    if (!HlslSourceTypeEqual(&params[0], &expected))
+        return 0;
+    expected = desc->coordWidth == 1 ?
+        HlslSourceScalarType(HLSL_SOURCE_BASE_FLOAT) :
+        HlslSourceVectorType(HLSL_SOURCE_BASE_FLOAT, desc->coordWidth);
+    for (i = 1; i < count; i++) {
+        if (!HlslSourceTypeEqual(&params[i], &expected))
+            return 0;
+    }
+    return desc->textureForm == HLSL_TEXTURE_GRADIENT ? count == 4 :
+           count == 2;
+} // HlslBuiltinMatchesSourceTexture
 
 static int HlslSourceScalarOrVector(const HlslSourceType *type,
                                     unsigned baseMask)
@@ -1091,6 +1327,10 @@ static int HlslBuiltinMatchesSource(const HlslBuiltinDesc *desc,
         count != desc->arity)
     {
         return 0;
+    }
+    if (desc->textureForm != HLSL_TEXTURE_NONE) {
+        return HlslBuiltinMatchesSourceTexture(desc, result,
+                                               params, count);
     }
     baseMask = HlslBuiltinAllowedSourceBases(desc);
     if (desc->widthPattern == HLSL_BUILTIN_WIDTH_MUL) {
@@ -1208,8 +1448,30 @@ int HlslIsBuiltinName(const char *name)
         if (!strcmp(name, hlslBuiltinTable[i].source))
             return 1;
     }
-    return 0;
+    return HlslIsTextureName(name);
 } // HlslIsBuiltinName
+
+int HlslIsTextureName(const char *name)
+{
+    int i;
+
+    if (name == NULL)
+        return 0;
+    for (i = 0; i < HLSL_BUILTIN_TABLE_COUNT; i++) {
+        if (hlslBuiltinTable[i].textureForm != HLSL_TEXTURE_NONE &&
+            !strcmp(name, hlslBuiltinTable[i].source))
+        {
+            return 1;
+        }
+    }
+    for (i = 0; i < (int) (sizeof(hlslRejectedTextureNames) /
+                            sizeof(hlslRejectedTextureNames[0])); i++)
+    {
+        if (!strcmp(name, hlslRejectedTextureNames[i]))
+            return 1;
+    }
+    return 0;
+} // HlslIsTextureName
 
 static const HlslBuiltinDesc *HlslBuiltinDescription(HlslBuiltin builtin)
 {
@@ -1257,6 +1519,40 @@ HlslBuiltinLowering HlslBuiltinLoweringKind(HlslBuiltin builtin)
     desc = HlslBuiltinDescription(builtin);
     return desc != NULL ? desc->lowering : HLSL_BUILTIN_LOWER_NATIVE;
 } // HlslBuiltinLoweringKind
+
+int HlslBuiltinIsTexture(HlslBuiltin builtin)
+{
+    const HlslBuiltinDesc *desc;
+
+    desc = HlslBuiltinDescription(builtin);
+    return desc != NULL && desc->textureForm != HLSL_TEXTURE_NONE;
+} // HlslBuiltinIsTexture
+
+HlslTextureForm HlslBuiltinTextureForm(HlslBuiltin builtin)
+{
+    const HlslBuiltinDesc *desc;
+
+    desc = HlslBuiltinDescription(builtin);
+    return desc != NULL ? desc->textureForm : HLSL_TEXTURE_NONE;
+} // HlslBuiltinTextureForm
+
+HlslBase HlslBuiltinSamplerBase(HlslBuiltin builtin)
+{
+    const HlslBuiltinDesc *desc;
+
+    desc = HlslBuiltinDescription(builtin);
+    return desc != NULL && desc->textureForm != HLSL_TEXTURE_NONE ?
+           desc->samplerBase : HLSL_BASE_VOID;
+} // HlslBuiltinSamplerBase
+
+int HlslBuiltinTextureCoordWidth(HlslBuiltin builtin)
+{
+    const HlslBuiltinDesc *desc;
+
+    desc = HlslBuiltinDescription(builtin);
+    return desc != NULL && desc->textureForm != HLSL_TEXTURE_NONE ?
+           desc->coordWidth : 0;
+} // HlslBuiltinTextureCoordWidth
 
 static int HlslDeclListHasCycle(const HlslDecl *list)
 {

@@ -117,11 +117,171 @@ static int HlslOwnsFunction(const HlslModule *module,
     return 0;
 } // HlslOwnsFunction
 
+typedef struct HlslSamplerTypeFrame_Rec {
+    const struct HlslSamplerTypeFrame_Rec *parent;
+    const HlslType *type;
+} HlslSamplerTypeFrame;
+
+static int HlslSamplerTypeFrameContains(const HlslSamplerTypeFrame *frame,
+                                        const HlslType *type)
+{
+    for (; frame != NULL; frame = frame->parent) {
+        if (frame->type == type)
+            return 1;
+    }
+    return 0;
+} // HlslSamplerTypeFrameContains
+
+static HlslBase HlslSamplerTypeBaseInner(const HlslType *type, int *isArray,
+    int *malformed, const HlslSamplerTypeFrame *parent)
+{
+    HlslSamplerTypeFrame frame;
+
+    if (type == NULL || type->arraySize < 0 ||
+        HlslSamplerTypeFrameContains(parent, type))
+    {
+        if (malformed != NULL)
+            *malformed = 1;
+        return HLSL_BASE_VOID;
+    }
+    frame.parent = parent;
+    frame.type = type;
+    if (type->arraySize > 0) {
+        if (type->elementType == NULL) {
+            if (malformed != NULL)
+                *malformed = 1;
+            return HLSL_BASE_VOID;
+        }
+        if (isArray != NULL)
+            *isArray = 1;
+        return HlslSamplerTypeBaseInner(type->elementType, isArray,
+                                        malformed, &frame);
+    }
+    if (type->elementType != NULL)
+        return HLSL_BASE_VOID;
+    switch (type->base) {
+    case HLSL_BASE_SAMPLER1D:
+    case HLSL_BASE_SAMPLER2D:
+    case HLSL_BASE_SAMPLER3D:
+    case HLSL_BASE_SAMPLERCUBE:
+        return type->len == 1 && type->rows == 0 && type->cols == 0 ?
+               type->base : HLSL_BASE_VOID;
+    default:
+        return HLSL_BASE_VOID;
+    }
+} // HlslSamplerTypeBaseInner
+
+static HlslBase HlslSamplerTypeBase(const HlslType *type, int *isArray,
+                                    int *malformed)
+{
+    return HlslSamplerTypeBaseInner(type, isArray, malformed, NULL);
+} // HlslSamplerTypeBase
+
+static const char *HlslSamplerReason(const HlslBinding *binding,
+                                     const char *fallback)
+{
+    if (binding != NULL) {
+        if (binding->semantic != NULL && binding->semantic[0] != '\0')
+            return binding->semantic;
+        if (binding->publicName != NULL && binding->publicName[0] != '\0')
+            return binding->publicName;
+        if (binding->name != NULL && binding->name[0] != '\0')
+            return binding->name;
+    }
+    return fallback;
+} // HlslSamplerReason
+
+static int HlslSamplerBindingsHaveCycle(const HlslBinding *bindings)
+{
+    const HlslBinding *slow;
+    const HlslBinding *fast;
+
+    slow = bindings;
+    fast = bindings;
+    while (fast != NULL && fast->next != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast)
+            return 1;
+    }
+    return 0;
+} // HlslSamplerBindingsHaveCycle
+
+int HlslValidateSamplerUsage(HlslModule *module,
+                             const HlslProfileDesc *profile)
+{
+    HlslBinding *binding;
+    HlslBase units[HLSL_MAX_SAMPLERS];
+    HlslBase base;
+    int isArray;
+    int malformed;
+    int regno;
+
+    if (module == NULL || profile == NULL ||
+        module->stage != profile->stage || module->errors != 0)
+    {
+        return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR, NULL,
+                                   "invalid HLSL sampler module");
+    }
+    if (HlslSamplerBindingsHaveCycle(module->bindings))
+        return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR, NULL,
+                                   "cyclic HLSL binding list");
+    memset(units, 0, sizeof(units));
+    for (binding = module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        isArray = 0;
+        malformed = 0;
+        base = HlslSamplerTypeBase(&binding->type, &isArray, &malformed);
+        if (malformed)
+            return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
+                                       &binding->loc,
+                                       "malformed HLSL sampler type");
+        if (base == HLSL_BASE_VOID) {
+            if (binding->storage == HLSL_STORAGE_SAMPLER)
+                return HlslValidateFailure(module, HLSL_ERROR_SAMPLER,
+                    &binding->loc, HlslSamplerReason(binding, "sampler"));
+            continue;
+        }
+        if (isArray)
+            return HlslValidateFailure(module, HLSL_ERROR_SAMPLER,
+                                       &binding->loc, "sampler array");
+        if (binding->storage != HLSL_STORAGE_SAMPLER)
+            return HlslValidateFailure(module, HLSL_ERROR_SAMPLER,
+                &binding->loc, HlslSamplerReason(binding, "sampler"));
+        if (profile->limits == NULL)
+            return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
+                                       &binding->loc,
+                                       "missing HLSL sampler limits");
+        if (!binding->hasExplicitRegister && !binding->isAllocated)
+            continue;
+        if (binding->physical.bank != HLSL_REGISTER_S ||
+            binding->physical.regno < 0 ||
+            binding->physical.regno >= profile->limits->samplers)
+        {
+            return HlslValidateFailure(module, HLSL_ERROR_SAMPLER,
+                &binding->loc, HlslSamplerReason(binding,
+                                                  "sampler register"));
+        }
+        regno = binding->physical.regno;
+        if (regno >= HLSL_MAX_SAMPLERS)
+            return HlslValidateFailure(module, HLSL_ERROR_SAMPLER,
+                &binding->loc, HlslSamplerReason(binding,
+                                                  "sampler register"));
+        if (units[regno] != HLSL_BASE_VOID && units[regno] != base)
+            return HlslValidateFailure(module, HLSL_ERROR_SAMPLER,
+                &binding->loc, HlslSamplerReason(binding,
+                                                  "sampler unit"));
+        units[regno] = base;
+    }
+    return 1;
+} // HlslValidateSamplerUsage
+
 static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
                                int *count)
 {
     const HlslExpr *argument;
-    HlslType params[3];
+    HlslType params[HLSL_MAX_BUILTIN_ARGS];
     int paramCount;
 
     if (expression == NULL)
@@ -164,7 +324,7 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
             for (argument = expression->u.call.arguments;
                  argument != NULL; argument = argument->next)
             {
-                if (paramCount >= 3)
+                if (paramCount >= HLSL_MAX_BUILTIN_ARGS)
                     break;
                 params[paramCount++] = argument->type;
                 if (!HlslCountEntryCalls(module, argument, count))
@@ -177,6 +337,9 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
             {
                 return 1;
             }
+            if (HlslBuiltinIsTexture(expression->u.call.builtin))
+                return HlslValidateFailure(module, HLSL_ERROR_SAMPLER,
+                    &expression->loc, expression->u.call.name);
         }
         if (expression->u.call.function != NULL &&
             expression->u.call.builtin != HLSL_BUILTIN_NONE)
@@ -401,6 +564,8 @@ int HlslValidateModule(HlslModule *module,
     }
     if (HlslIsEmptyModule(module))
         return 1;
+    if (!HlslValidateSamplerUsage(module, profile))
+        return 0;
     if (module->wrapper == NULL || strcmp(module->wrapper->name, "main"))
         return HlslValidateFailure(module, HLSL_ERROR_ENTRY_ABI, NULL,
                                    "missing HLSL entry wrapper");

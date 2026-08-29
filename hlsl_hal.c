@@ -481,6 +481,15 @@ static HlslSourceBase HlslSourceBaseForType(const Type *source)
 
     if (source == NULL)
         return HLSL_SOURCE_BASE_NONE;
+    if (GetCategory(source) == TYPE_CATEGORY_SAMPLER) {
+        switch (source->samp.samplerKind) {
+        case CG_SAMPLER_1D: return HLSL_SOURCE_BASE_SAMPLER1D;
+        case CG_SAMPLER_2D: return HLSL_SOURCE_BASE_SAMPLER2D;
+        case CG_SAMPLER_3D: return HLSL_SOURCE_BASE_SAMPLER3D;
+        case CG_SAMPLER_CUBE: return HLSL_SOURCE_BASE_SAMPLERCUBE;
+        default: return HLSL_SOURCE_BASE_NONE;
+        }
+    }
     kind = source->co.scalarKind;
     if (kind == CG_SCALAR_NONE &&
         GetCategory(source) == TYPE_CATEGORY_ARRAY &&
@@ -535,6 +544,12 @@ int HlslDescribeSourceType(const Type *source, HlslSourceType *target)
     base = HlslSourceBaseForType(source);
     if (base == HLSL_SOURCE_BASE_NONE)
         return 0;
+    if (base >= HLSL_SOURCE_BASE_SAMPLER1D &&
+        base <= HLSL_SOURCE_BASE_SAMPLERCUBE)
+    {
+        *target = HlslSourceScalarType(base);
+        return 1;
+    }
     if (IsMatrix(source, &cols, &rows)) {
         if (rows < 1 || rows > 4 || cols < 1 || cols > 4)
         {
@@ -578,7 +593,7 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
 {
     const HlslProfileDesc *profile;
     HlslSourceType result;
-    HlslSourceType params[3];
+    HlslSourceType params[HLSL_MAX_BUILTIN_ARGS];
     TypeList *param;
     HlslBuiltin builtin;
     const char *name;
@@ -621,13 +636,24 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
         *group = HLSL_BUILTIN_GROUP;
         return (int) builtin;
     }
-    if (count >= 0 &&
-        HlslLookupSourceBuiltin(profile->stage == HLSL_STAGE_VERTEX ?
+    if (count >= 0) {
+        HlslBuiltin otherStage;
+
+        otherStage = HlslLookupSourceBuiltin(
+            profile->stage == HLSL_STAGE_VERTEX ?
             HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
-            name, &result, params, count) != HLSL_BUILTIN_NONE)
-    {
-        SemanticError(&fSymb->loc, ERROR_SS_HLSL_STAGE_OPERATION,
-                      profile->name, name);
+            name, &result, params, count);
+        if (otherStage != HLSL_BUILTIN_NONE) {
+            if (HlslBuiltinIsTexture(otherStage))
+                SemanticError(&fSymb->loc, ERROR_S_HLSL_SAMPLER, name);
+            else
+                SemanticError(&fSymb->loc, ERROR_SS_HLSL_STAGE_OPERATION,
+                              profile->name, name);
+            return 0;
+        }
+    }
+    if (HlslIsTextureName(name)) {
+        SemanticError(&fSymb->loc, ERROR_S_HLSL_SAMPLER, name);
         return 0;
     }
 
@@ -986,6 +1012,7 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
     if (!HlslLowerProgram(&module, profile, loc, fScope, program) ||
         !HlslBuildEntryWrapper(&module, profile) ||
         !HlslLegalizeModule(&module, profile) ||
+        !HlslValidateSamplerUsage(&module, profile) ||
         !HlslAllocateBindings(&module, profile) ||
         !HlslValidateModule(&module, profile))
     {

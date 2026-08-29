@@ -1523,7 +1523,7 @@ static void TestBuiltinSignatures(void)
     HlslType b1;
     HlslType b3;
     HlslType m34;
-    HlslType params[3];
+    HlslType params[4];
 
     f1 = HlslNumericType(HLSL_BASE_FLOAT, 1);
     f2 = HlslNumericType(HLSL_BASE_FLOAT, 2);
@@ -1637,6 +1637,407 @@ static void TestBuiltinSignatures(void)
            HLSL_BUILTIN_LOWER_EXPANSION);
 }
 
+static void TestTextureBuiltinSignatures(void)
+{
+    static const char *baseNames[] = {
+        "tex1D", "tex2D", "tex3D", "texCUBE"
+    };
+    static const char *projNames[] = {
+        "tex1Dproj", "tex2Dproj", "tex3Dproj", "texCUBEproj"
+    };
+    static const char *biasNames[] = {
+        "tex1Dbias", "tex2Dbias", "tex3Dbias", "texCUBEbias"
+    };
+    static const char *lodNames[] = {
+        "tex1Dlod", "tex2Dlod", "tex3Dlod", "texCUBElod"
+    };
+    static const char *gradNames[] = {
+        "tex1Dgrad", "tex2Dgrad", "tex3Dgrad", "texCUBEgrad"
+    };
+    static const char *halfNames[] = {
+        "h4tex1D", "h4tex2D", "h4tex3D", "h4texCUBE"
+    };
+    static const char *fixedNames[] = {
+        "x4tex1D", "x4tex2D", "x4tex3D", "x4texCUBE"
+    };
+    static const char *halfProjNames[] = {
+        "h4tex1Dproj", "h4tex2Dproj", "h4tex3Dproj", "h4texCUBEproj"
+    };
+    static const char *fixedProjNames[] = {
+        "x4tex1Dproj", "x4tex2Dproj", "x4tex3Dproj", "x4texCUBEproj"
+    };
+    static const HlslBuiltin baseIds[] = {
+        HLSL_BUILTIN_TEX1D, HLSL_BUILTIN_TEX2D,
+        HLSL_BUILTIN_TEX3D, HLSL_BUILTIN_TEXCUBE
+    };
+    static const HlslBuiltin projIds[] = {
+        HLSL_BUILTIN_TEX1DPROJ, HLSL_BUILTIN_TEX2DPROJ,
+        HLSL_BUILTIN_TEX3DPROJ, HLSL_BUILTIN_TEXCUBEPROJ
+    };
+    static const HlslBuiltin biasIds[] = {
+        HLSL_BUILTIN_TEX1DBIAS, HLSL_BUILTIN_TEX2DBIAS,
+        HLSL_BUILTIN_TEX3DBIAS, HLSL_BUILTIN_TEXCUBEBIAS
+    };
+    static const HlslBuiltin lodIds[] = {
+        HLSL_BUILTIN_TEX1DLOD, HLSL_BUILTIN_TEX2DLOD,
+        HLSL_BUILTIN_TEX3DLOD, HLSL_BUILTIN_TEXCUBELOD
+    };
+    static const HlslBuiltin gradIds[] = {
+        HLSL_BUILTIN_TEX1DGRAD, HLSL_BUILTIN_TEX2DGRAD,
+        HLSL_BUILTIN_TEX3DGRAD, HLSL_BUILTIN_TEXCUBEGRAD
+    };
+    static const HlslSourceBase samplerBases[] = {
+        HLSL_SOURCE_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER2D,
+        HLSL_SOURCE_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLERCUBE
+    };
+    static const HlslBase normalizedSamplerBases[] = {
+        HLSL_BASE_SAMPLER1D, HLSL_BASE_SAMPLER2D,
+        HLSL_BASE_SAMPLER3D, HLSL_BASE_SAMPLERCUBE
+    };
+    static const int coordWidths[] = { 1, 2, 3, 3 };
+    HlslType f1;
+    HlslType f2;
+    HlslType f3;
+    HlslType f4;
+    HlslType s1;
+    HlslType s2;
+    HlslType s3;
+    HlslType sc;
+    HlslType params[5];
+    HlslSourceType sf1;
+    HlslSourceType sf2;
+    HlslSourceType sf4;
+    HlslSourceType ss2;
+    HlslSourceType sourceParams[5];
+    HlslSourceType sourceCoord;
+    HlslSourceType sourceHalf4;
+    HlslSourceType sourceFixed4;
+    int i;
+
+    f1 = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    f2 = HlslNumericType(HLSL_BASE_FLOAT, 2);
+    f3 = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    f4 = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    s1 = HlslNumericType(HLSL_BASE_SAMPLER1D, 1);
+    s2 = HlslNumericType(HLSL_BASE_SAMPLER2D, 1);
+    s3 = HlslNumericType(HLSL_BASE_SAMPLER3D, 1);
+    sc = HlslNumericType(HLSL_BASE_SAMPLERCUBE, 1);
+
+    params[0] = s1; params[1] = f1;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex1D", &f4,
+                            params, 2) == HLSL_BUILTIN_TEX1D);
+    params[0] = s2; params[1] = f2;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2D", &f4,
+                            params, 2) == HLSL_BUILTIN_TEX2D);
+    params[0] = s3; params[1] = f3;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex3D", &f4,
+                            params, 2) == HLSL_BUILTIN_TEX3D);
+    params[0] = sc; params[1] = f3;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "texCUBE", &f4,
+                            params, 2) == HLSL_BUILTIN_TEXCUBE);
+
+    params[0] = s2; params[1] = f4;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2Dproj", &f4,
+                            params, 2) == HLSL_BUILTIN_TEX2DPROJ);
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2Dbias", &f4,
+                            params, 2) == HLSL_BUILTIN_TEX2DBIAS);
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2Dlod", &f4,
+                            params, 2) == HLSL_BUILTIN_TEX2DLOD);
+    assert(HlslLookupBuiltin(HLSL_STAGE_VERTEX, "tex2Dlod", &f4,
+                            params, 2) == HLSL_BUILTIN_TEX2DLOD);
+    assert(HlslLookupBuiltin(HLSL_STAGE_VERTEX, "tex2D", &f4,
+                            params, 2) == HLSL_BUILTIN_NONE);
+    params[1] = f2; params[2] = f2; params[3] = f2;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2D", &f4,
+                            params, 4) == HLSL_BUILTIN_TEX2DGRAD);
+    assert(!strcmp(HlslBuiltinSpelling(HLSL_BUILTIN_TEX2DGRAD),
+                   "tex2Dgrad"));
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2D", &f4,
+                            params, 3) == HLSL_BUILTIN_NONE);
+    params[4] = f2;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2D", &f4,
+                            params, 5) == HLSL_BUILTIN_NONE);
+    params[1] = f3;
+    assert(HlslLookupBuiltin(HLSL_STAGE_PIXEL, "tex2D", &f4,
+                            params, 2) == HLSL_BUILTIN_NONE);
+
+    sf1 = HlslSourceScalarType(HLSL_SOURCE_BASE_FLOAT);
+    sf2 = HlslSourceVectorType(HLSL_SOURCE_BASE_FLOAT, 2);
+    sf4 = HlslSourceVectorType(HLSL_SOURCE_BASE_FLOAT, 4);
+    ss2 = HlslSourceScalarType(HLSL_SOURCE_BASE_SAMPLER2D);
+    assert(!strcmp(HlslSourceTypeName(&ss2), "sampler2D"));
+    sourceCoord = HlslSourceVectorType(HLSL_SOURCE_BASE_SAMPLER2D, 2);
+    assert(HlslSourceTypeName(&sourceCoord) == NULL);
+    sourceParams[0] = ss2; sourceParams[1] = sf2;
+    assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, "tex2D", &sf4,
+        sourceParams, 2) == HLSL_BUILTIN_TEX2D);
+    sourceParams[2] = sf2; sourceParams[3] = sf2;
+    assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, "tex2D", &sf4,
+        sourceParams, 4) == HLSL_BUILTIN_TEX2DGRAD);
+    sourceParams[4] = sf2;
+    assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, "tex2D", &sf4,
+        sourceParams, 5) == HLSL_BUILTIN_NONE);
+    sourceParams[1] = sf4;
+    assert(HlslLookupSourceBuiltin(HLSL_STAGE_VERTEX, "tex2Dlod", &sf4,
+        sourceParams, 2) == HLSL_BUILTIN_TEX2DLOD);
+    sourceParams[1] = sf1;
+    assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, "tex2D", &sf4,
+        sourceParams, 2) == HLSL_BUILTIN_NONE);
+    assert(HlslBuiltinIsTexture(HLSL_BUILTIN_TEX2D));
+    assert(!HlslBuiltinIsTexture(HLSL_BUILTIN_DOT));
+    assert(HlslIsBuiltinName("texRECT"));
+
+    sourceHalf4 = HlslSourceVectorType(HLSL_SOURCE_BASE_HALF, 4);
+    sourceFixed4 = HlslSourceVectorType(HLSL_SOURCE_BASE_FIXED, 4);
+    for (i = 0; i < 4; i++) {
+        assert(HlslBuiltinIsTexture(baseIds[i]));
+        assert(HlslBuiltinTextureForm(baseIds[i]) == HLSL_TEXTURE_IMPLICIT);
+        assert(HlslBuiltinTextureForm(projIds[i]) == HLSL_TEXTURE_PROJECTED);
+        assert(HlslBuiltinTextureForm(biasIds[i]) == HLSL_TEXTURE_BIAS);
+        assert(HlslBuiltinTextureForm(lodIds[i]) == HLSL_TEXTURE_LOD);
+        assert(HlslBuiltinTextureForm(gradIds[i]) == HLSL_TEXTURE_GRADIENT);
+        assert(HlslBuiltinSamplerBase(baseIds[i]) ==
+               normalizedSamplerBases[i]);
+        assert(HlslBuiltinTextureCoordWidth(baseIds[i]) == coordWidths[i]);
+        assert(HlslBuiltinTextureCoordWidth(projIds[i]) == 4);
+        assert(HlslBuiltinTextureCoordWidth(biasIds[i]) == 4);
+        assert(HlslBuiltinTextureCoordWidth(lodIds[i]) == 4);
+        assert(HlslBuiltinTextureCoordWidth(gradIds[i]) == coordWidths[i]);
+        assert(!strcmp(HlslBuiltinSpelling(baseIds[i]), baseNames[i]));
+        assert(!strcmp(HlslBuiltinSpelling(projIds[i]), projNames[i]));
+        assert(!strcmp(HlslBuiltinSpelling(biasIds[i]), biasNames[i]));
+        assert(!strcmp(HlslBuiltinSpelling(lodIds[i]), lodNames[i]));
+        assert(!strcmp(HlslBuiltinSpelling(gradIds[i]), gradNames[i]));
+        sourceParams[0] = HlslSourceScalarType(samplerBases[i]);
+        sourceCoord = coordWidths[i] == 1 ? sf1 :
+            HlslSourceVectorType(HLSL_SOURCE_BASE_FLOAT, coordWidths[i]);
+        sourceParams[1] = sourceCoord;
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
+            &sf4, sourceParams, 2) == baseIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, halfNames[i],
+            &sourceHalf4, sourceParams, 2) == baseIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, fixedNames[i],
+            &sourceFixed4, sourceParams, 2) == baseIds[i]);
+        sourceParams[2] = sourceCoord;
+        sourceParams[3] = sourceCoord;
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
+            &sf4, sourceParams, 4) == gradIds[i]);
+        sourceParams[1] = sf4;
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, projNames[i],
+            &sf4, sourceParams, 2) == projIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, halfProjNames[i],
+            &sourceHalf4, sourceParams, 2) == projIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, fixedProjNames[i],
+            &sourceFixed4, sourceParams, 2) == projIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, biasNames[i],
+            &sf4, sourceParams, 2) == biasIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, lodNames[i],
+            &sf4, sourceParams, 2) == lodIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_VERTEX, lodNames[i],
+            &sf4, sourceParams, 2) == lodIds[i]);
+        sourceParams[1] = sourceCoord;
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_VERTEX, baseNames[i],
+            &sf4, sourceParams, 2) == HLSL_BUILTIN_NONE);
+    }
+    assert(HlslIsTextureName("texRECT"));
+    assert(HlslIsTextureName("h4texRECTproj"));
+    assert(!HlslIsTextureName("texture2D"));
+}
+
+static void ExpectTextureLegalization(HlslStage stage,
+                                      HlslBuiltin builtin,
+                                      HlslType samplerType,
+                                      HlslType coordType, int accepted)
+{
+    HlslModule module;
+    HlslFunction *entry;
+    HlslDecl *sampler;
+    HlslDecl *coord;
+    HlslExpr *call;
+    HlslExpr *argument;
+    HlslStmt *statement;
+    HlslType voidType;
+    HlslType float4Type;
+    const HlslProfileDesc *profile;
+
+    HlslInitModule(&module, stage, TestAlloc, NULL);
+    profile = stage == HLSL_STAGE_VERTEX ? &HlslProfile_hlslv :
+                                          &HlslProfile_hlslf;
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    float4Type = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    sampler = HlslNewDecl(&module, HLSL_STORAGE_SAMPLER,
+                          samplerType, "image");
+    coord = HlslNewDecl(&module, HLSL_STORAGE_NONE, coordType, "coord");
+    call = HlslNewLocatedExpr(&module, HLSL_EXPR_CALL, float4Type, NULL);
+    statement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
+    assert(entry != NULL && sampler != NULL && coord != NULL &&
+           call != NULL && statement != NULL);
+    HlslAppendDecl(&entry->parameters, sampler);
+    HlslAppendDecl(&entry->parameters, coord);
+    argument = HlslNewExpr(&module, HLSL_EXPR_SYMBOL, samplerType);
+    assert(argument != NULL);
+    argument->u.symbol = sampler;
+    HlslAppendExpr(&call->u.call.arguments, argument);
+    argument = HlslNewExpr(&module, HLSL_EXPR_SYMBOL, coordType);
+    assert(argument != NULL);
+    argument->u.symbol = coord;
+    HlslAppendExpr(&call->u.call.arguments, argument);
+    call->u.call.name = HlslBuiltinSpelling(builtin);
+    call->u.call.builtin = builtin;
+    statement->u.expression = call;
+    entry->body = statement;
+    entry->isEntry = 1;
+    module.entry = entry;
+    module.functions = entry;
+    if (accepted) {
+        assert(HlslLegalizeModule(&module, profile));
+    } else {
+        assert(!HlslLegalizeModule(&module, profile));
+        assert(module.errorKind == HLSL_ERROR_SAMPLER);
+    }
+}
+
+static void TestTextureAndSamplerRejections(void)
+{
+    HlslModule module;
+    HlslBinding *firstBinding;
+    HlslBinding *secondBinding;
+    HlslFunction *entry;
+    HlslDecl *first;
+    HlslDecl *second;
+    HlslExpr *left;
+    HlslExpr *right;
+    HlslExpr *assignment;
+    HlslStmt *statement;
+    HlslType voidType;
+    HlslType f2;
+    HlslType f3;
+    HlslType f4;
+    HlslType s2;
+    HlslType s3;
+    HlslType cyclicTypes[2];
+
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    f2 = HlslNumericType(HLSL_BASE_FLOAT, 2);
+    f3 = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    f4 = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    s2 = HlslNumericType(HLSL_BASE_SAMPLER2D, 1);
+    s3 = HlslNumericType(HLSL_BASE_SAMPLER3D, 1);
+
+    ExpectTextureLegalization(HLSL_STAGE_PIXEL, HLSL_BUILTIN_TEX2D,
+                              s2, f2, 1);
+    ExpectTextureLegalization(HLSL_STAGE_VERTEX, HLSL_BUILTIN_TEX2D,
+                              s2, f2, 0);
+    ExpectTextureLegalization(HLSL_STAGE_PIXEL, HLSL_BUILTIN_TEX2D,
+                              s2, f3, 0);
+    ExpectTextureLegalization(HLSL_STAGE_VERTEX, HLSL_BUILTIN_TEX2DLOD,
+                              s2, f4, 1);
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    first = HlslNewDecl(&module, HLSL_STORAGE_SAMPLER, s2, "first");
+    second = HlslNewDecl(&module, HLSL_STORAGE_SAMPLER, s2, "second");
+    left = HlslNewExpr(&module, HLSL_EXPR_SYMBOL, s2);
+    right = HlslNewExpr(&module, HLSL_EXPR_SYMBOL, s2);
+    assignment = HlslNewExpr(&module, HLSL_EXPR_BINARY, s2);
+    statement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
+    assert(entry != NULL && first != NULL && second != NULL &&
+           left != NULL && right != NULL && assignment != NULL &&
+           statement != NULL);
+    HlslAppendDecl(&entry->parameters, first);
+    HlslAppendDecl(&entry->parameters, second);
+    left->u.symbol = first;
+    right->u.symbol = second;
+    assignment->u.binary.op = HLSL_OP_ASSIGN;
+    assignment->u.binary.left = left;
+    assignment->u.binary.right = right;
+    statement->u.expression = assignment;
+    entry->body = statement;
+    entry->isEntry = 1;
+    module.entry = entry;
+    module.functions = entry;
+    assert(!HlslLegalizeModule(&module, &HlslProfile_hlslf));
+    assert(module.errorKind == HLSL_ERROR_SAMPLER);
+    assert(!strcmp(module.errorReason, "sampler assignment"));
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    first = HlslNewDecl(&module, HLSL_STORAGE_NONE, s2, "localImage");
+    assert(entry != NULL && first != NULL);
+    entry->locals = first;
+    entry->isEntry = 1;
+    module.entry = entry;
+    module.functions = entry;
+    assert(!HlslLegalizeModule(&module, &HlslProfile_hlslf));
+    assert(module.errorKind == HLSL_ERROR_SAMPLER);
+    assert(!strcmp(module.errorReason, "local sampler"));
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    first = HlslNewDecl(&module, HLSL_STORAGE_NONE, s2, "image");
+    assert(entry != NULL && first != NULL);
+    entry->parameters = first;
+    entry->isEntry = 1;
+    module.entry = entry;
+    module.functions = entry;
+    assert(!HlslLegalizeModule(&module, &HlslProfile_hlslf));
+    assert(module.errorKind == HLSL_ERROR_SAMPLER);
+    assert(!strcmp(module.errorReason, "local sampler"));
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    entry = HlslNewFunction(&module, s2, "cg_entry");
+    assert(entry != NULL);
+    entry->isEntry = 1;
+    module.entry = entry;
+    module.functions = entry;
+    assert(!HlslLegalizeModule(&module, &HlslProfile_hlslf));
+    assert(module.errorKind == HLSL_ERROR_SAMPLER);
+    assert(!strcmp(module.errorReason, "sampler return"));
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    firstBinding = HlslNewBinding(&module, HLSL_STORAGE_SAMPLER, s2,
+                                  "surface", "TEXUNIT0");
+    secondBinding = HlslNewBinding(&module, HLSL_STORAGE_SAMPLER, s3,
+                                   "volume", "TEXUNIT0");
+    assert(firstBinding != NULL && secondBinding != NULL);
+    firstBinding->hasExplicitRegister = 1;
+    firstBinding->physical.bank = HLSL_REGISTER_S;
+    firstBinding->physical.regno = 0;
+    secondBinding->hasExplicitRegister = 1;
+    secondBinding->physical.bank = HLSL_REGISTER_S;
+    secondBinding->physical.regno = 0;
+    module.bindings = firstBinding;
+    firstBinding->next = secondBinding;
+    assert(!HlslValidateSamplerUsage(&module, &HlslProfile_hlslf));
+    assert(module.errorKind == HLSL_ERROR_SAMPLER);
+    assert(!strcmp(module.errorReason, "TEXUNIT0"));
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    firstBinding = HlslNewBinding(&module, HLSL_STORAGE_SAMPLER, s2,
+                                  "surface", "TEXUNIT16");
+    assert(firstBinding != NULL);
+    firstBinding->hasExplicitRegister = 1;
+    firstBinding->physical.bank = HLSL_REGISTER_S;
+    firstBinding->physical.regno = 16;
+    module.bindings = firstBinding;
+    assert(!HlslValidateSamplerUsage(&module, &HlslProfile_hlslf));
+    assert(module.errorKind == HLSL_ERROR_SAMPLER);
+
+    memset(cyclicTypes, 0, sizeof(cyclicTypes));
+    cyclicTypes[0].arraySize = 1;
+    cyclicTypes[0].elementType = &cyclicTypes[1];
+    cyclicTypes[1].arraySize = 1;
+    cyclicTypes[1].elementType = &cyclicTypes[0];
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    firstBinding = HlslNewBinding(&module, HLSL_STORAGE_SAMPLER,
+                                  cyclicTypes[0], "cycle", "TEXUNIT0");
+    assert(firstBinding != NULL);
+    module.bindings = firstBinding;
+    assert(!HlslValidateSamplerUsage(&module, &HlslProfile_hlslf));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+}
+
 int main(int argc, char **argv)
 {
     HlslModule module;
@@ -1737,5 +2138,7 @@ int main(int argc, char **argv)
     TestPublicBindingNames();
     TestLocatedExpression();
     TestBuiltinSignatures();
+    TestTextureBuiltinSignatures();
+    TestTextureAndSamplerRejections();
     return 0;
 }

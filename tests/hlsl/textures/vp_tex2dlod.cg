@@ -1,0 +1,13 @@
+struct VertexOut
+{
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION,
+               float4 coord : TEXCOORD0,
+               uniform sampler2D image : TEXUNIT0)
+{
+    VertexOut output;
+    output.position = position + tex2Dlod(image, coord);
+    return output;
+}

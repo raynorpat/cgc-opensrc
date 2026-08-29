@@ -145,6 +145,8 @@ int HlslLegalizeModule(HlslModule *module,
     const HlslProfileDesc *profile);
 int HlslAllocateBindings(HlslModule *module,
     const HlslProfileDesc *profile);
+int HlslValidateSamplerUsage(HlslModule *module,
+    const HlslProfileDesc *profile);
 int HlslValidateModule(HlslModule *module,
     const HlslProfileDesc *profile);
 

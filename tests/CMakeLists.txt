@@ -1932,6 +1932,48 @@ add_hlsl_fixture(hlslf_intrinsic_derivatives hlslf
 add_hlsl_fixture(hlslv_intrinsic_user_same_name hlslv
     tests/hlsl/intrinsics/vp_user_same_name.cg
     tests/hlsl/intrinsics/vp_user_same_name.expected)
+add_hlsl_fixture(hlslf_texture_1d hlslf
+    tests/hlsl/textures/fp_tex1d.cg
+    tests/hlsl/textures/fp_tex1d.expected)
+add_hlsl_fixture(hlslf_texture_2d hlslf
+    tests/hlsl/textures/fp_tex2d.cg
+    tests/hlsl/textures/fp_tex2d.expected)
+add_hlsl_fixture(hlslf_texture_3d hlslf
+    tests/hlsl/textures/fp_tex3d.cg
+    tests/hlsl/textures/fp_tex3d.expected)
+add_hlsl_fixture(hlslf_texture_cube hlslf
+    tests/hlsl/textures/fp_texcube.cg
+    tests/hlsl/textures/fp_texcube.expected)
+add_hlsl_fixture(hlslf_texture_forms hlslf
+    tests/hlsl/textures/fp_project_bias_lod_grad.cg
+    tests/hlsl/textures/fp_project_bias_lod_grad.expected)
+add_hlsl_fixture(hlslv_texture_lod hlslv
+    tests/hlsl/textures/vp_tex2dlod.cg
+    tests/hlsl/textures/vp_tex2dlod.expected)
+
+function(add_hlsl_failure name profile source code line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -DCODE=${code}
+            -DEXPECTED_LINE=${line}
+            -DMESSAGE=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+endfunction()
+
+add_hlsl_failure(hlslv_texture_implicit_stage hlslv
+    tests/hlsl/diagnostics/vp_implicit_texture.cg 6409 5 tex2D)
+add_hlsl_failure(hlslf_texture_sampler_mismatch hlslf
+    tests/hlsl/diagnostics/fp_sampler_mismatch.cg 6409 2 TEXUNIT0)
+add_hlsl_failure(hlslf_texture_sampler_array hlslf
+    tests/hlsl/diagnostics/fp_sampler_array.cg 6409 1 sampler.array)
+add_hlsl_failure(hlslf_texture_sampler_rect hlslf
+    tests/cg20/samplers/rect.cg 6409 9 samplerRECT)
 
 add_test(
     NAME generic_entry_inout_still_rejected

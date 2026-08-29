@@ -98,6 +98,18 @@ static int HlslTypesEqual(const HlslType *left, const HlslType *right)
     return HlslTypesEqualInner(left, right, 0);
 } // HlslTypesEqual
 
+static int HlslTypeIsSampler(const HlslType *type)
+{
+    if (type == NULL)
+        return 0;
+    if (type->arraySize > 0)
+        return HlslTypeIsSampler(type->elementType);
+    return type->base == HLSL_BASE_SAMPLER1D ||
+           type->base == HLSL_BASE_SAMPLER2D ||
+           type->base == HLSL_BASE_SAMPLER3D ||
+           type->base == HLSL_BASE_SAMPLERCUBE;
+} // HlslTypeIsSampler
+
 static int HlslIsScalar(const HlslType *type, HlslBase base)
 {
     return type != NULL && type->arraySize == 0 && type->base == base &&
@@ -256,7 +268,7 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
     HlslExpr *argument;
     HlslDecl *parameter;
     HlslType resultType;
-    HlslType builtinParams[3];
+    HlslType builtinParams[HLSL_MAX_BUILTIN_ARGS];
     int builtinParamCount;
     int length;
     int maskLength;
@@ -332,6 +344,14 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         if (expression->u.binary.op >= HLSL_OP_ASSIGN &&
             expression->u.binary.op <= HLSL_OP_SHIFT_RIGHT_ASSIGN)
         {
+            if (HlslTypeIsSampler(&expression->type) ||
+                HlslTypeIsSampler(&expression->u.binary.left->type) ||
+                HlslTypeIsSampler(&expression->u.binary.right->type))
+            {
+                return HlslLegalizeFailure(module, HLSL_ERROR_SAMPLER,
+                                           &expression->loc,
+                                           "sampler assignment");
+            }
             if (HlslTypesEqual(&expression->type,
                                &expression->u.binary.left->type) &&
                 HlslTypesEqual(&expression->type,
@@ -460,7 +480,7 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
             for (argument = expression->u.call.arguments;
                  argument != NULL; argument = argument->next)
             {
-                if (builtinParamCount >= 3 ||
+                if (builtinParamCount >= HLSL_MAX_BUILTIN_ARGS ||
                     !HlslLegalizeExpr(module, argument))
                 {
                     return HlslLegalizeFailure(module,
@@ -475,8 +495,12 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
             {
                 return 1;
             }
-            return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
-                &expression->loc, "HLSL intrinsic overload");
+            return HlslLegalizeFailure(module,
+                HlslBuiltinIsTexture(expression->u.call.builtin) ?
+                    HLSL_ERROR_SAMPLER : HLSL_ERROR_INVALID_IR,
+                &expression->loc,
+                HlslBuiltinIsTexture(expression->u.call.builtin) ?
+                    expression->u.call.name : "HLSL intrinsic overload");
         }
         if (expression->u.call.function == NULL ||
             expression->u.call.builtin != HLSL_BUILTIN_NONE ||
@@ -632,13 +656,22 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                                "HLSL literal type");
 } // HlslLegalizeExpr
 
-static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl)
+static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl,
+                                    int allowSampler)
 {
     for (; decl != NULL; decl = decl->next) {
         if (decl->name == NULL || HlslTypeName(&decl->type) == NULL)
             return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                        &decl->loc,
                                        "HLSL declaration");
+        if (HlslTypeIsSampler(&decl->type) &&
+            (!allowSampler || decl->type.arraySize != 0 ||
+             decl->storage != HLSL_STORAGE_SAMPLER))
+        {
+            return HlslLegalizeFailure(module, HLSL_ERROR_SAMPLER,
+                &decl->loc, decl->type.arraySize != 0 ?
+                "sampler array" : "local sampler");
+        }
         if (decl->initializer != NULL &&
             !HlslLegalizeExpr(module, decl->initializer))
         {
@@ -652,7 +685,7 @@ static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl)
                                        "HLSL initializer type");
         }
         if (decl->members != NULL &&
-            !HlslLegalizeDeclarations(module, decl->members))
+            !HlslLegalizeDeclarations(module, decl->members, 0))
         {
             return 0;
         }
@@ -668,7 +701,7 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
         case HLSL_STMT_DECLARATION:
             if (statement->u.declaration == NULL ||
                 !HlslLegalizeDeclarations(module,
-                                           statement->u.declaration))
+                    statement->u.declaration, 0))
             {
                 return 0;
             }
@@ -791,8 +824,8 @@ int HlslLegalizeModule(HlslModule *module,
         return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR, NULL,
                                    "invalid HLSL legalization module");
     }
-    if (!HlslLegalizeDeclarations(module, module->globals) ||
-        !HlslLegalizeDeclarations(module, module->structs))
+    if (!HlslLegalizeDeclarations(module, module->globals, 1) ||
+        !HlslLegalizeDeclarations(module, module->structs, 0))
     {
         return 0;
     }
@@ -800,12 +833,16 @@ int HlslLegalizeModule(HlslModule *module,
          function = function->next)
     {
         if (function->name == NULL || HlslTypeName(&function->result) == NULL ||
-            !HlslLegalizeDeclarations(module, function->parameters) ||
-            !HlslLegalizeDeclarations(module, function->locals))
+            HlslTypeIsSampler(&function->result) ||
+            !HlslLegalizeDeclarations(module, function->parameters, 1) ||
+            !HlslLegalizeDeclarations(module, function->locals, 0))
         {
-            return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
-                                       &function->loc,
-                                       "HLSL function");
+            return HlslLegalizeFailure(module,
+                HlslTypeIsSampler(&function->result) ? HLSL_ERROR_SAMPLER :
+                                                       HLSL_ERROR_INVALID_IR,
+                &function->loc,
+                HlslTypeIsSampler(&function->result) ? "sampler return" :
+                                                       "HLSL function");
         }
         if (!HlslLegalizeStatements(module, function->body,
                                     &function->result, 0))
