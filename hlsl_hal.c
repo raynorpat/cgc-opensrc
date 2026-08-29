@@ -459,6 +459,7 @@ static int GetCapsBit_hlsl(int bitNumber)
     case CAPS_CONDITIONAL_SIDE_EFFECTS:
     case CAPS_TYPED_INC_DEC_EXPRESSIONS:
     case CAPS_PRESERVE_COMMA_EXPRESSIONS:
+    case CAPS_PRESERVE_INLINE_HELPERS:
         return 1;
     default:
         return 0;

@@ -7,8 +7,9 @@ float recurse_a(float value);
 
 float recurse_b(float value)
 {
-    return recurse_a(value)
-         + leaf(value);
+    return
+        recurse_a(value)
+        + leaf(value);
 }
 
 float recurse_a(float value)

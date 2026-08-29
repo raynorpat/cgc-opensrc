@@ -1885,6 +1885,9 @@ add_hlsl_fixture(hlslf_vector_discard hlslf
 add_hlsl_fixture(hlslv_helpers hlslv
     tests/hlsl/functions/vp_helpers.cg
     tests/hlsl/functions/vp_helpers.expected)
+add_hlsl_fixture(hlslv_inline_helper hlslv
+    tests/hlsl/functions/vp_inline_helper.cg
+    tests/hlsl/functions/vp_inline_helper.expected)
 
 add_test(
     NAME generic_entry_inout_still_rejected
@@ -1929,10 +1932,17 @@ add_hlsl_interface_failure(hlslv_recursion
 add_hlsl_interface_failure(hlslv_nested_recursion
     tests/hlsl/diagnostics/vp_nested_recursion.cg 6401 10 recursive.HLSL.helper)
 add_hlsl_interface_failure(hlslv_recursion_call_location
-    tests/hlsl/diagnostics/vp_recursion_call_location.cg 6401 10 recursive.HLSL.helper)
+    tests/hlsl/diagnostics/vp_recursion_call_location.cg 6401 11 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_inline_recursion
+    tests/hlsl/diagnostics/vp_inline_recursion.cg 6401 4 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_inline_mutual_recursion
+    tests/hlsl/diagnostics/vp_inline_mutual_recursion.cg 6401 6 recursive.HLSL.helper)
 
 add_generic_diagnostic(generic_hlsl_recursion_unchanged
     tests/hlsl/diagnostics/vp_recursion.cg 5005 3 recurse)
+add_generic_regression(hlsl_inline_helper_unchanged
+    tests/hlsl/functions/vp_inline_helper.cg
+    49d0d0f7ee9e40c652333d2cce56438bf3f89cb9928d93a14bc6e548f4c97c76)
 
 add_test(
     NAME generic_hlsl_conditional_side_effects_unchanged

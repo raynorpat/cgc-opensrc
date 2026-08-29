@@ -1,0 +1,37 @@
+// profile hlslv
+// target vs_3_0
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_adjust(float value)
+{
+    return value * (float) 2.0 + (float) 1.0;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output;
+    cg_output.position = float4(cg_adjust(position.x), position.y, position.z, position.w);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

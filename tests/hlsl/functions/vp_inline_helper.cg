@@ -1,0 +1,14 @@
+inline float adjust(float value)
+{
+    return value * 2.0 + 1.0;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = float4(adjust(position.x), position.y,
+                             position.z, position.w);
+    return output;
+}

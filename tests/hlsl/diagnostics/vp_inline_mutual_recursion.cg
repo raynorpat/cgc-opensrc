@@ -1,0 +1,20 @@
+inline float recurse_a(float value);
+
+inline float recurse_b(float value)
+{
+    return
+        recurse_a(value)
+        + value;
+}
+
+inline float recurse_a(float value)
+{
+    return
+        recurse_b(value)
+        + value;
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position * recurse_a(1.0);
+}

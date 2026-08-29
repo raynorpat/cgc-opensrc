@@ -93,6 +93,7 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_CONDITIONAL_SIDE_EFFECTS 16
 #define CAPS_TYPED_INC_DEC_EXPRESSIONS 17
 #define CAPS_PRESERVE_COMMA_EXPRESSIONS 18
+#define CAPS_PRESERVE_INLINE_HELPERS   19
 
 struct slProfile_Rec {
     slProfile *next;

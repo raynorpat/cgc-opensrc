@@ -3273,7 +3273,9 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                 lStmt = program->details.fun.statements;
                 lStmt = ConcatStmts(fScope->initStmts, lStmt);
                 if (GetErrorCount() == 0) {
-                    lStmt = ExpandInlineFunctionCalls(lScope, lStmt, NULL);
+                    if (!theHAL->GetCapsBit(CAPS_PRESERVE_INLINE_HELPERS))
+                        lStmt = ExpandInlineFunctionCalls(lScope, lStmt,
+                                                          NULL);
                     PostApplyToExpressions(CheckForHiddenVaryingReferences, lStmt, NULL, 0);
                     if (Cg->options.DumpParseTree || Cg->options.DumpNodeTree) {
                         program->details.fun.statements = lStmt;
