@@ -470,6 +470,7 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     HlslModule module;
     HlslProfileDesc profile;
     HlslType voidType;
+    HlslType floatType;
     HlslType float2Type;
     HlslType float4Type;
     HlslType inputType;
@@ -494,6 +495,7 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     profile.name = "hlslv";
     profile.target = "vs_3_0";
     voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    floatType = HlslNumericType(HLSL_BASE_FLOAT, 1);
     float2Type = HlslNumericType(HLSL_BASE_FLOAT, 2);
     float4Type = HlslNumericType(HLSL_BASE_FLOAT, 4);
     inputType = HlslNumericType(HLSL_BASE_STRUCT, 0);
@@ -564,12 +566,36 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     assert(helperCall != NULL && firstArgument != NULL &&
            secondArgument != NULL && helperStatement != NULL);
     helperCall->u.call.name = "cross";
+    helperCall->u.call.builtin = HLSL_BUILTIN_CROSS;
     helperCall->u.call.arguments = firstArgument;
     HlslAppendExpr(&helperCall->u.call.arguments, secondArgument);
     helperStatement->u.expression = helperCall;
     entry->body = helperStatement;
     assert(!HlslValidateModule(&module, &profile));
     assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+
+    module.errors = 0;
+    module.errorKind = HLSL_ERROR_NONE;
+    module.errorReason = NULL;
+    helperCall = HlslNewExpr(&module, HLSL_EXPR_CALL, floatType);
+    firstArgument = HlslNewExpr(&module, HLSL_EXPR_CONSTRUCT, float2Type);
+    secondArgument = HlslNewExpr(&module, HLSL_EXPR_CONSTRUCT, float2Type);
+    helperStatement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
+    assert(helperCall != NULL && firstArgument != NULL &&
+           secondArgument != NULL && helperStatement != NULL);
+    helperCall->u.call.name = "dot";
+    helperCall->u.call.arguments = firstArgument;
+    HlslAppendExpr(&helperCall->u.call.arguments, secondArgument);
+    helperStatement->u.expression = helperCall;
+    entry->body = helperStatement;
+    assert(!HlslValidateModule(&module, &profile));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+
+    module.errors = 0;
+    module.errorKind = HLSL_ERROR_NONE;
+    module.errorReason = NULL;
+    helperCall->u.call.builtin = HLSL_BUILTIN_DOT;
+    assert(HlslValidateModule(&module, &profile));
 }
 
 static void TestLogicalBindingSurvivesLegalizeAndAllocation(void)

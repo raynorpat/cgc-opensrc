@@ -372,6 +372,8 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
     TypeList *parameter;
     Type *sourceResult;
     const char *name;
+    HlslSourceType sourceResultType;
+    HlslSourceType sourceParams[3];
     HlslBuiltin resolved;
     HlslBuiltin otherStage;
     int count;
@@ -402,8 +404,47 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
         HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
         return -1;
     }
+    if (!HlslDescribeSourceType(sourceResult, &sourceResultType)) {
+        HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
+        return -1;
+    }
+    count = 0;
+    for (; parameter != NULL; parameter = parameter->next) {
+        if (count >= 3 ||
+            !HlslDescribeSourceType(parameter->type, &sourceParams[count]))
+        {
+            HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+                             name, callLoc);
+            return -1;
+        }
+        count++;
+    }
+    resolved = HlslLookupSourceBuiltin(context->profile->stage, name,
+        &sourceResultType, sourceParams, count);
+    if (resolved == HLSL_BUILTIN_NONE) {
+        otherStage = HlslLookupSourceBuiltin(
+            context->profile->stage == HLSL_STAGE_VERTEX ?
+            HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
+            name, &sourceResultType, sourceParams, count);
+        if (otherStage != HLSL_BUILTIN_NONE) {
+            HlslLowerFailure(context, HLSL_ERROR_STAGE_OPERATION,
+                             name, callLoc);
+        } else {
+            HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+                             name, callLoc);
+        }
+        return -1;
+    }
+    if (signature == NULL &&
+        resolved != (HlslBuiltin) symbol->details.fun.index)
+    {
+        HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
+        return -1;
+    }
     if (!HlslLowerType(context, sourceResult, result, callLoc))
         return -1;
+    parameter = signature != NULL ? signature->parameters :
+                symbol->type->fun.paramtypes;
     count = 0;
     for (; parameter != NULL; parameter = parameter->next) {
         if (count >= 3 ||
@@ -417,24 +458,8 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
         }
         count++;
     }
-    resolved = HlslLookupBuiltin(context->profile->stage, name, result,
-                                 params, count);
-    if (resolved == HLSL_BUILTIN_NONE) {
-        otherStage = HlslLookupBuiltin(
-            context->profile->stage == HLSL_STAGE_VERTEX ?
-            HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
-            name, result, params, count);
-        if (otherStage != HLSL_BUILTIN_NONE) {
-            HlslLowerFailure(context, HLSL_ERROR_STAGE_OPERATION,
-                             name, callLoc);
-        } else {
-            HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
-                             name, callLoc);
-        }
-        return -1;
-    }
-    if (signature == NULL &&
-        resolved != (HlslBuiltin) symbol->details.fun.index)
+    if (!HlslBuiltinAccepts(context->profile->stage, resolved,
+                            result, params, count))
     {
         HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
         return -1;
@@ -1635,6 +1660,7 @@ static HlslFunction *HlslCreateBuiltinHelper(HlslLowerContext *context,
         if (call == NULL)
             return NULL;
         call->u.call.name = HlslBuiltinSpelling(builtin);
+        call->u.call.builtin = builtin;
         call->u.call.arguments = argument;
     } else {
         zero = HlslNewBuiltinConstant(context, type, 0.0f);
@@ -1644,9 +1670,11 @@ static HlslFunction *HlslCreateBuiltinHelper(HlslLowerContext *context,
         if (zero == NULL || one == NULL || inner == NULL || call == NULL)
             return NULL;
         inner->u.call.name = HlslBuiltinSpelling(HLSL_BUILTIN_MAX);
+        inner->u.call.builtin = HLSL_BUILTIN_MAX;
         inner->u.call.arguments = argument;
         HlslAppendExpr(&inner->u.call.arguments, zero);
         call->u.call.name = HlslBuiltinSpelling(HLSL_BUILTIN_MIN);
+        call->u.call.builtin = HLSL_BUILTIN_MIN;
         call->u.call.arguments = inner;
         HlslAppendExpr(&call->u.call.arguments, one);
     }
@@ -2139,6 +2167,7 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
         lowering = HlslBuiltinLoweringKind(builtin);
         if (lowering == HLSL_BUILTIN_LOWER_NATIVE) {
             target->u.call.name = HlslBuiltinSpelling(builtin);
+            target->u.call.builtin = builtin;
         } else {
             function = HlslCreateBuiltinHelper(context, builtin,
                                                &builtinResult);

@@ -448,6 +448,14 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         if (expression->u.call.function == NULL &&
             expression->u.call.name != NULL)
         {
+            if (expression->u.call.builtin == HLSL_BUILTIN_NONE ||
+                HlslBuiltinSpelling(expression->u.call.builtin) == NULL ||
+                strcmp(expression->u.call.name,
+                       HlslBuiltinSpelling(expression->u.call.builtin)))
+            {
+                return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                    &expression->loc, "HLSL intrinsic identity");
+            }
             builtinParamCount = 0;
             for (argument = expression->u.call.arguments;
                  argument != NULL; argument = argument->next)
@@ -461,9 +469,9 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                 }
                 builtinParams[builtinParamCount++] = argument->type;
             }
-            if (HlslLookupBuiltin(module->stage, expression->u.call.name,
-                    &expression->type, builtinParams,
-                    builtinParamCount) != HLSL_BUILTIN_NONE)
+            if (HlslBuiltinAccepts(module->stage,
+                    expression->u.call.builtin, &expression->type,
+                    builtinParams, builtinParamCount))
             {
                 return 1;
             }
@@ -471,6 +479,7 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                 &expression->loc, "HLSL intrinsic overload");
         }
         if (expression->u.call.function == NULL ||
+            expression->u.call.builtin != HLSL_BUILTIN_NONE ||
             expression->u.call.name == NULL ||
             expression->u.call.function->name == NULL ||
             strcmp(expression->u.call.name,

@@ -132,6 +132,7 @@ int InitHAL_hlslf(slHAL *hal);
 // Interface semantic helpers:
 int HlslParseSemantic(const char *semantic, char *root, size_t rootSize,
     int *index);
+int HlslDescribeSourceType(const Type *source, HlslSourceType *target);
 const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
     const char *semantic, int IsOutVal);
 

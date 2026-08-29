@@ -33,6 +33,8 @@ cg_VertexOut cg_entry(float4 position)
     int3 iv;
     bool flag;
     bool3 flags;
+    float halfVector;
+    float halfDot;
     a = position.x;
     b = position.y + 2.0;
     v = float3(position.x, position.y, position.z);
@@ -40,6 +42,8 @@ cg_VertexOut cg_entry(float4 position)
     iv = int3(1, -2, 3);
     flag = position.x > position.y;
     flags = bool3(flag, !flag, flag);
+    halfVector = float((float) position.x);
+    halfDot = dot(halfVector, halfVector);
     a = abs(a) + sign(b) + floor(a) + ceil(b) + round(a) + trunc(b);
     a = a + sqrt(abs(b)) + cg_rsqrt_float(abs(b) + 1.0);
     a = a + pow(abs(a) + 1.0, b) + exp(a) + exp2(b);
@@ -64,7 +68,7 @@ cg_VertexOut cg_entry(float4 position)
     v = clamp(v, 0.0, 1.0);
     v = lerp(v, w, 0.5) + smoothstep(0.0, 1.0, w);
     iv = abs(iv) + sign(iv);
-    cg_output.position = float4(v.x + a, v.y, v.z, flag ? (float) iv.x : (float) iv.y);
+    cg_output.position = float4(v.x + a + (float) halfDot, v.y, v.z, flag ? (float) iv.x : (float) iv.y);
     return cg_output;
 }
 

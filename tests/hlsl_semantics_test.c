@@ -92,6 +92,13 @@ static void MakeVector(Type *type, Type *element, int base, int len)
     type->arr.numels = len;
 }
 
+static void SetTestScalarKind(Type *type, CgScalarKind kind)
+{
+    type->co.scalarKind = kind;
+    if (IsVector(type, NULL))
+        type->arr.eltype->co.scalarKind = kind;
+}
+
 static const HlslProfileDesc *InitStage(slHAL *hal, int vertex)
 {
     const HlslProfileDesc *profile;
@@ -714,6 +721,121 @@ static void CheckUniformUnbound(void)
     FreeStage(&hal);
 }
 
+static void CheckInternalFunctions(void)
+{
+    slHAL hal;
+    Symbol symbol;
+    Type functionType;
+    Type scalarResult;
+    Type vectorResult;
+    Type resultElement;
+    Type scalarLeft;
+    Type scalarRight;
+    Type vectorLeft;
+    Type vectorRight;
+    Type leftElement;
+    Type rightElement;
+    TypeList first;
+    TypeList second;
+    int group;
+
+    InitStage(&hal, 1);
+    memset(&symbol, 0, sizeof(symbol));
+    memset(&functionType, 0, sizeof(functionType));
+    MakeScalar(&scalarResult, TYPE_BASE_FLOAT);
+    MakeVector(&vectorResult, &resultElement, TYPE_BASE_FLOAT, 1);
+    MakeScalar(&scalarLeft, TYPE_BASE_FLOAT);
+    MakeScalar(&scalarRight, TYPE_BASE_FLOAT);
+    MakeVector(&vectorLeft, &leftElement, TYPE_BASE_FLOAT, 1);
+    MakeVector(&vectorRight, &rightElement, TYPE_BASE_FLOAT, 1);
+    first.next = &second;
+    second.next = NULL;
+    functionType.fun.properties = TYPE_CATEGORY_FUNCTION;
+    functionType.fun.paramtypes = &first;
+    symbol.kind = FUNCTION_S;
+    symbol.type = &functionType;
+
+    symbol.name = AddAtom(atable, "dot");
+    functionType.fun.rettype = &scalarResult;
+    first.type = &scalarLeft;
+    second.type = &scalarRight;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == HLSL_BUILTIN_DOT &&
+            group == HLSL_BUILTIN_GROUP && semanticErrorCount == 0,
+            "scalar dot source signature was not recognized");
+
+    first.type = &vectorLeft;
+    second.type = &vectorRight;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == HLSL_BUILTIN_DOT &&
+            group == HLSL_BUILTIN_GROUP && semanticErrorCount == 0,
+            "declared float1 dot source signature was not recognized");
+
+    first.type = &scalarLeft;
+    second.type = &vectorRight;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == 0 && group == 0 &&
+            semanticErrorCount == 1 && lastSemanticError == 6410,
+            "mixed scalar/float1 dot signature was accepted");
+
+    functionType.fun.rettype = &vectorResult;
+    first.type = &vectorLeft;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == 0 && group == 0 &&
+            semanticErrorCount == 1 && lastSemanticError == 6410,
+            "float1 dot result was accepted instead of scalar result");
+
+    symbol.name = AddAtom(atable, "mul");
+    functionType.fun.rettype = &scalarResult;
+    first.type = &scalarLeft;
+    second.type = &scalarRight;
+    SetTestScalarKind(&scalarResult, CG_SCALAR_HALF);
+    SetTestScalarKind(&scalarLeft, CG_SCALAR_HALF);
+    SetTestScalarKind(&scalarRight, CG_SCALAR_HALF);
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == 0 && group == 0 &&
+            semanticErrorCount == 1 && lastSemanticError == 6410,
+            "half mul signature absent from the catalog was accepted");
+
+    symbol.name = AddAtom(atable, "cross");
+    functionType.fun.rettype = &vectorResult;
+    MakeVector(&vectorResult, &resultElement, TYPE_BASE_FLOAT, 3);
+    MakeVector(&vectorLeft, &leftElement, TYPE_BASE_FLOAT, 3);
+    MakeVector(&vectorRight, &rightElement, TYPE_BASE_FLOAT, 3);
+    SetTestScalarKind(&vectorResult, CG_SCALAR_FIXED);
+    SetTestScalarKind(&vectorLeft, CG_SCALAR_FIXED);
+    SetTestScalarKind(&vectorRight, CG_SCALAR_FIXED);
+    first.type = &vectorLeft;
+    second.type = &vectorRight;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == 0 && group == 0 &&
+            semanticErrorCount == 1 && lastSemanticError == 6410,
+            "fixed3 cross signature absent from the catalog was accepted");
+
+    symbol.name = AddAtom(atable, "dot");
+    functionType.fun.rettype = &scalarResult;
+    MakeScalar(&scalarResult, TYPE_BASE_FLOAT);
+    MakeVector(&vectorLeft, &leftElement, TYPE_BASE_FLOAT, 1);
+    MakeVector(&vectorRight, &rightElement, TYPE_BASE_FLOAT, 1);
+    SetTestScalarKind(&scalarResult, CG_SCALAR_HALF);
+    SetTestScalarKind(&vectorLeft, CG_SCALAR_HALF);
+    SetTestScalarKind(&vectorRight, CG_SCALAR_HALF);
+    first.type = &vectorLeft;
+    second.type = &vectorRight;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == HLSL_BUILTIN_DOT &&
+            group == HLSL_BUILTIN_GROUP && semanticErrorCount == 0,
+            "catalog-declared half1 dot signature was not recognized");
+    FreeStage(&hal);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
@@ -745,6 +867,7 @@ int main(int argc, char **argv)
         CheckBindingTypes();
         CheckUnbound();
         CheckUniformUnbound();
+        CheckInternalFunctions();
     }
     FreeAtomTable(atable);
     return 0;
@@ -823,6 +946,35 @@ int IsVector(const Type *type, int *len)
         return 1;
     }
     return 0;
+}
+
+int IsMatrix(const Type *type, int *rows, int *cols)
+{
+    int rowLength;
+
+    if (type != NULL &&
+        (type->properties & TYPE_CATEGORY_MASK) == TYPE_CATEGORY_ARRAY &&
+        (type->properties & TYPE_MISC_PACKED) != 0 &&
+        IsVector(type->arr.eltype, &rowLength))
+    {
+        if (rows != NULL)
+            *rows = rowLength;
+        if (cols != NULL)
+            *cols = type->arr.numels;
+        return 1;
+    }
+    return 0;
+}
+
+int IsVoid(const Type *type)
+{
+    return type != NULL && (type->properties & TYPE_MISC_VOID) != 0;
+}
+
+int GetCategory(const Type *type)
+{
+    return type != NULL ?
+           type->properties & TYPE_CATEGORY_MASK : TYPE_CATEGORY_NONE;
 }
 
 int GetBase(const Type *type)

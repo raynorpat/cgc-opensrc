@@ -211,7 +211,6 @@ static int GetConnectorUses_hlsl(int cid, int pid);
 static int GetConnectorRegister_hlsl(int cid, int ByIndex, int ratom, Binding *fBind);
 static int GetCapsBit_hlsl(int bitNumber);
 static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group);
-static int HlslResolveBuiltinType(Type *source, HlslType *target);
 static void HlslAppendSignatureText(char *target, size_t size,
                                     size_t *used, const char *text);
 static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, Binding *fBind);
@@ -475,10 +474,50 @@ static int GetCapsBit_hlsl(int bitNumber)
  * CheckInternalFunction_hlsl() - Check for internally implemented function.
  */
 
-static int HlslResolveBuiltinType(Type *source, HlslType *target)
+static HlslSourceBase HlslSourceBaseForType(const Type *source)
 {
-    HlslBase base;
+    CgScalarKind kind;
     int sourceBase;
+
+    if (source == NULL)
+        return HLSL_SOURCE_BASE_NONE;
+    kind = source->co.scalarKind;
+    if (kind == CG_SCALAR_NONE &&
+        GetCategory(source) == TYPE_CATEGORY_ARRAY &&
+        source->arr.eltype != NULL)
+    {
+        kind = source->arr.eltype->co.scalarKind;
+        if (kind == CG_SCALAR_NONE &&
+            GetCategory(source->arr.eltype) == TYPE_CATEGORY_ARRAY &&
+            source->arr.eltype->arr.eltype != NULL)
+        {
+            kind = source->arr.eltype->arr.eltype->co.scalarKind;
+        }
+    }
+    switch (kind) {
+    case CG_SCALAR_CFLOAT: return HLSL_SOURCE_BASE_CFLOAT;
+    case CG_SCALAR_CINT: return HLSL_SOURCE_BASE_CINT;
+    case CG_SCALAR_BOOL: return HLSL_SOURCE_BASE_BOOL;
+    case CG_SCALAR_INT: return HLSL_SOURCE_BASE_INT;
+    case CG_SCALAR_FIXED: return HLSL_SOURCE_BASE_FIXED;
+    case CG_SCALAR_HALF: return HLSL_SOURCE_BASE_HALF;
+    case CG_SCALAR_FLOAT: return HLSL_SOURCE_BASE_FLOAT;
+    default: break;
+    }
+    sourceBase = GetBase(source);
+    switch (sourceBase) {
+    case TYPE_BASE_CFLOAT: return HLSL_SOURCE_BASE_CFLOAT;
+    case TYPE_BASE_CINT: return HLSL_SOURCE_BASE_CINT;
+    case TYPE_BASE_BOOLEAN: return HLSL_SOURCE_BASE_BOOL;
+    case TYPE_BASE_INT: return HLSL_SOURCE_BASE_INT;
+    case TYPE_BASE_FLOAT: return HLSL_SOURCE_BASE_FLOAT;
+    default: return HLSL_SOURCE_BASE_NONE;
+    }
+} // HlslSourceBaseForType
+
+int HlslDescribeSourceType(const Type *source, HlslSourceType *target)
+{
+    HlslSourceBase base;
     int rows;
     int cols;
     int len;
@@ -486,38 +525,31 @@ static int HlslResolveBuiltinType(Type *source, HlslType *target)
     if (source == NULL || target == NULL)
         return 0;
     if (IsVoid(source)) {
-        *target = HlslNumericType(HLSL_BASE_VOID, 0);
+        memset(target, 0, sizeof(*target));
+        target->shape = HLSL_SOURCE_SHAPE_VOID;
         return 1;
     }
-    sourceBase = GetBase(source);
+    base = HlslSourceBaseForType(source);
+    if (base == HLSL_SOURCE_BASE_NONE)
+        return 0;
     if (IsMatrix(source, &cols, &rows)) {
-        if ((sourceBase != TYPE_BASE_FLOAT &&
-             sourceBase != TYPE_BASE_CFLOAT) ||
-            rows < 1 || rows > 4 || cols < 1 || cols > 4)
+        if (rows < 1 || rows > 4 || cols < 1 || cols > 4)
         {
             return 0;
         }
-        *target = HlslMatrixType(rows, cols);
+        *target = HlslSourceMatrixType(base, rows, cols);
         return 1;
     }
-    switch (sourceBase) {
-    case TYPE_BASE_FLOAT:
-    case TYPE_BASE_CFLOAT: base = HLSL_BASE_FLOAT; break;
-    case TYPE_BASE_INT:
-    case TYPE_BASE_CINT: base = HLSL_BASE_INT; break;
-    case TYPE_BASE_BOOLEAN: base = HLSL_BASE_BOOL; break;
-    default: return 0;
-    }
     if (IsScalar(source)) {
-        *target = HlslNumericType(base, 1);
+        *target = HlslSourceScalarType(base);
         return 1;
     }
     if (IsVector(source, &len) && len >= 1 && len <= 4) {
-        *target = HlslNumericType(base, len);
+        *target = HlslSourceVectorType(base, len);
         return 1;
     }
     return 0;
-} // HlslResolveBuiltinType
+} // HlslDescribeSourceType
 
 static void HlslAppendSignatureText(char *target, size_t size,
                                     size_t *used, const char *text)
@@ -542,8 +574,8 @@ static void HlslAppendSignatureText(char *target, size_t size,
 static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
 {
     const HlslProfileDesc *profile;
-    HlslType result;
-    HlslType params[3];
+    HlslSourceType result;
+    HlslSourceType params[3];
     TypeList *param;
     HlslBuiltin builtin;
     const char *name;
@@ -565,13 +597,13 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
         return 0;
 
     count = 0;
-    if (!HlslResolveBuiltinType(fSymb->type->fun.rettype, &result))
+    if (!HlslDescribeSourceType(fSymb->type->fun.rettype, &result))
         count = -1;
     for (param = fSymb->type->fun.paramtypes;
          count >= 0 && param != NULL; param = param->next)
     {
         if (count >= (int) NUMELS(params) ||
-            !HlslResolveBuiltinType(param->type, &params[count]))
+            !HlslDescribeSourceType(param->type, &params[count]))
         {
             count = -1;
             break;
@@ -579,14 +611,15 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
         count++;
     }
     builtin = count >= 0 ?
-        HlslLookupBuiltin(profile->stage, name, &result, params, count) :
+        HlslLookupSourceBuiltin(profile->stage, name,
+                                &result, params, count) :
         HLSL_BUILTIN_NONE;
     if (builtin != HLSL_BUILTIN_NONE) {
         *group = HLSL_BUILTIN_GROUP;
         return (int) builtin;
     }
     if (count >= 0 &&
-        HlslLookupBuiltin(profile->stage == HLSL_STAGE_VERTEX ?
+        HlslLookupSourceBuiltin(profile->stage == HLSL_STAGE_VERTEX ?
             HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
             name, &result, params, count) != HLSL_BUILTIN_NONE)
     {
@@ -607,7 +640,7 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
                 HlslAppendSignatureText(signature, sizeof(signature),
                                         &used, ", ");
             HlslAppendSignatureText(signature, sizeof(signature), &used,
-                                    HlslTypeName(&params[i]));
+                                    HlslSourceTypeName(&params[i]));
         }
     } else {
         HlslAppendSignatureText(signature, sizeof(signature), &used,

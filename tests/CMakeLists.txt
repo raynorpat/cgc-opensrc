@@ -1976,6 +1976,9 @@ add_hlsl_interface_failure(hlslv_intrinsic_derivative_stage
 add_hlsl_interface_failure(hlslv_intrinsic_bad_overload
     tests/hlsl/diagnostics/vp_bad_intrinsic.cg 6410 1
     "cross.*float2.*float2")
+add_hlsl_interface_failure(hlslv_intrinsic_scalar_vector1_mismatch
+    tests/hlsl/diagnostics/vp_bad_intrinsic_shape.cg 6410 1
+    "dot.*float.*float1")
 add_hlsl_interface_failure(hlslv_recursion
     tests/hlsl/diagnostics/vp_recursion.cg 6401 3 recursive.HLSL.helper)
 add_hlsl_interface_failure(hlslv_nested_recursion

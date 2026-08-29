@@ -135,6 +135,31 @@ typedef enum HlslBuiltinLowering_Enum {
     HLSL_BUILTIN_LOWER_EXPANSION
 } HlslBuiltinLowering;
 
+typedef enum HlslSourceBase_Enum {
+    HLSL_SOURCE_BASE_NONE,
+    HLSL_SOURCE_BASE_CFLOAT,
+    HLSL_SOURCE_BASE_CINT,
+    HLSL_SOURCE_BASE_BOOL,
+    HLSL_SOURCE_BASE_INT,
+    HLSL_SOURCE_BASE_FIXED,
+    HLSL_SOURCE_BASE_HALF,
+    HLSL_SOURCE_BASE_FLOAT
+} HlslSourceBase;
+
+typedef enum HlslSourceShape_Enum {
+    HLSL_SOURCE_SHAPE_VOID,
+    HLSL_SOURCE_SHAPE_SCALAR,
+    HLSL_SOURCE_SHAPE_VECTOR,
+    HLSL_SOURCE_SHAPE_MATRIX
+} HlslSourceShape;
+
+typedef struct HlslSourceType_Rec {
+    HlslSourceBase base;
+    HlslSourceShape shape;
+    int rows;
+    int cols;
+} HlslSourceType;
+
 typedef enum HlslErrorKind_Enum {
     HLSL_ERROR_NONE,
     HLSL_ERROR_UNSUPPORTED_TYPE,
@@ -329,6 +354,7 @@ struct HlslExpr_Rec {
             HlslFunction *function;
             const char *name;
             HlslExpr *arguments;
+            HlslBuiltin builtin;
         } call;
         struct {
             HlslExpr *arguments;
@@ -481,7 +507,17 @@ const char *HlslAllocateDistinctName(HlslModule *module,
 HlslType HlslNumericType(HlslBase base, int len);
 HlslType HlslMatrixType(int rows, int cols);
 const char *HlslTypeName(const HlslType *type);
+HlslSourceType HlslSourceScalarType(HlslSourceBase base);
+HlslSourceType HlslSourceVectorType(HlslSourceBase base, int len);
+HlslSourceType HlslSourceMatrixType(HlslSourceBase base,
+                                    int rows, int cols);
+const char *HlslSourceTypeName(const HlslSourceType *type);
 HlslBuiltin HlslLookupBuiltin(HlslStage stage, const char *name,
+    const HlslType *result, const HlslType *params, int paramCount);
+HlslBuiltin HlslLookupSourceBuiltin(HlslStage stage, const char *name,
+    const HlslSourceType *result, const HlslSourceType *params,
+    int paramCount);
+int HlslBuiltinAccepts(HlslStage stage, HlslBuiltin builtin,
     const HlslType *result, const HlslType *params, int paramCount);
 int HlslIsBuiltinName(const char *name);
 const char *HlslBuiltinSpelling(HlslBuiltin builtin);

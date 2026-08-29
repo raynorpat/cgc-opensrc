@@ -154,7 +154,11 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
                     expression->u.conditional.falseExpr, count);
     case HLSL_EXPR_CALL:
         if (expression->u.call.function == NULL &&
-            expression->u.call.name != NULL)
+            expression->u.call.name != NULL &&
+            expression->u.call.builtin != HLSL_BUILTIN_NONE &&
+            HlslBuiltinSpelling(expression->u.call.builtin) != NULL &&
+            !strcmp(expression->u.call.name,
+                    HlslBuiltinSpelling(expression->u.call.builtin)))
         {
             paramCount = 0;
             for (argument = expression->u.call.arguments;
@@ -167,12 +171,19 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
                     return 0;
             }
             if (argument == NULL &&
-                HlslLookupBuiltin(module->stage,
-                    expression->u.call.name, &expression->type,
-                    params, paramCount) != HLSL_BUILTIN_NONE)
+                HlslBuiltinAccepts(module->stage,
+                    expression->u.call.builtin, &expression->type,
+                    params, paramCount))
             {
                 return 1;
             }
+        }
+        if (expression->u.call.function != NULL &&
+            expression->u.call.builtin != HLSL_BUILTIN_NONE)
+        {
+            return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
+                                       &expression->loc,
+                                       "conflicting HLSL call identity");
         }
         if (!HlslOwnsFunction(module, expression->u.call.function))
             return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,

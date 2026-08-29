@@ -13,6 +13,8 @@ VertexOut main(float4 position : ATTRIB0)
     int3 iv = int3(1, -2, 3);
     bool flag = position.x > position.y;
     bool3 flags = bool3(flag, !flag, flag);
+    half1 halfVector = half1(half(position.x));
+    half halfDot = dot(halfVector, halfVector);
 
     a = abs(a) + sign(b) + floor(a) + ceil(b) + round(a) + trunc(b);
     a = a + sqrt(abs(b)) + rsqrt(abs(b) + 1.0);
@@ -40,7 +42,7 @@ VertexOut main(float4 position : ATTRIB0)
     v = lerp(v, w, 0.5) + smoothstep(0.0, 1.0, w);
     iv = abs(iv) + sign(iv);
 
-    output.position = float4(v.x + a, v.y, v.z,
+    output.position = float4(v.x + a + float(halfDot), v.y, v.z,
                              flag ? float(iv.x) : float(iv.y));
     return output;
 }
