@@ -22,25 +22,22 @@ cg_VertexOut cg_entry(float4 position)
     float left;
     float right;
     float selected;
-    float temp1;
+    bool temp1;
     float cg_temp;
+    float temp2;
     float cg_temp_1;
+    float temp3;
     choose = position.x > 0.0;
     left = 1.0;
     right = 2.0;
-    if (choose)
-    {
-        cg_temp = left;
-        left = left + 1.0;
-        temp1 = cg_temp;
-    }
-    else
-    {
-        cg_temp_1 = right;
-        right = right + 1.0;
-        temp1 = cg_temp_1;
-    }
-    selected = temp1;
+    temp1 = choose;
+    cg_temp = left;
+    left = left + 1.0;
+    temp2 = cg_temp;
+    cg_temp_1 = right;
+    right = right + 1.0;
+    temp3 = cg_temp_1;
+    selected = temp1 ? temp2 : temp3;
     cg_output.position = float4(selected, left, right, position.w);
     return cg_output;
 }

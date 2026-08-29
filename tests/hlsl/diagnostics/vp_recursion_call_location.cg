@@ -1,0 +1,22 @@
+float leaf(float value)
+{
+    return value;
+}
+
+float recurse_a(float value);
+
+float recurse_b(float value)
+{
+    return recurse_a(value)
+         + leaf(value);
+}
+
+float recurse_a(float value)
+{
+    return recurse_b(value);
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position + recurse_a(position.x);
+}

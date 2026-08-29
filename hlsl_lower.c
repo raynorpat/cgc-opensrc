@@ -63,9 +63,15 @@ typedef struct HlslLowerContext_Rec {
     int loopDepth;
 } HlslLowerContext;
 
+typedef enum HlslValueMode_Enum {
+    HLSL_VALUE_DISCARD,
+    HLSL_VALUE_RVALUE,
+    HLSL_VALUE_LVALUE
+} HlslValueMode;
+
 static int HlslEnsureType(HlslLowerContext *context, Type *type);
 static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
-                               HlslStmt **prefix, int valueRequired);
+                               HlslStmt **prefix, HlslValueMode valueMode);
 
 static void HlslSetLoc(HlslLoc *target, const SourceLoc *source)
 {
@@ -1153,7 +1159,8 @@ static HlslExpr *HlslScalarizeVectorCondition(
 } // HlslScalarizeVectorCondition
 
 static HlslExpr *HlslLowerSwizzle(HlslLowerContext *context, expr *source,
-                                  const HlslType *type, HlslStmt **prefix)
+                                  const HlslType *type, HlslStmt **prefix,
+                                  HlslValueMode valueMode)
 {
     HlslExpr *object;
     HlslExpr *target;
@@ -1162,7 +1169,9 @@ static HlslExpr *HlslLowerSwizzle(HlslLowerContext *context, expr *source,
     int mask;
     int i;
 
-    object = HlslLowerExpr(context, source->un.arg, prefix, 1);
+    object = HlslLowerExpr(context, source->un.arg, prefix,
+        valueMode == HLSL_VALUE_LVALUE ? HLSL_VALUE_LVALUE :
+                                        HLSL_VALUE_RVALUE);
     if (object == NULL)
         return NULL;
     count = SUBOP_GET_S2(source->un.subop);
@@ -1203,7 +1212,10 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
     }
     itemPrefix = NULL;
     restPrefix = NULL;
-    item = HlslLowerExpr(context, source->bin.left, &itemPrefix, 1);
+    preserveLvalue = formal != NULL &&
+        (GetQualifiers(formal->type) & TYPE_QUALIFIER_OUT);
+    item = HlslLowerExpr(context, source->bin.left, &itemPrefix,
+        preserveLvalue ? HLSL_VALUE_LVALUE : HLSL_VALUE_RVALUE);
     if (item == NULL)
         return NULL;
     rest = NULL;
@@ -1215,8 +1227,6 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
             return NULL;
     }
     HlslAppendStmt(prefix, itemPrefix);
-    preserveLvalue = formal != NULL &&
-        (GetQualifiers(formal->type) & TYPE_QUALIFIER_OUT);
     if (source->bin.right != NULL) {
         if (preserveLvalue &&
             (restPrefix != NULL ||
@@ -1279,12 +1289,6 @@ static HlslExpr *HlslLowerConditional(HlslLowerContext *context,
     HlslExpr *trueExpr;
     HlslExpr *falseExpr;
     HlslExpr *componentExpr;
-    HlslExpr *left;
-    HlslExpr *right;
-    HlslDecl *temporary;
-    HlslStmt *truePrefix;
-    HlslStmt *falsePrefix;
-    HlslStmt *ifStatement;
     HlslType componentType;
     int conditionLen;
     int i;
@@ -1309,38 +1313,23 @@ static HlslExpr *HlslLowerConditional(HlslLowerContext *context,
         return target;
     }
     if (conditionLen <= 1) {
-        temporary = HlslNewTemporary(context, type);
-        if (temporary == NULL)
-            return NULL;
-        truePrefix = NULL;
-        falsePrefix = NULL;
-        trueExpr = HlslLowerExpr(context, source->tri.arg2,
-                                 &truePrefix, 1);
-        falseExpr = HlslLowerExpr(context, source->tri.arg3,
-                                  &falsePrefix, 1);
-        left = HlslNewSymbolExpr(context, temporary);
-        right = HlslNewAssignment(context, left, trueExpr);
-        if (right == NULL ||
-            !HlslAppendExpression(context, &truePrefix, right))
+        condition = HlslCaptureValue(context, prefix, condition);
+        trueExpr = HlslLowerExpr(context, source->tri.arg2, prefix, 1);
+        if (trueExpr != NULL)
+            trueExpr = HlslCaptureValue(context, prefix, trueExpr);
+        falseExpr = HlslLowerExpr(context, source->tri.arg3, prefix, 1);
+        if (falseExpr != NULL)
+            falseExpr = HlslCaptureValue(context, prefix, falseExpr);
+        target = HlslNewSourceExpr(context, HLSL_EXPR_CONDITIONAL, *type);
+        if (target == NULL || condition == NULL ||
+            trueExpr == NULL || falseExpr == NULL)
         {
             return NULL;
         }
-        left = HlslNewSymbolExpr(context, temporary);
-        right = HlslNewAssignment(context, left, falseExpr);
-        if (right == NULL ||
-            !HlslAppendExpression(context, &falsePrefix, right))
-        {
-            return NULL;
-        }
-        ifStatement = HlslNewStmt(context->module, HLSL_STMT_IF);
-        if (ifStatement == NULL)
-            return NULL;
-        ifStatement->u.ifStmt.condition = condition;
-        ifStatement->u.ifStmt.trueBranch = truePrefix;
-        ifStatement->u.ifStmt.falseBranch = falsePrefix;
-        HlslSetLoc(&ifStatement->loc, &context->statementLoc);
-        HlslAppendStmt(prefix, ifStatement);
-        return HlslNewSymbolExpr(context, temporary);
+        target->u.conditional.condition = condition;
+        target->u.conditional.trueExpr = trueExpr;
+        target->u.conditional.falseExpr = falseExpr;
+        return target;
     }
     if (conditionLen != type->len || type->len < 2 || type->len > 4)
         return NULL;
@@ -1422,7 +1411,7 @@ static HlslExpr *HlslLowerVectorComparison(HlslLowerContext *context,
 } // HlslLowerVectorComparison
 
 static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
-                               HlslStmt **prefix, int valueRequired)
+                               HlslStmt **prefix, HlslValueMode valueMode)
 {
     HlslExpr *target;
     HlslDecl *decl;
@@ -1438,7 +1427,8 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
     if (source != NULL && source->common.kind == BINARY_N &&
         source->bin.op == COMMA_OP)
     {
-        left = HlslLowerExpr(context, source->bin.left, prefix, 0);
+        left = HlslLowerExpr(context, source->bin.left, prefix,
+                             HLSL_VALUE_DISCARD);
         if (left == NULL)
             return NULL;
         leftStatement = HlslNewExpressionStmt(context, left);
@@ -1446,7 +1436,7 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
             return NULL;
         HlslAppendStmt(prefix, leftStatement);
         return HlslLowerExpr(context, source->bin.right, prefix,
-                             valueRequired);
+                             valueMode);
     }
     if (source == NULL ||
         !HlslEnsureType(context, source->common.type) ||
@@ -1484,7 +1474,8 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
         return HlslLowerConstant(context, source, &type);
     if (source->common.kind == UNARY_N) {
         if (source->un.op == SWIZZLE_Z_OP)
-            return HlslLowerSwizzle(context, source, &type, prefix);
+            return HlslLowerSwizzle(context, source, &type, prefix,
+                                    valueMode);
         if (source->un.op == VECTOR_V_OP) {
             target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, type);
             if (target == NULL)
@@ -1533,7 +1524,9 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
             if (target == NULL)
                 return NULL;
             target->u.member.object = HlslLowerExpr(
-                context, source->bin.left, prefix, 1);
+                context, source->bin.left, prefix,
+                valueMode == HLSL_VALUE_LVALUE ? HLSL_VALUE_LVALUE :
+                                                HLSL_VALUE_RVALUE);
             target->u.member.decl = decl;
             target->u.member.name = decl->name;
             return target->u.member.object != NULL ? target : NULL;
@@ -1542,12 +1535,32 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
             target = HlslNewSourceExpr(context, HLSL_EXPR_INDEX, type);
             if (target == NULL)
                 return NULL;
-            target->u.index.object = HlslLowerOrderedValue(
-                context, source->bin.left, prefix, 0);
+            leftPrefix = NULL;
+            rightPrefix = NULL;
+            target->u.index.object = HlslLowerExpr(
+                context, source->bin.left, &leftPrefix,
+                valueMode == HLSL_VALUE_LVALUE ? HLSL_VALUE_LVALUE :
+                                                HLSL_VALUE_RVALUE);
             target->u.index.index = HlslLowerOrderedValue(
-                context, source->bin.right, prefix, 1);
-            return target->u.index.object != NULL &&
-                   target->u.index.index != NULL ? target : NULL;
+                context, source->bin.right, &rightPrefix, 1);
+            if (target->u.index.object == NULL ||
+                target->u.index.index == NULL)
+            {
+                return NULL;
+            }
+            HlslAppendStmt(prefix, leftPrefix);
+            if (valueMode != HLSL_VALUE_LVALUE &&
+                (source->bin.left->common.HasSideEffects ||
+                 rightPrefix != NULL ||
+                 source->bin.right->common.HasSideEffects))
+            {
+                target->u.index.object = HlslCaptureValue(
+                    context, prefix, target->u.index.object);
+                if (target->u.index.object == NULL)
+                    return NULL;
+            }
+            HlslAppendStmt(prefix, rightPrefix);
+            return target;
         }
         if (source->bin.op == FUN_CALL_OP)
             return HlslLowerCall(context, source, &type, prefix);
@@ -1562,7 +1575,8 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
             leftPrefix = NULL;
             rightPrefix = NULL;
             left = HlslLowerExpr(context, source->bin.left,
-                                 &leftPrefix, 1);
+                &leftPrefix, HlslIsAssignmentOperator(op) ?
+                             HLSL_VALUE_LVALUE : HLSL_VALUE_RVALUE);
             right = HlslLowerExpr(context, source->bin.right,
                                   &rightPrefix, 1);
             if (left == NULL || right == NULL)
@@ -1585,7 +1599,9 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
                 return NULL;
             }
             HlslAppendStmt(prefix, rightPrefix);
-            if (op == HLSL_OP_ASSIGN && valueRequired) {
+            if (op == HLSL_OP_ASSIGN &&
+                valueMode == HLSL_VALUE_RVALUE)
+            {
                 right = HlslCaptureValue(context, prefix, right);
                 target = HlslNewAssignment(context, left, right);
                 if (target == NULL ||
@@ -2095,7 +2111,8 @@ static int HlslCollectCallsInStatements(HlslLowerContext *context,
     return 1;
 } // HlslCollectCallsInStatements
 
-static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
+static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol,
+                             const SourceLoc *callLoc)
 {
     HlslFunction *function;
     HlslType result;
@@ -2114,7 +2131,7 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
             return HlslLowerFailure(context,
                                     HLSL_ERROR_UNSUPPORTED_OPERATION,
                                     "recursive HLSL helper",
-                                    &context->statementLoc);
+                                    callLoc);
         return 1;
     }
     if (!HlslEnsureType(context, symbol->type->fun.rettype) ||
@@ -2155,6 +2172,8 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
 
 static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
 {
+    const SourceLoc *callLoc;
+
     if (source == NULL)
         return 1;
     switch (source->common.kind) {
@@ -2165,9 +2184,12 @@ static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
     case UNARY_N:
         return HlslCollectCallsInExpr(context, source->un.arg);
     case BINARY_N:
+        callLoc = source->bin.op == FUN_CALL_OP ?
+                  GetExprCallSite(source) : NULL;
         if (source->bin.op == FUN_CALL_OP && source->bin.left != NULL &&
             source->bin.left->common.kind == SYMB_N &&
-            !HlslCollectHelper(context, source->bin.left->sym.symbol))
+            !HlslCollectHelper(context, source->bin.left->sym.symbol,
+                               callLoc))
         {
             return 0;
         }

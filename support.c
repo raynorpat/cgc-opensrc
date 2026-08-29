@@ -4772,6 +4772,34 @@ static void lRejectStrayGeometryArguments(SourceLoc *loc, expr *fActuals,
     }
 } // lRejectStrayGeometryArguments
 
+void RecordExprCallSite(expr *call, const SourceLoc *loc)
+{
+    CgCallSite *site;
+
+    if (Cg == NULL || call == NULL || loc == NULL)
+        return;
+    site = (CgCallSite *) malloc(sizeof(CgCallSite));
+    if (site == NULL)
+        return;
+    site->expression = call;
+    site->loc = *loc;
+    site->next = Cg->callSites;
+    Cg->callSites = site;
+} // RecordExprCallSite
+
+const SourceLoc *GetExprCallSite(const expr *call)
+{
+    CgCallSite *site;
+
+    if (Cg == NULL || call == NULL)
+        return NULL;
+    for (site = Cg->callSites; site != NULL; site = site->next) {
+        if (site->expression == call)
+            return &site->loc;
+    }
+    return NULL;
+} // GetExprCallSite
+
 /*
  * NewFunctionCallOperator() - Construct a function call node.  Check types of parameters,
  *         resolve overloaded function, etc.
@@ -4789,8 +4817,13 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
     int paramno, inout;
     int lop, lsubop = FUN_CALL_OP;
 
-    if (lIsMethodSelection(funExpr))
-        return lNewMethodCallOperator(loc, funExpr, actuals);
+    if (lIsMethodSelection(funExpr)) {
+        expr *methodCall;
+
+        methodCall = lNewMethodCallOperator(loc, funExpr, actuals);
+        RecordExprCallSite(methodCall, loc);
+        return methodCall;
+    }
 
     lUnwrapPlainGeometryArguments(actuals);
 
@@ -4941,6 +4974,7 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
         result = NewBinopNode(FUN_CALL_OP, funExpr, actuals);
         result->type = UndefinedType;
     }
+    RecordExprCallSite((expr *) result, loc);
     return (expr *) result;
 } // NewFunctionCallOperator
 

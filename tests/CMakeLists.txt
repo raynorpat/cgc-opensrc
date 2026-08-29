@@ -1858,6 +1858,9 @@ add_hlsl_fixture(hlslv_arithmetic hlslv
 add_hlsl_fixture(hlslv_side_effects hlslv
     tests/hlsl/expressions/vp_side_effects.cg
     tests/hlsl/expressions/vp_side_effects.expected)
+add_hlsl_fixture(hlslv_scalar_conditional_order hlslv
+    tests/hlsl/expressions/vp_scalar_conditional_order.cg
+    tests/hlsl/expressions/vp_scalar_conditional_order.expected)
 add_hlsl_fixture(hlslv_evaluation_order hlslv
     tests/hlsl/expressions/vp_evaluation_order.cg
     tests/hlsl/expressions/vp_evaluation_order.expected)
@@ -1925,6 +1928,8 @@ add_hlsl_interface_failure(hlslv_recursion
     tests/hlsl/diagnostics/vp_recursion.cg 6401 3 recursive.HLSL.helper)
 add_hlsl_interface_failure(hlslv_nested_recursion
     tests/hlsl/diagnostics/vp_nested_recursion.cg 6401 10 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_recursion_call_location
+    tests/hlsl/diagnostics/vp_recursion_call_location.cg 6401 10 recursive.HLSL.helper)
 
 add_generic_diagnostic(generic_hlsl_recursion_unchanged
     tests/hlsl/diagnostics/vp_recursion.cg 5005 3 recurse)

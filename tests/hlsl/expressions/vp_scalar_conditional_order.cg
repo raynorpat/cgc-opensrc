@@ -1,0 +1,29 @@
+float record(inout float trace, float digit)
+{
+    trace = trace * 10.0 + digit;
+    return trace;
+}
+
+float selectTrace(bool choose, inout float trace,
+                  float trueDigit, float falseDigit)
+{
+    return choose ? record(trace, trueDigit) :
+                    record(trace, falseDigit);
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    float trace;
+    float trueResult;
+    float falseResult;
+
+    trace = 0.0;
+    trueResult = selectTrace(true, trace, 1.0, 2.0);
+    falseResult = selectTrace(false, trace, 3.0, 4.0);
+    output.position = float4(trueResult, falseResult, trace,
+                             trueResult + falseResult);
+    return output;
+}

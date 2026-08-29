@@ -45,6 +45,12 @@ float moveIndex(inout int index, int next)
     return float(index);
 }
 
+int mutateVector(inout float4 value)
+{
+    value = value + float4(10.0, 20.0, 30.0, 40.0);
+    return 1;
+}
+
 float forwardWrapper(inout float value, inout float trace)
 {
     return nestedModify(value, bumpValue(trace));
@@ -77,6 +83,8 @@ VertexOut main(float4 position : POSITION)
     float4 indexedValues;
     int indexedPosition;
     float indexedResult;
+    float4 rvalueValues;
+    float rvalueIndexed;
 
     choose = position.x > 0.0;
     lanes = position.xy > float2(0.0, 0.0);
@@ -116,13 +124,18 @@ VertexOut main(float4 position : POSITION)
     indexedValues[indexedPosition] =
         choose ? moveIndex(indexedPosition, 2) :
                  moveIndex(indexedPosition, 3);
-    output.position = float4(binary + readBinary + effectRead,
+    rvalueValues = float4(1.0, 2.0, 3.0, 4.0);
+    rvalueIndexed = rvalueValues[mutateVector(rvalueValues)];
+    output.position = float4(binary + readBinary + effectRead +
+                             rvalueIndexed,
                              called + readCall + constructed.x +
-                             constructed.y,
+                             constructed.y + rvalueValues.x,
                              float(comparison.x) + aliasValue + nestedValue +
-                             indexedValues.x + indexedValues.y,
+                             indexedValues.x + indexedValues.y +
+                             rvalueValues.y,
                              trace + aliasResult + outValue + outResult +
                              nestedTrace + nestedResult + indexedResult +
-                             indexedValues.z + indexedValues.w);
+                             indexedValues.z + indexedValues.w +
+                             rvalueValues.z + rvalueValues.w);
     return output;
 }

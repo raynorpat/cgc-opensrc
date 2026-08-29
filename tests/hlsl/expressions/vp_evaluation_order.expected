@@ -71,6 +71,12 @@ float cg_moveIndex(inout int index, int next)
     return (float) index;
 }
 
+int cg_mutateVector(inout float4 value)
+{
+    value = value + (float4) float4(10.0, 20.0, 30.0, 40.0);
+    return (int) 1;
+}
+
 cg_VertexOut cg_entry(float4 position)
 {
     cg_VertexOut cg_output;
@@ -96,133 +102,117 @@ cg_VertexOut cg_entry(float4 position)
     float4 indexedValues;
     int indexedPosition;
     float indexedResult;
+    float4 rvalueValues;
+    float rvalueIndexed;
     float2 temp1;
     float2 temp2;
-    float temp3;
+    bool temp3;
     float temp4;
     float temp5;
     float temp6;
-    float2 temp7;
-    bool2 temp8;
-    float2 temp9;
-    float2 temp10;
+    bool temp7;
+    float temp8;
+    float temp9;
+    float temp10;
     float2 temp11;
-    float temp12;
-    float temp13;
-    float temp14;
-    float temp15;
-    float temp16;
+    bool2 temp12;
+    float2 temp13;
+    float2 temp14;
+    float2 temp15;
+    bool temp16;
     float temp17;
     float temp18;
     float temp19;
-    float temp20;
-    int temp21;
+    bool temp20;
+    float temp21;
     float temp22;
-    int temp23;
+    float temp23;
+    bool temp24;
+    float temp25;
+    float temp26;
+    bool temp27;
+    float temp28;
+    float temp29;
+    float temp30;
+    float temp31;
+    bool temp32;
+    float temp33;
+    float temp34;
+    int temp35;
+    bool temp36;
+    float temp37;
+    float temp38;
+    int temp39;
+    int temp40;
+    float4 temp41;
     choose = position.x > 0.0;
     temp1 = position.xy;
     temp2 = float2(0.0, 0.0);
     lanes = bool2(temp1.x > temp2.x, temp1.y > temp2.y);
     trace = 0.0;
-    temp4 = cg_record(trace, 1.0);
-    if (choose)
-    {
-        temp3 = cg_record(trace, 2.0);
-    }
-    else
-    {
-        temp3 = cg_record(trace, 3.0);
-    }
-    binary = temp4 + temp3;
-    temp6 = cg_record(trace, 4.0);
-    if (choose)
-    {
-        temp5 = cg_record(trace, 5.0);
-    }
-    else
-    {
-        temp5 = cg_record(trace, 6.0);
-    }
-    called = cg_combine(temp6, temp5);
-    temp7 = cg_record2(trace, 7.0);
-    temp8 = lanes;
-    temp9 = cg_record2(trace, 8.0);
-    temp10 = cg_record2(trace, 9.0);
-    temp11 = float2(temp8.x ? temp9.x : temp10.x, temp8.y ? temp9.y : temp10.y);
-    comparison = bool2(temp7.x < temp11.x, temp7.y < temp11.y);
-    temp13 = trace;
-    if (choose)
-    {
-        temp12 = cg_record(trace, 10.0);
-    }
-    else
-    {
-        temp12 = cg_record(trace, 11.0);
-    }
-    readBinary = temp13 + temp12;
-    temp15 = trace;
-    if (choose)
-    {
-        temp14 = cg_record(trace, 12.0);
-    }
-    else
-    {
-        temp14 = cg_record(trace, 13.0);
-    }
-    readCall = cg_combine(temp15, temp14);
+    temp6 = cg_record(trace, 1.0);
+    temp3 = choose;
+    temp4 = cg_record(trace, 2.0);
+    temp5 = cg_record(trace, 3.0);
+    binary = temp6 + (temp3 ? temp4 : temp5);
+    temp10 = cg_record(trace, 4.0);
+    temp7 = choose;
+    temp8 = cg_record(trace, 5.0);
+    temp9 = cg_record(trace, 6.0);
+    called = cg_combine(temp10, temp7 ? temp8 : temp9);
+    temp11 = cg_record2(trace, 7.0);
+    temp12 = lanes;
+    temp13 = cg_record2(trace, 8.0);
+    temp14 = cg_record2(trace, 9.0);
+    temp15 = float2(temp12.x ? temp13.x : temp14.x, temp12.y ? temp13.y : temp14.y);
+    comparison = bool2(temp11.x < temp15.x, temp11.y < temp15.y);
+    temp19 = trace;
+    temp16 = choose;
+    temp17 = cg_record(trace, 10.0);
+    temp18 = cg_record(trace, 11.0);
+    readBinary = temp19 + (temp16 ? temp17 : temp18);
+    temp23 = trace;
+    temp20 = choose;
+    temp21 = cg_record(trace, 12.0);
+    temp22 = cg_record(trace, 13.0);
+    readCall = cg_combine(temp23, temp20 ? temp21 : temp22);
     aliasValue = 1.0;
-    if (choose)
-    {
-        temp16 = cg_record(aliasValue, 17.0);
-    }
-    else
-    {
-        temp16 = cg_record(aliasValue, 18.0);
-    }
-    aliasResult = cg_modify(aliasValue, temp16);
+    temp24 = choose;
+    temp25 = cg_record(aliasValue, 17.0);
+    temp26 = cg_record(aliasValue, 18.0);
+    aliasResult = cg_modify(aliasValue, temp24 ? temp25 : temp26);
     outValue = 2.0;
-    if (choose)
-    {
-        temp17 = cg_record(outValue, 19.0);
-    }
-    else
-    {
-        temp17 = cg_record(outValue, 20.0);
-    }
-    outResult = cg_replace(outValue, temp17);
+    temp27 = choose;
+    temp28 = cg_record(outValue, 19.0);
+    temp29 = cg_record(outValue, 20.0);
+    outResult = cg_replace(outValue, temp27 ? temp28 : temp29);
     nestedValue = 3.0;
     nestedTrace = 4.0;
     nestedResult = cg_forwardWrapper(nestedValue, nestedTrace);
     effectTrace = 5.0;
-    temp18 = cg_record(effectTrace, 21.0);
-    effectRead = cg_combine(temp18, effectTrace);
+    temp30 = cg_record(effectTrace, 21.0);
+    effectRead = cg_combine(temp30, effectTrace);
     constructorTrace = 6.0;
-    temp19 = cg_record(constructorTrace, 22.0);
-    constructed = float2(temp19, constructorTrace);
+    temp31 = cg_record(constructorTrace, 22.0);
+    constructed = float2(temp31, constructorTrace);
     indexedValues = float4(1.0, 2.0, 3.0, 4.0);
     indexedPosition = 0;
-    temp21 = indexedPosition;
-    if (choose)
-    {
-        temp20 = cg_moveIndex(indexedPosition, 1);
-    }
-    else
-    {
-        temp20 = cg_moveIndex(indexedPosition, 2);
-    }
-    indexedResult = cg_modify(indexedValues[temp21], temp20);
+    temp35 = indexedPosition;
+    temp32 = choose;
+    temp33 = cg_moveIndex(indexedPosition, 1);
+    temp34 = cg_moveIndex(indexedPosition, 2);
+    indexedResult = cg_modify(indexedValues[temp35], temp32 ? temp33 : temp34);
     indexedPosition = 0;
-    temp23 = indexedPosition;
-    if (choose)
-    {
-        temp22 = cg_moveIndex(indexedPosition, 2);
-    }
-    else
-    {
-        temp22 = cg_moveIndex(indexedPosition, 3);
-    }
-    indexedValues[temp23] = temp22;
-    cg_output.position = float4(binary + readBinary + effectRead, called + readCall + constructed.x + constructed.y, (float) comparison.x + aliasValue + nestedValue + indexedValues.x + indexedValues.y, trace + aliasResult + outValue + outResult + nestedTrace + nestedResult + indexedResult + indexedValues.z + indexedValues.w);
+    temp39 = indexedPosition;
+    temp36 = choose;
+    temp37 = cg_moveIndex(indexedPosition, 2);
+    temp38 = cg_moveIndex(indexedPosition, 3);
+    indexedValues[temp39] = temp36 ? temp37 : temp38;
+    rvalueValues = float4(1.0, 2.0, 3.0, 4.0);
+    temp41 = rvalueValues;
+    temp40 = cg_mutateVector(rvalueValues);
+    rvalueIndexed = temp41[temp40];
+    cg_output.position = float4(binary + readBinary + effectRead + rvalueIndexed, called + readCall + constructed.x + constructed.y + rvalueValues.x, (float) comparison.x + aliasValue + nestedValue + indexedValues.x + indexedValues.y + rvalueValues.y, trace + aliasResult + outValue + outResult + nestedTrace + nestedResult + indexedResult + indexedValues.z + indexedValues.w + rvalueValues.z + rvalueValues.w);
     return cg_output;
 }
 
