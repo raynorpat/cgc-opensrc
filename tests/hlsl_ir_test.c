@@ -551,6 +551,54 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     assert(module.errorKind == HLSL_ERROR_INVALID_IR);
 }
 
+static void TestLogicalBindingSurvivesLegalizeAndAllocation(void)
+{
+    HlslModule module;
+    HlslBinding *binding;
+    HlslDecl *logical;
+    HlslFunction *entry;
+    HlslExpr *reference;
+    HlslStmt *statement;
+    HlslType floatType;
+    HlslType voidType;
+    int bindingIdentity;
+    int reservedIdentity;
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    floatType = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    binding = HlslNewBinding(&module, HLSL_STORAGE_UNIFORM, floatType,
+                             "value", NULL);
+    logical = HlslNewDecl(&module, HLSL_STORAGE_UNIFORM, floatType,
+                          "cg_value");
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    reference = HlslNewExpr(&module, HLSL_EXPR_SYMBOL, floatType);
+    statement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
+    assert(binding != NULL && logical != NULL && entry != NULL &&
+           reference != NULL && statement != NULL);
+    logical->identity = &bindingIdentity;
+    binding->declaration = logical;
+    module.bindings = binding;
+    entry->isEntry = 1;
+    reference->u.symbol = logical;
+    statement->u.expression = reference;
+    entry->body = statement;
+    module.entry = entry;
+    module.functions = entry;
+    assert(!strcmp(HlslAllocateGeneratedName(&module, &reservedIdentity,
+                                             "cg_value"), "cg_value"));
+
+    assert(HlslLegalizeModule(&module, &HlslProfile_hlslv));
+    assert(module.globals == NULL);
+    assert(reference->u.symbol == logical);
+    assert(!strcmp(logical->name, "cg_value"));
+
+    assert(HlslAllocateBindings(&module, &HlslProfile_hlslv));
+    assert(module.globals == logical);
+    assert(reference->u.symbol == logical);
+    assert(!strcmp(logical->name, "cg_value_1"));
+}
+
 static void TestNamesAndAllocationFailure(void)
 {
     HlslModule module;
@@ -1477,6 +1525,7 @@ int main(int argc, char **argv)
     TestDeclarationQualifiers();
     TestModuleWriter();
     TestModuleValidationRejectsUnownedEntry();
+    TestLogicalBindingSurvivesLegalizeAndAllocation();
     TestNamesAndAllocationFailure();
     TestTypesAndLists();
     TestBindingBanks();

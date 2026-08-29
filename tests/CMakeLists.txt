@@ -1399,6 +1399,7 @@ add_executable(hlsl_ir_unit
     ${PROJECT_SOURCE_DIR}/hlsl_bind.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
     ${PROJECT_SOURCE_DIR}/hlsl_validate.c
     ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
     ${PROJECT_SOURCE_DIR}/hlslv_hal.c
@@ -1423,6 +1424,13 @@ set_target_properties(hlsl_ir_unit PROPERTIES
 add_test(
     NAME hlsl_ir_unit
     COMMAND hlsl_ir_unit
+)
+
+add_test(
+    NAME hlsl_pipeline_phase_order
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE=${PROJECT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_phase_order.cmake
 )
 
 add_test(

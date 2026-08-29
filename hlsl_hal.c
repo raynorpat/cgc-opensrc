@@ -802,9 +802,9 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
     HlslInitModule(&module, profile->stage, HlslCompilerAlloc,
                    CurrentScope->pool);
     if (!HlslLowerProgram(&module, profile, loc, fScope, program) ||
-        !HlslAllocateBindings(&module, profile) ||
         !HlslBuildEntryWrapper(&module, profile) ||
         !HlslLegalizeModule(&module, profile) ||
+        !HlslAllocateBindings(&module, profile) ||
         !HlslValidateModule(&module, profile))
     {
         return ReportHlslFailure(&module, profile, program);
