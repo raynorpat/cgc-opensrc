@@ -38,6 +38,8 @@ struct cg_VertexOut
     float4 TEX0 : TEXCOORD0;
 };
 
+float cg_rsqrt_float(float value);
+
 cg_vf20 cg_entry(cg_appdata I, row_major float4x4 modelview_matrix, row_major float4x4 projection_matrix, float3 lightdir, float3 lightcolor, float3 ambientcolor)
 {
     cg_vf20 O;
@@ -55,11 +57,16 @@ cg_vf20 cg_entry(cg_appdata I, row_major float4x4 modelview_matrix, row_major fl
     n = mul(m3, I.normal);
     r = u - 2.0 * n * dot(n, u);
     r.z = r.z + 1.0;
-    m = 0.5 * rsqrt(dot(r, r));
+    m = 0.5 * cg_rsqrt_float(dot(r, r));
     O.TEX0.x = r.x * m + 0.5;
     O.TEX0.y = r.y * m + 0.5;
     O.HPOS = mul(projection_matrix, v);
     return O;
+}
+
+float cg_rsqrt_float(float value)
+{
+    return rsqrt(value);
 }
 
 cg_VertexOut main(cg_VertexIn input)

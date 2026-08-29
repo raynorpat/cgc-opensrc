@@ -1,0 +1,7 @@
+__internal float2 cross(float2 left, float2 right);
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    float2 value = cross(position.xy, position.zw);
+    return float4(value.x, value.y, 0.0, 1.0);
+}

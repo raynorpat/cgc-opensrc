@@ -211,6 +211,9 @@ static int GetConnectorUses_hlsl(int cid, int pid);
 static int GetConnectorRegister_hlsl(int cid, int ByIndex, int ratom, Binding *fBind);
 static int GetCapsBit_hlsl(int bitNumber);
 static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group);
+static int HlslResolveBuiltinType(Type *source, HlslType *target);
+static void HlslAppendSignatureText(char *target, size_t size,
+                                    size_t *used, const char *text);
 static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, Binding *fBind);
 static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb, int semantic,
                                     Binding *fBind, int IsOutVal);
@@ -472,11 +475,147 @@ static int GetCapsBit_hlsl(int bitNumber)
  * CheckInternalFunction_hlsl() - Check for internally implemented function.
  */
 
+static int HlslResolveBuiltinType(Type *source, HlslType *target)
+{
+    HlslBase base;
+    int sourceBase;
+    int rows;
+    int cols;
+    int len;
+
+    if (source == NULL || target == NULL)
+        return 0;
+    if (IsVoid(source)) {
+        *target = HlslNumericType(HLSL_BASE_VOID, 0);
+        return 1;
+    }
+    sourceBase = GetBase(source);
+    if (IsMatrix(source, &cols, &rows)) {
+        if ((sourceBase != TYPE_BASE_FLOAT &&
+             sourceBase != TYPE_BASE_CFLOAT) ||
+            rows < 1 || rows > 4 || cols < 1 || cols > 4)
+        {
+            return 0;
+        }
+        *target = HlslMatrixType(rows, cols);
+        return 1;
+    }
+    switch (sourceBase) {
+    case TYPE_BASE_FLOAT:
+    case TYPE_BASE_CFLOAT: base = HLSL_BASE_FLOAT; break;
+    case TYPE_BASE_INT:
+    case TYPE_BASE_CINT: base = HLSL_BASE_INT; break;
+    case TYPE_BASE_BOOLEAN: base = HLSL_BASE_BOOL; break;
+    default: return 0;
+    }
+    if (IsScalar(source)) {
+        *target = HlslNumericType(base, 1);
+        return 1;
+    }
+    if (IsVector(source, &len) && len >= 1 && len <= 4) {
+        *target = HlslNumericType(base, len);
+        return 1;
+    }
+    return 0;
+} // HlslResolveBuiltinType
+
+static void HlslAppendSignatureText(char *target, size_t size,
+                                    size_t *used, const char *text)
+{
+    size_t available;
+    size_t length;
+
+    if (target == NULL || used == NULL || text == NULL ||
+        *used >= size || size == 0)
+    {
+        return;
+    }
+    available = size - *used - 1;
+    length = strlen(text);
+    if (length > available)
+        length = available;
+    memcpy(target + *used, text, length);
+    *used += length;
+    target[*used] = '\0';
+} // HlslAppendSignatureText
+
 static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
 {
-    (void) fSymb;
-    *group = HLSL_BUILTIN_GROUP;
-    return 1;
+    const HlslProfileDesc *profile;
+    HlslType result;
+    HlslType params[3];
+    TypeList *param;
+    HlslBuiltin builtin;
+    const char *name;
+    char signature[256];
+    size_t used;
+    int count;
+
+    if (fSymb == NULL || fSymb->kind != FUNCTION_S ||
+        fSymb->type == NULL || group == NULL ||
+        GetCategory(fSymb->type) != TYPE_CATEGORY_FUNCTION)
+    {
+        return 0;
+    }
+    name = GetAtomString(atable, fSymb->name);
+    if (!HlslIsBuiltinName(name))
+        return 0;
+    profile = GetHlslProfile();
+    if (profile == NULL)
+        return 0;
+
+    count = 0;
+    if (!HlslResolveBuiltinType(fSymb->type->fun.rettype, &result))
+        count = -1;
+    for (param = fSymb->type->fun.paramtypes;
+         count >= 0 && param != NULL; param = param->next)
+    {
+        if (count >= (int) NUMELS(params) ||
+            !HlslResolveBuiltinType(param->type, &params[count]))
+        {
+            count = -1;
+            break;
+        }
+        count++;
+    }
+    builtin = count >= 0 ?
+        HlslLookupBuiltin(profile->stage, name, &result, params, count) :
+        HLSL_BUILTIN_NONE;
+    if (builtin != HLSL_BUILTIN_NONE) {
+        *group = HLSL_BUILTIN_GROUP;
+        return (int) builtin;
+    }
+    if (count >= 0 &&
+        HlslLookupBuiltin(profile->stage == HLSL_STAGE_VERTEX ?
+            HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
+            name, &result, params, count) != HLSL_BUILTIN_NONE)
+    {
+        SemanticError(&fSymb->loc, ERROR_SS_HLSL_STAGE_OPERATION,
+                      profile->name, name);
+        return 0;
+    }
+
+    signature[0] = '\0';
+    used = 0;
+    HlslAppendSignatureText(signature, sizeof(signature), &used, name);
+    HlslAppendSignatureText(signature, sizeof(signature), &used, "(");
+    if (count >= 0) {
+        int i;
+
+        for (i = 0; i < count; i++) {
+            if (i != 0)
+                HlslAppendSignatureText(signature, sizeof(signature),
+                                        &used, ", ");
+            HlslAppendSignatureText(signature, sizeof(signature), &used,
+                                    HlslTypeName(&params[i]));
+        }
+    } else {
+        HlslAppendSignatureText(signature, sizeof(signature), &used,
+                                "unsupported");
+    }
+    HlslAppendSignatureText(signature, sizeof(signature), &used, ")");
+    SemanticError(&fSymb->loc, ERROR_S_HLSL_INTRINSIC, signature);
+    return 0;
 } // CheckInternalFunction_hlsl
 
 /*

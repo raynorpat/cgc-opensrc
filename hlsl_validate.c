@@ -121,6 +121,8 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
                                int *count)
 {
     const HlslExpr *argument;
+    HlslType params[3];
+    int paramCount;
 
     if (expression == NULL)
         return 1;
@@ -152,20 +154,25 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
                     expression->u.conditional.falseExpr, count);
     case HLSL_EXPR_CALL:
         if (expression->u.call.function == NULL &&
-            expression->u.call.name != NULL &&
-            (!strcmp(expression->u.call.name, "mul") ||
-             !strcmp(expression->u.call.name, "dot") ||
-             !strcmp(expression->u.call.name, "max") ||
-             !strcmp(expression->u.call.name, "normalize") ||
-             !strcmp(expression->u.call.name, "rsqrt")))
+            expression->u.call.name != NULL)
         {
+            paramCount = 0;
             for (argument = expression->u.call.arguments;
                  argument != NULL; argument = argument->next)
             {
+                if (paramCount >= 3)
+                    break;
+                params[paramCount++] = argument->type;
                 if (!HlslCountEntryCalls(module, argument, count))
                     return 0;
             }
-            return 1;
+            if (argument == NULL &&
+                HlslLookupBuiltin(module->stage,
+                    expression->u.call.name, &expression->type,
+                    params, paramCount) != HLSL_BUILTIN_NONE)
+            {
+                return 1;
+            }
         }
         if (!HlslOwnsFunction(module, expression->u.call.function))
             return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,

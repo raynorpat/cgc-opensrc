@@ -1,0 +1,27 @@
+// profile hlslf
+// target ps_3_0
+struct cg_PixelIn
+{
+    float4 value : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_entry(float4 value)
+{
+    float scalar;
+    float3 gradient;
+    scalar = ddx(value.x) + ddy(value.y);
+    gradient = ddx(value.xyz) + ddy(value.xyz);
+    return float4(gradient.x, gradient.y, gradient.z, scalar);
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.value);
+    return output;
+}

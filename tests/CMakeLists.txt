@@ -1920,6 +1920,18 @@ add_hlsl_fixture(hlslv_vertexlight hlslv
     vertexlight.cg tests/hlsl/vertex/vertexlight.expected)
 add_hlsl_fixture(hlslv_vertexlight4 hlslv
     vertexlight4.cg tests/hlsl/vertex/vertexlight4.expected)
+add_hlsl_fixture(hlslv_intrinsic_numeric hlslv
+    tests/hlsl/intrinsics/vp_numeric.cg
+    tests/hlsl/intrinsics/vp_numeric.expected)
+add_hlsl_fixture(hlslv_intrinsic_geometric hlslv
+    tests/hlsl/intrinsics/vp_geometric.cg
+    tests/hlsl/intrinsics/vp_geometric.expected)
+add_hlsl_fixture(hlslf_intrinsic_derivatives hlslf
+    tests/hlsl/intrinsics/fp_derivatives.cg
+    tests/hlsl/intrinsics/fp_derivatives.expected)
+add_hlsl_fixture(hlslv_intrinsic_user_same_name hlslv
+    tests/hlsl/intrinsics/vp_user_same_name.cg
+    tests/hlsl/intrinsics/vp_user_same_name.expected)
 
 add_test(
     NAME generic_entry_inout_still_rejected
@@ -1959,6 +1971,11 @@ add_hlsl_interface_failure(hlslv_interface_unbound_input
     tests/hlsl/diagnostics/vp_unbound_input.cg 6403 3 missingSemantic)
 add_hlsl_interface_failure(hlslv_binding_register_collision
     tests/hlsl/diagnostics/vp_register_collision.cg 6407 2 second)
+add_hlsl_interface_failure(hlslv_intrinsic_derivative_stage
+    tests/hlsl/diagnostics/vp_derivative.cg 6402 3 ddx)
+add_hlsl_interface_failure(hlslv_intrinsic_bad_overload
+    tests/hlsl/diagnostics/vp_bad_intrinsic.cg 6410 1
+    "cross.*float2.*float2")
 add_hlsl_interface_failure(hlslv_recursion
     tests/hlsl/diagnostics/vp_recursion.cg 6401 3 recursive.HLSL.helper)
 add_hlsl_interface_failure(hlslv_nested_recursion

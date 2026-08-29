@@ -442,6 +442,8 @@ int main(void)
             const CgIntrinsicSignature *absInt = NULL;
             const CgIntrinsicSignature *allBool = NULL;
             const CgIntrinsicSignature *anyBool = NULL;
+            const CgIntrinsicSignature *allBool3 = NULL;
+            const CgIntrinsicSignature *anyBool3 = NULL;
 
             for (i = 0; i < set.count; i++) {
                 const CgIntrinsicSignature *sig = set.sigs[i];
@@ -456,10 +458,24 @@ int main(void)
                     allBool = sig;
                 if (!strcmp(sig->name, "any") && IsScalar(sig->result))
                     anyBool = sig;
+                if (!strcmp(sig->name, "all") && IsScalar(sig->result) &&
+                    IsVector(sig->parameters->type, NULL) &&
+                    sig->parameters->type->arr.numels == 3)
+                {
+                    allBool3 = sig;
+                }
+                if (!strcmp(sig->name, "any") && IsScalar(sig->result) &&
+                    IsVector(sig->parameters->type, NULL) &&
+                    sig->parameters->type->arr.numels == 3)
+                {
+                    anyBool3 = sig;
+                }
             }
             assert(absInt != NULL);
             assert(allBool != NULL);
             assert(anyBool != NULL);
+            assert(allBool3 != NULL);
+            assert(anyBool3 != NULL);
         }
     }
 

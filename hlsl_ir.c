@@ -531,6 +531,413 @@ const char *HlslTypeName(const HlslType *type)
     return HlslTypeNameInner(type, NULL);
 }
 
+#define HLSL_BUILTIN_STAGE_VERTEX 0x01
+#define HLSL_BUILTIN_STAGE_PIXEL  0x02
+#define HLSL_BUILTIN_STAGE_BOTH   \
+    (HLSL_BUILTIN_STAGE_VERTEX | HLSL_BUILTIN_STAGE_PIXEL)
+
+#define HLSL_BUILTIN_BASE_FLOAT 0x01
+#define HLSL_BUILTIN_BASE_INT   0x02
+#define HLSL_BUILTIN_BASE_BOOL  0x04
+
+typedef enum HlslBuiltinWidthPattern_Enum {
+    HLSL_BUILTIN_WIDTH_MUL,
+    HLSL_BUILTIN_WIDTH_MATCH,
+    HLSL_BUILTIN_WIDTH_REPLICATED,
+    HLSL_BUILTIN_WIDTH_CROSS,
+    HLSL_BUILTIN_WIDTH_REFRACT
+} HlslBuiltinWidthPattern;
+
+typedef enum HlslBuiltinResultPattern_Enum {
+    HLSL_BUILTIN_RESULT_MUL,
+    HLSL_BUILTIN_RESULT_SAME,
+    HLSL_BUILTIN_RESULT_WIDEST,
+    HLSL_BUILTIN_RESULT_SCALAR
+} HlslBuiltinResultPattern;
+
+typedef struct HlslBuiltinDesc_Rec {
+    const char *source;
+    HlslBuiltin builtin;
+    int arity;
+    unsigned baseMask;
+    HlslBuiltinWidthPattern widthPattern;
+    HlslBuiltinResultPattern resultPattern;
+    unsigned stageMask;
+    const char *hlsl;
+    HlslBuiltinLowering lowering;
+} HlslBuiltinDesc;
+
+/*
+ * The signature table is the sole spelling-to-operation map.  A row
+ * describes a complete overload family: its arity, admitted bases and
+ * width relationship, result relationship, stage availability, target
+ * spelling, and lowering strategy all travel together.
+ */
+
+static const HlslBuiltinDesc hlslBuiltinTable[] = {
+    { "mul", HLSL_BUILTIN_MUL, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MUL, HLSL_BUILTIN_RESULT_MUL,
+      HLSL_BUILTIN_STAGE_BOTH, "mul", HLSL_BUILTIN_LOWER_NATIVE },
+    { "dot", HLSL_BUILTIN_DOT, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SCALAR,
+      HLSL_BUILTIN_STAGE_BOTH, "dot", HLSL_BUILTIN_LOWER_NATIVE },
+    { "cross", HLSL_BUILTIN_CROSS, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_CROSS, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "cross", HLSL_BUILTIN_LOWER_NATIVE },
+    { "normalize", HLSL_BUILTIN_NORMALIZE, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "normalize", HLSL_BUILTIN_LOWER_NATIVE },
+    { "reflect", HLSL_BUILTIN_REFLECT, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "reflect", HLSL_BUILTIN_LOWER_NATIVE },
+    { "refract", HLSL_BUILTIN_REFRACT, 3, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REFRACT, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "refract", HLSL_BUILTIN_LOWER_NATIVE },
+    { "length", HLSL_BUILTIN_LENGTH, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SCALAR,
+      HLSL_BUILTIN_STAGE_BOTH, "length", HLSL_BUILTIN_LOWER_NATIVE },
+    { "distance", HLSL_BUILTIN_DISTANCE, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SCALAR,
+      HLSL_BUILTIN_STAGE_BOTH, "distance", HLSL_BUILTIN_LOWER_NATIVE },
+    { "min", HLSL_BUILTIN_MIN, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "min", HLSL_BUILTIN_LOWER_NATIVE },
+    { "max", HLSL_BUILTIN_MAX, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "max", HLSL_BUILTIN_LOWER_NATIVE },
+    { "clamp", HLSL_BUILTIN_CLAMP, 3, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "clamp", HLSL_BUILTIN_LOWER_NATIVE },
+    { "abs", HLSL_BUILTIN_ABS, 1,
+      HLSL_BUILTIN_BASE_FLOAT | HLSL_BUILTIN_BASE_INT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "abs", HLSL_BUILTIN_LOWER_NATIVE },
+    { "sign", HLSL_BUILTIN_SIGN, 1,
+      HLSL_BUILTIN_BASE_FLOAT | HLSL_BUILTIN_BASE_INT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "sign", HLSL_BUILTIN_LOWER_NATIVE },
+    { "floor", HLSL_BUILTIN_FLOOR, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "floor", HLSL_BUILTIN_LOWER_NATIVE },
+    { "ceil", HLSL_BUILTIN_CEIL, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "ceil", HLSL_BUILTIN_LOWER_NATIVE },
+    { "round", HLSL_BUILTIN_ROUND, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "round", HLSL_BUILTIN_LOWER_NATIVE },
+    { "trunc", HLSL_BUILTIN_TRUNC, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "trunc", HLSL_BUILTIN_LOWER_NATIVE },
+    { "sqrt", HLSL_BUILTIN_SQRT, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "sqrt", HLSL_BUILTIN_LOWER_NATIVE },
+    { "rsqrt", HLSL_BUILTIN_RSQRT, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "rsqrt", HLSL_BUILTIN_LOWER_HELPER },
+    { "pow", HLSL_BUILTIN_POW, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "pow", HLSL_BUILTIN_LOWER_NATIVE },
+    { "exp", HLSL_BUILTIN_EXP, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "exp", HLSL_BUILTIN_LOWER_NATIVE },
+    { "exp2", HLSL_BUILTIN_EXP2, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "exp2", HLSL_BUILTIN_LOWER_NATIVE },
+    { "log", HLSL_BUILTIN_LOG, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "log", HLSL_BUILTIN_LOWER_NATIVE },
+    { "log2", HLSL_BUILTIN_LOG2, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "log2", HLSL_BUILTIN_LOWER_NATIVE },
+    { "sin", HLSL_BUILTIN_SIN, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "sin", HLSL_BUILTIN_LOWER_NATIVE },
+    { "cos", HLSL_BUILTIN_COS, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "cos", HLSL_BUILTIN_LOWER_NATIVE },
+    { "tan", HLSL_BUILTIN_TAN, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "tan", HLSL_BUILTIN_LOWER_NATIVE },
+    { "asin", HLSL_BUILTIN_ASIN, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "asin", HLSL_BUILTIN_LOWER_NATIVE },
+    { "acos", HLSL_BUILTIN_ACOS, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "acos", HLSL_BUILTIN_LOWER_NATIVE },
+    { "atan", HLSL_BUILTIN_ATAN, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "atan", HLSL_BUILTIN_LOWER_NATIVE },
+    { "atan2", HLSL_BUILTIN_ATAN2, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "atan2", HLSL_BUILTIN_LOWER_NATIVE },
+    { "sinh", HLSL_BUILTIN_SINH, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "sinh", HLSL_BUILTIN_LOWER_NATIVE },
+    { "cosh", HLSL_BUILTIN_COSH, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "cosh", HLSL_BUILTIN_LOWER_NATIVE },
+    { "tanh", HLSL_BUILTIN_TANH, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "tanh", HLSL_BUILTIN_LOWER_NATIVE },
+    { "lerp", HLSL_BUILTIN_LERP, 3, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "lerp", HLSL_BUILTIN_LOWER_NATIVE },
+    { "frac", HLSL_BUILTIN_FRAC, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "frac", HLSL_BUILTIN_LOWER_NATIVE },
+    { "fmod", HLSL_BUILTIN_FMOD, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "fmod", HLSL_BUILTIN_LOWER_NATIVE },
+    { "saturate", HLSL_BUILTIN_SATURATE, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_BOTH, "saturate", HLSL_BUILTIN_LOWER_EXPANSION },
+    { "step", HLSL_BUILTIN_STEP, 2, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "step", HLSL_BUILTIN_LOWER_NATIVE },
+    { "smoothstep", HLSL_BUILTIN_SMOOTHSTEP, 3, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_REPLICATED, HLSL_BUILTIN_RESULT_WIDEST,
+      HLSL_BUILTIN_STAGE_BOTH, "smoothstep", HLSL_BUILTIN_LOWER_NATIVE },
+    { "any", HLSL_BUILTIN_ANY, 1, HLSL_BUILTIN_BASE_BOOL,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SCALAR,
+      HLSL_BUILTIN_STAGE_BOTH, "any", HLSL_BUILTIN_LOWER_NATIVE },
+    { "all", HLSL_BUILTIN_ALL, 1, HLSL_BUILTIN_BASE_BOOL,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SCALAR,
+      HLSL_BUILTIN_STAGE_BOTH, "all", HLSL_BUILTIN_LOWER_NATIVE },
+    { "ddx", HLSL_BUILTIN_DDX, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_PIXEL, "ddx", HLSL_BUILTIN_LOWER_NATIVE },
+    { "ddy", HLSL_BUILTIN_DDY, 1, HLSL_BUILTIN_BASE_FLOAT,
+      HLSL_BUILTIN_WIDTH_MATCH, HLSL_BUILTIN_RESULT_SAME,
+      HLSL_BUILTIN_STAGE_PIXEL, "ddy", HLSL_BUILTIN_LOWER_NATIVE }
+};
+
+#define HLSL_BUILTIN_TABLE_COUNT \
+    ((int) (sizeof(hlslBuiltinTable) / sizeof(hlslBuiltinTable[0])))
+
+static unsigned HlslBuiltinBaseMask(HlslBase base)
+{
+    switch (base) {
+    case HLSL_BASE_FLOAT: return HLSL_BUILTIN_BASE_FLOAT;
+    case HLSL_BASE_INT: return HLSL_BUILTIN_BASE_INT;
+    case HLSL_BASE_BOOL: return HLSL_BUILTIN_BASE_BOOL;
+    default: return 0;
+    }
+} // HlslBuiltinBaseMask
+
+static int HlslBuiltinVectorType(const HlslType *type, unsigned baseMask)
+{
+    return type != NULL && type->arraySize == 0 &&
+           (HlslBuiltinBaseMask(type->base) & baseMask) != 0 &&
+           type->len >= 1 && type->len <= 4 &&
+           type->rows == 0 && type->cols == 0 &&
+           type->structName == NULL && type->elementType == NULL &&
+           type->members == NULL;
+} // HlslBuiltinVectorType
+
+static int HlslBuiltinMatrixType(const HlslType *type)
+{
+    return type != NULL && type->arraySize == 0 &&
+           type->base == HLSL_BASE_FLOAT && type->len == 0 &&
+           type->rows >= 1 && type->rows <= 4 &&
+           type->cols >= 1 && type->cols <= 4 &&
+           type->structName == NULL && type->elementType == NULL &&
+           type->members == NULL;
+} // HlslBuiltinMatrixType
+
+static int HlslBuiltinTypeEqual(const HlslType *left,
+                                const HlslType *right)
+{
+    return left != NULL && right != NULL &&
+           left->base == right->base && left->len == right->len &&
+           left->rows == right->rows && left->cols == right->cols &&
+           left->arraySize == right->arraySize &&
+           left->structName == right->structName &&
+           left->elementType == right->elementType &&
+           left->members == right->members;
+} // HlslBuiltinTypeEqual
+
+static int HlslBuiltinMulResult(const HlslType *left,
+                                const HlslType *right,
+                                const HlslType *result)
+{
+    HlslType expected;
+
+    if (HlslBuiltinVectorType(left, HLSL_BUILTIN_BASE_FLOAT) &&
+        HlslBuiltinVectorType(right, HLSL_BUILTIN_BASE_FLOAT) &&
+        left->len == 1 && right->len == 1)
+    {
+        expected = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    } else if (HlslBuiltinMatrixType(left) &&
+               HlslBuiltinVectorType(right, HLSL_BUILTIN_BASE_FLOAT) &&
+               left->cols == right->len)
+    {
+        expected = HlslNumericType(HLSL_BASE_FLOAT, left->rows);
+    } else if (HlslBuiltinVectorType(left, HLSL_BUILTIN_BASE_FLOAT) &&
+               HlslBuiltinMatrixType(right) &&
+               left->len == right->rows)
+    {
+        expected = HlslNumericType(HLSL_BASE_FLOAT, right->cols);
+    } else if (HlslBuiltinMatrixType(left) &&
+               HlslBuiltinMatrixType(right) &&
+               left->cols == right->rows)
+    {
+        expected = HlslMatrixType(left->rows, right->cols);
+    } else {
+        return 0;
+    }
+    return HlslBuiltinTypeEqual(result, &expected);
+} // HlslBuiltinMulResult
+
+static int HlslBuiltinReplicatedWidths(const HlslType *params,
+                                       int count, unsigned baseMask,
+                                       int *width, HlslBase *base)
+{
+    int i;
+    int widest;
+
+    widest = 1;
+    *base = HLSL_BASE_VOID;
+    for (i = 0; i < count; i++) {
+        if (!HlslBuiltinVectorType(&params[i], baseMask) ||
+            (*base != HLSL_BASE_VOID && params[i].base != *base) ||
+            (params[i].len > 1 && widest > 1 && params[i].len != widest))
+        {
+            return 0;
+        }
+        *base = params[i].base;
+        if (params[i].len > widest)
+            widest = params[i].len;
+    }
+    *width = widest;
+    return 1;
+} // HlslBuiltinReplicatedWidths
+
+static int HlslBuiltinMatches(const HlslBuiltinDesc *desc,
+                              const HlslType *result,
+                              const HlslType *params, int count)
+{
+    HlslType expected;
+    HlslBase base;
+    int width;
+    int i;
+
+    if (desc == NULL || result == NULL || params == NULL ||
+        count != desc->arity)
+    {
+        return 0;
+    }
+    if (desc->widthPattern == HLSL_BUILTIN_WIDTH_MUL)
+        return HlslBuiltinMulResult(&params[0], &params[1], result);
+    if (desc->widthPattern == HLSL_BUILTIN_WIDTH_CROSS) {
+        expected = HlslNumericType(HLSL_BASE_FLOAT, 3);
+        return HlslBuiltinTypeEqual(&params[0], &expected) &&
+               HlslBuiltinTypeEqual(&params[1], &expected) &&
+               HlslBuiltinTypeEqual(result, &expected);
+    }
+    if (!HlslBuiltinReplicatedWidths(params, count, desc->baseMask,
+                                     &width, &base))
+    {
+        return 0;
+    }
+    if (desc->widthPattern == HLSL_BUILTIN_WIDTH_MATCH) {
+        for (i = 1; i < count; i++) {
+            if (!HlslBuiltinTypeEqual(&params[0], &params[i]))
+                return 0;
+        }
+        width = params[0].len;
+    } else if (desc->widthPattern == HLSL_BUILTIN_WIDTH_REFRACT) {
+        if (!HlslBuiltinTypeEqual(&params[0], &params[1]) ||
+            params[2].base != HLSL_BASE_FLOAT || params[2].len != 1)
+        {
+            return 0;
+        }
+        width = params[0].len;
+        base = params[0].base;
+    }
+    switch (desc->resultPattern) {
+    case HLSL_BUILTIN_RESULT_SAME:
+        expected = params[0];
+        break;
+    case HLSL_BUILTIN_RESULT_WIDEST:
+        expected = HlslNumericType(base, width);
+        break;
+    case HLSL_BUILTIN_RESULT_SCALAR:
+        expected = HlslNumericType(base, 1);
+        break;
+    case HLSL_BUILTIN_RESULT_MUL:
+    default:
+        return 0;
+    }
+    return HlslBuiltinTypeEqual(result, &expected);
+} // HlslBuiltinMatches
+
+HlslBuiltin HlslLookupBuiltin(HlslStage stage, const char *name,
+                              const HlslType *result,
+                              const HlslType *params, int paramCount)
+{
+    unsigned stageMask;
+    int i;
+
+    if (stage == HLSL_STAGE_VERTEX)
+        stageMask = HLSL_BUILTIN_STAGE_VERTEX;
+    else if (stage == HLSL_STAGE_PIXEL)
+        stageMask = HLSL_BUILTIN_STAGE_PIXEL;
+    else
+        return HLSL_BUILTIN_NONE;
+    if (name == NULL)
+        return HLSL_BUILTIN_NONE;
+    for (i = 0; i < HLSL_BUILTIN_TABLE_COUNT; i++) {
+        if ((hlslBuiltinTable[i].stageMask & stageMask) != 0 &&
+            !strcmp(name, hlslBuiltinTable[i].source) &&
+            HlslBuiltinMatches(&hlslBuiltinTable[i], result,
+                               params, paramCount))
+        {
+            return hlslBuiltinTable[i].builtin;
+        }
+    }
+    return HLSL_BUILTIN_NONE;
+} // HlslLookupBuiltin
+
+int HlslIsBuiltinName(const char *name)
+{
+    int i;
+
+    if (name == NULL)
+        return 0;
+    for (i = 0; i < HLSL_BUILTIN_TABLE_COUNT; i++) {
+        if (!strcmp(name, hlslBuiltinTable[i].source))
+            return 1;
+    }
+    return 0;
+} // HlslIsBuiltinName
+
+static const HlslBuiltinDesc *HlslBuiltinDescription(HlslBuiltin builtin)
+{
+    int i;
+
+    for (i = 0; i < HLSL_BUILTIN_TABLE_COUNT; i++) {
+        if (hlslBuiltinTable[i].builtin == builtin)
+            return &hlslBuiltinTable[i];
+    }
+    return NULL;
+} // HlslBuiltinDescription
+
+const char *HlslBuiltinSpelling(HlslBuiltin builtin)
+{
+    const HlslBuiltinDesc *desc;
+
+    desc = HlslBuiltinDescription(builtin);
+    return desc != NULL ? desc->hlsl : NULL;
+} // HlslBuiltinSpelling
+
+HlslBuiltinLowering HlslBuiltinLoweringKind(HlslBuiltin builtin)
+{
+    const HlslBuiltinDesc *desc;
+
+    desc = HlslBuiltinDescription(builtin);
+    return desc != NULL ? desc->lowering : HLSL_BUILTIN_LOWER_NATIVE;
+} // HlslBuiltinLoweringKind
+
 static int HlslDeclListHasCycle(const HlslDecl *list)
 {
     const HlslDecl *slow;

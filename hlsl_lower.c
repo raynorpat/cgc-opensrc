@@ -71,37 +71,16 @@ typedef enum HlslValueMode_Enum {
 } HlslValueMode;
 
 static int HlslEnsureType(HlslLowerContext *context, Type *type);
+static int HlslLowerType(HlslLowerContext *context, Type *source,
+                         HlslType *target, const SourceLoc *loc);
 static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
                                HlslStmt **prefix, HlslValueMode valueMode);
-
-static const char *HlslNativeIntrinsicName(HlslLowerContext *context,
-                                           Symbol *symbol)
-{
-    const CgIntrinsicSignature *signature;
-    const char *fileName;
-    const char *name;
-
-    if (context == NULL || symbol == NULL || symbol->kind != FUNCTION_S)
-        return NULL;
-    signature = CgIntrinsicSignatureForSymbol(symbol);
-    if (signature != NULL) {
-        switch (signature->intrinsic) {
-        case CG_INTRINSIC_DOT:
-        case CG_INTRINSIC_MAX:
-        case CG_INTRINSIC_MUL:
-        case CG_INTRINSIC_NORMALIZE:
-        case CG_INTRINSIC_RSQRT:
-            return signature->name;
-        default:
-            return NULL;
-        }
-    }
-    name = GetAtomString(atable, symbol->name);
-    fileName = GetAtomString(atable, symbol->loc.file);
-    return name != NULL && !strcmp(name, "mul") &&
-           fileName != NULL && !strcmp(fileName, "<stdlib>") ?
-           "mul" : NULL;
-} // HlslNativeIntrinsicName
+static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
+                                    Symbol *symbol,
+                                    const SourceLoc *callLoc,
+                                    HlslBuiltin *builtin,
+                                    HlslType *result,
+                                    HlslType *params, int *paramCount);
 
 static void HlslSetLoc(HlslLoc *target, const SourceLoc *source)
 {
@@ -373,6 +352,97 @@ static int HlslLowerType(HlslLowerContext *context, Type *source,
     return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
                             "HLSL type", loc);
 } // HlslLowerType
+
+/*
+ * HlslResolveBuiltinSymbol() - Resolve only immutable catalog identities or
+ *         declarations already accepted by the HLSL HAL as group 4.  Merely
+ *         sharing a source spelling never turns a user helper into a builtin.
+ *         Return one for an exact row, zero for an ordinary helper, and minus
+ *         one after recording an intrinsic or stage failure.
+ */
+
+static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
+                                    Symbol *symbol,
+                                    const SourceLoc *callLoc,
+                                    HlslBuiltin *builtin,
+                                    HlslType *result,
+                                    HlslType *params, int *paramCount)
+{
+    const CgIntrinsicSignature *signature;
+    TypeList *parameter;
+    Type *sourceResult;
+    const char *name;
+    HlslBuiltin resolved;
+    HlslBuiltin otherStage;
+    int count;
+
+    if (context == NULL || symbol == NULL || symbol->kind != FUNCTION_S ||
+        symbol->type == NULL || builtin == NULL || result == NULL ||
+        params == NULL || paramCount == NULL)
+    {
+        return 0;
+    }
+    signature = CgIntrinsicSignatureForSymbol(symbol);
+    if (signature != NULL) {
+        name = signature->name;
+        sourceResult = signature->result;
+        parameter = signature->parameters;
+    } else if ((symbol->properties & SYMB_IS_BUILTIN) != 0 &&
+               symbol->details.fun.group == HLSL_BUILTIN_GROUP &&
+               symbol->details.fun.index > HLSL_BUILTIN_NONE &&
+               symbol->details.fun.index < HLSL_BUILTIN_COUNT)
+    {
+        name = GetAtomString(atable, symbol->name);
+        sourceResult = symbol->type->fun.rettype;
+        parameter = symbol->type->fun.paramtypes;
+    } else {
+        return 0;
+    }
+    if (!HlslIsBuiltinName(name)) {
+        HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
+        return -1;
+    }
+    if (!HlslLowerType(context, sourceResult, result, callLoc))
+        return -1;
+    count = 0;
+    for (; parameter != NULL; parameter = parameter->next) {
+        if (count >= 3 ||
+            !HlslLowerType(context, parameter->type, &params[count],
+                           callLoc))
+        {
+            if (context->module->errors == 0)
+                HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+                                 name, callLoc);
+            return -1;
+        }
+        count++;
+    }
+    resolved = HlslLookupBuiltin(context->profile->stage, name, result,
+                                 params, count);
+    if (resolved == HLSL_BUILTIN_NONE) {
+        otherStage = HlslLookupBuiltin(
+            context->profile->stage == HLSL_STAGE_VERTEX ?
+            HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
+            name, result, params, count);
+        if (otherStage != HLSL_BUILTIN_NONE) {
+            HlslLowerFailure(context, HLSL_ERROR_STAGE_OPERATION,
+                             name, callLoc);
+        } else {
+            HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+                             name, callLoc);
+        }
+        return -1;
+    }
+    if (signature == NULL &&
+        resolved != (HlslBuiltin) symbol->details.fun.index)
+    {
+        HlslLowerFailure(context, HLSL_ERROR_INTRINSIC, name, callLoc);
+        return -1;
+    }
+    *builtin = resolved;
+    *paramCount = count;
+    return 1;
+} // HlslResolveBuiltinSymbol
 
 static int HlslDeclComesBefore(const HlslDecl *left,
                                const HlslDecl *right)
@@ -1460,6 +1530,132 @@ static HlslExpr *HlslNewAssignment(HlslLowerContext *context,
     return assignment;
 } // HlslNewAssignment
 
+static int HlslBuiltinHelperTypeEqual(const HlslType *left,
+                                      const HlslType *right)
+{
+    return left != NULL && right != NULL &&
+           left->base == right->base && left->len == right->len &&
+           left->rows == right->rows && left->cols == right->cols &&
+           left->arraySize == 0 && right->arraySize == 0;
+} // HlslBuiltinHelperTypeEqual
+
+static HlslFunction *HlslFindBuiltinHelper(HlslModule *module,
+                                           HlslBuiltin builtin,
+                                           const HlslType *type)
+{
+    HlslFunction *function;
+
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (function->builtin == builtin &&
+            HlslBuiltinHelperTypeEqual(&function->result, type))
+        {
+            return function;
+        }
+    }
+    return NULL;
+} // HlslFindBuiltinHelper
+
+static HlslExpr *HlslNewBuiltinConstant(HlslLowerContext *context,
+                                        const HlslType *type, float value)
+{
+    HlslExpr *literal;
+    HlslExpr *construct;
+    int i;
+
+    if (type == NULL)
+        return NULL;
+    if (type->len == 1)
+        return HlslNewLiteral(context, HLSL_BASE_FLOAT, 0, value);
+    construct = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, *type);
+    if (construct == NULL)
+        return NULL;
+    for (i = 0; i < type->len; i++) {
+        literal = HlslNewLiteral(context, HLSL_BASE_FLOAT, 0, value);
+        if (literal == NULL)
+            return NULL;
+        HlslAppendExpr(&construct->u.construct.arguments, literal);
+    }
+    return construct;
+} // HlslNewBuiltinConstant
+
+static HlslFunction *HlslCreateBuiltinHelper(HlslLowerContext *context,
+                                             HlslBuiltin builtin,
+                                             const HlslType *type)
+{
+    HlslFunction *function;
+    HlslDecl *parameter;
+    HlslStmt *statement;
+    HlslExpr *argument;
+    HlslExpr *call;
+    HlslExpr *inner;
+    HlslExpr *zero;
+    HlslExpr *one;
+    const char *typeName;
+    const char *name;
+    const char *parameterName;
+    char source[96];
+
+    function = HlslFindBuiltinHelper(context->module, builtin, type);
+    if (function != NULL)
+        return function;
+    typeName = HlslTypeName(type);
+    if (typeName == NULL ||
+        (builtin != HLSL_BUILTIN_RSQRT &&
+         builtin != HLSL_BUILTIN_SATURATE))
+    {
+        return NULL;
+    }
+    sprintf(source, "cg_%s_%s", HlslBuiltinSpelling(builtin), typeName);
+    function = HlslNewFunction(context->module, *type, NULL);
+    if (function == NULL)
+        return NULL;
+    name = HlslAllocateGeneratedName(context->module, function, source);
+    if (name == NULL)
+        return NULL;
+    function->name = name;
+    function->builtin = builtin;
+    function->needsPrototype = 1;
+    parameterName = HlslAllocateScopedSymbolName(context->module,
+        function, function, "value");
+    parameter = HlslNewDecl(context->module, HLSL_STORAGE_NONE,
+                            *type, parameterName);
+    statement = HlslNewStmt(context->module, HLSL_STMT_RETURN);
+    if (parameterName == NULL || parameter == NULL || statement == NULL)
+        return NULL;
+    parameter->publicName = parameterName;
+    HlslAppendDecl(&function->parameters, parameter);
+
+    argument = HlslNewSymbolExpr(context, parameter);
+    if (argument == NULL)
+        return NULL;
+    if (builtin == HLSL_BUILTIN_RSQRT) {
+        call = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
+        if (call == NULL)
+            return NULL;
+        call->u.call.name = HlslBuiltinSpelling(builtin);
+        call->u.call.arguments = argument;
+    } else {
+        zero = HlslNewBuiltinConstant(context, type, 0.0f);
+        one = HlslNewBuiltinConstant(context, type, 1.0f);
+        inner = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
+        call = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
+        if (zero == NULL || one == NULL || inner == NULL || call == NULL)
+            return NULL;
+        inner->u.call.name = HlslBuiltinSpelling(HLSL_BUILTIN_MAX);
+        inner->u.call.arguments = argument;
+        HlslAppendExpr(&inner->u.call.arguments, zero);
+        call->u.call.name = HlslBuiltinSpelling(HLSL_BUILTIN_MIN);
+        call->u.call.arguments = inner;
+        HlslAppendExpr(&call->u.call.arguments, one);
+    }
+    statement->u.returnExpr = call;
+    HlslAppendStmt(&function->body, statement);
+    HlslAppendFunction(&context->module->functions, function);
+    return function;
+} // HlslCreateBuiltinHelper
+
 static int HlslAppendExpression(HlslLowerContext *context, HlslStmt **list,
                                 HlslExpr *expression)
 {
@@ -1911,7 +2107,12 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     HlslStmt *copies;
     Symbol *symbol;
     Symbol *formal;
-    const char *intrinsicName;
+    HlslBuiltin builtin;
+    HlslBuiltinLowering lowering;
+    HlslType builtinResult;
+    HlslType builtinParams[3];
+    int builtinParamCount;
+    int builtinStatus;
 
     if (source->bin.left == NULL ||
         source->bin.left->common.kind != SYMB_N)
@@ -1919,18 +2120,36 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
         return NULL;
     }
     symbol = source->bin.left->sym.symbol;
-    intrinsicName = HlslNativeIntrinsicName(context, symbol);
-    if (intrinsicName != NULL) {
+    builtinStatus = HlslResolveBuiltinSymbol(context, symbol,
+        GetExprCallSite(source), &builtin, &builtinResult,
+        builtinParams, &builtinParamCount);
+    if (builtinStatus < 0)
+        return NULL;
+    if (builtinStatus > 0) {
         target = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
         if (target == NULL)
             return NULL;
-        target->u.call.name = intrinsicName;
         target->u.call.arguments = HlslLowerExprList(context,
             source->bin.right, FUN_ARG_OP, prefix, NULL);
         if (source->bin.right != NULL &&
             target->u.call.arguments == NULL)
         {
             return NULL;
+        }
+        lowering = HlslBuiltinLoweringKind(builtin);
+        if (lowering == HLSL_BUILTIN_LOWER_NATIVE) {
+            target->u.call.name = HlslBuiltinSpelling(builtin);
+        } else {
+            function = HlslCreateBuiltinHelper(context, builtin,
+                                               &builtinResult);
+            if (function == NULL) {
+                HlslLowerFailure(context, HLSL_ERROR_INTRINSIC,
+                                 HlslBuiltinSpelling(builtin),
+                                 GetExprCallSite(source));
+                return NULL;
+            }
+            target->u.call.function = function;
+            target->u.call.name = function->name;
         }
         target->hasSideEffects = source->common.HasSideEffects;
         return target;
@@ -2968,6 +3187,11 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol,
 static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
 {
     const SourceLoc *callLoc;
+    HlslBuiltin builtin;
+    HlslType result;
+    HlslType params[3];
+    int paramCount;
+    int builtinStatus;
 
     if (source == NULL)
         return 1;
@@ -2982,13 +3206,19 @@ static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
         callLoc = source->bin.op == FUN_CALL_OP ?
                   GetExprCallSite(source) : NULL;
         if (source->bin.op == FUN_CALL_OP && source->bin.left != NULL &&
-            source->bin.left->common.kind == SYMB_N &&
-            HlslNativeIntrinsicName(context,
-                source->bin.left->sym.symbol) == NULL &&
-            !HlslCollectHelper(context, source->bin.left->sym.symbol,
-                               callLoc))
+            source->bin.left->common.kind == SYMB_N)
         {
-            return 0;
+            builtinStatus = HlslResolveBuiltinSymbol(context,
+                source->bin.left->sym.symbol, callLoc, &builtin,
+                &result, params, &paramCount);
+            if (builtinStatus < 0)
+                return 0;
+            if (builtinStatus == 0 &&
+                !HlslCollectHelper(context,
+                    source->bin.left->sym.symbol, callLoc))
+            {
+                return 0;
+            }
         }
         return HlslCollectCallsInExpr(context, source->bin.left) &&
                HlslCollectCallsInExpr(context, source->bin.right);
@@ -3111,7 +3341,8 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
         return 0;
     }
     for (helper = module->functions; helper != NULL; helper = helper->next) {
-        if (!HlslLowerFunction(&context, helper))
+        if (helper->identity != NULL &&
+            !HlslLowerFunction(&context, helper))
             return 0;
     }
     name = emptyEntry ? "main" :

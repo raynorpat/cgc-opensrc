@@ -256,6 +256,8 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
     HlslExpr *argument;
     HlslDecl *parameter;
     HlslType resultType;
+    HlslType builtinParams[3];
+    int builtinParamCount;
     int length;
     int maskLength;
 
@@ -444,80 +446,29 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                                    "HLSL conditional types");
     case HLSL_EXPR_CALL:
         if (expression->u.call.function == NULL &&
-            expression->u.call.name != NULL &&
-            !strcmp(expression->u.call.name, "mul"))
+            expression->u.call.name != NULL)
         {
-            argument = expression->u.call.arguments;
-            if (argument == NULL || argument->next == NULL ||
-                argument->next->next != NULL ||
-                !HlslLegalizeExpr(module, argument) ||
-                !HlslLegalizeExpr(module, argument->next) ||
-                !HlslMultiplyResult(&argument->type,
-                                    &argument->next->type,
-                                    &resultType) ||
-                !HlslTypesEqual(&expression->type, &resultType))
+            builtinParamCount = 0;
+            for (argument = expression->u.call.arguments;
+                 argument != NULL; argument = argument->next)
             {
-                return HlslLegalizeFailure(module,
-                    HLSL_ERROR_INVALID_IR, &expression->loc,
-                    "HLSL mul arguments");
-            }
-            return 1;
-        }
-        if (expression->u.call.function == NULL &&
-            expression->u.call.name != NULL &&
-            (!strcmp(expression->u.call.name, "dot") ||
-             !strcmp(expression->u.call.name, "max") ||
-             !strcmp(expression->u.call.name, "normalize") ||
-             !strcmp(expression->u.call.name, "rsqrt")))
-        {
-            argument = expression->u.call.arguments;
-            if (argument == NULL || !HlslLegalizeExpr(module, argument))
-                return 0;
-            if (!strcmp(expression->u.call.name, "normalize")) {
-                if (argument->next == NULL &&
-                    argument->type.base == HLSL_BASE_FLOAT &&
-                    argument->type.len == 3 &&
-                    argument->type.rows == 0 && argument->type.cols == 0 &&
-                    HlslTypesEqual(&expression->type, &argument->type))
-                {
-                    return 1;
-                }
-            } else if (!strcmp(expression->u.call.name, "rsqrt")) {
-                if (argument->next == NULL &&
-                    HlslIsScalar(&argument->type, HLSL_BASE_FLOAT) &&
-                    HlslIsScalar(&expression->type, HLSL_BASE_FLOAT))
-                {
-                    return 1;
-                }
-            } else {
-                HlslExpr *second;
-
-                second = argument->next;
-                if (second == NULL || second->next != NULL ||
-                    !HlslLegalizeExpr(module, second))
+                if (builtinParamCount >= 3 ||
+                    !HlslLegalizeExpr(module, argument))
                 {
                     return HlslLegalizeFailure(module,
                         HLSL_ERROR_INVALID_IR, &expression->loc,
-                        "HLSL bundled intrinsic arguments");
+                        "HLSL intrinsic arguments");
                 }
-                if (!strcmp(expression->u.call.name, "dot") &&
-                    argument->type.base == HLSL_BASE_FLOAT &&
-                    argument->type.len == 3 &&
-                    HlslTypesEqual(&argument->type, &second->type) &&
-                    HlslIsScalar(&expression->type, HLSL_BASE_FLOAT))
-                {
-                    return 1;
-                }
-                if (!strcmp(expression->u.call.name, "max") &&
-                    HlslIsScalar(&argument->type, HLSL_BASE_FLOAT) &&
-                    HlslIsScalar(&second->type, HLSL_BASE_FLOAT) &&
-                    HlslIsScalar(&expression->type, HLSL_BASE_FLOAT))
-                {
-                    return 1;
-                }
+                builtinParams[builtinParamCount++] = argument->type;
+            }
+            if (HlslLookupBuiltin(module->stage, expression->u.call.name,
+                    &expression->type, builtinParams,
+                    builtinParamCount) != HLSL_BUILTIN_NONE)
+            {
+                return 1;
             }
             return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
-                &expression->loc, "HLSL bundled intrinsic overload");
+                &expression->loc, "HLSL intrinsic overload");
         }
         if (expression->u.call.function == NULL ||
             expression->u.call.name == NULL ||

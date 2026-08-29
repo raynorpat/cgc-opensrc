@@ -80,6 +80,61 @@ typedef enum HlslRegisterBank_Enum {
     HLSL_REGISTER_S
 } HlslRegisterBank;
 
+typedef enum HlslBuiltin_Enum {
+    HLSL_BUILTIN_NONE,
+    HLSL_BUILTIN_MUL,
+    HLSL_BUILTIN_DOT,
+    HLSL_BUILTIN_CROSS,
+    HLSL_BUILTIN_NORMALIZE,
+    HLSL_BUILTIN_REFLECT,
+    HLSL_BUILTIN_REFRACT,
+    HLSL_BUILTIN_LENGTH,
+    HLSL_BUILTIN_DISTANCE,
+    HLSL_BUILTIN_MIN,
+    HLSL_BUILTIN_MAX,
+    HLSL_BUILTIN_CLAMP,
+    HLSL_BUILTIN_ABS,
+    HLSL_BUILTIN_SIGN,
+    HLSL_BUILTIN_FLOOR,
+    HLSL_BUILTIN_CEIL,
+    HLSL_BUILTIN_ROUND,
+    HLSL_BUILTIN_TRUNC,
+    HLSL_BUILTIN_SQRT,
+    HLSL_BUILTIN_RSQRT,
+    HLSL_BUILTIN_POW,
+    HLSL_BUILTIN_EXP,
+    HLSL_BUILTIN_EXP2,
+    HLSL_BUILTIN_LOG,
+    HLSL_BUILTIN_LOG2,
+    HLSL_BUILTIN_SIN,
+    HLSL_BUILTIN_COS,
+    HLSL_BUILTIN_TAN,
+    HLSL_BUILTIN_ASIN,
+    HLSL_BUILTIN_ACOS,
+    HLSL_BUILTIN_ATAN,
+    HLSL_BUILTIN_ATAN2,
+    HLSL_BUILTIN_SINH,
+    HLSL_BUILTIN_COSH,
+    HLSL_BUILTIN_TANH,
+    HLSL_BUILTIN_LERP,
+    HLSL_BUILTIN_FRAC,
+    HLSL_BUILTIN_FMOD,
+    HLSL_BUILTIN_SATURATE,
+    HLSL_BUILTIN_STEP,
+    HLSL_BUILTIN_SMOOTHSTEP,
+    HLSL_BUILTIN_ANY,
+    HLSL_BUILTIN_ALL,
+    HLSL_BUILTIN_DDX,
+    HLSL_BUILTIN_DDY,
+    HLSL_BUILTIN_COUNT
+} HlslBuiltin;
+
+typedef enum HlslBuiltinLowering_Enum {
+    HLSL_BUILTIN_LOWER_NATIVE,
+    HLSL_BUILTIN_LOWER_HELPER,
+    HLSL_BUILTIN_LOWER_EXPANSION
+} HlslBuiltinLowering;
+
 typedef enum HlslErrorKind_Enum {
     HLSL_ERROR_NONE,
     HLSL_ERROR_UNSUPPORTED_TYPE,
@@ -353,6 +408,7 @@ struct HlslFunction_Rec {
     HlslDecl *parameters;
     HlslDecl *locals;
     HlslStmt *body;
+    HlslBuiltin builtin;
     int isEntry;
     int needsPrototype;
     int visitState;
@@ -425,6 +481,11 @@ const char *HlslAllocateDistinctName(HlslModule *module,
 HlslType HlslNumericType(HlslBase base, int len);
 HlslType HlslMatrixType(int rows, int cols);
 const char *HlslTypeName(const HlslType *type);
+HlslBuiltin HlslLookupBuiltin(HlslStage stage, const char *name,
+    const HlslType *result, const HlslType *params, int paramCount);
+int HlslIsBuiltinName(const char *name);
+const char *HlslBuiltinSpelling(HlslBuiltin builtin);
+HlslBuiltinLowering HlslBuiltinLoweringKind(HlslBuiltin builtin);
 int HlslTypeRegisterSpan(const HlslType *type);
 int HlslIsReservedName(const char *name);
 int HlslReservedNameCount(void);

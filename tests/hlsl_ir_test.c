@@ -470,6 +470,7 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     HlslModule module;
     HlslProfileDesc profile;
     HlslType voidType;
+    HlslType float2Type;
     HlslType float4Type;
     HlslType inputType;
     HlslType outputType;
@@ -482,6 +483,8 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     HlslFunction *unowned;
     HlslExpr *call;
     HlslExpr *helperCall;
+    HlslExpr *firstArgument;
+    HlslExpr *secondArgument;
     HlslStmt *statement;
     HlslStmt *helperStatement;
 
@@ -491,6 +494,7 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     profile.name = "hlslv";
     profile.target = "vs_3_0";
     voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    float2Type = HlslNumericType(HLSL_BASE_FLOAT, 2);
     float4Type = HlslNumericType(HLSL_BASE_FLOAT, 4);
     inputType = HlslNumericType(HLSL_BASE_STRUCT, 0);
     inputType.structName = "cg_VertexIn";
@@ -547,6 +551,23 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     helperCall->u.call.name = unowned->name;
     helperStatement->u.expression = helperCall;
     HlslAppendStmt(&entry->body, helperStatement);
+    assert(!HlslValidateModule(&module, &profile));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+
+    module.errors = 0;
+    module.errorKind = HLSL_ERROR_NONE;
+    module.errorReason = NULL;
+    helperCall = HlslNewExpr(&module, HLSL_EXPR_CALL, float2Type);
+    firstArgument = HlslNewExpr(&module, HLSL_EXPR_CONSTRUCT, float2Type);
+    secondArgument = HlslNewExpr(&module, HLSL_EXPR_CONSTRUCT, float2Type);
+    helperStatement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
+    assert(helperCall != NULL && firstArgument != NULL &&
+           secondArgument != NULL && helperStatement != NULL);
+    helperCall->u.call.name = "cross";
+    helperCall->u.call.arguments = firstArgument;
+    HlslAppendExpr(&helperCall->u.call.arguments, secondArgument);
+    helperStatement->u.expression = helperCall;
+    entry->body = helperStatement;
     assert(!HlslValidateModule(&module, &profile));
     assert(module.errorKind == HLSL_ERROR_INVALID_IR);
 }
@@ -1455,6 +1476,141 @@ static void TestLocatedExpression(void)
     assert(expression->loc.file == 7 && expression->loc.line == 23);
 }
 
+static void ExpectBuiltin(HlslStage stage, const char *name,
+                          HlslBuiltin expected, HlslType result,
+                          const HlslType *params, int count)
+{
+    HlslBuiltin actual;
+
+    actual = HlslLookupBuiltin(stage, name, &result, params, count);
+    assert(actual == expected);
+    assert(!strcmp(HlslBuiltinSpelling(actual), name));
+}
+
+static void TestBuiltinSignatures(void)
+{
+    HlslType f1;
+    HlslType f2;
+    HlslType f3;
+    HlslType f4;
+    HlslType i3;
+    HlslType b1;
+    HlslType b3;
+    HlslType m34;
+    HlslType params[3];
+
+    f1 = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    f2 = HlslNumericType(HLSL_BASE_FLOAT, 2);
+    f3 = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    f4 = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    i3 = HlslNumericType(HLSL_BASE_INT, 3);
+    b1 = HlslNumericType(HLSL_BASE_BOOL, 1);
+    b3 = HlslNumericType(HLSL_BASE_BOOL, 3);
+    m34 = HlslMatrixType(3, 4);
+
+    params[0] = m34; params[1] = f4;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "mul", HLSL_BUILTIN_MUL,
+                  f3, params, 2);
+    params[0] = f3; params[1] = f3;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "dot", HLSL_BUILTIN_DOT,
+                  f1, params, 2);
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "cross", HLSL_BUILTIN_CROSS,
+                  f3, params, 2);
+    params[0] = f3;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "normalize", HLSL_BUILTIN_NORMALIZE,
+                  f3, params, 1);
+    params[1] = f3;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "reflect", HLSL_BUILTIN_REFLECT,
+                  f3, params, 2);
+    params[2] = f1;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "refract", HLSL_BUILTIN_REFRACT,
+                  f3, params, 3);
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "length", HLSL_BUILTIN_LENGTH,
+                  f1, params, 1);
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "distance", HLSL_BUILTIN_DISTANCE,
+                  f1, params, 2);
+
+    params[0] = f3; params[1] = f1;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "min", HLSL_BUILTIN_MIN,
+                  f3, params, 2);
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "max", HLSL_BUILTIN_MAX,
+                  f3, params, 2);
+    params[2] = f3;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "clamp", HLSL_BUILTIN_CLAMP,
+                  f3, params, 3);
+
+#define EXPECT_UNARY(name, id) \
+    params[0] = f3; \
+    ExpectBuiltin(HLSL_STAGE_VERTEX, name, id, f3, params, 1)
+    EXPECT_UNARY("abs", HLSL_BUILTIN_ABS);
+    EXPECT_UNARY("sign", HLSL_BUILTIN_SIGN);
+    EXPECT_UNARY("floor", HLSL_BUILTIN_FLOOR);
+    EXPECT_UNARY("ceil", HLSL_BUILTIN_CEIL);
+    EXPECT_UNARY("round", HLSL_BUILTIN_ROUND);
+    EXPECT_UNARY("trunc", HLSL_BUILTIN_TRUNC);
+    EXPECT_UNARY("sqrt", HLSL_BUILTIN_SQRT);
+    EXPECT_UNARY("rsqrt", HLSL_BUILTIN_RSQRT);
+    EXPECT_UNARY("exp", HLSL_BUILTIN_EXP);
+    EXPECT_UNARY("exp2", HLSL_BUILTIN_EXP2);
+    EXPECT_UNARY("log", HLSL_BUILTIN_LOG);
+    EXPECT_UNARY("log2", HLSL_BUILTIN_LOG2);
+    EXPECT_UNARY("sin", HLSL_BUILTIN_SIN);
+    EXPECT_UNARY("cos", HLSL_BUILTIN_COS);
+    EXPECT_UNARY("tan", HLSL_BUILTIN_TAN);
+    EXPECT_UNARY("asin", HLSL_BUILTIN_ASIN);
+    EXPECT_UNARY("acos", HLSL_BUILTIN_ACOS);
+    EXPECT_UNARY("atan", HLSL_BUILTIN_ATAN);
+    EXPECT_UNARY("sinh", HLSL_BUILTIN_SINH);
+    EXPECT_UNARY("cosh", HLSL_BUILTIN_COSH);
+    EXPECT_UNARY("tanh", HLSL_BUILTIN_TANH);
+    EXPECT_UNARY("frac", HLSL_BUILTIN_FRAC);
+    EXPECT_UNARY("saturate", HLSL_BUILTIN_SATURATE);
+#undef EXPECT_UNARY
+
+    params[0] = i3;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "abs", HLSL_BUILTIN_ABS,
+                  i3, params, 1);
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "sign", HLSL_BUILTIN_SIGN,
+                  i3, params, 1);
+    params[0] = f3; params[1] = f1;
+#define EXPECT_BINARY(name, id) \
+    ExpectBuiltin(HLSL_STAGE_VERTEX, name, id, f3, params, 2)
+    EXPECT_BINARY("pow", HLSL_BUILTIN_POW);
+    EXPECT_BINARY("atan2", HLSL_BUILTIN_ATAN2);
+    EXPECT_BINARY("fmod", HLSL_BUILTIN_FMOD);
+    EXPECT_BINARY("step", HLSL_BUILTIN_STEP);
+#undef EXPECT_BINARY
+    params[2] = f3;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "lerp", HLSL_BUILTIN_LERP,
+                  f3, params, 3);
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "smoothstep", HLSL_BUILTIN_SMOOTHSTEP,
+                  f3, params, 3);
+
+    params[0] = b3;
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "any", HLSL_BUILTIN_ANY,
+                  b1, params, 1);
+    ExpectBuiltin(HLSL_STAGE_VERTEX, "all", HLSL_BUILTIN_ALL,
+                  b1, params, 1);
+    params[0] = f2;
+    ExpectBuiltin(HLSL_STAGE_PIXEL, "ddx", HLSL_BUILTIN_DDX,
+                  f2, params, 1);
+    ExpectBuiltin(HLSL_STAGE_PIXEL, "ddy", HLSL_BUILTIN_DDY,
+                  f2, params, 1);
+    assert(HlslLookupBuiltin(HLSL_STAGE_VERTEX, "ddx", &f2,
+                            params, 1) == HLSL_BUILTIN_NONE);
+    params[0] = f2; params[1] = f2;
+    assert(HlslLookupBuiltin(HLSL_STAGE_VERTEX, "cross", &f2,
+                            params, 2) == HLSL_BUILTIN_NONE);
+    assert(HlslLookupBuiltin(HLSL_STAGE_VERTEX, "unknown", &f2,
+                            params, 2) == HLSL_BUILTIN_NONE);
+    assert(HlslIsBuiltinName("smoothstep"));
+    assert(!HlslIsBuiltinName("user_smoothstep"));
+    assert(HlslBuiltinLoweringKind(HLSL_BUILTIN_RSQRT) ==
+           HLSL_BUILTIN_LOWER_HELPER);
+    assert(HlslBuiltinLoweringKind(HLSL_BUILTIN_SATURATE) ==
+           HLSL_BUILTIN_LOWER_EXPANSION);
+}
+
 int main(int argc, char **argv)
 {
     HlslModule module;
@@ -1554,5 +1710,6 @@ int main(int argc, char **argv)
     TestDefaultValidationIsTransactional();
     TestPublicBindingNames();
     TestLocatedExpression();
+    TestBuiltinSignatures();
     return 0;
 }

@@ -1,0 +1,17 @@
+float cross(float left, float right)
+{
+    return left + right;
+}
+
+struct VertexOut
+{
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = float4(cross(position.x, position.y), position.y,
+                             position.z, position.w);
+    return output;
+}
