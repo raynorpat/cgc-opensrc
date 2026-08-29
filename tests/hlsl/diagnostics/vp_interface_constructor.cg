@@ -1,0 +1,10 @@
+interface Transform
+{
+    float4 apply(float4 value);
+};
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    Transform(position);
+    return position;
+}

@@ -1,0 +1,10 @@
+static float staticBias = 0.25;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position + float4(staticBias, 0.0, 0.0, 0.0);
+    return output;
+}

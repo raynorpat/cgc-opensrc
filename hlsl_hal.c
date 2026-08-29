@@ -240,6 +240,8 @@ static int HandleParameterTypeError_hlsl(SourceLoc *loc,
 static void HlslAppendSignatureText(char *target, size_t size,
                                     size_t *used, const char *text);
 static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, Binding *fBind);
+static int BindUniformPragma_hlsl(SourceLoc *loc, Symbol *fSymb,
+                                  Binding *lBind, const Binding *fBind);
 static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb, int semantic,
                                     Binding *fBind, int IsOutVal);
 static int BindVaryingUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, int name,
@@ -312,6 +314,7 @@ static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
     fHAL->CheckInternalFunction = CheckInternalFunction_hlsl;
     fHAL->HandleParameterTypeError = HandleParameterTypeError_hlsl;
     fHAL->BindUniformUnbound = BindUniformUnbound_hlsl;
+    fHAL->BindUniformPragma = BindUniformPragma_hlsl;
     fHAL->BindVaryingSemantic = BindVaryingSemantic_hlsl;
     fHAL->BindVaryingUnbound = BindVaryingUnbound_hlsl;
     fHAL->PrintCodeHeader = PrintCodeHeader_hlsl;
@@ -761,6 +764,157 @@ static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb,
     fBind->none.properties |= BIND_IS_BOUND | BIND_UNIFORM;
     return 1;
 } // BindUniformUnbound_hlsl
+
+static int HlslAddPragmaDefault(Symbol *symbol, const Binding *source)
+{
+    BindingList **tail;
+    BindingList *item;
+    Binding *record;
+
+    if (Cg == NULL || Cg->theHAL == NULL || symbol == NULL || source == NULL)
+        return 0;
+    record = (Binding *) malloc(sizeof(Binding));
+    item = (BindingList *) malloc(sizeof(BindingList));
+    if (record == NULL || item == NULL) {
+        free(record);
+        free(item);
+        return 0;
+    }
+    *record = *source;
+    record->constdef.kind = BK_DEFAULT;
+    record->none.properties = BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+    item->next = NULL;
+    item->binding = record;
+    item->identity = symbol;
+    item->initializer = NULL;
+    item->type = symbol->type;
+    tail = &Cg->theHAL->defaultBindings;
+    while (*tail != NULL)
+        tail = &(*tail)->next;
+    *tail = item;
+    return 1;
+} // HlslAddPragmaDefault
+
+static char HlslPragmaTypeBank(const Type *type);
+
+static char HlslPragmaStructBank(const Scope *members)
+{
+    const Symbol *member;
+    char bank = 0;
+
+    if (members == NULL)
+        return 0;
+    for (member = members->params; member != NULL; member = member->next) {
+        char memberBank = HlslPragmaTypeBank(member->type);
+
+        if (memberBank == 0 || (bank != 0 && bank != memberBank))
+            return 0;
+        bank = memberBank;
+    }
+    return bank;
+} // HlslPragmaStructBank
+
+static char HlslPragmaTypeBank(const Type *type)
+{
+    CgScalarKind kind;
+
+    if (type == NULL)
+        return 0;
+    if (GetCategory(type) == TYPE_CATEGORY_SAMPLER)
+        return 's';
+    if (GetCategory(type) == TYPE_CATEGORY_STRUCT)
+        return HlslPragmaStructBank(type->str.members);
+    kind = type->co.scalarKind;
+    if (kind == CG_SCALAR_NONE && GetCategory(type) == TYPE_CATEGORY_ARRAY)
+        return HlslPragmaTypeBank(type->arr.eltype);
+    switch (kind) {
+    case CG_SCALAR_CFLOAT:
+    case CG_SCALAR_FIXED:
+    case CG_SCALAR_HALF:
+    case CG_SCALAR_FLOAT:
+    case CG_SCALAR_DOUBLE:
+        return 'c';
+    case CG_SCALAR_CINT:
+    case CG_SCALAR_CHAR:
+    case CG_SCALAR_UCHAR:
+    case CG_SCALAR_SHORT:
+    case CG_SCALAR_USHORT:
+    case CG_SCALAR_INT:
+    case CG_SCALAR_UINT:
+    case CG_SCALAR_LONG:
+    case CG_SCALAR_ULONG:
+        return 'i';
+    case CG_SCALAR_BOOL:
+        return 'b';
+    case CG_SCALAR_NONE:
+        break;
+    }
+    return 0;
+} // HlslPragmaTypeBank
+
+/*
+ * BindUniformPragma_hlsl() - Preserve explicit DirectX register, texture
+ *         unit, and numeric default pragmas for the HLSL lowering pass.
+ */
+
+static int BindUniformPragma_hlsl(SourceLoc *loc, Symbol *fSymb,
+                                  Binding *lBind, const Binding *fBind)
+{
+    const char *rname;
+    char requestedBank;
+    char typeBank;
+    int count;
+    int len;
+
+    (void) loc;
+    if (fSymb == NULL || lBind == NULL || fBind == NULL)
+        return 0;
+    switch (fBind->none.kind) {
+    case BK_REGARRAY:
+        rname = GetAtomString(atable, fBind->reg.rname);
+        if (rname == NULL || fBind->reg.regno < 0 ||
+            (strcmp(rname, "c") != 0 && strcmp(rname, "C") != 0 &&
+             strcmp(rname, "i") != 0 && strcmp(rname, "I") != 0 &&
+             strcmp(rname, "b") != 0 && strcmp(rname, "B") != 0 &&
+             strcmp(rname, "s") != 0 && strcmp(rname, "S") != 0))
+        {
+            return 0;
+        }
+        requestedBank = rname[0];
+        if (requestedBank >= 'A' && requestedBank <= 'Z')
+            requestedBank += 'a' - 'A';
+        typeBank = HlslPragmaTypeBank(fSymb->type);
+        if (typeBank == 0 || typeBank != requestedBank)
+            return 0;
+        *lBind = *fBind;
+        lBind->none.properties |= BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+        return 1;
+    case BK_TEXUNIT:
+        if (GetCategory(fSymb->type) != TYPE_CATEGORY_SAMPLER ||
+            fBind->texunit.unitno < 0)
+        {
+            return 0;
+        }
+        *lBind = *fBind;
+        lBind->none.properties |= BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+        return 1;
+    case BK_DEFAULT:
+        if (IsScalar(fSymb->type)) {
+            count = 1;
+        } else if (IsVector(fSymb->type, &len)) {
+            count = len;
+        } else {
+            return 0;
+        }
+        if (count < 1 || count > 4 || fBind->constdef.size != count)
+            return 0;
+        *lBind = *fBind;
+        lBind->none.properties |= BIND_IS_BOUND | BIND_INPUT | BIND_UNIFORM;
+        return HlslAddPragmaDefault(fSymb, fBind);
+    default:
+        return 0;
+    }
+} // BindUniformPragma_hlsl
 
 static void RecordHlslHALError(HlslHALData *data, SourceLoc *loc,
                                HlslErrorKind kind, const char *reason)

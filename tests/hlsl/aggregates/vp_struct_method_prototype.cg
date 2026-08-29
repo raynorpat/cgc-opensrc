@@ -1,0 +1,13 @@
+struct Scale
+{
+    float factor;
+
+    float twice(float value);
+};
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    Scale scale;
+    scale.factor = 2.0;
+    return position + scale.factor * 0.0;
+}

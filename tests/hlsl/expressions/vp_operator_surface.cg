@@ -1,0 +1,24 @@
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    int bits;
+    const int foldedBits = (1 << 2) + (8 >> 1) + (~1) +
+                           (3 & 1) + (1 ^ 3) + (1 | 2);
+    float value;
+    bits = int(position.x);
+    ++bits;
+    bits--;
+    --bits;
+    bits++;
+    bits %= 7;
+    value = position.y;
+    value += 2.0;
+    value -= 1.0;
+    value *= 3.0;
+    value /= 2.0;
+    output.position = float4(float(bits), value, position.z,
+                             position.w + float(foldedBits) * 0.0);
+    return output;
+}

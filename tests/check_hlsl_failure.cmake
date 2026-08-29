@@ -22,7 +22,10 @@ set(diagnostics "${stdout}${stderr}")
 string(REGEX MATCHALL "error C[0-9][0-9][0-9][0-9]:" matches
     "${diagnostics}")
 list(LENGTH matches match_count)
-if(NOT match_count EQUAL 1)
+if(NOT DEFINED EXPECTED_ERROR_COUNT)
+    set(EXPECTED_ERROR_COUNT 1)
+endif()
+if(NOT match_count EQUAL EXPECTED_ERROR_COUNT)
     message(FATAL_ERROR
         "${PROFILE} reported ${match_count} compiler errors:\n${diagnostics}")
 endif()
@@ -40,6 +43,14 @@ endif()
 if(NOT diagnostics MATCHES "${MESSAGE}")
     message(FATAL_ERROR
         "${PROFILE} did not match message ${MESSAGE}:\n${diagnostics}")
+endif()
+if(DEFINED SECONDARY_CODE AND NOT diagnostics MATCHES "error C${SECONDARY_CODE}:")
+    message(FATAL_ERROR
+        "${PROFILE} did not report secondary C${SECONDARY_CODE}:\n${diagnostics}")
+endif()
+if(DEFINED SECONDARY_MESSAGE AND NOT diagnostics MATCHES "${SECONDARY_MESSAGE}")
+    message(FATAL_ERROR
+        "${PROFILE} did not match secondary message ${SECONDARY_MESSAGE}:\n${diagnostics}")
 endif()
 # Transactional output: HLSL validation happens before publication, so a
 # failed compile may leave no content at all.  Comments can carry binding or

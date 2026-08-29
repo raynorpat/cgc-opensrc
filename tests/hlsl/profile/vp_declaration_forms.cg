@@ -1,0 +1,129 @@
+typedef float4 Position;
+struct ForwardDeclaration;
+
+float choose(float value, float scale = 2.0)
+{
+    return value * scale;
+}
+
+hlslv float choose(float value, float scale = 3.0)
+{
+    return value * scale;
+}
+
+void finish(inout float value)
+{
+    value = value + 0.0;
+    return;
+}
+
+struct VertexOut { Position position : POSITION; };
+
+VertexOut main(varying packed Position input : ATTRIB0)
+{
+    VertexOut output;
+    float1 floatVector1;
+    float2 floatVector2;
+    float3 floatVector3;
+    float4 floatVector4;
+    int1 intVector1;
+    int2 intVector2;
+    int3 intVector3;
+    int4 intVector4;
+    bool1 boolVector1;
+    bool2 boolVector2;
+    bool3 boolVector3;
+    bool4 boolVector4;
+    cfloat one = 1.0;
+    cfloat1 compileFloat1;
+    cfloat2 compileFloat2;
+    cfloat3 compileFloat3;
+    cfloat4 compileFloatVector;
+    cint index = 2;
+    cint1 compileInt1;
+    cint2 compileInt2;
+    cint3 compileInt3;
+    cint4 compileIntVector;
+    char byteValue = 7t;
+    char1 byteVector1;
+    char2 byteVector2;
+    char3 byteVector3;
+    char4 byteVector;
+    unsigned char ubyteValue = 8ut;
+    uchar ubyteCanonical;
+    uchar1 ubyteVector1;
+    uchar2 ubyteVector2;
+    uchar3 ubyteVector3;
+    uchar4 ubyteVector;
+    short shortValue = 9s;
+    short1 shortVector1;
+    short2 shortVector2;
+    short3 shortVector3;
+    short4 shortVector;
+    unsigned short ushortValue = 10us;
+    ushort ushortCanonical;
+    ushort1 ushortVector1;
+    ushort2 ushortVector2;
+    ushort3 ushortVector3;
+    ushort4 ushortVector;
+    unsigned uintValue = 11u;
+    unsigned int explicitUintValue;
+    uint uintCanonical;
+    uint1 uintVector1;
+    uint2 uintVector2;
+    uint3 uintVector3;
+    uint4 uintVector;
+    long longValue = 12l;
+    long1 longVector1;
+    long2 longVector2;
+    long3 longVector3;
+    long4 longVector;
+    unsigned long ulongValue = 13ul;
+    ulong ulongCanonical;
+    ulong1 ulongVector1;
+    ulong2 ulongVector2;
+    ulong3 ulongVector3;
+    ulong4 ulongVector;
+    const float offset = 0.0;
+    fixed fixedValue = 0.25x + fixed(input.x);
+    fixed1 fixedVector1;
+    fixed2 fixedVector2;
+    fixed3 fixedVector3;
+    fixed4 fixedVector;
+    half halfValue = 0.5h + half(input.y);
+    half1 halfVector1;
+    half2 halfVector2;
+    half3 halfVector3;
+    half4 halfVector4;
+    double doubleValue = 0.75d + double(input.z);
+    double1 doubleVector1;
+    double2 doubleVector2;
+    double3 doubleVector3;
+    double4 doubleVector;
+    float1x1 matrix11;
+    float1x2 matrix12;
+    float1x3 matrix13;
+    float1x4 matrix14;
+    float2x1 matrix21;
+    float2x2 matrix22;
+    float2x3 matrix23;
+    float2x4 matrix24;
+    float3x1 matrix31;
+    float3x2 matrix32;
+    float3x3 matrix33;
+    float3x4 matrix34;
+    float4x1 matrix41;
+    float4x2 matrix42;
+    float4x3 matrix43;
+    float4x4 matrix44;
+    float lengthVector[5];
+    int aggregateLength = floatVector4.length + matrix23.length +
+                          lengthVector.length;
+    float finished = 1.0f * input.w;
+    finish(finished);
+    output.position = Position(choose(float(fixedValue)),
+                               choose(float(halfValue), float(index)),
+                               float(doubleValue) * float(one) + scope::offset,
+                               finished + float(aggregateLength) * 0.0);
+    return output;
+}

@@ -1,0 +1,50 @@
+struct Payload { float value; };
+struct VertexOut { float4 position : POSITION; };
+
+float scalarParameter(in float value)
+{
+    return value;
+}
+
+float2 vectorParameter(half2 value)
+{
+    float2 converted = (float2) value;
+    converted.xy = converted.yx;
+    return converted;
+}
+
+float2x2 matrixParameter(float2x2 value)
+{
+    float2x2 copied;
+    copied = value;
+    return copied;
+}
+
+float arrayParameter(float values[2])
+{
+    return values[0] + values[1];
+}
+
+float structParameter(Payload value)
+{
+    return value.value;
+}
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    Payload payload;
+    float values[2];
+    float2 vectorValue;
+    float2x2 matrixValue;
+    payload.value = position.x;
+    values[0] = position.y;
+    values[1] = position.z;
+    vectorValue = vectorParameter(half2(0.5h, 0.25h));
+    matrixValue = matrixParameter(float2x2(1.0, 0.0, 0.0, 1.0));
+    output.position = float4(scalarParameter(vectorValue[0]),
+                             arrayParameter(values),
+                             structParameter(payload),
+                             matrixValue[0][0] * position.w);
+    return output;
+}

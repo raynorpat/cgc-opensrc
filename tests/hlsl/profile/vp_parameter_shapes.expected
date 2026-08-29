@@ -1,0 +1,79 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 TEXCOORD0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_Payload
+{
+    float value;
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : TEXCOORD0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float2 cg_vectorParameter(float2 value)
+{
+    float2 converted;
+    converted = (float2) value;
+    converted.xy = converted.yx;
+    return converted;
+}
+
+row_major float2x2 cg_matrixParameter(row_major float2x2 value)
+{
+    row_major float2x2 copied;
+    copied = value;
+    return copied;
+}
+
+float cg_scalarParameter(float value)
+{
+    return value;
+}
+
+float cg_arrayParameter(float values[2])
+{
+    return values[0] + values[1];
+}
+
+float cg_structParameter(cg_Payload value)
+{
+    return value.value;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    cg_Payload payload;
+    float values[2];
+    float2 vectorValue;
+    row_major float2x2 matrixValue;
+    payload.value = position.x;
+    values[0] = position.y;
+    values[1] = position.z;
+    vectorValue = cg_vectorParameter(float2(0.5, 0.25));
+    matrixValue = cg_matrixParameter(float2x2(1.0, 0.0, 0.0, 1.0));
+    cg_output.position = float4(cg_scalarParameter(vectorValue[0]), cg_arrayParameter(values), cg_structParameter(payload), matrixValue[0][0] * position.w);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

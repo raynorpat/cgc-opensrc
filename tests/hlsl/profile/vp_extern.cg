@@ -1,0 +1,10 @@
+extern float externalScale;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    output.position = position * externalScale;
+    return output;
+}

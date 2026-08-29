@@ -1,0 +1,61 @@
+// profile hlslf
+// target ps_3_0
+// cgc-bind interface in coord float4 TEXCOORD0
+// cgc-bind interface out result float4 COLOR0
+
+// var sampler1D lineImage : TEXUNIT0 : s[0] : 1 : 1
+// var sampler2D planeImage : TEXUNIT1 : s[1] : 1 : 1
+// var sampler3D volumeImage : TEXUNIT2 : s[2] : 1 : 1
+// var samplerCUBE cubeImage : TEXUNIT3 : s[3] : 1 : 1
+
+sampler1D cg_lineImage : register(s0);
+sampler2D cg_planeImage : register(s1);
+sampler3D cg_volumeImage : register(s2);
+samplerCUBE cg_cubeImage : register(s3);
+
+struct cg_PixelIn
+{
+    float4 coord : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_entry(float4 coord, sampler1D lineImage, sampler2D planeImage, sampler3D volumeImage, samplerCUBE cubeImage)
+{
+    float4 result;
+    result = tex1D(lineImage, coord.x);
+    result = result + tex1Dproj(lineImage, coord);
+    result = result + tex1Dbias(lineImage, coord);
+    result = result + tex1Dlod(lineImage, coord);
+    result = result + tex1Dgrad(lineImage, coord.x, ddx(coord.x), ddy(coord.x));
+    result = result + tex2D(planeImage, coord.xy);
+    result = result + tex2Dproj(planeImage, coord);
+    result = result + tex2Dbias(planeImage, coord);
+    result = result + tex2Dlod(planeImage, coord);
+    result = result + tex2Dgrad(planeImage, coord.xy, ddx(coord.xy), ddy(coord.xy));
+    result = result + tex3D(volumeImage, coord.xyz);
+    result = result + tex3Dproj(volumeImage, coord);
+    result = result + tex3Dbias(volumeImage, coord);
+    result = result + tex3Dlod(volumeImage, coord);
+    result = result + tex3Dgrad(volumeImage, coord.xyz, ddx(coord.xyz), ddy(coord.xyz));
+    result = result + texCUBE(cubeImage, coord.xyz);
+    result = result + texCUBEproj(cubeImage, coord);
+    result = result + texCUBEbias(cubeImage, coord);
+    result = result + texCUBElod(cubeImage, coord);
+    result = result + texCUBEgrad(cubeImage, coord.xyz, ddx(coord.xyz), ddy(coord.xyz));
+    result = result + (float4) tex1D(lineImage, coord.x);
+    result = result + (float4) tex2Dproj(planeImage, coord);
+    result = result + (float4) tex3D(volumeImage, coord.xyz);
+    result = result + (float4) texCUBEproj(cubeImage, coord);
+    return result;
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.coord, cg_lineImage, cg_planeImage, cg_volumeImage, cg_cubeImage);
+    return output;
+}

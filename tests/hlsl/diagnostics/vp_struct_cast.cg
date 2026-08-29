@@ -1,0 +1,21 @@
+struct Source
+{
+    float amount;
+    int label;
+};
+
+struct Target
+{
+    half amount;
+    unsigned int label;
+};
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    Source source;
+    Target target;
+    source.amount = 1.0;
+    source.label = 2;
+    target = (Target) source;
+    return position + float(target.label) * 0.0;
+}

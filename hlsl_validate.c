@@ -2123,6 +2123,21 @@ static int HlslValidateTargetExpressionList(HlslModule *module,
     return 1;
 } // HlslValidateTargetExpressionList
 
+static int HlslIsSm3BitwiseOperator(HlslOperator op)
+{
+    return op == HLSL_OP_BITWISE_OR_ASSIGN ||
+           op == HLSL_OP_BITWISE_XOR_ASSIGN ||
+           op == HLSL_OP_BITWISE_AND_ASSIGN ||
+           op == HLSL_OP_SHIFT_LEFT_ASSIGN ||
+           op == HLSL_OP_SHIFT_RIGHT_ASSIGN ||
+           op == HLSL_OP_BITWISE_OR ||
+           op == HLSL_OP_BITWISE_XOR ||
+           op == HLSL_OP_BITWISE_AND ||
+           op == HLSL_OP_SHIFT_LEFT ||
+           op == HLSL_OP_SHIFT_RIGHT ||
+           op == HLSL_OP_BITWISE_NOT;
+} // HlslIsSm3BitwiseOperator
+
 static int HlslValidateTargetExpression(HlslModule *module,
     const HlslProfileDesc *profile, const HlslExpr *expression)
 {
@@ -2134,9 +2149,17 @@ static int HlslValidateTargetExpression(HlslModule *module,
         return 1;
     switch (expression->kind) {
     case HLSL_EXPR_UNARY:
+        if (HlslIsSm3BitwiseOperator(expression->u.unary.op))
+            return HlslFail(module, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                            &expression->loc,
+                            "bitwise and shift operators");
         return HlslValidateTargetExpression(module, profile,
                                              expression->u.unary.operand);
     case HLSL_EXPR_BINARY:
+        if (HlslIsSm3BitwiseOperator(expression->u.binary.op))
+            return HlslFail(module, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                            &expression->loc,
+                            "bitwise and shift operators");
         return HlslValidateTargetExpression(module, profile,
                     expression->u.binary.left) &&
                HlslValidateTargetExpression(module, profile,

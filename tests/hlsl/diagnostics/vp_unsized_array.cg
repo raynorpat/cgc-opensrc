@@ -1,0 +1,16 @@
+float sum(float values[])
+{
+    float result = 0.0;
+    int index;
+    for (index = 0; index < values.length; ++index)
+        result += values[index];
+    return result;
+}
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    float source[2] = { 1.0, 2.0 };
+    float dynamic[];
+    dynamic = source;
+    return position + sum(dynamic) * 0.0;
+}

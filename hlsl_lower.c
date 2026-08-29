@@ -543,6 +543,17 @@ static const char *HlslFunctionSemantic(HlslLowerContext *context,
            HlslCanonicalSemantic(context->profile, source, 1) : NULL;
 } // HlslFunctionSemantic
 
+static int HlslRejectStorage(HlslLowerContext *context, Symbol *symbol)
+{
+    if (symbol->storageClass == SC_STATIC)
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                "static storage", &symbol->loc);
+    if (symbol->storageClass == SC_EXTERN)
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                "extern storage", &symbol->loc);
+    return 1;
+} // HlslRejectStorage
+
 static HlslDecl *HlslNewSourceDecl(HlslLowerContext *context,
     Symbol *symbol, const void *nameSpace)
 {
@@ -551,6 +562,9 @@ static HlslDecl *HlslNewSourceDecl(HlslLowerContext *context,
     const char *sourceName;
     const char *name;
     char *generatedName;
+
+    if (!HlslRejectStorage(context, symbol))
+        return NULL;
 
     if (!HlslEnsureType(context, symbol->type) ||
         !HlslLowerType(context, symbol->type, &type, &symbol->loc))
@@ -599,6 +613,10 @@ static int HlslCollectMembers(HlslLowerContext *context, Scope *memberScope,
         decl->semantic = HlslSourceSemantic(context, symbol, 1);
         decl->inputSemantic = HlslSourceSemantic(context, symbol, 0);
         HlslInsertDecl(members, decl);
+    } else if (symbol->kind == FUNCTION_S) {
+        return HlslLowerFailure(context,
+                                HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                "structure method", &symbol->loc);
     }
     return HlslCollectMembers(context, memberScope, symbol->right, members);
 } // HlslCollectMembers
@@ -619,6 +637,7 @@ static int HlslEnsureSymbolTypes(HlslLowerContext *context, Symbol *symbol)
 
 static int HlslEnsureType(HlslLowerContext *context, Type *type)
 {
+    int category;
     Type *canonical;
     HlslDecl *decl;
     HlslType structType;
@@ -629,26 +648,45 @@ static int HlslEnsureType(HlslLowerContext *context, Type *type)
 
     if (type == NULL)
         return 0;
+    category = GetCategory(type);
     if (IsVoid(type) || IsMatrix(type, NULL, NULL) ||
         IsVector(type, NULL) ||
-        GetCategory(type) == TYPE_CATEGORY_SCALAR ||
-        GetCategory(type) == TYPE_CATEGORY_SAMPLER)
+        category == TYPE_CATEGORY_SCALAR ||
+        category == TYPE_CATEGORY_SAMPLER)
     {
         return 1;
     }
-    if (GetCategory(type) == TYPE_CATEGORY_ARRAY)
-        return type->arr.numels > 0 &&
-               HlslEnsureType(context, type->arr.eltype);
+    if (category == TYPE_CATEGORY_ARRAY) {
+        if (type->arr.numels <= 0)
+            return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+                                    "unsized array", NULL);
+        return HlslEnsureType(context, type->arr.eltype);
+    }
+    if (category == TYPE_CATEGORY_INTERFACE)
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+                                "interface", &type->iface.loc);
+    if (category == TYPE_CATEGORY_ATTRIB_ARRAY)
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+                                "attribute array", NULL);
     canonical = HlslCanonicalStructType(type);
     if (canonical == NULL)
         return 0;
     if (HlslFindStruct(context, canonical) != NULL)
         return 1;
     tag = HlslFindTag(context, canonical);
-    if (tag == NULL)
+    if (tag == NULL) {
+        if (canonical->str.tag == 0)
+            return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+                                    "anonymous structure",
+                                    &canonical->str.loc);
         return 0;
+    }
     sourceName = GetAtomString(atable, canonical->str.tag);
-    if (sourceName == NULL || sourceName[0] == '$')
+    if (sourceName == NULL)
+        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
+                                "anonymous structure",
+                                &canonical->str.loc);
+    if (sourceName[0] == '$')
         return 1;
     generatedName = HlslGeneratedSource(context, sourceName);
     name = generatedName != NULL ?
@@ -751,13 +789,14 @@ static int HlslParseRegisterSemantic(const char *semantic,
     {
         return 0;
     }
-    if (!strcmp(root, "C"))
+    if (!strcmp(root, "C") || !strcmp(root, "c"))
         *bank = HLSL_REGISTER_C;
-    else if (!strcmp(root, "I"))
+    else if (!strcmp(root, "I") || !strcmp(root, "i"))
         *bank = HLSL_REGISTER_I;
-    else if (!strcmp(root, "B"))
+    else if (!strcmp(root, "B") || !strcmp(root, "b"))
         *bank = HLSL_REGISTER_B;
-    else if (!strcmp(root, "S") || !strcmp(root, "TEXUNIT"))
+    else if (!strcmp(root, "S") || !strcmp(root, "s") ||
+             !strcmp(root, "TEXUNIT") || !strcmp(root, "texunit"))
         *bank = HLSL_REGISTER_S;
     else
         return 0;
@@ -782,8 +821,19 @@ static HlslBinding *HlslFindUniformBinding(HlslModule *module,
     return NULL;
 } // HlslFindUniformBinding
 
+static int HlslSymbolListContains(const SymbolList *list,
+                                  const Symbol *symbol)
+{
+    for (; list != NULL; list = list->next) {
+        if (list->symb == symbol)
+            return 1;
+    }
+    return 0;
+} // HlslSymbolListContains
+
 static int HlslCollectUniform(HlslLowerContext *context, Symbol *symbol)
 {
+    Binding *sourceBinding;
     HlslBinding *binding;
     HlslDecl *identityDecl;
     HlslType type;
@@ -794,8 +844,15 @@ static int HlslCollectUniform(HlslLowerContext *context, Symbol *symbol)
     const char *semantic;
     int regno;
 
-    if (symbol == NULL || symbol->kind != VARIABLE_S ||
-        GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM)
+    if (symbol == NULL || symbol->kind != VARIABLE_S)
+    {
+        return 1;
+    }
+    if (!HlslRejectStorage(context, symbol))
+        return 0;
+    if (GetDomain(symbol->type) != TYPE_DOMAIN_UNIFORM &&
+        !HlslSymbolListContains(Cg->theHAL->uniformParam, symbol) &&
+        !HlslSymbolListContains(Cg->theHAL->uniformGlobal, symbol))
     {
         return 1;
     }
@@ -823,7 +880,22 @@ static int HlslCollectUniform(HlslLowerContext *context, Symbol *symbol)
     binding->publicName = sourceName;
     binding->sourceOrdinal = symbol->sourceOrdinal;
     HlslSetLoc(&binding->loc, &symbol->loc);
-    if (HlslParseRegisterSemantic(semantic, &bank, &regno)) {
+    sourceBinding = symbol->details.var.bind;
+    if (sourceBinding != NULL &&
+        sourceBinding->none.kind == BK_REGARRAY &&
+        HlslParseRegisterSemantic(
+            GetAtomString(atable, sourceBinding->reg.rname), &bank, &regno))
+    {
+        binding->hasExplicitRegister = 1;
+        binding->physical.bank = bank;
+        binding->physical.regno = sourceBinding->reg.regno;
+    } else if (sourceBinding != NULL &&
+               sourceBinding->none.kind == BK_TEXUNIT)
+    {
+        binding->hasExplicitRegister = 1;
+        binding->physical.bank = HLSL_REGISTER_S;
+        binding->physical.regno = sourceBinding->texunit.unitno;
+    } else if (HlslParseRegisterSemantic(semantic, &bank, &regno)) {
         binding->hasExplicitRegister = 1;
         binding->physical.bank = bank;
         binding->physical.regno = regno;
@@ -1210,6 +1282,7 @@ static int HlslCollectDefaults(HlslLowerContext *context)
     int componentCount;
     int typedCount;
     int typedIndex;
+    scalar_constant pragmaValue;
 
     for (item = Cg->theHAL->defaultBindings; item != NULL;
          item = item->next)
@@ -1232,8 +1305,7 @@ static int HlslCollectDefaults(HlslLowerContext *context)
                 continue;
             context->statementLoc = symbol->loc;
             componentCount = HlslDefaultComponentCount(&binding->type);
-            if (componentCount <= 0 || item->initializer == NULL ||
-                item->type != symbol->type ||
+            if (componentCount <= 0 || item->type != symbol->type ||
                 (size_t) componentCount >
                     (size_t) -1 / sizeof(HlslDefaultValue) ||
                 (size_t) componentCount > (size_t) -1 / sizeof(float))
@@ -1250,11 +1322,30 @@ static int HlslCollectDefaults(HlslLowerContext *context)
             if (typedValues == NULL || binding->defaultLiterals == NULL)
                 return 0;
             typedCount = 0;
-            if (!HlslFlattenDefaultExpr(context,
-                    (const expr *) item->initializer, typedValues,
-                    componentCount, &typedCount))
-            {
-                return 0;
+            if (item->initializer != NULL) {
+                if (!HlslFlattenDefaultExpr(context,
+                        (const expr *) item->initializer, typedValues,
+                        componentCount, &typedCount))
+                {
+                    return 0;
+                }
+            } else {
+                if (item->binding->constdef.size != componentCount)
+                    return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                        "uniform default component count", &symbol->loc);
+                for (typedIndex = 0; typedIndex < componentCount;
+                     typedIndex++)
+                {
+                    pragmaValue.kind = CG_SCALAR_FLOAT;
+                    pragmaValue.value.f =
+                        item->binding->constdef.val[typedIndex];
+                    if (!HlslAppendTypedDefault(context, typedValues,
+                            componentCount, &typedCount, TYPE_BASE_FLOAT,
+                            &pragmaValue))
+                    {
+                        return 0;
+                    }
+                }
             }
             if (typedCount != componentCount)
                 return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
@@ -2484,6 +2575,17 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
     if (source->common.kind == CONST_N)
         return HlslLowerConstant(context, source, &type);
     if (source->common.kind == UNARY_N) {
+        if (source->un.op == CAST_STRUCT_OP ||
+            ((source->un.op == CAST_CS_OP ||
+              source->un.op == CAST_CV_OP ||
+              source->un.op == CAST_CM_OP ||
+              source->un.op == CAST_SHAPE_OP) &&
+             (type.arraySize > 0 || type.rows > 0 || type.cols > 0)))
+        {
+            HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
+                             "aggregate cast", &context->statementLoc);
+            return NULL;
+        }
         if (source->un.op == SWIZZLE_Z_OP)
             return HlslLowerSwizzle(context, source, &type, prefix,
                                     valueMode);
@@ -3186,6 +3288,8 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol,
         return 0;
     if (symbol->properties & SYMB_IS_BUILTIN)
         return 1;
+    if (!HlslRejectStorage(context, symbol))
+        return 0;
     function = HlslFindFunction(context->module, symbol);
     if (function != NULL) {
         if (function->visitState == 1)
@@ -3458,13 +3562,34 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     context.scope = scope;
     context.statementLoc = program->loc;
     context.entryFile = program->loc.file;
+    if (!HlslRejectStorage(&context, program))
+        return 0;
     emptyEntry = HlslIsEmptyEntry(program);
     sourceResult = HlslOriginalEntryResult(program);
     if (!HlslEnsureType(&context, sourceResult) ||
         !HlslLowerType(&context, sourceResult, &result, &program->loc) ||
         !HlslCollectCallsInStatements(&context,
-                                      program->details.fun.statements) ||
-        !HlslCollectUniformList(&context, Cg->theHAL->uniformParam) ||
+                                      program->details.fun.statements))
+    {
+        return 0;
+    }
+    if (program->details.fun.geometry.output !=
+        CG_GEOMETRY_OUTPUT_UNKNOWN)
+    {
+        return HlslLowerFailure(&context,
+                                HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                "geometry output modifier",
+                                &program->details.fun.geometry.outputLoc);
+    }
+    if (program->details.fun.geometry.input !=
+        CG_GEOMETRY_INPUT_UNKNOWN)
+    {
+        return HlslLowerFailure(&context,
+                                HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                "geometry input modifier",
+                                &program->details.fun.geometry.inputLoc);
+    }
+    if (!HlslCollectUniformList(&context, Cg->theHAL->uniformParam) ||
         !HlslCollectUniformList(&context, Cg->theHAL->uniformGlobal) ||
         !HlslCollectUniformTree(&context, scope->symbols) ||
         !HlslCollectDefaults(&context))

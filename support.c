@@ -2419,6 +2419,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     lScope = NewScope();
                     params = AddFormalParamDecls(lScope, fDecl->params);
                     lSymb = DeclareFunc(&fDecl->loc, CurrentScope, NULL, fDecl->name, lType, lScope, params);
+                    lSymb->storageClass = fDecl->type.storageClass;
                     lAttachPendingProfileSpecifier(lSymb);
                     lMergeGeometryModifiers(&lSymb->details.fun.geometry,
                                             &fDecl->type.geometry);
@@ -2506,7 +2507,16 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                                         &fDecl->type.geometry);
                 lCheckAttribArrayFunction(&fDecl->loc, fDecl, lSymb);
                 lValidateParameterDefaults(&fDecl->loc, lSymb);
-                lSymb->storageClass = fDecl->type.storageClass;
+                if (fDecl->type.storageClass != SC_UNKNOWN) {
+                    if (lSymb->storageClass != SC_UNKNOWN &&
+                        lSymb->storageClass != fDecl->type.storageClass)
+                    {
+                        SemanticError(&fDecl->loc,
+                                      ERROR___CONFLICTING_STORAGE);
+                    } else {
+                        lSymb->storageClass = fDecl->type.storageClass;
+                    }
+                }
                 // See the matching new-declaration path above.
                 if (semantics)
                     lSymb->details.fun.semantics = semantics;
@@ -2725,10 +2735,12 @@ decl *SetFunTypeParams(Scope *fScope, decl *func, decl *params, decl *actuals)
 decl *FunctionDeclHeader(SourceLoc *loc, Scope *fScope, decl *func)
 {
     Type *rtnType = GetTypePointer(Cg->tokenLoc, &func->type);
+    StorageClass storageClass = func->type.storageClass;
 
     if (IsUnsizedArray(rtnType))
         SemanticError(loc, ERROR_S_UNSIZED_ARRAY, GetAtomString(atable, func->name));
     NewDType(&func->type, NULL, TYPE_CATEGORY_FUNCTION);
+    func->type.storageClass = storageClass;
     CurrentScope->InFormalParameters++;
     func->type.type.properties |= rtnType->properties & (TYPE_MISC_INLINE | TYPE_MISC_INTERNAL);
     rtnType->properties &= ~(TYPE_MISC_INLINE | TYPE_MISC_INTERNAL);
@@ -4936,7 +4948,7 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
             /* A selected geometry operation owns its argument syntax:
              * annotated arguments stay wrapped for the statement
              * classifier, and arity, types, and placement are checked
-             * there -- never against the placeholder empty parameter
+             * there -- never against the declarative empty parameter
              * list. */
             result = NewBinopSubNode(FUN_CALL_OP, 0, funExpr, actuals);
             result->IsLValue = 0;

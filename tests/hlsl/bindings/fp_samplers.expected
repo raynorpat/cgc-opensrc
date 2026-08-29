@@ -3,7 +3,7 @@
 // cgc-bind interface in color float4 COLOR0
 // cgc-bind interface out result float4 COLOR0
 
-// var sampler2D explicitSampler : TEXUNIT3 : s[3] : 1 : 1
+// var sampler2D explicitSampler : S3 : s[3] : 1 : 1
 // var sampler2D implicitSampler :  : s[0] : 1 : 1
 
 sampler2D cg_explicitSampler : register(s3);

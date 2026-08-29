@@ -1,0 +1,6 @@
+#pragma bind main.scale = const 2.0
+
+float4 main(float4 position : ATTRIB0, uniform float scale) : POSITION
+{
+    return position * scale;
+}

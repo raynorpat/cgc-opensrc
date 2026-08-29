@@ -1,0 +1,10 @@
+float4 main(float4 position : POSITION) : POSITION
+{
+    float3x3 source;
+    float2x2 target;
+    source = float3x3(1.0, 0.0, 0.0,
+                      0.0, 1.0, 0.0,
+                      0.0, 0.0, 1.0);
+    target = (float2x2) source;
+    return position + target[0][0] * 0.0;
+}

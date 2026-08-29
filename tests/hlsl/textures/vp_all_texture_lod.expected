@@ -1,0 +1,45 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in coord float4 TEXCOORD0
+// cgc-bind interface out position float4 POSITION0
+
+// var sampler1D lineImage : TEXUNIT0 : s[0] : 1 : 1
+// var sampler2D planeImage : TEXUNIT1 : s[1] : 1 : 1
+// var sampler3D volumeImage : TEXUNIT2 : s[2] : 1 : 1
+// var samplerCUBE cubeImage : TEXUNIT3 : s[3] : 1 : 1
+
+sampler1D cg_lineImage : register(s0);
+sampler2D cg_planeImage : register(s1);
+sampler3D cg_volumeImage : register(s2);
+samplerCUBE cg_cubeImage : register(s3);
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 coord : TEXCOORD0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 coord, sampler1D lineImage, sampler2D planeImage, sampler3D volumeImage, samplerCUBE cubeImage)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    cg_output.position = tex1Dlod(lineImage, coord) + tex2Dlod(planeImage, coord) + tex3Dlod(volumeImage, coord) + texCUBElod(cubeImage, coord);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.coord, cg_lineImage, cg_planeImage, cg_volumeImage, cg_cubeImage);
+    output.position = cg_result.position;
+    return output;
+}
