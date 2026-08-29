@@ -1,0 +1,155 @@
+// profile hlslv
+// target vs_3_0
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+bool cg_trace_condition(inout float trace, float digit, bool result)
+{
+    trace = trace * (float) 10.0 + digit;
+    return result;
+}
+
+int cg_trace_step(inout float trace, float digit, int value)
+{
+    trace = trace * (float) 10.0 + digit;
+    return value + (int) 1;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output;
+    bool choose;
+    float trace;
+    int index;
+    bool temp1;
+    bool temp2;
+    bool temp3;
+    bool temp4;
+    int temp5;
+    bool temp6;
+    choose = position.x > 0.0;
+    trace = 0.0;
+    index = 0;
+    while (true)
+    {
+        if (choose)
+        {
+            temp1 = cg_trace_condition(trace, 1.0, index < 2);
+        }
+        else
+        {
+            temp1 = cg_trace_condition(trace, 2.0, index < 2);
+        }
+        if (!temp1)
+        {
+            break;
+        }
+        {
+            index = index + 1;
+            if (index == 1)
+            {
+                continue;
+            }
+            trace = trace + 0.25;
+        }
+    }
+    index = 0;
+    temp3 = true;
+    while (true)
+    {
+        if (!temp3)
+        {
+            if (choose)
+            {
+                temp2 = cg_trace_condition(trace, 3.0, index < 2);
+            }
+            else
+            {
+                temp2 = cg_trace_condition(trace, 4.0, index < 2);
+            }
+            if (!temp2)
+            {
+                break;
+            }
+        }
+        temp3 = false;
+        {
+            index = index + 1;
+            if (index == 1)
+            {
+                continue;
+            }
+            trace = trace + 0.5;
+        }
+    }
+    for (index = 0; ; )
+    {
+        if (choose)
+        {
+            temp4 = cg_trace_condition(trace, 5.0, index < 2);
+        }
+        else
+        {
+            temp4 = cg_trace_condition(trace, 6.0, index < 2);
+        }
+        if (!temp4)
+        {
+            break;
+        }
+        temp6 = false;
+        do
+        {
+            {
+                if (index == 0)
+                {
+                    continue;
+                }
+                if (index == 1)
+                {
+                    {
+                        temp6 = true;
+                        break;
+                    }
+                }
+                trace = trace + 0.75;
+            }
+        }
+        while (false);
+        if (temp6)
+        {
+            break;
+        }
+        if (choose)
+        {
+            temp5 = cg_trace_step(trace, 7.0, index);
+        }
+        else
+        {
+            temp5 = cg_trace_step(trace, 8.0, index);
+        }
+        index = temp5;
+    }
+    cg_output.position = float4(position.x, position.y, position.z, trace);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

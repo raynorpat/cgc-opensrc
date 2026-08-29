@@ -557,12 +557,10 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
                     statement->u.ifStmt.condition) ||
                 !HlslIsScalar(&statement->u.ifStmt.condition->type,
                               HLSL_BASE_BOOL) ||
-                statement->u.ifStmt.trueBranch == NULL ||
                 !HlslLegalizeStatements(module,
                     statement->u.ifStmt.trueBranch, result, loopDepth) ||
-                (statement->u.ifStmt.falseBranch != NULL &&
-                 !HlslLegalizeStatements(module,
-                    statement->u.ifStmt.falseBranch, result, loopDepth)))
+                !HlslLegalizeStatements(module,
+                    statement->u.ifStmt.falseBranch, result, loopDepth))
             {
                 return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                            &statement->loc,
@@ -574,7 +572,6 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
             if (!HlslLegalizeExpr(module, statement->u.loop.condition) ||
                 !HlslIsScalar(&statement->u.loop.condition->type,
                               HLSL_BASE_BOOL) ||
-                statement->u.loop.body == NULL ||
                 !HlslLegalizeStatements(module, statement->u.loop.body,
                                          result, loopDepth + 1))
             {
@@ -596,7 +593,6 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
                 (statement->u.forStmt.step != NULL &&
                  !HlslLegalizeStatements(module,
                     statement->u.forStmt.step, result, loopDepth)) ||
-                statement->u.forStmt.body == NULL ||
                 !HlslLegalizeStatements(module,
                     statement->u.forStmt.body, result, loopDepth + 1))
             {

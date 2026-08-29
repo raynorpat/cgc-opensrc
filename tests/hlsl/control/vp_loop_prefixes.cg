@@ -1,0 +1,56 @@
+bool trace_condition(inout float trace, float digit, bool result)
+{
+    trace = trace * 10.0 + digit;
+    return result;
+}
+
+int trace_step(inout float trace, float digit, int value)
+{
+    trace = trace * 10.0 + digit;
+    return value + 1;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    bool choose;
+    float trace;
+    int index;
+
+    choose = position.x > 0.0;
+    trace = 0.0;
+    index = 0;
+    while (choose ? trace_condition(trace, 1.0, index < 2) :
+                    trace_condition(trace, 2.0, index < 2)) {
+        index = index + 1;
+        if (index == 1)
+            continue;
+        trace = trace + 0.25;
+    }
+
+    index = 0;
+    do {
+        index = index + 1;
+        if (index == 1)
+            continue;
+        trace = trace + 0.5;
+    } while (choose ? trace_condition(trace, 3.0, index < 2) :
+                      trace_condition(trace, 4.0, index < 2));
+
+    for (index = 0;
+         choose ? trace_condition(trace, 5.0, index < 2) :
+                  trace_condition(trace, 6.0, index < 2);
+         index = choose ? trace_step(trace, 7.0, index) :
+                          trace_step(trace, 8.0, index)) {
+        if (index == 0)
+            continue;
+        if (index == 1)
+            break;
+        trace = trace + 0.75;
+    }
+
+    output.position = float4(position.x, position.y, position.z, trace);
+    return output;
+}

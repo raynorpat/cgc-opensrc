@@ -1867,6 +1867,12 @@ add_hlsl_fixture(hlslv_nested_postinc hlslv
 add_hlsl_fixture(hlslv_control hlslv
     tests/hlsl/control/vp_control.cg
     tests/hlsl/control/vp_control.expected)
+add_hlsl_fixture(hlslv_loop_prefixes hlslv
+    tests/hlsl/control/vp_loop_prefixes.cg
+    tests/hlsl/control/vp_loop_prefixes.expected)
+add_hlsl_fixture(hlslv_empty_control hlslv
+    tests/hlsl/control/vp_empty_control.cg
+    tests/hlsl/control/vp_empty_control.expected)
 add_hlsl_fixture(hlslf_discard hlslf
     tests/hlsl/control/fp_discard.cg
     tests/hlsl/control/fp_discard.expected)

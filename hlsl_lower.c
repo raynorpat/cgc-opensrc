@@ -1503,12 +1503,140 @@ static int HlslIsSyntheticInputAssignment(expr *source)
            right->bin.left->sym.symbol == Cg->theHAL->varyingIn;
 } // HlslIsSyntheticInputAssignment
 
+static HlslExpr *HlslNewUnaryExpr(HlslLowerContext *context,
+                                  HlslOperator op, HlslExpr *operand)
+{
+    HlslExpr *expression;
+
+    if (operand == NULL)
+        return NULL;
+    expression = HlslNewSourceExpr(context, HLSL_EXPR_UNARY,
+                                   operand->type);
+    if (expression != NULL) {
+        expression->u.unary.op = op;
+        expression->u.unary.operand = operand;
+        expression->hasSideEffects = operand->hasSideEffects;
+    }
+    return expression;
+} // HlslNewUnaryExpr
+
+static HlslStmt *HlslNewBreakGuard(HlslLowerContext *context,
+                                   HlslExpr *condition)
+{
+    HlslStmt *guard;
+    HlslStmt *jump;
+
+    guard = HlslNewStmt(context->module, HLSL_STMT_IF);
+    jump = HlslNewStmt(context->module, HLSL_STMT_BREAK);
+    if (guard == NULL || jump == NULL)
+        return NULL;
+    guard->u.ifStmt.condition = HlslNewUnaryExpr(
+        context, HLSL_OP_LOGICAL_NOT, condition);
+    if (guard->u.ifStmt.condition == NULL)
+        return NULL;
+    guard->u.ifStmt.trueBranch = jump;
+    HlslSetLoc(&guard->loc, &context->statementLoc);
+    HlslSetLoc(&jump->loc, &context->statementLoc);
+    return guard;
+} // HlslNewBreakGuard
+
+static HlslStmt *HlslNewBoolAssignment(HlslLowerContext *context,
+                                       HlslDecl *decl, int value)
+{
+    HlslExpr *left;
+    HlslExpr *right;
+    HlslExpr *assignment;
+
+    if (decl == NULL)
+        return NULL;
+    left = HlslNewSymbolExpr(context, decl);
+    right = HlslNewLiteral(context, HLSL_BASE_BOOL, value, 0.0f);
+    assignment = HlslNewAssignment(context, left, right);
+    return HlslNewExpressionStmt(context, assignment);
+} // HlslNewBoolAssignment
+
+static int HlslStatementsAreForParts(const HlslStmt *statement)
+{
+    for (; statement != NULL; statement = statement->next) {
+        if (statement->kind != HLSL_STMT_EXPRESSION)
+            return 0;
+    }
+    return 1;
+} // HlslStatementsAreForParts
+
+static int HlslRewriteLoopBreaks(HlslLowerContext *context,
+                                 HlslStmt *statement, HlslDecl *flag,
+                                 int nestedLoopDepth)
+{
+    HlslStmt *assignment;
+    HlslStmt *jump;
+
+    for (; statement != NULL; statement = statement->next) {
+        if (statement->kind == HLSL_STMT_BREAK && nestedLoopDepth == 0) {
+            assignment = HlslNewBoolAssignment(context, flag, 1);
+            jump = HlslNewStmt(context->module, HLSL_STMT_BREAK);
+            if (assignment == NULL || jump == NULL)
+                return 0;
+            HlslSetLoc(&jump->loc, &context->statementLoc);
+            assignment->next = jump;
+            statement->kind = HLSL_STMT_BLOCK;
+            statement->u.block = assignment;
+        } else if (statement->kind == HLSL_STMT_IF) {
+            if (!HlslRewriteLoopBreaks(context,
+                    statement->u.ifStmt.trueBranch, flag,
+                    nestedLoopDepth) ||
+                !HlslRewriteLoopBreaks(context,
+                    statement->u.ifStmt.falseBranch, flag,
+                    nestedLoopDepth))
+            {
+                return 0;
+            }
+        } else if (statement->kind == HLSL_STMT_BLOCK) {
+            if (!HlslRewriteLoopBreaks(context, statement->u.block,
+                                       flag, nestedLoopDepth))
+            {
+                return 0;
+            }
+        } else if (statement->kind == HLSL_STMT_WHILE ||
+                   statement->kind == HLSL_STMT_DO)
+        {
+            if (!HlslRewriteLoopBreaks(context, statement->u.loop.body,
+                                       flag, nestedLoopDepth + 1))
+            {
+                return 0;
+            }
+        } else if (statement->kind == HLSL_STMT_FOR) {
+            if (!HlslRewriteLoopBreaks(context,
+                    statement->u.forStmt.body, flag,
+                    nestedLoopDepth + 1))
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
+} // HlslRewriteLoopBreaks
+
 static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
                                HlslStmt **list)
 {
     HlslStmt *target;
     HlslStmt *discard;
+    HlslStmt *conditionPrefix;
+    HlslStmt *stepStatements;
+    HlslStmt *body;
+    HlslStmt *guard;
+    HlslStmt *firstTest;
+    HlslStmt *firstAssignment;
+    HlslStmt *breakAssignment;
+    HlslStmt *wrapper;
+    HlslStmt *breakTest;
+    HlslStmt *jump;
     HlslExpr *condition;
+    HlslExpr *loopCondition;
+    HlslExpr *flagExpr;
+    HlslDecl *flag;
+    HlslType boolType;
     expr *discardCondition;
 
     for (; source != NULL; source = source->commonst.next) {
@@ -1547,44 +1675,146 @@ static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
         } else if (source->commonst.kind == WHILE_STMT ||
                    source->commonst.kind == DO_STMT)
         {
+            conditionPrefix = NULL;
+            body = NULL;
             target = HlslNewStmt(context->module,
                 source->commonst.kind == WHILE_STMT ?
                 HLSL_STMT_WHILE : HLSL_STMT_DO);
             if (target == NULL)
                 return 0;
-            target->u.loop.condition = HlslLowerExpr(
-                context, source->whilest.cond, list, 1);
-            if (target->u.loop.condition == NULL)
+            loopCondition = HlslLowerExpr(
+                context, source->whilest.cond, &conditionPrefix, 1);
+            if (loopCondition == NULL)
                 return 0;
             context->loopDepth++;
             if (!HlslLowerStatements(context, source->whilest.body,
-                                     &target->u.loop.body))
+                                     &body))
             {
                 context->loopDepth--;
                 return 0;
             }
             context->loopDepth--;
+            context->statementLoc = source->commonst.loc;
+            if (conditionPrefix == NULL) {
+                target->u.loop.condition = loopCondition;
+                target->u.loop.body = body;
+            } else if (source->commonst.kind == WHILE_STMT) {
+                target->u.loop.condition = HlslNewLiteral(
+                    context, HLSL_BASE_BOOL, 1, 0.0f);
+                guard = HlslNewBreakGuard(context, loopCondition);
+                if (target->u.loop.condition == NULL || guard == NULL)
+                    return 0;
+                target->u.loop.body = conditionPrefix;
+                HlslAppendStmt(&target->u.loop.body, guard);
+                HlslAppendStmt(&target->u.loop.body, body);
+            } else {
+                boolType = HlslNumericType(HLSL_BASE_BOOL, 1);
+                flag = HlslNewTemporary(context, &boolType);
+                firstAssignment = HlslNewBoolAssignment(context, flag, 1);
+                firstTest = HlslNewStmt(context->module, HLSL_STMT_IF);
+                target->kind = HLSL_STMT_WHILE;
+                target->u.loop.condition = HlslNewLiteral(
+                    context, HLSL_BASE_BOOL, 1, 0.0f);
+                guard = HlslNewBreakGuard(context, loopCondition);
+                flagExpr = flag != NULL ?
+                    HlslNewSymbolExpr(context, flag) : NULL;
+                if (firstAssignment == NULL || firstTest == NULL ||
+                    target->u.loop.condition == NULL || guard == NULL ||
+                    flagExpr == NULL)
+                {
+                    return 0;
+                }
+                firstTest->u.ifStmt.condition = HlslNewUnaryExpr(
+                    context, HLSL_OP_LOGICAL_NOT, flagExpr);
+                if (firstTest->u.ifStmt.condition == NULL)
+                    return 0;
+                firstTest->u.ifStmt.trueBranch = conditionPrefix;
+                HlslAppendStmt(&firstTest->u.ifStmt.trueBranch, guard);
+                target->u.loop.body = firstTest;
+                breakAssignment = HlslNewBoolAssignment(context, flag, 0);
+                if (breakAssignment == NULL)
+                    return 0;
+                HlslAppendStmt(&target->u.loop.body, breakAssignment);
+                HlslAppendStmt(&target->u.loop.body, body);
+                HlslSetLoc(&firstTest->loc, &source->commonst.loc);
+                HlslSetLoc(&firstAssignment->loc, &source->commonst.loc);
+                HlslAppendStmt(list, firstAssignment);
+            }
         } else if (source->commonst.kind == FOR_STMT) {
+            conditionPrefix = NULL;
+            stepStatements = NULL;
+            body = NULL;
             target = HlslNewStmt(context->module, HLSL_STMT_FOR);
             if (target == NULL ||
                 !HlslLowerStatements(context, source->forst.init,
                                      &target->u.forStmt.init) ||
                 (source->forst.cond != NULL &&
-                 (target->u.forStmt.condition = HlslLowerExpr(
-                    context, source->forst.cond, list, 1)) == NULL) ||
+                 (loopCondition = HlslLowerExpr(
+                    context, source->forst.cond,
+                    &conditionPrefix, 1)) == NULL) ||
                 !HlslLowerStatements(context, source->forst.step,
-                                     &target->u.forStmt.step))
+                                     &stepStatements))
             {
                 return 0;
             }
             context->loopDepth++;
             if (!HlslLowerStatements(context, source->forst.body,
-                                     &target->u.forStmt.body))
+                                     &body))
             {
                 context->loopDepth--;
                 return 0;
             }
             context->loopDepth--;
+            context->statementLoc = source->commonst.loc;
+            if (!HlslStatementsAreForParts(target->u.forStmt.init)) {
+                HlslAppendStmt(list, target->u.forStmt.init);
+                target->u.forStmt.init = NULL;
+            }
+            if (conditionPrefix == NULL) {
+                target->u.forStmt.condition = source->forst.cond != NULL ?
+                    loopCondition : NULL;
+            } else {
+                guard = HlslNewBreakGuard(context, loopCondition);
+                if (guard == NULL)
+                    return 0;
+                HlslAppendStmt(&conditionPrefix, guard);
+            }
+            if (HlslStatementsAreForParts(stepStatements)) {
+                target->u.forStmt.step = stepStatements;
+                target->u.forStmt.body = conditionPrefix;
+                HlslAppendStmt(&target->u.forStmt.body, body);
+            } else {
+                boolType = HlslNumericType(HLSL_BASE_BOOL, 1);
+                flag = HlslNewTemporary(context, &boolType);
+                breakAssignment = HlslNewBoolAssignment(context, flag, 0);
+                wrapper = HlslNewStmt(context->module, HLSL_STMT_DO);
+                breakTest = HlslNewStmt(context->module, HLSL_STMT_IF);
+                jump = HlslNewStmt(context->module, HLSL_STMT_BREAK);
+                flagExpr = flag != NULL ?
+                    HlslNewSymbolExpr(context, flag) : NULL;
+                if (flag == NULL || breakAssignment == NULL ||
+                    wrapper == NULL || breakTest == NULL || jump == NULL ||
+                    flagExpr == NULL ||
+                    !HlslRewriteLoopBreaks(context, body, flag, 0))
+                {
+                    return 0;
+                }
+                wrapper->u.loop.condition = HlslNewLiteral(
+                    context, HLSL_BASE_BOOL, 0, 0.0f);
+                if (wrapper->u.loop.condition == NULL)
+                    return 0;
+                wrapper->u.loop.body = body;
+                breakTest->u.ifStmt.condition = flagExpr;
+                breakTest->u.ifStmt.trueBranch = jump;
+                target->u.forStmt.body = conditionPrefix;
+                HlslAppendStmt(&target->u.forStmt.body, breakAssignment);
+                HlslAppendStmt(&target->u.forStmt.body, wrapper);
+                HlslAppendStmt(&target->u.forStmt.body, breakTest);
+                HlslAppendStmt(&target->u.forStmt.body, stepStatements);
+                HlslSetLoc(&wrapper->loc, &source->commonst.loc);
+                HlslSetLoc(&breakTest->loc, &source->commonst.loc);
+                HlslSetLoc(&jump->loc, &source->commonst.loc);
+            }
         } else if (source->commonst.kind == RETURN_STMT) {
             target = HlslNewStmt(context->module, HLSL_STMT_RETURN);
             if (target != NULL && source->returnst.exp != NULL)
