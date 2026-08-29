@@ -256,7 +256,7 @@ static const char *HlslRaiseNameCollision(HlslModule *module,
 }
 
 static const char *HlslAllocate(HlslModule *module, const void *nameSpace,
-    const void *identity, const char *source)
+    const void *identity, const char *source, int generated)
 {
     const char *base;
     const char *emitted;
@@ -272,7 +272,8 @@ static const char *HlslAllocate(HlslModule *module, const void *nameSpace,
 
     if (module == NULL || nameSpace == NULL || source == NULL)
         return NULL;
-    base = HlslLegalizeName(module, source);
+    base = generated ? HlslDuplicate(module, source) :
+                       HlslLegalizeName(module, source);
     if (base == NULL)
         return NULL;
     baseInUse = 0;
@@ -357,7 +358,7 @@ const char *HlslAllocateName(HlslModule *module, const char *source)
     if (name != NULL)
         return name->emitted;
     return HlslAllocate(module, &defaultNameNamespace,
-                        &defaultNameIdentity, source);
+                        &defaultNameIdentity, source, 0);
 }
 
 const char *HlslAllocateSymbolName(HlslModule *module,
@@ -380,19 +381,36 @@ const char *HlslAllocateScopedSymbolName(HlslModule *module,
         if (name != NULL)
             return name->emitted;
         return HlslAllocate(module, nameSpace, &defaultNameIdentity,
-                            source);
+                            source, 0);
     }
     for (name = module->names; name != NULL; name = name->next) {
         if (name->nameSpace == nameSpace && name->identity == identity)
             return name->emitted;
     }
-    return HlslAllocate(module, nameSpace, identity, source);
+    return HlslAllocate(module, nameSpace, identity, source, 0);
+}
+
+const char *HlslAllocateGeneratedName(HlslModule *module,
+    const void *identity, const char *source)
+{
+    HlslName *name;
+
+    if (module == NULL || identity == NULL || source == NULL)
+        return NULL;
+    for (name = module->names; name != NULL; name = name->next) {
+        if (name->nameSpace == &defaultNameNamespace &&
+            name->identity == identity)
+        {
+            return name->emitted;
+        }
+    }
+    return HlslAllocate(module, &defaultNameNamespace, identity, source, 1);
 }
 
 const char *HlslAllocateDistinctName(HlslModule *module,
     const char *source)
 {
-    return HlslAllocate(module, &defaultNameNamespace, NULL, source);
+    return HlslAllocate(module, &defaultNameNamespace, NULL, source, 0);
 }
 
 HlslType HlslNumericType(HlslBase base, int len)

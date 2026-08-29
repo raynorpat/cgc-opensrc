@@ -453,6 +453,8 @@ static int GetCapsBit_hlsl(int bitNumber)
     case CAPS_PRESERVE_ENTRY_RETURNS:
     case CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS:
     case CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS:
+    case CAPS_ENTRY_INOUT_PARAMETERS:
+    case CAPS_PRESERVE_TERMINAL_ENTRY_RETURN:
         return 1;
     default:
         return 0;
@@ -800,9 +802,9 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
     HlslInitModule(&module, profile->stage, HlslCompilerAlloc,
                    CurrentScope->pool);
     if (!HlslLowerProgram(&module, profile, loc, fScope, program) ||
+        !HlslAllocateBindings(&module, profile) ||
         !HlslBuildEntryWrapper(&module, profile) ||
         !HlslLegalizeModule(&module, profile) ||
-        !HlslAllocateBindings(&module, profile) ||
         !HlslValidateModule(&module, profile))
     {
         return ReportHlslFailure(&module, profile, program);
@@ -811,144 +813,6 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
         return ReportHlslFailure(&module, profile, program);
     return 1;
 } // GenerateCode_hlsl
-
-///////////////////////////////////////////////////////////////////////////////
-//////////////////// Registration-Only Pipeline Phases ///////////////////////
-///////////////////////////////////////////////////////////////////////////////
-
-static int HlslRecordUnsupported(HlslModule *module, const HlslLoc *loc,
-                                 const char *reason)
-{
-    if (module != NULL && module->errors == 0) {
-        module->errorKind = HLSL_ERROR_UNSUPPORTED_OPERATION;
-        module->errorReason = reason;
-        if (loc != NULL)
-            module->errorLoc = *loc;
-    }
-    if (module != NULL)
-        module->errors++;
-    return 0;
-} // HlslRecordUnsupported
-
-static int HlslIsIdentifier(const char *name)
-{
-    const char *current;
-
-    if (name == NULL ||
-        !((name[0] >= 'A' && name[0] <= 'Z') ||
-          (name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'))
-    {
-        return 0;
-    }
-    for (current = name + 1; *current != '\0'; current++) {
-        if (!((*current >= 'A' && *current <= 'Z') ||
-              (*current >= 'a' && *current <= 'z') ||
-              (*current >= '0' && *current <= '9') || *current == '_'))
-        {
-            return 0;
-        }
-    }
-    return !HlslIsReservedName(name) || !strcmp(name, "main") ||
-           !strncmp(name, "cg_", 3);
-}
-
-static int HlslHasEmptyEntry(const HlslModule *module)
-{
-    const HlslFunction *entry;
-
-    if (module == NULL || module->entry == NULL)
-        return 0;
-    entry = module->entry;
-    if (module->structs != NULL || module->globals != NULL ||
-        module->bindings != NULL || module->wrapper != NULL ||
-        module->functions != entry || entry->next != NULL ||
-        !HlslIsIdentifier(entry->name) || !entry->isEntry ||
-        entry->parameters != NULL || entry->locals != NULL ||
-        entry->body != NULL)
-    {
-        return 0;
-    }
-    return entry->result.base == HLSL_BASE_VOID &&
-           entry->result.len == 0 && entry->result.rows == 0 &&
-           entry->result.cols == 0 && entry->result.arraySize == 0 &&
-           entry->result.structName == NULL &&
-           entry->result.elementType == NULL &&
-           entry->result.members == NULL;
-} // HlslHasEmptyEntry
-
-int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
-                     SourceLoc *loc, Scope *scope, Symbol *program)
-{
-    HlslFunction *entry;
-    HlslLoc errorLoc;
-    HlslType result;
-
-    (void) scope;
-    errorLoc.file = loc != NULL ? loc->file : 0;
-    errorLoc.line = loc != NULL ? loc->line : 0;
-    if (module == NULL || profile == NULL || program == NULL ||
-        module->stage != profile->stage || program->kind != FUNCTION_S)
-    {
-        return HlslRecordUnsupported(module, &errorLoc,
-                                     "HLSL entry program");
-    }
-    errorLoc.file = program->loc.file;
-    errorLoc.line = program->loc.line;
-    if (program->details.fun.params != NULL ||
-        program->details.fun.statements != NULL ||
-        program->details.fun.entryOutputAssignments != NULL)
-    {
-        return HlslRecordUnsupported(module, &errorLoc,
-                                     "nonempty entry program");
-    }
-    result = HlslNumericType(HLSL_BASE_VOID, 0);
-    entry = HlslNewFunction(module, result, "main");
-    if (entry == NULL)
-        return HlslRecordUnsupported(module, &errorLoc,
-                                     "HLSL module allocation");
-    entry->loc = errorLoc;
-    entry->identity = program;
-    entry->isEntry = 1;
-    HlslAppendFunction(&module->functions, entry);
-    module->entry = entry;
-    return 1;
-} // HlslLowerProgram
-
-int HlslBuildEntryWrapper(HlslModule *module,
-                          const HlslProfileDesc *profile)
-{
-    (void) profile;
-    if (!HlslHasEmptyEntry(module))
-        return HlslRecordUnsupported(module, NULL,
-                                     "nonempty entry wrapper");
-    return 1;
-} // HlslBuildEntryWrapper
-
-int HlslLegalizeModule(HlslModule *module,
-                       const HlslProfileDesc *profile)
-{
-    (void) profile;
-    if (!HlslHasEmptyEntry(module))
-        return HlslRecordUnsupported(module, NULL,
-                                     "nonempty HLSL legalization");
-    return 1;
-} // HlslLegalizeModule
-
-int HlslValidateModule(HlslModule *module,
-                       const HlslProfileDesc *profile)
-{
-    if (profile == NULL || module == NULL ||
-        (module->stage != HLSL_STAGE_VERTEX &&
-         module->stage != HLSL_STAGE_PIXEL) ||
-        module->stage != profile->stage || profile->name == NULL ||
-        profile->name[0] == '\0' || profile->target == NULL ||
-        profile->target[0] == '\0' || !HlslHasEmptyEntry(module))
-    {
-        return HlslRecordUnsupported(module, NULL,
-                                     "nonempty HLSL validation");
-    }
-    return 1;
-} // HlslValidateModule
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////// InitHAL_hlslv / InitHAL_hlslf ////////////////////////

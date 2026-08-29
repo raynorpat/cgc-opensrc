@@ -338,7 +338,9 @@ static int HlslPlanLeaves(HlslModule *module, const HlslType *type,
         type->arraySize == 0 && type->base == HLSL_BASE_STRUCT)
     {
         for (member = type->members; member != NULL; member = member->next) {
-            memberPath = HlslJoinPublicPath(module, path, member->name);
+            memberPath = HlslJoinPublicPath(module, path,
+                member->publicName != NULL ? member->publicName :
+                                             member->name);
             memberSpan = HlslTypeRegisterSpan(&member->type);
             memberComponents = HlslTypeComponentCount(&member->type);
             if (memberPath == NULL || memberSpan <= 0 ||
@@ -650,11 +652,12 @@ static char *HlslGlobalSourceName(HlslModule *module, const char *path)
     if (path == NULL)
         return NULL;
     length = strlen(path);
-    name = (char *) HlslBindAlloc(module, length + 1);
+    name = (char *) HlslBindAlloc(module, length + 4);
     if (name == NULL)
         return NULL;
-    memcpy(name, path, length + 1);
-    for (current = name; *current != '\0'; current++) {
+    memcpy(name, "cg_", 3);
+    memcpy(name + 3, path, length + 1);
+    for (current = name + 3; *current != '\0'; current++) {
         if (!((*current >= 'A' && *current <= 'Z') ||
               (*current >= 'a' && *current <= 'z') ||
               (*current >= '0' && *current <= '9') || *current == '_'))
@@ -830,11 +833,12 @@ static int HlslBuildLeafRecords(HlslModule *module, HlslBinding *binding,
         record = HlslNewBinding(module, binding->storage, plan->type,
                                 plan->publicName, binding->semantic);
         sourceName = HlslGlobalSourceName(module, plan->publicName);
-        emittedName = sourceName != NULL ?
-                      HlslAllocateDistinctName(module, sourceName) : NULL;
+        emittedName = record != NULL && sourceName != NULL ?
+                      HlslAllocateGeneratedName(module, record,
+                                                sourceName) : NULL;
         declaration = emittedName != NULL ?
-            HlslNewDecl(module, binding->storage, plan->type, emittedName) :
-            NULL;
+            HlslNewDecl(module, binding->storage, plan->type,
+                        emittedName) : NULL;
         if (record == NULL || declaration == NULL)
             return 0;
         record->publicName = plan->publicName;
@@ -872,6 +876,8 @@ static int HlslBuildLeafRecords(HlslModule *module, HlslBinding *binding,
             }
         }
         declaration->semantic = binding->semantic;
+        if (binding->declaration != NULL)
+            declaration->identity = binding->declaration->identity;
         declaration->loc = binding->loc;
         declaration->sourceOrdinal = binding->sourceOrdinal;
         declaration->physical = record->physical;
@@ -880,6 +886,25 @@ static int HlslBuildLeafRecords(HlslModule *module, HlslBinding *binding,
     }
     return 1;
 } // HlslBuildLeafRecords
+
+static void HlslAdoptSingleLeafDeclaration(HlslBinding *binding,
+                                           HlslBinding *record,
+                                           HlslDecl **globals)
+{
+    HlslDecl *generated;
+    HlslDecl *stable;
+    const void *identity;
+
+    stable = binding->declaration;
+    generated = record->declaration;
+    if (stable == NULL || generated == NULL)
+        return;
+    identity = stable->identity;
+    *stable = *generated;
+    stable->identity = identity;
+    record->declaration = stable;
+    *globals = stable;
+} // HlslAdoptSingleLeafDeclaration
 
 int HlslAllocateOneBinding(HlslModule *module,
                            const HlslProfileDesc *profile,
@@ -987,6 +1012,8 @@ int HlslAllocateOneBinding(HlslModule *module,
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "HLSL binding allocation");
     }
+    if (planCount == 1)
+        HlslAdoptSingleLeafDeclaration(binding, records, &globals);
 
     HlslStoreBankState(module, &state);
     binding->leafBindings = records;
@@ -1081,3 +1108,426 @@ int HlslAllocateBindings(HlslModule *module,
     }
     return 1;
 } // HlslAllocateBindings
+
+static HlslExpr *HlslWrapperSymbol(HlslModule *module, HlslDecl *decl)
+{
+    HlslExpr *expression;
+
+    expression = HlslNewExpr(module, HLSL_EXPR_SYMBOL, decl->type);
+    if (expression != NULL)
+        expression->u.symbol = decl;
+    return expression;
+} // HlslWrapperSymbol
+
+static HlslExpr *HlslWrapperMember(HlslModule *module, HlslDecl *object,
+                                   HlslDecl *member)
+{
+    HlslExpr *expression;
+
+    expression = HlslNewExpr(module, HLSL_EXPR_MEMBER, member->type);
+    if (expression != NULL) {
+        expression->u.member.object = object != NULL ?
+                                      HlslWrapperSymbol(module, object) :
+                                      NULL;
+        expression->u.member.decl = member;
+        expression->u.member.name = member->name;
+        if (object != NULL && expression->u.member.object == NULL)
+            return NULL;
+    }
+    return expression;
+} // HlslWrapperMember
+
+static HlslExpr *HlslWrapperAssign(HlslModule *module, HlslExpr *left,
+                                   HlslExpr *right)
+{
+    HlslExpr *expression;
+
+    if (left == NULL || right == NULL)
+        return NULL;
+    expression = HlslNewExpr(module, HLSL_EXPR_BINARY, left->type);
+    if (expression != NULL) {
+        expression->u.binary.op = HLSL_OP_ASSIGN;
+        expression->u.binary.left = left;
+        expression->u.binary.right = right;
+    }
+    return expression;
+} // HlslWrapperAssign
+
+static HlslStmt *HlslWrapperExprStmt(HlslModule *module,
+                                     HlslExpr *expression)
+{
+    HlslStmt *statement;
+
+    if (expression == NULL)
+        return NULL;
+    statement = HlslNewStmt(module, HLSL_STMT_EXPRESSION);
+    if (statement != NULL)
+        statement->u.expression = expression;
+    return statement;
+} // HlslWrapperExprStmt
+
+static HlslDecl *HlslWrapperMemberDecl(HlslModule *module,
+                                       HlslDecl *owner,
+                                       const HlslDecl *source,
+                                       const char *name,
+                                       const char *semantic)
+{
+    HlslDecl *member;
+    const char *emittedName;
+    const void *identity;
+
+    identity = source->identity != NULL ? source->identity : source;
+    emittedName = HlslAllocateScopedSymbolName(module, owner, identity,
+                                                name);
+    member = emittedName != NULL ?
+             HlslNewDecl(module, HLSL_STORAGE_NONE, source->type,
+                         emittedName) : NULL;
+    if (member != NULL) {
+        member->identity = source->identity;
+        member->publicName = source->publicName;
+        member->semantic = semantic;
+        member->loc = source->loc;
+        member->sourceOrdinal = source->sourceOrdinal;
+    }
+    return member;
+} // HlslWrapperMemberDecl
+
+static HlslBinding *HlslWrapperFindBinding(HlslModule *module,
+                                           const void *identity)
+{
+    HlslBinding *binding;
+
+    for (binding = module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->declaration != NULL &&
+            binding->declaration->identity == identity)
+        {
+            return binding;
+        }
+    }
+    return NULL;
+} // HlslWrapperFindBinding
+
+static const char *HlslWrapperInputSemantic(
+    const HlslProfileDesc *profile, const HlslDecl *parameter)
+{
+    (void) profile;
+    return parameter->inputSemantic != NULL ? parameter->inputSemantic :
+                                              parameter->semantic;
+} // HlslWrapperInputSemantic
+
+static const char *HlslWrapperScalarResultSemantic(
+    const HlslProfileDesc *profile, const HlslFunction *entry)
+{
+    (void) profile;
+    return entry->semantic;
+} // HlslWrapperScalarResultSemantic
+
+static int HlslWrapperIsEmptyEntry(const HlslModule *module)
+{
+    const HlslFunction *entry;
+
+    entry = module != NULL ? module->entry : NULL;
+    return entry != NULL && !strcmp(entry->name, "main") &&
+           entry->result.base == HLSL_BASE_VOID &&
+           entry->parameters == NULL;
+} // HlslWrapperIsEmptyEntry
+
+static int hlslVertexInputIdentity;
+static int hlslVertexOutputIdentity;
+static int hlslPixelInputIdentity;
+static int hlslPixelOutputIdentity;
+
+int HlslBuildEntryWrapper(HlslModule *module,
+                          const HlslProfileDesc *profile)
+{
+    HlslFunction *entry;
+    HlslFunction *wrapper;
+    HlslDecl *inputStruct;
+    HlslDecl *outputStruct;
+    HlslDecl *inputParameter;
+    HlslDecl *outputLocal;
+    HlslDecl *resultLocal;
+    HlslDecl *parameter;
+    HlslDecl *inputMember;
+    HlslDecl *outputMember;
+    HlslDecl *resultMember;
+    HlslDecl *wrapperResultMember;
+    HlslDecl *local;
+    HlslBinding *binding;
+    HlslExpr *arguments;
+    HlslExpr *argument;
+    HlslExpr *call;
+    HlslExpr *assignment;
+    HlslStmt *statement;
+    HlslStmt *initializers;
+    HlslStmt *parameterCopies;
+    HlslType inputType;
+    HlslType outputType;
+    const char *inputName;
+    const char *memberName;
+    const char *outputName;
+    const char *semantic;
+
+    if (module == NULL || profile == NULL || module->entry == NULL ||
+        module->stage != profile->stage)
+    {
+        return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
+                               "invalid HLSL wrapper module");
+    }
+    if (HlslWrapperIsEmptyEntry(module))
+        return 1;
+    entry = module->entry;
+    inputName = HlslAllocateGeneratedName(module,
+        module->stage == HLSL_STAGE_VERTEX ?
+            (const void *) &hlslVertexInputIdentity :
+            (const void *) &hlslPixelInputIdentity,
+        module->stage == HLSL_STAGE_VERTEX ?
+            "cg_VertexIn" : "cg_PixelIn");
+    outputName = HlslAllocateGeneratedName(module,
+        module->stage == HLSL_STAGE_VERTEX ?
+            (const void *) &hlslVertexOutputIdentity :
+            (const void *) &hlslPixelOutputIdentity,
+        module->stage == HLSL_STAGE_VERTEX ?
+            "cg_VertexOut" : "cg_PixelOut");
+    if (inputName == NULL || outputName == NULL)
+        return HlslBindFailure(module, NULL, HLSL_ERROR_NAME_COLLISION,
+                               "HLSL wrapper interface name");
+    inputType = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    inputType.structName = inputName;
+    outputType = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    outputType.structName = outputName;
+    inputStruct = HlslNewDecl(module, HLSL_STORAGE_INPUT,
+                              inputType, inputName);
+    outputStruct = HlslNewDecl(module, HLSL_STORAGE_OUTPUT,
+                               outputType, outputName);
+    if (inputStruct == NULL || outputStruct == NULL)
+        return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
+                               "HLSL wrapper structures");
+
+    if (entry->result.base == HLSL_BASE_STRUCT) {
+        for (resultMember = entry->result.members; resultMember != NULL;
+             resultMember = resultMember->next)
+        {
+            if (resultMember->semantic == NULL)
+                return HlslBindFailure(module, NULL, HLSL_ERROR_SEMANTIC,
+                                       resultMember->name);
+            wrapperResultMember = HlslWrapperMemberDecl(module,
+                outputStruct, resultMember, resultMember->name,
+                resultMember->semantic);
+            if (wrapperResultMember == NULL)
+                return 0;
+            HlslAppendDecl(&outputStruct->members, wrapperResultMember);
+        }
+    } else if (entry->result.base != HLSL_BASE_VOID) {
+        semantic = HlslWrapperScalarResultSemantic(profile, entry);
+        if (semantic == NULL)
+            return HlslBindFailure(module, NULL, HLSL_ERROR_SEMANTIC,
+                                   "entry result");
+        memberName = HlslAllocateScopedSymbolName(module, outputStruct,
+                                                  entry, "result");
+        wrapperResultMember = memberName != NULL ?
+            HlslNewDecl(module, HLSL_STORAGE_NONE, entry->result,
+                        memberName) : NULL;
+        if (wrapperResultMember == NULL)
+            return 0;
+        wrapperResultMember->semantic = semantic;
+        HlslAppendDecl(&outputStruct->members, wrapperResultMember);
+    }
+
+    arguments = NULL;
+    initializers = NULL;
+    parameterCopies = NULL;
+    for (parameter = entry->parameters; parameter != NULL;
+         parameter = parameter->next)
+    {
+        if (parameter->storage == HLSL_STORAGE_UNIFORM ||
+            parameter->storage == HLSL_STORAGE_SAMPLER)
+        {
+            binding = HlslWrapperFindBinding(module, parameter->identity);
+            if (binding == NULL || binding->declaration == NULL)
+                return HlslBindFailure(module, NULL,
+                                       HLSL_ERROR_INVALID_IR,
+                                       "entry uniform binding");
+            argument = HlslWrapperSymbol(module, binding->declaration);
+        } else if (parameter->parameterQualifier == HLSL_PARAMETER_IN) {
+            inputMember = HlslWrapperMemberDecl(module, inputStruct,
+                parameter, parameter->name, parameter->semantic);
+            if (inputMember == NULL)
+                return 0;
+            HlslAppendDecl(&inputStruct->members, inputMember);
+            argument = HlslWrapperMember(module, NULL, inputMember);
+            /* Fill the object once inputParameter exists below. */
+            if (argument != NULL)
+                argument->u.member.object = NULL;
+        } else {
+            local = HlslNewDecl(module, HLSL_STORAGE_NONE,
+                                parameter->type, parameter->name);
+            if (local == NULL)
+                return 0;
+            local->identity = parameter->identity;
+            /* Wrapper locals are installed after wrapper creation. */
+            argument = HlslWrapperSymbol(module, local);
+            if (parameter->parameterQualifier == HLSL_PARAMETER_INOUT) {
+                semantic = HlslWrapperInputSemantic(profile, parameter);
+                inputMember = HlslWrapperMemberDecl(module, inputStruct,
+                    parameter, parameter->name, semantic);
+                if (inputMember == NULL || semantic == NULL)
+                    return HlslBindFailure(module, NULL,
+                                           HLSL_ERROR_SEMANTIC,
+                                           parameter->name);
+                HlslAppendDecl(&inputStruct->members, inputMember);
+                statement = HlslWrapperExprStmt(module,
+                    HlslWrapperAssign(module,
+                        HlslWrapperSymbol(module, local),
+                        HlslWrapperMember(module, NULL, inputMember)));
+                if (statement == NULL)
+                    return 0;
+                HlslAppendStmt(&initializers, statement);
+            }
+            outputMember = HlslWrapperMemberDecl(module, outputStruct,
+                parameter, parameter->name, parameter->semantic);
+            if (outputMember == NULL)
+                return 0;
+            HlslAppendDecl(&outputStruct->members, outputMember);
+            statement = HlslWrapperExprStmt(module,
+                HlslWrapperAssign(module,
+                    HlslWrapperMember(module, NULL, outputMember),
+                    HlslWrapperSymbol(module, local)));
+            if (statement == NULL)
+                return 0;
+            /* Stash the local temporarily on the argument expression. */
+            argument->u.symbol = local;
+            HlslAppendStmt(&parameterCopies, statement);
+        }
+        if (argument == NULL)
+            return 0;
+        HlslAppendExpr(&arguments, argument);
+    }
+
+    inputStruct->type.members = inputStruct->members;
+    outputStruct->type.members = outputStruct->members;
+    inputType.members = inputStruct->members;
+    outputType.members = outputStruct->members;
+    if (inputStruct->members == NULL || outputStruct->members == NULL)
+        return HlslBindFailure(module, NULL, HLSL_ERROR_ENTRY_ABI,
+                               "empty HLSL wrapper interface");
+    HlslAppendDecl(&module->structs, inputStruct);
+    HlslAppendDecl(&module->structs, outputStruct);
+
+    wrapper = HlslNewFunction(module, outputType, "main");
+    inputParameter = HlslNewDecl(module, HLSL_STORAGE_INPUT,
+                                 inputType, "input");
+    outputLocal = HlslNewDecl(module, HLSL_STORAGE_NONE,
+                              outputType, "output");
+    if (wrapper == NULL || inputParameter == NULL || outputLocal == NULL)
+        return 0;
+    wrapper->identity = wrapper;
+    inputParameter->identity = inputParameter;
+    outputLocal->identity = outputLocal;
+    HlslAppendDecl(&wrapper->parameters, inputParameter);
+
+    /* Repair the deferred input/output member object expressions and move
+     * out/inout temporaries into the wrapper's local list. */
+    for (argument = arguments; argument != NULL; argument = argument->next) {
+        if (argument->kind == HLSL_EXPR_MEMBER &&
+            argument->u.member.object == NULL)
+        {
+            argument->u.member.object = HlslWrapperSymbol(module,
+                                                           inputParameter);
+        } else if (argument->kind == HLSL_EXPR_SYMBOL &&
+                   argument->u.symbol != NULL &&
+                   argument->u.symbol->storage == HLSL_STORAGE_NONE &&
+                   argument->u.symbol != outputLocal)
+        {
+            HlslAppendDecl(&wrapper->locals, argument->u.symbol);
+        }
+    }
+    for (statement = initializers; statement != NULL;
+         statement = statement->next)
+    {
+        HlslExpr *right;
+
+        right = statement->u.expression->u.binary.right;
+        if (right != NULL && right->kind == HLSL_EXPR_MEMBER &&
+            right->u.member.object == NULL)
+        {
+            right->u.member.object = HlslWrapperSymbol(module,
+                                                        inputParameter);
+        }
+    }
+    HlslAppendDecl(&wrapper->locals, outputLocal);
+    HlslAppendStmt(&wrapper->body, initializers);
+
+    call = HlslNewExpr(module, HLSL_EXPR_CALL, entry->result);
+    if (call == NULL)
+        return 0;
+    call->u.call.function = entry;
+    call->u.call.name = entry->name;
+    call->u.call.arguments = arguments;
+    if (entry->result.base == HLSL_BASE_STRUCT) {
+        resultLocal = HlslNewDecl(module, HLSL_STORAGE_NONE,
+                                  entry->result, "cg_result");
+        if (resultLocal == NULL)
+            return 0;
+        HlslAppendDecl(&wrapper->locals, resultLocal);
+        statement = HlslWrapperExprStmt(module,
+            HlslWrapperAssign(module, HlslWrapperSymbol(module, resultLocal),
+                              call));
+        if (statement == NULL)
+            return 0;
+        HlslAppendStmt(&wrapper->body, statement);
+        resultMember = entry->result.members;
+        wrapperResultMember = outputStruct->members;
+        while (resultMember != NULL && wrapperResultMember != NULL) {
+            assignment = HlslWrapperAssign(module,
+                HlslWrapperMember(module, outputLocal,
+                                  wrapperResultMember),
+                HlslWrapperMember(module, resultLocal, resultMember));
+            statement = HlslWrapperExprStmt(module, assignment);
+            if (statement == NULL)
+                return 0;
+            HlslAppendStmt(&wrapper->body, statement);
+            resultMember = resultMember->next;
+            wrapperResultMember = wrapperResultMember->next;
+        }
+    } else if (entry->result.base != HLSL_BASE_VOID) {
+        statement = HlslWrapperExprStmt(module,
+            HlslWrapperAssign(module,
+                HlslWrapperMember(module, outputLocal,
+                                  outputStruct->members), call));
+        if (statement == NULL)
+            return 0;
+        HlslAppendStmt(&wrapper->body, statement);
+    } else {
+        statement = HlslWrapperExprStmt(module, call);
+        if (statement == NULL)
+            return 0;
+        HlslAppendStmt(&wrapper->body, statement);
+    }
+    /* Repair deferred output objects before appending post-call copies. */
+    for (statement = parameterCopies; statement != NULL;
+         statement = statement->next)
+    {
+        HlslExpr *left;
+
+        left = statement->u.expression->u.binary.left;
+        if (left != NULL && left->kind == HLSL_EXPR_MEMBER &&
+            left->u.member.object == NULL)
+        {
+            left->u.member.object = HlslWrapperSymbol(module, outputLocal);
+        }
+    }
+    HlslAppendStmt(&wrapper->body, parameterCopies);
+    statement = HlslNewStmt(module, HLSL_STMT_RETURN);
+    if (statement == NULL)
+        return 0;
+    statement->u.returnExpr = HlslWrapperSymbol(module, outputLocal);
+    if (statement->u.returnExpr == NULL)
+        return 0;
+    HlslAppendStmt(&wrapper->body, statement);
+    module->wrapper = wrapper;
+    HlslAppendFunction(&module->functions, wrapper);
+    return 1;
+} // HlslBuildEntryWrapper

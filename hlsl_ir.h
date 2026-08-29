@@ -321,7 +321,9 @@ struct HlslDecl_Rec {
     HlslTypeQualifier typeQualifier;
     HlslType type;
     const char *name;
+    const char *publicName;
     const char *semantic;
+    const char *inputSemantic;
     HlslLoc loc;
     int sourceOrdinal;
     HlslExpr *initializer;
@@ -335,6 +337,7 @@ struct HlslFunction_Rec {
     HlslFunction *next;
     HlslType result;
     const char *name;
+    const char *semantic;
     HlslLoc loc;
     const void *identity;
     HlslDecl *parameters;
@@ -398,7 +401,10 @@ void HlslInitModule(HlslModule *module, HlslStage stage,
 
 const char *HlslAllocateName(HlslModule *module, const char *source);
 const char *HlslAllocateSymbolName(HlslModule *module,
-    const void *identity, const char *source);
+                                   const void *identity, const char *source);
+const char *HlslAllocateGeneratedName(HlslModule *module,
+                                      const void *identity,
+                                      const char *source);
 const char *HlslAllocateScopedSymbolName(HlslModule *module,
     const void *nameSpace, const void *identity, const char *source);
 const char *HlslAllocateDistinctName(HlslModule *module,

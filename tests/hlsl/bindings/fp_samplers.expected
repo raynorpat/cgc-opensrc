@@ -1,0 +1,29 @@
+// profile hlslf
+// target ps_3_0
+// var sampler2D explicitSampler : TEXUNIT3 : s[3] : 1 : 1
+// var sampler2D implicitSampler :  : s[0] : 1 : 1
+
+sampler2D cg_explicitSampler : register(s3);
+sampler2D cg_implicitSampler : register(s0);
+
+struct cg_PixelIn
+{
+    float4 color : COLOR0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_entry(float4 color)
+{
+    return color;
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.color);
+    return output;
+}

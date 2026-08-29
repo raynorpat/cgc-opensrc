@@ -758,7 +758,8 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
                 continue;
             }
         }
-        if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT)
+        if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT &&
+            !Cg->theHAL->GetCapsBit(CAPS_ENTRY_INOUT_PARAMETERS))
             SemanticError(&formal->loc, ERROR_S_MAIN_PARAMS_CANT_BE_INOUT,
                           GetAtomString(atable, formal->name));
         entryDomain = EffectiveProgramDomain(formal, 1);
@@ -901,7 +902,11 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
             rettype = lSynthesizeEntryReturnConnector(loc, fScope, program,
                                                       rettype);
             if (rettype != NULL) {
-                lType->fun.rettype = rettype;
+                if (!Cg->theHAL->GetCapsBit(
+                        CAPS_PRESERVE_TERMINAL_ENTRY_RETURN))
+                {
+                    lType->fun.rettype = rettype;
+                }
                 category = TYPE_CATEGORY_STRUCT;
             }
         }

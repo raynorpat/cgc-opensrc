@@ -402,6 +402,10 @@ static void CheckConnectors(void)
     profile = InitStage(&hal, 1);
     Require(hal.GetCapsBit(CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS),
             "HLSL did not advertise canonical output conflict ownership");
+    Require(hal.GetCapsBit(CAPS_ENTRY_INOUT_PARAMETERS),
+            "HLSL did not advertise entry inout support");
+    Require(hal.GetCapsBit(CAPS_PRESERVE_TERMINAL_ENTRY_RETURN),
+            "HLSL did not advertise native terminal entry returns");
     assert(profile->numInputRegs == 25);
     assert(profile->numOutputRegs == 13);
     for (i = 0; i < profile->numConnectors; i++)
@@ -841,4 +845,31 @@ int HlslWriteModule(FILE *out, const HlslModule *module,
     (void) module;
     (void) profile;
     return 1;
+}
+
+int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
+                     SourceLoc *loc, Scope *scope, Symbol *program)
+{
+    (void) module;
+    (void) profile;
+    (void) loc;
+    (void) scope;
+    (void) program;
+    return 0;
+}
+
+int HlslLegalizeModule(HlslModule *module,
+                       const HlslProfileDesc *profile)
+{
+    (void) module;
+    (void) profile;
+    return 0;
+}
+
+int HlslValidateModule(HlslModule *module,
+                       const HlslProfileDesc *profile)
+{
+    (void) module;
+    (void) profile;
+    return 0;
 }

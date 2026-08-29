@@ -1,0 +1,30 @@
+struct PixelOut {
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 color2 : COLOR2;
+    float4 color3 : COLOR3;
+    float depth : DEPTH;
+};
+
+PixelOut main(float4 color0 : COLOR0,
+              float4 color1 : COLOR1,
+              float4 tex0 : TEXCOORD0,
+              float4 tex1 : TEXCOORD1,
+              float4 tex2 : TEXCOORD2,
+              float4 tex3 : TEXCOORD3,
+              float4 tex4 : TEXCOORD4,
+              float4 tex5 : TEXCOORD5,
+              float4 tex6 : TEXCOORD6,
+              float4 tex7 : TEXCOORD7,
+              float fog : FOG,
+              float2 position : WPOS,
+              float face : FACE)
+{
+    PixelOut output;
+    output.color0 = color0;
+    output.color1 = color1;
+    output.color2 = tex0;
+    output.color3 = tex1;
+    output.depth = fog;
+    return output;
+}

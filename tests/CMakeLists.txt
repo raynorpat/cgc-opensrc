@@ -1399,6 +1399,7 @@ add_executable(hlsl_ir_unit
     ${PROJECT_SOURCE_DIR}/hlsl_bind.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
     ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
     ${PROJECT_SOURCE_DIR}/hlslv_hal.c
     ${PROJECT_SOURCE_DIR}/hlslf_hal.c
@@ -1791,6 +1792,46 @@ add_hlsl_fixture(hlslv_registration hlslv
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-vs.expected)
 add_hlsl_fixture(hlslf_registration hlslf
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-ps.expected)
+add_hlsl_fixture(hlslv_vp_passthrough hlslv
+    tests/hlsl/profile/vp_passthrough.cg
+    tests/hlsl/profile/vp_passthrough.expected)
+add_hlsl_fixture(hlslf_fp_passthrough hlslf
+    tests/hlsl/profile/fp_passthrough.cg
+    tests/hlsl/profile/fp_passthrough.expected)
+add_hlsl_fixture(hlslv_vp_out_inout hlslv
+    tests/hlsl/profile/vp_out_inout.cg
+    tests/hlsl/profile/vp_out_inout.expected)
+add_hlsl_fixture(hlslv_vp_all_semantics hlslv
+    tests/hlsl/interfaces/vp_all_semantics.cg
+    tests/hlsl/interfaces/vp_all_semantics.expected)
+add_hlsl_fixture(hlslf_fp_all_semantics hlslf
+    tests/hlsl/interfaces/fp_all_semantics.cg
+    tests/hlsl/interfaces/fp_all_semantics.expected)
+add_hlsl_fixture(hlslv_vp_register_banks hlslv
+    tests/hlsl/bindings/vp_register_banks.cg
+    tests/hlsl/bindings/vp_register_banks.expected)
+add_hlsl_fixture(hlslv_vp_mixed_struct hlslv
+    tests/hlsl/bindings/vp_mixed_struct.cg
+    tests/hlsl/bindings/vp_mixed_struct.expected)
+add_hlsl_fixture(hlslf_fp_samplers hlslf
+    tests/hlsl/bindings/fp_samplers.cg
+    tests/hlsl/bindings/fp_samplers.expected)
+add_hlsl_fixture(hlslv_global_entry_name_collision hlslv
+    tests/hlsl/bindings/vp_global_entry_name_collision.cg
+    tests/hlsl/bindings/vp_global_entry_name_collision.expected)
+add_hlsl_fixture(hlslv_output_member_name_collision hlslv
+    tests/hlsl/interfaces/vp_output_member_name_collision.cg
+    tests/hlsl/interfaces/vp_output_member_name_collision.expected)
+
+add_test(
+    NAME generic_entry_inout_still_rejected
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_out_inout.cg
+        -DCODE=5046
+        -DMESSAGE=cannot.be.in.out
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
 function(add_hlsl_interface_failure name source code line reason)
     add_test(
@@ -1818,6 +1859,8 @@ add_hlsl_interface_failure(hlslv_interface_invalid_width
     tests/hlsl/diagnostics/vp_invalid_width.cg 6403 2 POSITION)
 add_hlsl_interface_failure(hlslv_interface_unbound_input
     tests/hlsl/diagnostics/vp_unbound_input.cg 6403 3 missingSemantic)
+add_hlsl_interface_failure(hlslv_binding_register_collision
+    tests/hlsl/diagnostics/vp_register_collision.cg 6407 2 second)
 
 add_test(
     NAME hlslv_interface_attr_texcoord_conflict

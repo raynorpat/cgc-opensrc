@@ -104,6 +104,7 @@ struct BuildReturnAssignments {
     stmt *entryOutputAssignments;
     Symbol *returnTemp;
     int preserveReturns;
+    int preserveTerminalReturn;
 };
 
 static stmt *DuplicateEntryOutputAssignments(stmt *source)
@@ -190,6 +191,11 @@ static stmt *BuildProgramReturnAssignments(stmt *fStmt, void *arg1, int arg2)
     if (fStmt->commonst.kind == RETURN_STMT) {
         sourceReturn = fStmt;
         lstr = (struct BuildReturnAssignments *) arg1;
+        if (sourceReturn == lstr->terminalReturn &&
+            lstr->preserveTerminalReturn)
+        {
+            return fStmt;
+        }
         gScope = lstr->globalScope;
         program = lstr->program;
         lType = program->type;
@@ -613,6 +619,8 @@ static int CheckFunctionDefinition(Scope *fScope, Symbol *funSymb, int IsProgram
             lstr.terminalReturn = terminalReturn;
             lstr.preserveReturns = Cg->theHAL->GetCapsBit(
                 CAPS_PRESERVE_ENTRY_RETURNS);
+            lstr.preserveTerminalReturn = Cg->theHAL->GetCapsBit(
+                CAPS_PRESERVE_TERMINAL_ENTRY_RETURN);
             lStmt = PreApplyToStatements(BuildProgramReturnAssignments,
                                          lStmt, &lstr, 0);
             if (lstr.preserveReturns && terminalReturn == NULL) {

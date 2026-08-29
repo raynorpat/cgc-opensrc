@@ -1,0 +1,12 @@
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION,
+               uniform float4 color,
+               uniform float4x4 matrix,
+               uniform int4 indices,
+               uniform bool enabled)
+{
+    VertexOut output;
+    output.position = position;
+    return output;
+}

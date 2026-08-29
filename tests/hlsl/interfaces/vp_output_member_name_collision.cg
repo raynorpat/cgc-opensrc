@@ -1,0 +1,8 @@
+struct VertexOut { float4 value : POSITION; };
+VertexOut main(float4 position : POSITION, out float4 value : COLOR0)
+{
+    VertexOut result;
+    result.value = position;
+    value = position;
+    return result;
+}

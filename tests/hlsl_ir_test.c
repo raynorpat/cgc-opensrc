@@ -465,6 +465,92 @@ static void TestModuleWriter(void)
     assert(!HlslWriteModule(NULL, &module, &profile));
 }
 
+static void TestModuleValidationRejectsUnownedEntry(void)
+{
+    HlslModule module;
+    HlslProfileDesc profile;
+    HlslType voidType;
+    HlslType float4Type;
+    HlslType inputType;
+    HlslType outputType;
+    HlslDecl *inputStruct;
+    HlslDecl *outputStruct;
+    HlslDecl *inputMember;
+    HlslDecl *outputMember;
+    HlslFunction *entry;
+    HlslFunction *wrapper;
+    HlslFunction *unowned;
+    HlslExpr *call;
+    HlslExpr *helperCall;
+    HlslStmt *statement;
+    HlslStmt *helperStatement;
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    memset(&profile, 0, sizeof(profile));
+    profile.stage = HLSL_STAGE_VERTEX;
+    profile.name = "hlslv";
+    profile.target = "vs_3_0";
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    float4Type = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    inputType = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    inputType.structName = "cg_VertexIn";
+    outputType = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    outputType.structName = "cg_VertexOut";
+
+    inputStruct = HlslNewDecl(&module, HLSL_STORAGE_INPUT, inputType,
+                              inputType.structName);
+    outputStruct = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT, outputType,
+                               outputType.structName);
+    inputMember = HlslNewDecl(&module, HLSL_STORAGE_NONE, float4Type,
+                              "position");
+    outputMember = HlslNewDecl(&module, HLSL_STORAGE_NONE, float4Type,
+                               "position");
+    assert(inputStruct != NULL && outputStruct != NULL &&
+           inputMember != NULL && outputMember != NULL);
+    inputMember->semantic = "POSITION0";
+    outputMember->semantic = "POSITION0";
+    HlslAppendDecl(&inputStruct->members, inputMember);
+    HlslAppendDecl(&outputStruct->members, outputMember);
+    inputStruct->type.members = inputStruct->members;
+    outputStruct->type.members = outputStruct->members;
+    HlslAppendDecl(&module.structs, inputStruct);
+    HlslAppendDecl(&module.structs, outputStruct);
+
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    wrapper = HlslNewFunction(&module, outputType, "main");
+    call = HlslNewExpr(&module, HLSL_EXPR_CALL, voidType);
+    statement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
+    assert(entry != NULL && wrapper != NULL && call != NULL &&
+           statement != NULL);
+    entry->isEntry = 1;
+    call->u.call.function = entry;
+    call->u.call.name = entry->name;
+    statement->u.expression = call;
+    HlslAppendStmt(&wrapper->body, statement);
+    module.entry = entry;
+    module.wrapper = wrapper;
+    module.functions = wrapper;
+
+    assert(!HlslValidateModule(&module, &profile));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+
+    module.errors = 0;
+    module.errorKind = HLSL_ERROR_NONE;
+    module.errorReason = NULL;
+    module.functions = entry;
+    entry->next = wrapper;
+    unowned = HlslNewFunction(&module, voidType, "cg_helper");
+    helperCall = HlslNewExpr(&module, HLSL_EXPR_CALL, voidType);
+    helperStatement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
+    assert(unowned != NULL && helperCall != NULL && helperStatement != NULL);
+    helperCall->u.call.function = unowned;
+    helperCall->u.call.name = unowned->name;
+    helperStatement->u.expression = helperCall;
+    HlslAppendStmt(&entry->body, helperStatement);
+    assert(!HlslValidateModule(&module, &profile));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+}
+
 static void TestNamesAndAllocationFailure(void)
 {
     HlslModule module;
@@ -1317,6 +1403,8 @@ int main(int argc, char **argv)
     int secondIdentity;
     int cfloatIdentity;
     int cintIdentity;
+    int generatedIdentity;
+    int secondGeneratedIdentity;
 
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
         int assertionsActive;
@@ -1377,10 +1465,18 @@ int main(int argc, char **argv)
                                           "cfloat"), "cg_cfloat"));
     assert(!strcmp(HlslAllocateSymbolName(&module, &cintIdentity,
                                           "cint"), "cg_cint"));
+    assert(!strcmp(HlslAllocateGeneratedName(&module, &generatedIdentity,
+                                             "cg_entry"), "cg_entry"));
+    assert(!strcmp(HlslAllocateGeneratedName(&module, &generatedIdentity,
+                                             "ignored"), "cg_entry"));
+    assert(!strcmp(HlslAllocateGeneratedName(&module,
+                                             &secondGeneratedIdentity,
+                                             "cg_entry"), "cg_entry_1"));
     TestReservedNames();
     TestTypeRegisterSpans();
     TestDeclarationQualifiers();
     TestModuleWriter();
+    TestModuleValidationRejectsUnownedEntry();
     TestNamesAndAllocationFailure();
     TestTypesAndLists();
     TestBindingBanks();
