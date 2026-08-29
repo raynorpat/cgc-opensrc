@@ -1876,6 +1876,9 @@ add_hlsl_fixture(hlslv_empty_control hlslv
 add_hlsl_fixture(hlslf_discard hlslf
     tests/hlsl/control/fp_discard.cg
     tests/hlsl/control/fp_discard.expected)
+add_hlsl_fixture(hlslf_vector_discard hlslf
+    tests/hlsl/control/fp_vector_discard.cg
+    tests/hlsl/control/fp_vector_discard.expected)
 add_hlsl_fixture(hlslv_helpers hlslv
     tests/hlsl/functions/vp_helpers.cg
     tests/hlsl/functions/vp_helpers.expected)
@@ -1920,6 +1923,8 @@ add_hlsl_interface_failure(hlslv_binding_register_collision
     tests/hlsl/diagnostics/vp_register_collision.cg 6407 2 second)
 add_hlsl_interface_failure(hlslv_recursion
     tests/hlsl/diagnostics/vp_recursion.cg 6401 3 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_nested_recursion
+    tests/hlsl/diagnostics/vp_nested_recursion.cg 6401 10 recursive.HLSL.helper)
 
 add_generic_diagnostic(generic_hlsl_recursion_unchanged
     tests/hlsl/diagnostics/vp_recursion.cg 5005 3 recurse)

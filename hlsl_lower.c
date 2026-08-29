@@ -1073,6 +1073,42 @@ static HlslExpr *HlslComponent(HlslLowerContext *context,
     return HlslNewSwizzle(context, object, &type, mask);
 } // HlslComponent
 
+static HlslExpr *HlslScalarizeVectorCondition(
+    HlslLowerContext *context, HlslStmt **prefix, HlslExpr *condition)
+{
+    HlslExpr *result;
+    HlslExpr *component;
+    HlslExpr *combined;
+    HlslType boolType;
+    int i;
+
+    if (condition == NULL || condition->type.base != HLSL_BASE_BOOL ||
+        condition->type.len < 1 || condition->type.len > 4)
+    {
+        return NULL;
+    }
+    if (condition->type.len == 1)
+        return condition;
+    condition = HlslCaptureValue(context, prefix, condition);
+    if (condition == NULL)
+        return NULL;
+    result = HlslComponent(context, condition, 0, HLSL_BASE_BOOL);
+    boolType = HlslNumericType(HLSL_BASE_BOOL, 1);
+    for (i = 1; i < condition->type.len; i++) {
+        component = HlslComponent(context, condition, i,
+                                  HLSL_BASE_BOOL);
+        combined = HlslNewSourceExpr(context, HLSL_EXPR_BINARY,
+                                     boolType);
+        if (component == NULL || combined == NULL)
+            return NULL;
+        combined->u.binary.op = HLSL_OP_LOGICAL_OR;
+        combined->u.binary.left = result;
+        combined->u.binary.right = component;
+        result = combined;
+    }
+    return result;
+} // HlslScalarizeVectorCondition
+
 static HlslExpr *HlslLowerSwizzle(HlslLowerContext *context, expr *source,
                                   const HlslType *type, HlslStmt **prefix)
 {
@@ -1841,6 +1877,9 @@ static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
             } else {
                 condition = HlslLowerExpr(context, discardCondition,
                                           list, 1);
+                if (condition != NULL)
+                    condition = HlslScalarizeVectorCondition(
+                        context, list, condition);
                 discard = HlslNewStmt(context->module,
                                       HLSL_STMT_DISCARD);
                 target = HlslNewStmt(context->module, HLSL_STMT_IF);
@@ -1962,6 +2001,7 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
     char *generated;
     const char *name;
     Symbol *caller;
+    SourceLoc callerLoc;
 
     if (symbol == NULL || symbol->kind != FUNCTION_S)
         return 0;
@@ -1993,6 +2033,7 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
     function->identity = symbol;
     function->visitState = 1;
     caller = context->collectingHelper;
+    callerLoc = context->statementLoc;
     if (caller != NULL)
         function->needsPrototype = 1;
     HlslSetLoc(&function->loc, &symbol->loc);
@@ -2002,9 +2043,11 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
                                       symbol->details.fun.statements))
     {
         context->collectingHelper = caller;
+        context->statementLoc = callerLoc;
         return 0;
     }
     context->collectingHelper = caller;
+    context->statementLoc = callerLoc;
     function->visitState = 2;
     return 1;
 } // HlslCollectHelper
