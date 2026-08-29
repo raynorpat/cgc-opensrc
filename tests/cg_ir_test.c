@@ -85,6 +85,12 @@ static int TestGetSizeof(Type *fType)
     return fType->co.size;
 } // TestGetSizeof
 
+static int TestGetCapsBit(int bitNumber)
+{
+    (void) bitNumber;
+    return 0;
+} // TestGetCapsBit
+
 void SemanticError(SourceLoc *loc, int num, const char *mess, ...)
 {
     (void) loc;
@@ -778,6 +784,7 @@ int main(int argc, char **argv)
     memset(&cg, 0, sizeof(cg));
     memset(&hal, 0, sizeof(hal));
     hal.GetSizeof = TestGetSizeof;
+    hal.GetCapsBit = TestGetCapsBit;
     hal.RegisterNames = TestRegisterNames;
     cg.theHAL = &hal;
     Cg = &cg;
