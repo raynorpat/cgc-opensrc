@@ -1,0 +1,7 @@
+__internal char abs(char value);
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    char value = abs(char(position.x));
+    return float4(float(value), position.y, position.z, position.w);
+}

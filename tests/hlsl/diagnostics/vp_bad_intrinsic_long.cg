@@ -1,0 +1,7 @@
+__internal long abs(long value);
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    long value = abs(long(position.x));
+    return float4(float(value), position.y, position.z, position.w);
+}

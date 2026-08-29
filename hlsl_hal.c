@@ -502,7 +502,10 @@ static HlslSourceBase HlslSourceBaseForType(const Type *source)
     case CG_SCALAR_FIXED: return HLSL_SOURCE_BASE_FIXED;
     case CG_SCALAR_HALF: return HLSL_SOURCE_BASE_HALF;
     case CG_SCALAR_FLOAT: return HLSL_SOURCE_BASE_FLOAT;
-    default: break;
+    default:
+        if (kind != CG_SCALAR_NONE)
+            return HLSL_SOURCE_BASE_NONE;
+        break;
     }
     sourceBase = GetBase(source);
     switch (sourceBase) {

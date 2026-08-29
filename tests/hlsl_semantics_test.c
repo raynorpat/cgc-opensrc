@@ -99,6 +99,49 @@ static void SetTestScalarKind(Type *type, CgScalarKind kind)
         type->arr.eltype->co.scalarKind = kind;
 }
 
+static int TestLegacyBaseForKind(CgScalarKind kind)
+{
+    switch (kind) {
+    case CG_SCALAR_CFLOAT:
+    case CG_SCALAR_FIXED:
+    case CG_SCALAR_HALF:
+    case CG_SCALAR_FLOAT:
+    case CG_SCALAR_DOUBLE:
+        return TYPE_BASE_FLOAT;
+    case CG_SCALAR_BOOL:
+        return TYPE_BASE_BOOLEAN;
+    default:
+        return TYPE_BASE_INT;
+    }
+}
+
+static void RequireRejectedIntrinsicKinds(slHAL *hal, Symbol *symbol,
+                                          Type *functionType,
+                                          TypeList *parameter,
+                                          Type *result, Type *argument,
+                                          const char *name,
+                                          CgScalarKind resultKind,
+                                          CgScalarKind argumentKind,
+                                          const char *message)
+{
+    int group;
+
+    MakeScalar(result, TestLegacyBaseForKind(resultKind));
+    MakeScalar(argument, TestLegacyBaseForKind(argumentKind));
+    SetTestScalarKind(result, resultKind);
+    SetTestScalarKind(argument, argumentKind);
+    symbol->name = AddAtom(atable, name);
+    functionType->fun.rettype = result;
+    functionType->fun.paramtypes = parameter;
+    parameter->type = argument;
+    parameter->next = NULL;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal->CheckInternalFunction(symbol, &group) == 0 && group == 0 &&
+            semanticErrorCount == 1 && lastSemanticError == 6410,
+            message);
+}
+
 static const HlslProfileDesc *InitStage(slHAL *hal, int vertex)
 {
     const HlslProfileDesc *profile;
@@ -833,6 +876,76 @@ static void CheckInternalFunctions(void)
     Require(hal.CheckInternalFunction(&symbol, &group) == HLSL_BUILTIN_DOT &&
             group == HLSL_BUILTIN_GROUP && semanticErrorCount == 0,
             "catalog-declared half1 dot signature was not recognized");
+
+    MakeScalar(&scalarResult, TYPE_BASE_FLOAT);
+    MakeScalar(&scalarLeft, TYPE_BASE_FLOAT);
+    MakeScalar(&scalarRight, TYPE_BASE_FLOAT);
+    SetTestScalarKind(&scalarResult, CG_SCALAR_FIXED);
+    SetTestScalarKind(&scalarLeft, CG_SCALAR_FIXED);
+    SetTestScalarKind(&scalarRight, CG_SCALAR_FIXED);
+    functionType.fun.rettype = &scalarResult;
+    functionType.fun.paramtypes = &first;
+    first.type = &scalarLeft;
+    first.next = &second;
+    second.type = &scalarRight;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == HLSL_BUILTIN_DOT &&
+            group == HLSL_BUILTIN_GROUP && semanticErrorCount == 0,
+            "catalog-declared fixed dot signature was not recognized");
+
+    symbol.name = AddAtom(atable, "abs");
+    MakeScalar(&scalarResult, TYPE_BASE_INT);
+    MakeScalar(&scalarLeft, TYPE_BASE_INT);
+    SetTestScalarKind(&scalarResult, CG_SCALAR_INT);
+    SetTestScalarKind(&scalarLeft, CG_SCALAR_INT);
+    functionType.fun.rettype = &scalarResult;
+    functionType.fun.paramtypes = &first;
+    first.type = &scalarLeft;
+    first.next = NULL;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == HLSL_BUILTIN_ABS &&
+            group == HLSL_BUILTIN_GROUP && semanticErrorCount == 0,
+            "catalog-declared int abs signature was not recognized");
+
+    symbol.name = AddAtom(atable, "any");
+    MakeScalar(&scalarResult, TYPE_BASE_BOOLEAN);
+    MakeScalar(&scalarLeft, TYPE_BASE_BOOLEAN);
+    SetTestScalarKind(&scalarResult, CG_SCALAR_BOOL);
+    SetTestScalarKind(&scalarLeft, CG_SCALAR_BOOL);
+    functionType.fun.rettype = &scalarResult;
+    first.type = &scalarLeft;
+    semanticErrorCount = 0;
+    group = 0;
+    Require(hal.CheckInternalFunction(&symbol, &group) == HLSL_BUILTIN_ANY &&
+            group == HLSL_BUILTIN_GROUP && semanticErrorCount == 0,
+            "catalog-declared bool any signature was not recognized");
+
+    RequireRejectedIntrinsicKinds(&hal, &symbol, &functionType, &first,
+        &scalarResult, &scalarLeft, "abs", CG_SCALAR_UINT, CG_SCALAR_INT,
+        "uint intrinsic result collapsed to legacy int");
+    RequireRejectedIntrinsicKinds(&hal, &symbol, &functionType, &first,
+        &scalarResult, &scalarLeft, "abs", CG_SCALAR_INT, CG_SCALAR_UINT,
+        "uint intrinsic parameter collapsed to legacy int");
+    RequireRejectedIntrinsicKinds(&hal, &symbol, &functionType, &first,
+        &scalarResult, &scalarLeft, "sqrt",
+        CG_SCALAR_DOUBLE, CG_SCALAR_FLOAT,
+        "double intrinsic result collapsed to legacy float");
+    RequireRejectedIntrinsicKinds(&hal, &symbol, &functionType, &first,
+        &scalarResult, &scalarLeft, "sqrt",
+        CG_SCALAR_FLOAT, CG_SCALAR_DOUBLE,
+        "double intrinsic parameter collapsed to legacy float");
+    RequireRejectedIntrinsicKinds(&hal, &symbol, &functionType, &first,
+        &scalarResult, &scalarLeft, "abs", CG_SCALAR_CHAR, CG_SCALAR_CHAR,
+        "char intrinsic signature collapsed to legacy int");
+    RequireRejectedIntrinsicKinds(&hal, &symbol, &functionType, &first,
+        &scalarResult, &scalarLeft, "abs", CG_SCALAR_SHORT,
+        CG_SCALAR_SHORT,
+        "short intrinsic signature collapsed to legacy int");
+    RequireRejectedIntrinsicKinds(&hal, &symbol, &functionType, &first,
+        &scalarResult, &scalarLeft, "abs", CG_SCALAR_LONG, CG_SCALAR_LONG,
+        "long intrinsic signature collapsed to legacy int");
     FreeStage(&hal);
 }
 
