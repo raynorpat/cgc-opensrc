@@ -1841,15 +1841,12 @@ static int HlslInstallMixedBindingConsumer(HlslModule *module,
     return HlslInsertBeforeFirstUse(function, local, initializers);
 } // HlslInstallMixedBindingConsumer
 
-static int HlslTypeNeedsIntegerReconstruction(const HlslType *type)
+static int HlslTypeIsPhysicalIntegerStorage(const HlslType *type)
 {
-    if (type == NULL)
-        return 0;
-    while (type->arraySize > 0)
-        type = type->elementType;
-    return type != NULL && type->base == HLSL_BASE_INT &&
-           type->rows == 0 && type->cols == 0 && type->len != 4;
-} // HlslTypeNeedsIntegerReconstruction
+    return type != NULL && type->arraySize == 0 &&
+           type->base == HLSL_BASE_INT && type->len == 4 &&
+           type->rows == 0 && type->cols == 0;
+} // HlslTypeIsPhysicalIntegerStorage
 
 static int HlslTypeIsScalarBoolean(const HlslType *type)
 {
@@ -1873,7 +1870,7 @@ static int HlslBindingNeedsReconstruction(const HlslBinding *binding)
     return binding != NULL && binding->leafBindings != NULL &&
            (binding->leafBindings->next != NULL ||
             (binding->leafBindings->physical.bank == HLSL_REGISTER_I &&
-             HlslTypeNeedsIntegerReconstruction(&binding->type)) ||
+             !HlslTypeIsPhysicalIntegerStorage(&binding->type)) ||
             (binding->leafBindings->physical.bank == HLSL_REGISTER_B &&
              !HlslTypeIsScalarBoolean(&binding->type)));
 } // HlslBindingNeedsReconstruction
@@ -2080,6 +2077,90 @@ static int HlslExpressionValueUsesBank(const HlslModule *module,
            HlslExpressionUsesBank(module, expression, bank);
 } // HlslExpressionValueUsesBank
 
+static HlslRegisterBank HlslExpressionSourceBank(
+    const HlslModule *module, const HlslExpr *expression)
+{
+    const HlslExpr *argument;
+    HlslRegisterBank bank;
+    HlslRegisterBank homogeneousBank;
+
+    if (expression == NULL)
+        return HLSL_REGISTER_NONE;
+    if (HlslExpressionUsesBank(module, expression, HLSL_REGISTER_I))
+        return HLSL_REGISTER_I;
+    if (HlslExpressionUsesBank(module, expression, HLSL_REGISTER_B))
+        return HLSL_REGISTER_B;
+    /* A whole mixed aggregate does not have one homogeneous bank, but an
+       alias still carries constant-bank provenance.  One conservative
+       marker is enough to reject it if it later crosses a helper return. */
+    if (expression != NULL &&
+        !HlslHomogeneousBank(&expression->type, &homogeneousBank))
+    {
+        if (HlslReferenceIdentityUsesBank(module, expression,
+                                          HLSL_REGISTER_I))
+        {
+            return HLSL_REGISTER_I;
+        }
+        if (HlslReferenceIdentityUsesBank(module, expression,
+                                          HLSL_REGISTER_B))
+        {
+            return HLSL_REGISTER_B;
+        }
+        /* Aggregate-valued operators can hide a mixed binding behind an
+           alias.  Recurse only while the result remains non-homogeneous;
+           a scalar member such as mixed.scalar must not inherit the I/B
+           provenance of its containing binding. */
+        argument = NULL;
+        switch (expression->kind) {
+        case HLSL_EXPR_UNARY:
+            return HlslExpressionSourceBank(
+                module, expression->u.unary.operand);
+        case HLSL_EXPR_BINARY:
+            bank = HlslExpressionSourceBank(
+                module, expression->u.binary.left);
+            return bank != HLSL_REGISTER_NONE ? bank :
+                HlslExpressionSourceBank(
+                    module, expression->u.binary.right);
+        case HLSL_EXPR_CONDITIONAL:
+            bank = HlslExpressionSourceBank(
+                module, expression->u.conditional.trueExpr);
+            return bank != HLSL_REGISTER_NONE ? bank :
+                HlslExpressionSourceBank(
+                    module, expression->u.conditional.falseExpr);
+        case HLSL_EXPR_CALL:
+            argument = expression->u.call.arguments;
+            break;
+        case HLSL_EXPR_CONSTRUCT:
+            argument = expression->u.construct.arguments;
+            break;
+        case HLSL_EXPR_CAST:
+            return HlslExpressionSourceBank(
+                module, expression->u.cast.expression);
+        case HLSL_EXPR_MEMBER:
+            return HlslExpressionSourceBank(
+                module, expression->u.member.object);
+        case HLSL_EXPR_INDEX:
+            return HlslExpressionSourceBank(
+                module, expression->u.index.object);
+        case HLSL_EXPR_SWIZZLE:
+            return HlslExpressionSourceBank(
+                module, expression->u.swizzle.object);
+        case HLSL_EXPR_SYMBOL:
+        case HLSL_EXPR_INT:
+        case HLSL_EXPR_FLOAT:
+        case HLSL_EXPR_BOOL:
+        default:
+            break;
+        }
+        for (; argument != NULL; argument = argument->next) {
+            bank = HlslExpressionSourceBank(module, argument);
+            if (bank != HLSL_REGISTER_NONE)
+                return bank;
+        }
+    }
+    return HLSL_REGISTER_NONE;
+} // HlslExpressionSourceBank
+
 static int HlslPropagateCallBanksExpression(HlslModule *module,
                                             HlslExpr *expression,
                                             int *changed);
@@ -2126,16 +2207,16 @@ static int HlslPropagateCallBanksExpression(HlslModule *module,
         return HlslPropagateCallBanksExpression(
             module, expression->u.unary.operand, changed);
     case HLSL_EXPR_BINARY:
-        if (expression->u.binary.op == HLSL_OP_ASSIGN &&
-            HlslExpressionUsesBank(module, expression->u.binary.right,
-                                   HLSL_REGISTER_B))
+        if (expression->u.binary.op == HLSL_OP_ASSIGN)
         {
+            bank = HlslExpressionSourceBank(
+                module, expression->u.binary.right);
             target = HlslRegisterAssignmentRoot(
                 expression->u.binary.left);
-            if (target != NULL &&
+            if (bank != HLSL_REGISTER_NONE && target != NULL &&
                 target->sourceBank == HLSL_REGISTER_NONE)
             {
-                target->sourceBank = HLSL_REGISTER_B;
+                target->sourceBank = bank;
                 *changed = 1;
             }
         }
@@ -2199,18 +2280,21 @@ static int HlslPropagateCallBanksStatements(HlslModule *module,
                                             HlslStmt *statement,
                                             int *changed)
 {
+    HlslRegisterBank bank;
+
     for (; statement != NULL; statement = statement->next) {
         switch (statement->kind) {
         case HLSL_STMT_DECLARATION:
             if (statement->u.declaration != NULL &&
                 statement->u.declaration->sourceBank ==
-                    HLSL_REGISTER_NONE &&
-                HlslExpressionUsesBank(module,
-                    statement->u.declaration->initializer,
-                    HLSL_REGISTER_B))
+                    HLSL_REGISTER_NONE)
             {
-                statement->u.declaration->sourceBank = HLSL_REGISTER_B;
-                *changed = 1;
+                bank = HlslExpressionSourceBank(
+                    module, statement->u.declaration->initializer);
+                if (bank != HLSL_REGISTER_NONE) {
+                    statement->u.declaration->sourceBank = bank;
+                    *changed = 1;
+                }
             }
             if (statement->u.declaration != NULL &&
                 !HlslPropagateCallBanksExpression(module,
@@ -2745,8 +2829,11 @@ static int HlslRewriteRegisterStatements(HlslModule *module,
             break;
         case HLSL_STMT_WHILE:
         case HLSL_STMT_DO:
+            /* A prefix inserted into the body remains inside the repeated
+               region.  Conditions cannot be prefixed here because that
+               would evaluate them only once before the loop. */
             if (!HlslRewriteRegisterStatements(module, function,
-                    &source->u.loop.body, 1) ||
+                    &source->u.loop.body, 0) ||
                 !HlslRewriteRegisterExpression(module, function,
                     &source->u.loop.condition, &prefix, 1))
             {
@@ -2761,7 +2848,7 @@ static int HlslRewriteRegisterStatements(HlslModule *module,
                 !HlslRewriteRegisterStatements(module, function,
                     &source->u.forStmt.step, 1) ||
                 !HlslRewriteRegisterStatements(module, function,
-                    &source->u.forStmt.body, 1))
+                    &source->u.forStmt.body, 0))
             {
                 return 0;
             }
@@ -2842,6 +2929,13 @@ static int HlslValidateRegisterExpression(HlslModule *module,
         {
             return HlslUnsupportedRegisterUse(module, &expression->loc,
                                               "b-register logical data path");
+        }
+        if ((expression->u.binary.op == HLSL_OP_EQUAL ||
+             expression->u.binary.op == HLSL_OP_NOT_EQUAL) && usesBoolean)
+        {
+            return HlslUnsupportedRegisterUse(
+                module, &expression->loc,
+                "b-register comparison data path");
         }
         if (expression->u.binary.op != HLSL_OP_ASSIGN && usesInteger &&
             !((controlFlags & 1) != 0 &&
@@ -2953,6 +3047,8 @@ static int HlslValidateRegisterStatements(HlslModule *module,
                                           const HlslStmt *statement,
                                           int inLoop)
 {
+    HlslRegisterBank returnBank;
+
     for (; statement != NULL; statement = statement->next) {
         switch (statement->kind) {
         case HLSL_STMT_DECLARATION:
@@ -3006,6 +3102,16 @@ static int HlslValidateRegisterStatements(HlslModule *module,
                 return 0;
             break;
         case HLSL_STMT_RETURN:
+            if (statement->u.returnExpr != NULL &&
+                !HlslHomogeneousBank(&statement->u.returnExpr->type,
+                                     &returnBank) &&
+                HlslExpressionSourceBank(module,
+                    statement->u.returnExpr) != HLSL_REGISTER_NONE)
+            {
+                return HlslUnsupportedRegisterUse(module,
+                    &statement->u.returnExpr->loc,
+                    "mixed constant-bank helper return");
+            }
             if (HlslExpressionValueUsesBank(module,
                     statement->u.returnExpr, HLSL_REGISTER_I))
             {

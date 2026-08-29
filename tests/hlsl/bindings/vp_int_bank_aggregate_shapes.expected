@@ -1,0 +1,94 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+// var cg_ScalarLimit scalarLimit : I0 : i[0] : 1 : 1
+// var cg_VectorLimit vectorLimit : I1 : i[1] : 1 : 1
+// var cg_NestedLimits nestedLimits : I2 : i[2] : 1 : 3
+
+uniform int4 cg_scalarLimit : register(i0);
+uniform int4 cg_vectorLimit : register(i1);
+uniform int4 cg_nestedLimits[3] : register(i2);
+
+struct cg_ScalarLimit
+{
+    int value;
+};
+
+struct cg_VectorLimit
+{
+    int4 value;
+};
+
+struct cg_NestedLimits
+{
+    cg_ScalarLimit scalar;
+    int2 range[1];
+    cg_VectorLimit cg_vector;
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    int index;
+    int cg_temp;
+    int cg_temp_1;
+    int cg_temp_2;
+    int cg_temp_3;
+    int cg_temp_4;
+    cg_ScalarLimit scalarLimit;
+    cg_VectorLimit vectorLimit;
+    cg_NestedLimits nestedLimits;
+    cg_output.position = position;
+    scalarLimit.value = cg_scalarLimit.x;
+    for (index = 0; index < scalarLimit.value; cg_temp = index, index = index + 1, cg_temp)
+    {
+        cg_output.position.x = cg_output.position.x + 0.00100000005;
+    }
+    vectorLimit.value = cg_vectorLimit;
+    for (index = 0; index < vectorLimit.value.x; cg_temp_1 = index, index = index + 1, cg_temp_1)
+    {
+        cg_output.position.y = cg_output.position.y + 0.00100000005;
+    }
+    nestedLimits.scalar.value = cg_nestedLimits[0].x;
+    nestedLimits.range[0] = cg_nestedLimits[1].xy;
+    nestedLimits.cg_vector.value = cg_nestedLimits[2];
+    for (index = 0; index < nestedLimits.scalar.value; cg_temp_2 = index, index = index + 1, cg_temp_2)
+    {
+        cg_output.position.z = cg_output.position.z + 0.00100000005;
+    }
+    for (index = 0; index < nestedLimits.range[0].y; cg_temp_3 = index, index = index + 1, cg_temp_3)
+    {
+        cg_output.position.w = cg_output.position.w + 0.00100000005;
+    }
+    for (index = 0; index < nestedLimits.cg_vector.value.z; cg_temp_4 = index, index = index + 1, cg_temp_4)
+    {
+        cg_output.position.x = cg_output.position.x + 0.00100000005;
+    }
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

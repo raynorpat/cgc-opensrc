@@ -1,0 +1,13 @@
+uniform bool enabled;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    int index;
+    output.position = position;
+    for (index = 0; index < (enabled ? 2 : 3); index++)
+        output.position.x += 1.0;
+    return output;
+}

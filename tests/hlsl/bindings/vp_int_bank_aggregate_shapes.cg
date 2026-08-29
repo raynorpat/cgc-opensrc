@@ -1,0 +1,38 @@
+struct ScalarLimit {
+    int value;
+};
+
+struct VectorLimit {
+    int4 value;
+};
+
+struct NestedLimits {
+    ScalarLimit scalar;
+    int2 range[1];
+    VectorLimit vector;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION,
+               uniform ScalarLimit scalarLimit : I0,
+               uniform VectorLimit vectorLimit : I1,
+               uniform NestedLimits nestedLimits : I2)
+{
+    VertexOut output;
+    int index;
+    output.position = position;
+    for (index = 0; index < scalarLimit.value; index++)
+        output.position.x += 0.001;
+    for (index = 0; index < vectorLimit.value.x; index++)
+        output.position.y += 0.001;
+    for (index = 0; index < nestedLimits.scalar.value; index++)
+        output.position.z += 0.001;
+    for (index = 0; index < nestedLimits.range[0].y; index++)
+        output.position.w += 0.001;
+    for (index = 0; index < nestedLimits.vector.value.z; index++)
+        output.position.x += 0.001;
+    return output;
+}

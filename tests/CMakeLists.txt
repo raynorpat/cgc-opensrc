@@ -1936,6 +1936,9 @@ add_hlsl_fixture(hlslv_vp_register_banks hlslv
 add_hlsl_fixture(hlslv_vp_int_bank_shapes hlslv
     tests/hlsl/bindings/vp_int_bank_shapes.cg
     tests/hlsl/bindings/vp_int_bank_shapes.expected)
+add_hlsl_fixture(hlslv_vp_int_bank_aggregate_shapes hlslv
+    tests/hlsl/bindings/vp_int_bank_aggregate_shapes.cg
+    tests/hlsl/bindings/vp_int_bank_aggregate_shapes.expected)
 add_hlsl_fixture(hlslv_vp_int_array_helpers hlslv
     tests/hlsl/bindings/vp_int_array_helpers.cg
     tests/hlsl/bindings/vp_int_array_helpers.expected)
@@ -1984,6 +1987,9 @@ add_hlsl_fixture(hlslv_loop_prefixes hlslv
 add_hlsl_fixture(hlslv_empty_control hlslv
     tests/hlsl/control/vp_empty_control.cg
     tests/hlsl/control/vp_empty_control.expected)
+add_hlsl_fixture(hlslv_bool_bank_loop_selection hlslv
+    tests/hlsl/control/vp_bool_bank_loop_selection.cg
+    tests/hlsl/control/vp_bool_bank_loop_selection.expected)
 add_hlsl_fixture(hlslf_discard hlslf
     tests/hlsl/control/fp_discard.cg
     tests/hlsl/control/fp_discard.expected)
@@ -2285,9 +2291,48 @@ add_hlsl_failure(hlslv_diagnostic_bool_bank_conditional_value hlslv
 add_hlsl_failure(hlslv_diagnostic_bool_bank_helper_return hlslv
     tests/hlsl/diagnostics/vp_bool_bank_helper_return.cg 6402 5
     "b-register helper return")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_equal_control hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_equal_control.cg 6402 10
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_not_equal_control hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_not_equal_control.cg 6402 10
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_equal_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_equal_value.cg 6402 11
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_not_equal_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_not_equal_value.cg 6402 11
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_loop_condition_selection hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_loop_condition_selection.cg 6402 10
+    "b-register conditional data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_loop_step_selection hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_loop_step_selection.cg 6402 10
+    "b-register conditional data path")
+add_hlsl_failure(hlslv_diagnostic_invalid_local_struct_initializer hlslv
+    tests/hlsl/diagnostics/vp_invalid_local_struct_initializer.cg 1056 10
+    "invalid initialization")
+add_hlsl_failure(hlslv_diagnostic_invalid_short_struct_initializer hlslv
+    tests/hlsl/diagnostics/vp_invalid_short_struct_initializer.cg 1056 10
+    "invalid initialization")
 add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_argument hlslv
     tests/hlsl/diagnostics/vp_mixed_bank_helper_argument.cg 6402 18
     "mixed constant-bank helper argument")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_int hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_int.cg 6402 11
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_bool hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_bool.cg 6402 11
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_alias hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_alias.cg 6402 13
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_conditional_alias hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_conditional_alias.cg 6402 15
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_conditional hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_conditional.cg 6402 13
+    "mixed constant-bank helper return")
 
 add_hlsl_failure(hlslv_texture_implicit_stage hlslv
     tests/hlsl/diagnostics/vp_implicit_texture.cg 6409 5 tex2D)

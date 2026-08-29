@@ -1,0 +1,13 @@
+uniform bool leftFlag;
+uniform bool rightFlag;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    if (leftFlag == rightFlag)
+        output.position.x += 1.0;
+    return output;
+}

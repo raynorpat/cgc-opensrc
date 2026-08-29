@@ -1642,14 +1642,19 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
                 member = best;
                 if (member == NULL)
                     break;
-                if (memberExpr == NULL ||
-                    memberExpr->common.kind != BINARY_N ||
-                    memberExpr->bin.op != EXPR_LIST_OP ||
-                    !lCheckInitializationData(loc, member->type,
-                                              memberExpr, IsGlobal))
-                {
+                if (memberExpr == NULL) {
+                    SemanticError(loc, ERROR___INVALID_INITIALIZATION);
                     return 0;
                 }
+                if (memberExpr->common.kind != BINARY_N ||
+                    memberExpr->bin.op != EXPR_LIST_OP)
+                {
+                    SemanticError(loc, ERROR___INVALID_INITIALIZATION);
+                    return 0;
+                }
+                if (!lCheckInitializationData(loc, member->type,
+                                              memberExpr, IsGlobal))
+                    return 0;
                 after = member->sourceOrdinal;
                 memberExpr = memberExpr->bin.right;
             }

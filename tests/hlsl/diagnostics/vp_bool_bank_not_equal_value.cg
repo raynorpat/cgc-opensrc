@@ -1,0 +1,15 @@
+uniform bool leftFlag;
+uniform bool rightFlag;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    bool selected;
+    output.position = position;
+    selected = leftFlag != rightFlag;
+    if (selected)
+        output.position.x += 1.0;
+    return output;
+}

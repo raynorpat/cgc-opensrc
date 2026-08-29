@@ -1,0 +1,24 @@
+struct Mixed {
+    float scalar;
+    int count;
+    bool enabled;
+};
+
+uniform Mixed mixed;
+
+Mixed load_mixed(int unused)
+{
+    return mixed;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    Mixed value;
+    value = load_mixed(0);
+    output.position = position;
+    output.position.x += value.enabled ? value.scalar : 0.0;
+    return output;
+}
