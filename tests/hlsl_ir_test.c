@@ -2198,6 +2198,267 @@ static void InitValidationFixture(ValidationFixture *fixture,
     fixture->module.wrapper = fixture->wrapper;
 }
 
+static void TestInterfaceMetadataWriter(void)
+{
+    ValidationFixture fixture;
+    HlslBinding *countBinding;
+    HlslBinding *enabledBinding;
+    HlslBinding *valuesBinding;
+    HlslBinding *pairsBinding;
+    HlslDecl *countDecl;
+    HlslDecl *enabledDecl;
+    HlslDecl *valuesDecl;
+    HlslDecl *pairsDecl;
+    HlslExpr *reference;
+    HlslExpr *object;
+    HlslExpr *subscript;
+    HlslExpr *element;
+    HlslExpr *component;
+    HlslExpr *zero;
+    HlslExpr *zeroStruct;
+    HlslStmt *statement;
+    HlslType countType;
+    HlslType enabledType;
+    HlslType valuesType;
+    HlslType pairType;
+    HlslType pairsType;
+    float countDefault;
+    float enabledDefault;
+    int countIdentity;
+    int enabledIdentity;
+    int valuesIdentity;
+    int pairsIdentity;
+    FILE *stream;
+    long length;
+    char *output;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    fixture.inputStruct->members->publicName = "sourcePosition";
+    countType = HlslNumericType(HLSL_BASE_INT, 1);
+    enabledType = HlslNumericType(HLSL_BASE_BOOL, 1);
+    valuesType = HlslNumericType(HLSL_BASE_INT, 3);
+    pairType = HlslNumericType(HLSL_BASE_INT, 2);
+    memset(&pairsType, 0, sizeof(pairsType));
+    pairsType.arraySize = 2;
+    pairsType.elementType = &pairType;
+    countBinding = HlslNewBinding(&fixture.module, HLSL_STORAGE_UNIFORM,
+                                  countType, "count", NULL);
+    enabledBinding = HlslNewBinding(&fixture.module, HLSL_STORAGE_UNIFORM,
+                                    enabledType, "enabled", NULL);
+    valuesBinding = HlslNewBinding(&fixture.module, HLSL_STORAGE_UNIFORM,
+                                   valuesType, "values", NULL);
+    pairsBinding = HlslNewBinding(&fixture.module, HLSL_STORAGE_UNIFORM,
+                                  pairsType, "pairs", NULL);
+    countDecl = HlslNewDecl(&fixture.module, HLSL_STORAGE_UNIFORM,
+                            countType, "cg_count");
+    enabledDecl = HlslNewDecl(&fixture.module, HLSL_STORAGE_UNIFORM,
+                              enabledType, "cg_enabled");
+    valuesDecl = HlslNewDecl(&fixture.module, HLSL_STORAGE_UNIFORM,
+                             valuesType, "cg_values");
+    pairsDecl = HlslNewDecl(&fixture.module, HLSL_STORAGE_UNIFORM,
+                            pairsType, "cg_pairs");
+    assert(countBinding != NULL && enabledBinding != NULL &&
+           valuesBinding != NULL && pairsBinding != NULL &&
+           countDecl != NULL && enabledDecl != NULL &&
+           valuesDecl != NULL && pairsDecl != NULL);
+    countDecl->identity = &countIdentity;
+    enabledDecl->identity = &enabledIdentity;
+    valuesDecl->identity = &valuesIdentity;
+    pairsDecl->identity = &pairsIdentity;
+    countBinding->declaration = countDecl;
+    enabledBinding->declaration = enabledDecl;
+    valuesBinding->declaration = valuesDecl;
+    pairsBinding->declaration = pairsDecl;
+    countDefault = 7.0f;
+    enabledDefault = 1.0f;
+    countBinding->defaultCount = 1;
+    countBinding->defaultValues = &countDefault;
+    enabledBinding->defaultCount = 1;
+    enabledBinding->defaultValues = &enabledDefault;
+    valuesBinding->sourceOrdinal = 1;
+    pairsBinding->sourceOrdinal = 2;
+    enabledBinding->sourceOrdinal = 3;
+    fixture.module.bindings = countBinding;
+    countBinding->next = valuesBinding;
+    valuesBinding->next = pairsBinding;
+    pairsBinding->next = enabledBinding;
+    assert(HlslAllocateOneBinding(&fixture.module, &HlslProfile_hlslv,
+                                  countBinding));
+    assert(HlslAllocateOneBinding(&fixture.module, &HlslProfile_hlslv,
+                                  valuesBinding));
+    assert(HlslAllocateOneBinding(&fixture.module, &HlslProfile_hlslv,
+                                  pairsBinding));
+    assert(HlslAllocateOneBinding(&fixture.module, &HlslProfile_hlslv,
+                                  enabledBinding));
+    reference = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL, countType);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(reference != NULL && statement != NULL);
+    reference->u.symbol = countBinding->declaration;
+    statement->u.expression = reference;
+    HlslAppendStmt(&fixture.entry->body, statement);
+    reference = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL, valuesType);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(reference != NULL && statement != NULL);
+    reference->u.symbol = valuesBinding->declaration;
+    statement->u.expression = reference;
+    HlslAppendStmt(&fixture.entry->body, statement);
+    object = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL, valuesType);
+    subscript = HlslNewExpr(&fixture.module, HLSL_EXPR_INT, countType);
+    component = HlslNewExpr(&fixture.module, HLSL_EXPR_INDEX, countType);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(object != NULL && subscript != NULL && component != NULL &&
+           statement != NULL);
+    object->u.symbol = valuesBinding->declaration;
+    subscript->u.literalInt = 1;
+    component->u.index.object = object;
+    component->u.index.index = subscript;
+    statement->u.expression = component;
+    HlslAppendStmt(&fixture.entry->body, statement);
+    object = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL, pairsType);
+    subscript = HlslNewExpr(&fixture.module, HLSL_EXPR_INT, countType);
+    element = HlslNewExpr(&fixture.module, HLSL_EXPR_INDEX, pairType);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(object != NULL && subscript != NULL && element != NULL &&
+           statement != NULL);
+    object->u.symbol = pairsBinding->declaration;
+    subscript->u.literalInt = 1;
+    element->u.index.object = object;
+    element->u.index.index = subscript;
+    statement->u.expression = element;
+    HlslAppendStmt(&fixture.entry->body, statement);
+    object = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL, pairsType);
+    subscript = HlslNewExpr(&fixture.module, HLSL_EXPR_INT, countType);
+    element = HlslNewExpr(&fixture.module, HLSL_EXPR_INDEX, pairType);
+    component = HlslNewExpr(&fixture.module, HLSL_EXPR_SWIZZLE, countType);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(object != NULL && subscript != NULL && element != NULL &&
+           component != NULL && statement != NULL);
+    object->u.symbol = pairsBinding->declaration;
+    subscript->u.literalInt = 1;
+    element->u.index.object = object;
+    element->u.index.index = subscript;
+    component->u.swizzle.object = element;
+    component->u.swizzle.mask = "y";
+    statement->u.expression = component;
+    HlslAppendStmt(&fixture.entry->body, statement);
+    reference = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL, enabledType);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(reference != NULL && statement != NULL);
+    reference->u.symbol = enabledBinding->declaration;
+    statement->u.expression = reference;
+    HlslAppendStmt(&fixture.entry->body, statement);
+    zero = HlslNewExpr(&fixture.module, HLSL_EXPR_INT,
+                       HlslNumericType(HLSL_BASE_INT, 1));
+    zeroStruct = HlslNewExpr(&fixture.module, HLSL_EXPR_CAST,
+                             fixture.outputStruct->type);
+    assert(zero != NULL && zeroStruct != NULL &&
+           fixture.wrapper->locals != NULL);
+    zero->u.literalInt = 0;
+    zeroStruct->u.cast.expression = zero;
+    fixture.wrapper->locals->initializer = zeroStruct;
+    stream = tmpfile();
+    assert(stream != NULL);
+    assert(HlslWriteModule(stream, &fixture.module, &HlslProfile_hlslv));
+    length = StreamLength(stream);
+    output = (char *) malloc((size_t) length + 1);
+    assert(output != NULL);
+    rewind(stream);
+    assert(fread(output, 1, (size_t) length, stream) == (size_t) length);
+    output[length] = '\0';
+    assert(strstr(output,
+        "// cgc-bind interface in sourcePosition float4 POSITION0\n") !=
+        NULL);
+    assert(strstr(output,
+        "// cgc-bind interface out output0 float4 POSITION0\n") != NULL);
+    assert(strstr(output, "// cgc-default count 7.0\n") != NULL);
+    assert(strstr(output, "// cgc-default enabled 1.0\n") != NULL);
+    assert(strstr(output,
+        "uniform int4 cg_count : register(i0);\n") != NULL);
+    assert(strstr(output,
+        "uniform int4 cg_values : register(i1);\n") != NULL);
+    assert(strstr(output,
+        "uniform int4 cg_pairs[2] : register(i2);\n") != NULL);
+    assert(strstr(output,
+        "uniform bool cg_enabled : register(b0);\n") != NULL);
+    assert(strstr(output, "cg_count.x;\n") != NULL);
+    assert(strstr(output, "cg_values.xyz;\n") != NULL);
+    assert(strstr(output, "cg_values[1];\n") != NULL);
+    assert(strstr(output, "cg_values.xyz[1]") == NULL);
+    assert(strstr(output, "cg_pairs[1].xy;\n") != NULL);
+    assert(strstr(output, "cg_pairs[1].y;\n") != NULL);
+    assert(strstr(output, ".xy.y") == NULL);
+    assert(strstr(output,
+        "cg_VertexOut outputValue = (cg_VertexOut) 0;\n") != NULL);
+    assert(strstr(output, "register(i0) =") == NULL);
+    assert(strstr(output, "register(b0) =") == NULL);
+    free(output);
+    assert(fclose(stream) == 0);
+}
+
+static void TestLoopAttributeWriter(void)
+{
+    ValidationFixture fixture;
+    HlslDecl *dynamicCondition;
+    HlslExpr *condition;
+    HlslStmt *loop;
+    HlslStmt *body;
+    HlslType boolType;
+    FILE *stream;
+    long length;
+    char *output;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    boolType = HlslNumericType(HLSL_BASE_BOOL, 1);
+    dynamicCondition = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                                   boolType, "cg_dynamicCondition");
+    assert(dynamicCondition != NULL);
+    fixture.entry->locals = dynamicCondition;
+
+    condition = HlslNewExpr(&fixture.module, HLSL_EXPR_BOOL, boolType);
+    loop = HlslNewStmt(&fixture.module, HLSL_STMT_WHILE);
+    assert(condition != NULL && loop != NULL);
+    condition->u.literalBool = 0;
+    loop->u.loop.condition = condition;
+    HlslAppendStmt(&fixture.entry->body, loop);
+
+    condition = HlslNewExpr(&fixture.module, HLSL_EXPR_BOOL, boolType);
+    loop = HlslNewStmt(&fixture.module, HLSL_STMT_WHILE);
+    assert(condition != NULL && loop != NULL);
+    condition->u.literalBool = 1;
+    loop->u.loop.condition = condition;
+    HlslAppendStmt(&fixture.entry->body, loop);
+
+    condition = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL, boolType);
+    loop = HlslNewStmt(&fixture.module, HLSL_STMT_WHILE);
+    assert(condition != NULL && loop != NULL);
+    condition->u.symbol = dynamicCondition;
+    loop->u.loop.condition = condition;
+    HlslAppendStmt(&fixture.entry->body, loop);
+
+    loop = HlslNewStmt(&fixture.module, HLSL_STMT_FOR);
+    body = HlslNewStmt(&fixture.module, HLSL_STMT_BREAK);
+    assert(loop != NULL && body != NULL);
+    loop->u.forStmt.body = body;
+    HlslAppendStmt(&fixture.entry->body, loop);
+
+    stream = tmpfile();
+    assert(stream != NULL);
+    assert(HlslWriteModule(stream, &fixture.module, &HlslProfile_hlslv));
+    length = StreamLength(stream);
+    output = (char *) malloc((size_t) length + 1);
+    assert(output != NULL);
+    rewind(stream);
+    assert(fread(output, 1, (size_t) length, stream) == (size_t) length);
+    output[length] = '\0';
+    assert(strstr(output, "[unroll]\n    while (false)") != NULL);
+    assert(strstr(output, "[unroll]\n    for (; ; )") != NULL);
+    assert(strstr(output, "[unroll]\n    while (true)") == NULL);
+    assert(strstr(output,
+                  "[unroll]\n    while (cg_dynamicCondition)") == NULL);
+    free(output);
+    assert(fclose(stream) == 0);
+}
+
 static void AssertInvalidValidationFixture(ValidationFixture *fixture,
                                            const HlslProfileDesc *profile)
 {
@@ -2984,5 +3245,7 @@ int main(int argc, char **argv)
     TestTargetValidatorRejectsMalformedBindingGraphs();
     TestTargetValidatorPreflightsAllBindingLeafLists();
     TestTargetValidatorCanonicalResourcesAndTypes();
+    TestInterfaceMetadataWriter();
+    TestLoopAttributeWriter();
     return 0;
 }

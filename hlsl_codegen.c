@@ -158,6 +158,32 @@ static int HlslWriteTypeAndName(FILE *out, const HlslType *type,
     return 1;
 } // HlslWriteTypeAndName
 
+static int HlslWriteDeclTypeAndName(FILE *out, const HlslDecl *decl)
+{
+    const HlslType *element;
+
+    if (decl->storage == HLSL_STORAGE_UNIFORM &&
+        decl->physical.bank == HLSL_REGISTER_I)
+    {
+        element = &decl->type;
+        while (element->arraySize > 0 && element->elementType != NULL)
+            element = element->elementType;
+        if (element->base == HLSL_BASE_INT && element->len >= 1 &&
+            element->len <= 4 && element->rows == 0 && element->cols == 0)
+        {
+            if (fprintf(out, "int4 %s", decl->name) < 0)
+                return 0;
+            if (decl->type.arraySize > 0 &&
+                fprintf(out, "[%d]", decl->type.arraySize) < 0)
+            {
+                return 0;
+            }
+            return 1;
+        }
+    }
+    return HlslWriteTypeAndName(out, &decl->type, decl->name);
+} // HlslWriteDeclTypeAndName
+
 static int HlslWriteFloat(FILE *out, float value)
 {
     char buffer[64];
@@ -296,9 +322,56 @@ static int HlslIsAssignmentOperator(HlslOperator op)
     return op >= HLSL_OP_ASSIGN && op <= HLSL_OP_SHIFT_RIGHT_ASSIGN;
 } // HlslIsAssignmentOperator
 
+static const HlslDecl *HlslPhysicalIntegerDecl(
+    const HlslExpr *expression)
+{
+    if (expression == NULL)
+        return NULL;
+    if (expression->kind == HLSL_EXPR_SYMBOL)
+        return expression->u.symbol != NULL &&
+               expression->u.symbol->physical.bank == HLSL_REGISTER_I ?
+               expression->u.symbol : NULL;
+    if (expression->kind == HLSL_EXPR_INDEX &&
+        expression->u.index.object != NULL &&
+        expression->u.index.object->type.arraySize > 0)
+    {
+        return HlslPhysicalIntegerDecl(expression->u.index.object);
+    }
+    return NULL;
+} // HlslPhysicalIntegerDecl
+
+static const char *HlslPhysicalIntegerSwizzle(const HlslExpr *expression)
+{
+    if (HlslPhysicalIntegerDecl(expression) == NULL ||
+        expression->type.arraySize != 0 ||
+        expression->type.base != HLSL_BASE_INT ||
+        expression->type.rows != 0 || expression->type.cols != 0)
+    {
+        return NULL;
+    }
+    switch (expression->type.len) {
+    case 1: return "x";
+    case 2: return "xy";
+    case 3: return "xyz";
+    default: return NULL;
+    }
+} // HlslPhysicalIntegerSwizzle
+
+static int HlslWriteExprImpl(FILE *out, const HlslExpr *expression,
+                             int parentPrecedence,
+                             int writePhysicalSwizzle);
+
 static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
                          int parentPrecedence)
 {
+    return HlslWriteExprImpl(out, expression, parentPrecedence, 1);
+} // HlslWriteExpr
+
+static int HlslWriteExprImpl(FILE *out, const HlslExpr *expression,
+                             int parentPrecedence,
+                             int writePhysicalSwizzle)
+{
+    const HlslDecl *parameter;
     const HlslExpr *argument;
     const char *text;
     int precedence;
@@ -383,15 +456,21 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
             return 0;
         }
         first = 1;
+        parameter = expression->u.call.function != NULL ?
+                    expression->u.call.function->parameters : NULL;
         for (argument = expression->u.call.arguments; argument != NULL;
              argument = argument->next)
         {
             if ((!first && fputs(", ", out) == EOF) ||
-                !HlslWriteExpr(out, argument, 0))
+                !HlslWriteExprImpl(out, argument, 0,
+                    parameter == NULL ||
+                    parameter->physical.bank != HLSL_REGISTER_I))
             {
                 return 0;
             }
             first = 0;
+            if (parameter != NULL)
+                parameter = parameter->next;
         }
         if (fputc(')', out) == EOF)
             return 0;
@@ -440,7 +519,7 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
         }
         break;
     case HLSL_EXPR_INDEX:
-        if (!HlslWriteExpr(out, expression->u.index.object, 14) ||
+        if (!HlslWriteExprImpl(out, expression->u.index.object, 14, 0) ||
             fputc('[', out) == EOF ||
             !HlslWriteExpr(out, expression->u.index.index, 0) ||
             fputc(']', out) == EOF)
@@ -449,7 +528,7 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
         }
         break;
     case HLSL_EXPR_SWIZZLE:
-        if (!HlslWriteExpr(out, expression->u.swizzle.object, 14) ||
+        if (!HlslWriteExprImpl(out, expression->u.swizzle.object, 14, 0) ||
             expression->u.swizzle.mask == NULL ||
             fprintf(out, ".%s", expression->u.swizzle.mask) < 0)
         {
@@ -459,21 +538,22 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
     default:
         return 0;
     }
+    text = writePhysicalSwizzle ?
+           HlslPhysicalIntegerSwizzle(expression) : NULL;
+    if (text != NULL && fprintf(out, ".%s", text) < 0)
+        return 0;
     if (parentheses && fputc(')', out) == EOF)
         return 0;
     return 1;
-} // HlslWriteExpr
+} // HlslWriteExprImpl
 
 static int HlslWriteDecl(FILE *out, const HlslDecl *decl, int indent,
                          int withSemantic)
 {
     if (!HlslWriteIndent(out, indent))
         return 0;
-    /* FXC otherwise treats uninitialized SM3 i#/b# globals as local
-       constants and asks for a duplicate c-bank binding.  Keep initialized
-       default globals unchanged; their strict-FXC policy is Task 11. */
+    /* FXC treats SM3 i#/b# globals without uniform as local constants. */
     if (decl->storage == HLSL_STORAGE_UNIFORM &&
-        decl->initializer == NULL &&
         (decl->physical.bank == HLSL_REGISTER_I ||
          decl->physical.bank == HLSL_REGISTER_B) &&
         fputs("uniform ", out) == EOF)
@@ -495,7 +575,7 @@ static int HlslWriteDecl(FILE *out, const HlslDecl *decl, int indent,
     {
         return 0;
     }
-    if (!HlslWriteTypeAndName(out, &decl->type, decl->name))
+    if (!HlslWriteDeclTypeAndName(out, decl))
         return 0;
     if (withSemantic && decl->semantic != NULL &&
         fprintf(out, " : %s", decl->semantic) < 0)
@@ -509,7 +589,11 @@ static int HlslWriteDecl(FILE *out, const HlslDecl *decl, int indent,
     {
         return 0;
     }
+    /* SM3 i#/b# uniforms cannot carry source initializers.  The stable
+       cgc-default metadata above remains the runtime default contract. */
     if (decl->initializer != NULL &&
+        decl->physical.bank != HLSL_REGISTER_I &&
+        decl->physical.bank != HLSL_REGISTER_B &&
         (fputs(" = ", out) == EOF ||
          !HlslWriteExpr(out, decl->initializer, 0)))
     {
@@ -553,7 +637,7 @@ static int HlslWriteParameters(FILE *out, const HlslDecl *parameter)
         {
             return 0;
         }
-        if (!HlslWriteTypeAndName(out, &parameter->type, parameter->name))
+        if (!HlslWriteDeclTypeAndName(out, parameter))
             return 0;
         first = 0;
     }
@@ -586,6 +670,48 @@ static int HlslWriteForPart(FILE *out, const HlslStmt *statement)
     }
     return 1;
 } // HlslWriteForPart
+
+static int HlslStatementsAreEmpty(const HlslStmt *statement)
+{
+    for (; statement != NULL; statement = statement->next) {
+        if (statement->kind != HLSL_STMT_BLOCK ||
+            !HlslStatementsAreEmpty(statement->u.block))
+        {
+            return 0;
+        }
+    }
+    return 1;
+} // HlslStatementsAreEmpty
+
+static int HlslStatementsBreakImmediately(const HlslStmt *statement)
+{
+    while (statement != NULL && statement->next == NULL &&
+           statement->kind == HLSL_STMT_BLOCK)
+    {
+        statement = statement->u.block;
+    }
+    return statement != NULL && statement->next == NULL &&
+           statement->kind == HLSL_STMT_BREAK;
+} // HlslStatementsBreakImmediately
+
+static int HlslExpressionIsConstantFalse(const HlslExpr *expression)
+{
+    return expression != NULL && expression->kind == HLSL_EXPR_BOOL &&
+           !expression->u.literalBool;
+} // HlslExpressionIsConstantFalse
+
+static int HlslWriteLoopAttribute(FILE *out, const HlslExpr *condition,
+                                  const HlslStmt *body, int indent)
+{
+    if (!(HlslStatementsAreEmpty(body) &&
+          HlslExpressionIsConstantFalse(condition)) &&
+        !HlslStatementsBreakImmediately(body))
+    {
+        return 1;
+    }
+    return fputs("[unroll]\n", out) != EOF &&
+           HlslWriteIndent(out, indent);
+} // HlslWriteLoopAttribute
 
 static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
                                int indent)
@@ -627,7 +753,9 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
             }
             break;
         case HLSL_STMT_WHILE:
-            if (fputs("while (", out) == EOF ||
+            if (!HlslWriteLoopAttribute(out, statement->u.loop.condition,
+                                        statement->u.loop.body, indent) ||
+                fputs("while (", out) == EOF ||
                 !HlslWriteExpr(out, statement->u.loop.condition, 0) ||
                 fputs(")\n", out) == EOF ||
                 !HlslWriteBracedBody(out, statement->u.loop.body, indent))
@@ -636,7 +764,9 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
             }
             break;
         case HLSL_STMT_DO:
-            if (fputs("do\n", out) == EOF ||
+            if (!HlslWriteLoopAttribute(out, statement->u.loop.condition,
+                                        statement->u.loop.body, indent) ||
+                fputs("do\n", out) == EOF ||
                 !HlslWriteBracedBody(out, statement->u.loop.body, indent) ||
                 !HlslWriteIndent(out, indent) ||
                 fputs("while (", out) == EOF ||
@@ -647,7 +777,10 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
             }
             break;
         case HLSL_STMT_FOR:
-            if (fputs("for (", out) == EOF ||
+            if (!HlslWriteLoopAttribute(out,
+                    statement->u.forStmt.condition,
+                    statement->u.forStmt.body, indent) ||
+                fputs("for (", out) == EOF ||
                 !HlslWriteForPart(out, statement->u.forStmt.init) ||
                 fputs("; ", out) == EOF ||
                 (statement->u.forStmt.condition != NULL &&
@@ -744,16 +877,65 @@ static const char *HlslBankText(HlslRegisterBank bank)
     return "?";
 } // HlslBankText
 
+static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module)
+{
+    const HlslDecl *structure;
+    const HlslDecl *member;
+    const char *direction;
+    const char *publicName;
+    const char *typeName;
+    int wroteRecord;
+
+    wroteRecord = 0;
+    for (structure = module->structs; structure != NULL;
+         structure = structure->next)
+    {
+        if (structure->storage == HLSL_STORAGE_INPUT)
+            direction = "in";
+        else if (structure->storage == HLSL_STORAGE_OUTPUT)
+            direction = "out";
+        else
+            continue;
+        for (member = structure->members; member != NULL;
+             member = member->next)
+        {
+            publicName = member->publicName != NULL &&
+                         member->publicName[0] != '\0' ?
+                         member->publicName : member->name;
+            typeName = HlslTypeName(&member->type);
+            if (publicName == NULL || typeName == NULL ||
+                member->semantic == NULL)
+            {
+                return -1;
+            }
+            if (fprintf(out, "// cgc-bind interface %s %s %s %s\n",
+                    direction, publicName, typeName, member->semantic) < 0)
+            {
+                return -1;
+            }
+            wroteRecord = 1;
+        }
+    }
+    return wroteRecord;
+} // HlslWriteInterfaceMetadata
+
 static int HlslEmitModule(FILE *out, const HlslModule *module,
                           const HlslProfileDesc *profile)
 {
     const HlslBinding *binding;
     const HlslDecl *decl;
     const HlslFunction *function;
+    int wroteInterface;
     int wroteSection;
 
     if (fprintf(out, "// profile %s\n", profile->name) < 0 ||
         fprintf(out, "// target %s\n", profile->target) < 0)
+    {
+        return 0;
+    }
+    wroteInterface = HlslWriteInterfaceMetadata(out, module);
+    if (wroteInterface < 0 ||
+        (wroteInterface && fputc('\n', out) == EOF))
     {
         return 0;
     }

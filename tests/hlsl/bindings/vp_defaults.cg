@@ -19,12 +19,14 @@ VertexOut main(float4 position : POSITION,
                    { { 14.0, 15.0 }, 2147483647, true })
 {
     VertexOut output;
+    float selectedWeight;
     float2 transformed;
     transformed = mul(transform, position.xyz);
+    selectedWeight = weights[1];
     output.position = position * scale +
                       float4(transformed.x + settings.offset.x,
                              transformed.y + settings.offset.y,
-                             bias.x + weights[settings.enabled ? 1 : 0],
-                             settings.count);
+                             bias.x + selectedWeight,
+                             1.0);
     return output;
 }

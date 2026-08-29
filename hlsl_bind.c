@@ -1740,6 +1740,20 @@ static int HlslRemoveEntryArgument(HlslModule *module, int ordinal,
     return 0;
 } // HlslRemoveEntryArgument
 
+static void HlslMarkPhysicalIntegerParameter(HlslModule *module,
+                                             HlslBinding *binding)
+{
+    HlslDecl **parameter;
+
+    if (binding == NULL || binding->physical.bank != HLSL_REGISTER_I)
+    {
+        return;
+    }
+    parameter = HlslFindEntryParameter(module, binding, NULL);
+    if (parameter != NULL)
+        (*parameter)->physical = binding->physical;
+} // HlslMarkPhysicalIntegerParameter
+
 static int HlslInsertBeforeFirstUse(HlslFunction *function,
                                     const HlslDecl *decl,
                                     HlslStmt *initializers)
@@ -1924,6 +1938,7 @@ int HlslAllocateBindings(HlslModule *module,
         }
     }
     for (i = 0; i < count; i++) {
+        HlslMarkPhysicalIntegerParameter(module, ordered[i]);
         if (module->entry != NULL &&
             ordered[i]->leafBindings != NULL &&
             ordered[i]->leafBindings->next != NULL &&

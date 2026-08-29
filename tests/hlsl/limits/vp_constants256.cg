@@ -1,9 +1,10 @@
 float4 main(float4 position : POSITION,
-            uniform float4 values[256]) : POSITION
+            uniform float4 values[256],
+            uniform int4 limit) : POSITION
 {
     float4 total = position;
     int index;
-    for (index = 0; index < 256; index++)
+    for (index = 0; index < limit.x; index++)
         total += values[index];
     return total;
 }

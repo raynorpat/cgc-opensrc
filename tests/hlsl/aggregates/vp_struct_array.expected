@@ -1,5 +1,8 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
 struct cg_Item
 {
     float4 value;
@@ -46,7 +49,7 @@ cg_Batch cg_select_batch(cg_Batch source, inout int callCount)
 
 cg_VertexOut cg_entry(float4 position)
 {
-    cg_VertexOut cg_output;
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
     cg_Batch source;
     cg_Batch batches[2];
     cg_Batch selected;

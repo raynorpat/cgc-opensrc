@@ -1,5 +1,11 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 TEXCOORD0
+// cgc-bind interface in normal float3 TEXCOORD1
+// cgc-bind interface out HPOS float4 POSITION0
+// cgc-bind interface out COL0 float4 COLOR0
+// cgc-bind interface out TEX0 float4 TEXCOORD0
+
 // var row_major float4x4 modelview_matrix :  : c[0] : 1 : 4
 // var row_major float4x4 projection_matrix :  : c[4] : 1 : 4
 // var float3 lightdir :  : c[8] : 1 : 1
@@ -42,7 +48,7 @@ float cg_rsqrt_float(float value);
 
 cg_vf20 cg_entry(cg_appdata I, row_major float4x4 modelview_matrix, row_major float4x4 projection_matrix, float3 lightdir, float3 lightcolor, float3 ambientcolor)
 {
-    cg_vf20 O;
+    cg_vf20 O = (cg_vf20) 0;
     float3 n;
     float3 u;
     float3 r;

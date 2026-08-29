@@ -1,5 +1,21 @@
 // profile hlslf
 // target ps_3_0
+// cgc-bind interface in color0 float4 COLOR0
+// cgc-bind interface in color1 float4 COLOR1
+// cgc-bind interface in tex0 float4 TEXCOORD0
+// cgc-bind interface in tex1 float4 TEXCOORD1
+// cgc-bind interface in tex2 float4 TEXCOORD2
+// cgc-bind interface in tex3 float4 TEXCOORD3
+// cgc-bind interface in tex4 float4 TEXCOORD4
+// cgc-bind interface in fog float FOG0
+// cgc-bind interface in position float2 VPOS
+// cgc-bind interface in face float VFACE
+// cgc-bind interface out color0 float4 COLOR0
+// cgc-bind interface out color1 float4 COLOR1
+// cgc-bind interface out color2 float4 COLOR2
+// cgc-bind interface out color3 float4 COLOR3
+// cgc-bind interface out depth float DEPTH0
+
 struct cg_PixelOut
 {
     float4 color0;
@@ -34,7 +50,7 @@ struct cg_PixelOut_1
 
 cg_PixelOut cg_entry(float4 color0, float4 color1, float4 tex0, float4 tex1, float4 tex2, float4 tex3, float4 tex4, float fog, float2 position, float face)
 {
-    cg_PixelOut cg_output;
+    cg_PixelOut cg_output = (cg_PixelOut) 0;
     cg_output.color0 = color0;
     cg_output.color1 = color1;
     cg_output.color2 = tex0;

@@ -11,6 +11,7 @@ VertexOut main(float4 position : POSITION)
     float scale;
     float bias;
     VertexOut output;
+    bias = position.w;
     output.position = adjust(position, scale, bias);
     return output;
 }

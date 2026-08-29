@@ -1,5 +1,8 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
 struct cg_VertexOut
 {
     float4 position;
@@ -22,7 +25,7 @@ float cg_adjust(float value)
 
 cg_VertexOut cg_entry(float4 position)
 {
-    cg_VertexOut cg_output;
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
     cg_output.position = float4(cg_adjust(position.x), position.y, position.z, position.w);
     return cg_output;
 }

@@ -1,5 +1,8 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
 struct cg_Item
 {
     float4 value;
@@ -43,7 +46,7 @@ int cg_next_index(inout int index)
 
 cg_VertexOut cg_entry(float4 position)
 {
-    cg_VertexOut cg_output;
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
     cg_Batch generated[2];
     cg_Batch current[2];
     int outputIndex;

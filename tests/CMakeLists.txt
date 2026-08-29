@@ -4,14 +4,19 @@ if(NOT GLSLANG_VALIDATOR)
         "glslangValidator not found; GLSL source validation tests are disabled")
 endif()
 
-find_program(HLSL_FXC NAMES fxc)
-if(WIN32 AND NOT HLSL_FXC)
-    file(GLOB HLSL_FXC_CANDIDATES
+find_program(FXC_EXECUTABLE NAMES fxc fxc.exe)
+if(WIN32 AND NOT FXC_EXECUTABLE)
+    file(GLOB FXC_EXECUTABLE_CANDIDATES
         "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*/x64/fxc.exe")
-    list(SORT HLSL_FXC_CANDIDATES COMPARE NATURAL ORDER DESCENDING)
-    if(HLSL_FXC_CANDIDATES)
-        list(GET HLSL_FXC_CANDIDATES 0 HLSL_FXC)
+    list(SORT FXC_EXECUTABLE_CANDIDATES COMPARE NATURAL ORDER DESCENDING)
+    if(FXC_EXECUTABLE_CANDIDATES)
+        list(GET FXC_EXECUTABLE_CANDIDATES 0 FXC_EXECUTABLE)
+        set(FXC_EXECUTABLE "${FXC_EXECUTABLE}" CACHE FILEPATH
+            "DirectX HLSL compiler used for SM3 validation" FORCE)
     endif()
+endif()
+if(NOT FXC_EXECUTABLE)
+    message(STATUS "fxc not found; HLSL SM3 validation tests are disabled")
 endif()
 
 # Golden regeneration switch (Task 8 Step 7): used only by the fixture
@@ -19,6 +24,8 @@ endif()
 # expectations, inspect every diff before committing, then turn it off.
 set(CGC_UPDATE_GLSL_EXPECTED OFF CACHE BOOL
     "Regenerate tracked GLSL expectations; inspect before committing")
+set(CGC_UPDATE_HLSL_EXPECTED OFF CACHE BOOL
+    "Regenerate tracked HLSL expectations; inspect before committing")
 
 function(add_glsl_validation name profile stage source)
     if(GLSLANG_VALIDATOR)
@@ -1839,6 +1846,45 @@ endfunction()
 add_glsl_registration(glslv)
 add_glsl_registration(glslf)
 
+function(add_hlsl_validation_case name profile source packing)
+    if(FXC_EXECUTABLE)
+        if(profile STREQUAL "hlslv")
+            set(target vs_3_0)
+        else()
+            set(target ps_3_0)
+        endif()
+        # These vertex limit fixtures intentionally do not write POSITION;
+        # cgc reports only the known C7005 boundary warning for them.
+        set(suppress_warnings FALSE)
+        if(name MATCHES
+           "^hlslv_limit_(inputs16|constants256|int16|bool16|samplers4)$")
+            set(suppress_warnings TRUE)
+        endif()
+        add_test(
+            NAME hlsl_validate_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DFXC=${FXC_EXECUTABLE}
+                -DPROFILE=${profile}
+                -DTARGET=${target}
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DPACKING=${packing}
+                -DSUPPRESS_WARNINGS=${suppress_warnings}
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.hlsl"
+                "-DBYTECODE=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.fxc"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/validate_hlsl.cmake)
+    endif()
+endfunction()
+
+function(add_hlsl_validation name profile source)
+    if(name MATCHES "matrix|rectangular")
+        add_hlsl_validation_case(${name}_zpr ${profile} ${source} /Zpr)
+        add_hlsl_validation_case(${name}_zpc ${profile} ${source} /Zpc)
+    else()
+        add_hlsl_validation_case(${name} ${profile} ${source} "")
+    endif()
+endfunction()
+
 function(add_hlsl_fixture name profile source expected)
     add_test(
         NAME ${name}
@@ -1847,9 +1893,17 @@ function(add_hlsl_fixture name profile source expected)
             -DPROFILE=${profile}
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
             -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    # The two registration goldens intentionally exercise the Task 1 void
+    # profile skeleton.  SM3 bytecode requires a POSITION/COLOR write, so
+    # these are the only successful HLSL fixtures that cannot run via FXC.
+    if(NOT name STREQUAL "hlslv_registration" AND
+       NOT name STREQUAL "hlslf_registration")
+        add_hlsl_validation(${name} ${profile} ${source})
+    endif()
 endfunction()
 
 add_hlsl_fixture(hlslv_registration hlslv
@@ -1878,6 +1932,9 @@ add_hlsl_fixture(hlslf_fp_all_semantics hlslf
 add_hlsl_fixture(hlslv_vp_register_banks hlslv
     tests/hlsl/bindings/vp_register_banks.cg
     tests/hlsl/bindings/vp_register_banks.expected)
+add_hlsl_fixture(hlslv_vp_int_bank_shapes hlslv
+    tests/hlsl/bindings/vp_int_bank_shapes.cg
+    tests/hlsl/bindings/vp_int_bank_shapes.expected)
 add_hlsl_fixture(hlslv_vp_mixed_struct hlslv
     tests/hlsl/bindings/vp_mixed_struct.cg
     tests/hlsl/bindings/vp_mixed_struct.expected)
@@ -1998,6 +2055,27 @@ add_hlsl_fixture(hlslf_texture_sampler_helper_parameter hlslf
     tests/hlsl/textures/fp_sampler_helper_parameter.cg
     tests/hlsl/textures/fp_sampler_helper_parameter.expected)
 
+function(add_hlsl_link_test name vertex_source fragment_source)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/${vertex_source}
+            -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/${fragment_source}
+            "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.vs.hlsl"
+            "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.ps.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_link.cmake)
+endfunction()
+
+add_hlsl_link_test(hlsl_link_interface
+    tests/hlsl/link/vp_link.cg tests/hlsl/link/fp_link.cg)
+add_hlsl_link_test(hlsl_link_interface_mismatch
+    tests/hlsl/link/vp_link_mismatch.cg
+    tests/hlsl/link/fp_link_mismatch.cg)
+set_tests_properties(hlsl_link_interface_mismatch PROPERTIES WILL_FAIL TRUE)
+set_property(TEST hlsl_link_interface_mismatch APPEND PROPERTY
+    ENVIRONMENT "HLSL_EXPECT_LINK_MISMATCH=COLOR0 type mismatch")
+
 function(add_hlsl_failure name profile source code line reason)
     add_test(
         NAME ${name}
@@ -2022,6 +2100,7 @@ function(add_hlsl_limit_success name profile source)
             -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl
             ${PROJECT_SOURCE_DIR}/${source}
     )
+    add_hlsl_validation(${name} ${profile} ${source})
 endfunction()
 
 function(add_hlsl_bank_boundary name source expected bank type count)
@@ -2033,11 +2112,12 @@ function(add_hlsl_bank_boundary name source expected bank type count)
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
             -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
-            "-DFXC=${HLSL_FXC}"
+            "-DFXC=${FXC_EXECUTABLE}"
             -DBANK=${bank}
             -DTYPE=${type}
             -DCOUNT=${count}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_bank_boundary.cmake)
+    add_hlsl_validation(${name} hlslv ${source})
 endfunction()
 
 add_hlsl_limit_success(hlslv_limit_inputs16 hlslv
@@ -3507,6 +3587,22 @@ if(CGC_REFERENCE_EXECUTABLE)
     add_arb_oracle(vp_uniform arbvp1 tests/arb/oracle/vp_uniform.cg)
     add_arb_oracle(fp_passthrough arbfp1 tests/arb/oracle/fp_passthrough.cg)
     add_arb_oracle(fp_texture arbfp1 tests/arb/oracle/fp_texture.cg)
+
+    function(add_hlsl_oracle name profile source)
+        add_test(NAME hlsl_oracle_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC_UNDER_TEST=$<TARGET_FILE:cgc>
+                -DREFERENCE_CGC=${CGC_REFERENCE_EXECUTABLE}
+                -DPROFILE=${profile}
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DENTRY=main
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/hlsl-oracle/$<CONFIG>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_oracle.cmake)
+        set_tests_properties(hlsl_oracle_${name} PROPERTIES LABELS oracle)
+    endfunction()
+
+    add_hlsl_oracle(vp_uniform hlslv tests/hlsl/oracle/vp_uniform.cg)
+    add_hlsl_oracle(fp_texture hlslf tests/hlsl/oracle/fp_texture.cg)
 endif()
 
 # Core GLSL 1.50 contract on representative vertex and fragment

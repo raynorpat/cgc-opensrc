@@ -539,14 +539,17 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         {
             return 0;
         }
-        if ((HlslIsNumericScalarOrVector(&expression->type) ||
-             HlslIsBooleanScalarOrVector(&expression->type)) &&
-            (HlslIsNumericScalarOrVector(
-                &expression->u.cast.expression->type) ||
-             HlslIsBooleanScalarOrVector(
-                &expression->u.cast.expression->type)) &&
-            expression->type.len ==
-                expression->u.cast.expression->type.len)
+        if ((expression->type.base == HLSL_BASE_STRUCT &&
+             expression->u.cast.expression->kind == HLSL_EXPR_INT &&
+             expression->u.cast.expression->u.literalInt == 0) ||
+            ((HlslIsNumericScalarOrVector(&expression->type) ||
+              HlslIsBooleanScalarOrVector(&expression->type)) &&
+             (HlslIsNumericScalarOrVector(
+                  &expression->u.cast.expression->type) ||
+              HlslIsBooleanScalarOrVector(
+                  &expression->u.cast.expression->type)) &&
+             expression->type.len ==
+                 expression->u.cast.expression->type.len))
         {
             return 1;
         }

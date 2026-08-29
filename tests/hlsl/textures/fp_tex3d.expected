@@ -1,5 +1,8 @@
 // profile hlslf
 // target ps_3_0
+// cgc-bind interface in coord float3 TEXCOORD0
+// cgc-bind interface out result float4 COLOR0
+
 // var sampler3D image : TEXUNIT0 : s[0] : 1 : 1
 
 sampler3D cg_image : register(s0);

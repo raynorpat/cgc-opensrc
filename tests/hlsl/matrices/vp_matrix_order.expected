@@ -1,5 +1,8 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
 // var row_major float4x4 transform : C4 : c[4] : 1 : 4
 
 row_major float4x4 cg_transform : register(c4);
@@ -21,7 +24,7 @@ struct cg_VertexOut_1
 
 cg_VertexOut cg_entry(float4 position, row_major float4x4 transform)
 {
-    cg_VertexOut cg_output;
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
     cg_output.position = mul(transform, position);
     return cg_output;
 }

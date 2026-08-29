@@ -989,14 +989,17 @@ static int HlslValidateExpression(HlslValidationContext *context,
         if (expression->u.cast.expression == NULL ||
             !HlslValidateExpression(context,
                 expression->u.cast.expression, &frame, depth + 1) ||
-            (!(HlslIsNumericScalarOrVector(&expression->type) ||
-               HlslIsBooleanScalarOrVector(&expression->type)) ||
-             !(HlslIsNumericScalarOrVector(
-                   &expression->u.cast.expression->type) ||
-               HlslIsBooleanScalarOrVector(
-                   &expression->u.cast.expression->type)) ||
-             expression->type.len !=
-                 expression->u.cast.expression->type.len))
+            !((expression->type.base == HLSL_BASE_STRUCT &&
+               expression->u.cast.expression->kind == HLSL_EXPR_INT &&
+               expression->u.cast.expression->u.literalInt == 0) ||
+              ((HlslIsNumericScalarOrVector(&expression->type) ||
+                HlslIsBooleanScalarOrVector(&expression->type)) &&
+               (HlslIsNumericScalarOrVector(
+                    &expression->u.cast.expression->type) ||
+                HlslIsBooleanScalarOrVector(
+                    &expression->u.cast.expression->type)) &&
+               expression->type.len ==
+                   expression->u.cast.expression->type.len)))
         {
             return context->module->errors != 0 ? 0 :
                 HlslFail(context->module, HLSL_ERROR_INVALID_IR,

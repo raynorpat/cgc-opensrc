@@ -1,0 +1,13 @@
+struct VertexOut
+{
+    float4 position : POSITION0;
+    float4 COLOR0 : TEXCOORD0;
+};
+
+VertexOut main(float4 position : POSITION0)
+{
+    VertexOut output;
+    output.position = position;
+    output.COLOR0 = position;
+    return output;
+}

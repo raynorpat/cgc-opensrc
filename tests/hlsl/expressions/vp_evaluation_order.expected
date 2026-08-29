@@ -1,5 +1,8 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
 struct cg_VertexOut
 {
     float4 position;
@@ -79,7 +82,7 @@ int cg_mutateVector(inout float4 value)
 
 cg_VertexOut cg_entry(float4 position)
 {
-    cg_VertexOut cg_output;
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
     bool choose;
     bool2 lanes;
     bool2 comparison;

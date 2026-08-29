@@ -1,5 +1,8 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
 struct cg_VertexOut
 {
     float4 position;
@@ -29,7 +32,7 @@ float2 cg_bump2(inout float2 value, float amount)
 
 cg_VertexOut cg_entry(float4 position)
 {
-    cg_VertexOut cg_output;
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
     float counter;
     float commaResult;
     float scalarResult;

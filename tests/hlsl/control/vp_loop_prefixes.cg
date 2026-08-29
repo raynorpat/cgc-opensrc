@@ -22,8 +22,10 @@ VertexOut main(float4 position : POSITION)
     choose = position.x > 0.0;
     trace = 0.0;
     index = 0;
-    while (choose ? trace_condition(trace, 1.0, index < 2) :
-                    trace_condition(trace, 2.0, index < 2)) {
+    while (choose ? trace_condition(trace, 1.0,
+                                     index < (int) position.w) :
+                    trace_condition(trace, 2.0,
+                                     index < (int) position.w)) {
         index = index + 1;
         if (index == 1)
             continue;
@@ -36,17 +38,21 @@ VertexOut main(float4 position : POSITION)
         if (index == 1)
             continue;
         trace = trace + 0.5;
-    } while (choose ? trace_condition(trace, 3.0, index < 2) :
-                      trace_condition(trace, 4.0, index < 2));
+    } while (choose ? trace_condition(trace, 3.0,
+                                       index < (int) position.w) :
+                      trace_condition(trace, 4.0,
+                                       index < (int) position.w));
 
     for (index = 0;
-         choose ? trace_condition(trace, 5.0, index < 2) :
-                  trace_condition(trace, 6.0, index < 2);
+         choose ? trace_condition(trace, 5.0,
+                                  index < (int) position.w) :
+                  trace_condition(trace, 6.0,
+                                  index < (int) position.w);
          index = choose ? trace_step(trace, 7.0, index) :
                           trace_step(trace, 8.0, index)) {
         if (index == 0)
             continue;
-        if (index == 1)
+        if (index == 1 && position.y > 0.0)
             break;
         trace = trace + 0.75;
     }

@@ -1,5 +1,8 @@
 // profile hlslv
 // target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
 // var float scale :  : c[0] : 1 : 1
 // cgc-default scale 2.0
 // var float3 bias :  : c[1] : 1 : 1
@@ -20,8 +23,8 @@ float3 cg_bias : register(c1) = float3(3.0, 4.0, 5.0);
 row_major float2x3 cg_transform : register(c2) = float2x3(6.0, 7.0, 8.0, 9.0, 10.0, 11.0);
 float cg_weights[2] : register(c4) = { 12.0, 13.0 };
 float2 cg_settings_offset : register(c6) = float2(14.0, 15.0);
-int cg_settings_count : register(i0) = 2147483647;
-bool cg_settings_enabled : register(b0) = true;
+uniform int4 cg_settings_count : register(i0);
+uniform bool cg_settings_enabled : register(b0);
 
 struct cg_Settings
 {
@@ -47,14 +50,16 @@ struct cg_VertexOut_1
 
 cg_VertexOut cg_entry(float4 position, float scale, float3 bias, row_major float2x3 transform, float weights[2])
 {
-    cg_VertexOut cg_output;
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    float selectedWeight;
     float2 transformed;
     cg_Settings settings;
     transformed = mul(transform, position.xyz);
+    selectedWeight = weights[1];
     settings.offset = cg_settings_offset;
-    settings.count = cg_settings_count;
+    settings.count = cg_settings_count.x;
     settings.enabled = cg_settings_enabled;
-    cg_output.position = position * scale + float4(transformed.x + settings.offset.x, transformed.y + settings.offset.y, bias.x + weights[settings.enabled ? 1 : 0], (float) settings.count);
+    cg_output.position = position * scale + float4(transformed.x + settings.offset.x, transformed.y + settings.offset.y, bias.x + selectedWeight, 1.0);
     return cg_output;
 }
 

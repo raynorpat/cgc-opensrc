@@ -3278,6 +3278,89 @@ static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
     }
 } // HlslCollectCallsInExpr
 
+static int HlslDeclListContains(const HlslDecl *declarations,
+                                const HlslDecl *target)
+{
+    for (; declarations != NULL; declarations = declarations->next) {
+        if (declarations == target)
+            return 1;
+    }
+    return 0;
+} // HlslDeclListContains
+
+static int HlslInitializeReturnedStructs(HlslModule *module,
+                                         HlslFunction *function,
+                                         HlslStmt *statements)
+{
+    HlslDecl *declaration;
+    HlslExpr *zero;
+    HlslExpr *initializer;
+
+    for (; statements != NULL; statements = statements->next) {
+        switch (statements->kind) {
+        case HLSL_STMT_IF:
+            if (!HlslInitializeReturnedStructs(module, function,
+                    statements->u.ifStmt.trueBranch) ||
+                !HlslInitializeReturnedStructs(module, function,
+                    statements->u.ifStmt.falseBranch))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslInitializeReturnedStructs(module, function,
+                                                statements->u.loop.body))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_FOR:
+            if (!HlslInitializeReturnedStructs(module, function,
+                    statements->u.forStmt.init) ||
+                !HlslInitializeReturnedStructs(module, function,
+                    statements->u.forStmt.body))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_BLOCK:
+            if (!HlslInitializeReturnedStructs(module, function,
+                                                statements->u.block))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_RETURN:
+            if (statements->u.returnExpr == NULL ||
+                statements->u.returnExpr->kind != HLSL_EXPR_SYMBOL)
+            {
+                break;
+            }
+            declaration = statements->u.returnExpr->u.symbol;
+            if (declaration == NULL || declaration->initializer != NULL ||
+                declaration->type.base != HLSL_BASE_STRUCT ||
+                !HlslDeclListContains(function->locals, declaration))
+            {
+                break;
+            }
+            zero = HlslNewExpr(module, HLSL_EXPR_INT,
+                               HlslNumericType(HLSL_BASE_INT, 1));
+            initializer = HlslNewExpr(module, HLSL_EXPR_CAST,
+                                      declaration->type);
+            if (zero == NULL || initializer == NULL)
+                return 0;
+            zero->u.literalInt = 0;
+            initializer->u.cast.expression = zero;
+            declaration->initializer = initializer;
+            break;
+        default:
+            break;
+        }
+    }
+    return 1;
+} // HlslInitializeReturnedStructs
+
 static int HlslLowerFunction(HlslLowerContext *context,
                              HlslFunction *function)
 {
@@ -3306,7 +3389,8 @@ static int HlslLowerFunction(HlslLowerContext *context,
             HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
                              name, &symbol->loc);
     }
-    return 1;
+    return HlslInitializeReturnedStructs(context->module, function,
+                                         function->body);
 } // HlslLowerFunction
 
 static Type *HlslOriginalEntryResult(Symbol *program)
@@ -3414,7 +3498,9 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
                            program->details.fun.locals->symbols) ||
         (!emptyEntry &&
          !HlslLowerStatements(&context, program->details.fun.statements,
-                              &function->body)))
+                              &function->body)) ||
+        (!emptyEntry &&
+         !HlslInitializeReturnedStructs(module, function, function->body)))
     {
         return 0;
     }

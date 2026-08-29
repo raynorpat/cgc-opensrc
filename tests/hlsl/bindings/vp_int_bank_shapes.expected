@@ -3,9 +3,9 @@
 // cgc-bind interface in position float4 POSITION0
 // cgc-bind interface out position float4 POSITION0
 
-// var float entry :  : c[0] : 1 : 1
+// var int2 ranges :  : i[0] : 1 : 2
 
-float cg_entry_1 : register(c0);
+uniform int4 cg_ranges[2] : register(i0);
 
 struct cg_VertexOut
 {
@@ -22,10 +22,16 @@ struct cg_VertexOut_1
     float4 position : POSITION0;
 };
 
-cg_VertexOut cg_entry(float4 position)
+cg_VertexOut cg_entry(float4 position, int4 ranges[2])
 {
     cg_VertexOut cg_output = (cg_VertexOut) 0;
-    cg_output.position = position * cg_entry_1;
+    int index;
+    int cg_temp;
+    cg_output.position = position;
+    for (index = 0; index < ranges[1].y; cg_temp = index, index = index + 1, cg_temp)
+    {
+        cg_output.position.z = cg_output.position.z + 0.00100000005;
+    }
     return cg_output;
 }
 
@@ -33,7 +39,7 @@ cg_VertexOut_1 main(cg_VertexIn input)
 {
     cg_VertexOut_1 output;
     cg_VertexOut cg_result;
-    cg_result = cg_entry(input.position);
+    cg_result = cg_entry(input.position, cg_ranges);
     output.position = cg_result.position;
     return output;
 }
