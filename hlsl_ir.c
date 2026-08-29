@@ -447,7 +447,7 @@ static int HlslTypeFrameContains(const HlslTypeFrame *frame,
             return 1;
     }
     return 0;
-}
+} // HlslTypeFrameContains
 
 static const char *HlslTypeNameInner(const HlslType *type,
     const HlslTypeFrame *parent)
@@ -545,7 +545,7 @@ static int HlslDeclListHasCycle(const HlslDecl *list)
             return 1;
     }
     return 0;
-}
+} // HlslDeclListHasCycle
 
 static int HlslTypeRegisterSpanInner(const HlslType *type,
     const HlslTypeFrame *parent)
@@ -704,6 +704,70 @@ HlslExpr *HlslNewLocatedExpr(HlslModule *module, HlslExprKind kind,
         expr->loc = *loc;
     return expr;
 }
+
+int HlslExprIsPure(const HlslExpr *expr)
+{
+    const HlslExpr *argument;
+
+    if (expr == NULL)
+        return 1;
+    if (expr->hasSideEffects)
+        return 0;
+    switch (expr->kind) {
+    case HLSL_EXPR_SYMBOL:
+    case HLSL_EXPR_INT:
+    case HLSL_EXPR_FLOAT:
+    case HLSL_EXPR_BOOL:
+        return 1;
+    case HLSL_EXPR_UNARY:
+        if (expr->u.unary.op == HLSL_OP_PRE_INCREMENT ||
+            expr->u.unary.op == HLSL_OP_POST_INCREMENT ||
+            expr->u.unary.op == HLSL_OP_PRE_DECREMENT ||
+            expr->u.unary.op == HLSL_OP_POST_DECREMENT)
+        {
+            return 0;
+        }
+        return HlslExprIsPure(expr->u.unary.operand);
+    case HLSL_EXPR_BINARY:
+        if (expr->u.binary.op >= HLSL_OP_ASSIGN &&
+            expr->u.binary.op <= HLSL_OP_SHIFT_RIGHT_ASSIGN)
+        {
+            return 0;
+        }
+        return HlslExprIsPure(expr->u.binary.left) &&
+               HlslExprIsPure(expr->u.binary.right);
+    case HLSL_EXPR_CONDITIONAL:
+        return HlslExprIsPure(expr->u.conditional.condition) &&
+               HlslExprIsPure(expr->u.conditional.trueExpr) &&
+               HlslExprIsPure(expr->u.conditional.falseExpr);
+    case HLSL_EXPR_CALL:
+        for (argument = expr->u.call.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!HlslExprIsPure(argument))
+                return 0;
+        }
+        return 1;
+    case HLSL_EXPR_CONSTRUCT:
+        for (argument = expr->u.construct.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!HlslExprIsPure(argument))
+                return 0;
+        }
+        return 1;
+    case HLSL_EXPR_CAST:
+        return HlslExprIsPure(expr->u.cast.expression);
+    case HLSL_EXPR_MEMBER:
+        return HlslExprIsPure(expr->u.member.object);
+    case HLSL_EXPR_INDEX:
+        return HlslExprIsPure(expr->u.index.object) &&
+               HlslExprIsPure(expr->u.index.index);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslExprIsPure(expr->u.swizzle.object);
+    }
+    return 0;
+} // HlslExprIsPure
 
 HlslStmt *HlslNewStmt(HlslModule *module, HlslStmtKind kind)
 {

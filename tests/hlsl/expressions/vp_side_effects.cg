@@ -1,0 +1,40 @@
+float bump(inout float value)
+{
+    value = value + 1.0;
+    return value;
+}
+
+float2 bump2(inout float2 value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    float counter;
+    float commaResult;
+    float scalarResult;
+    bool2 condition;
+    float2 selected;
+    float2 trueValue;
+    float2 falseValue;
+
+    counter = 0;
+    counter++;
+    commaResult = counter;
+    counter++;
+    commaResult = commaResult + counter;
+    scalarResult = position.x > 0.0 ? bump(counter) : bump(counter);
+    condition = position.xy > float2(0.0, 0.0);
+    trueValue = float2(1.0, 2.0);
+    falseValue = float2(3.0, 4.0);
+    selected = condition ? bump2(trueValue, 10.0) :
+                           bump2(falseValue, 20.0);
+    output.position = float4(selected.x, selected.y,
+                             scalarResult, commaResult);
+    return output;
+}

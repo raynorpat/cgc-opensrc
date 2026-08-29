@@ -1,0 +1,86 @@
+// profile hlslv
+// target vs_3_0
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_bump(inout float value)
+{
+    value = value + (float) 1.0;
+    return value;
+}
+
+float2 cg_bump2(inout float2 value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output;
+    float counter;
+    float commaResult;
+    float scalarResult;
+    bool2 condition;
+    float2 selected;
+    float2 trueValue;
+    float2 falseValue;
+    float cg_temp;
+    float cg_temp_1;
+    float temp1;
+    float2 temp2;
+    float2 temp3;
+    bool2 temp4;
+    float2 temp5;
+    float2 temp6;
+    counter = 0.0;
+    cg_temp = counter;
+    counter = counter + 1.0;
+    cg_temp;
+    commaResult = counter;
+    cg_temp_1 = counter;
+    counter = counter + 1.0;
+    cg_temp_1;
+    commaResult = commaResult + counter;
+    if (position.x > 0.0)
+    {
+        temp1 = cg_bump(counter);
+    }
+    else
+    {
+        temp1 = cg_bump(counter);
+    }
+    scalarResult = temp1;
+    temp2 = position.xy;
+    temp3 = float2(0.0, 0.0);
+    condition = bool2(temp2.x > temp3.x, temp2.y > temp3.y);
+    trueValue = float2(1.0, 2.0);
+    falseValue = float2(3.0, 4.0);
+    temp4 = condition;
+    temp5 = cg_bump2(trueValue, 10.0);
+    temp6 = cg_bump2(falseValue, 20.0);
+    selected = float2(temp4.x ? temp5.x : temp6.x, temp4.y ? temp5.y : temp6.y);
+    cg_output.position = float4(selected.x, selected.y, scalarResult, commaResult);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

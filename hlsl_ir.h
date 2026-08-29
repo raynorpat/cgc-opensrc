@@ -241,6 +241,7 @@ struct HlslExpr_Rec {
     HlslExprKind kind;
     HlslType type;
     HlslLoc loc;
+    int hasSideEffects;
     union {
         HlslDecl *symbol;
         int literalInt;
@@ -393,6 +394,7 @@ struct HlslModule_Rec {
     const char *resourceName;
     int resourceUsed;
     int resourceAvailable;
+    int temporaryCount;
     int errors;
 };
 
@@ -424,6 +426,7 @@ HlslExpr *HlslNewExpr(HlslModule *module, HlslExprKind kind,
     HlslType type);
 HlslExpr *HlslNewLocatedExpr(HlslModule *module, HlslExprKind kind,
     HlslType type, const HlslLoc *loc);
+int HlslExprIsPure(const HlslExpr *expr);
 HlslStmt *HlslNewStmt(HlslModule *module, HlslStmtKind kind);
 HlslFunction *HlslNewFunction(HlslModule *module, HlslType result,
     const char *name);

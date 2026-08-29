@@ -334,9 +334,15 @@ static expr *CheckNodeForUndefinedFunctions(expr *fExpr, void *arg1, int arg2)
                         count++;
                     } else {
                         if (lSymb->flags == BEING_CHECKED) {
-                            SemanticError(Cg->pLastSourceLoc, ERROR_S_RECURSION,
-                                          GetAtomString(atable, lSymb->name));
-                            count++;
+                            if (!Cg->theHAL->GetCapsBit(
+                                    CAPS_DEFER_RECURSION_DIAGNOSTICS))
+                            {
+                                SemanticError(Cg->pLastSourceLoc,
+                                              ERROR_S_RECURSION,
+                                              GetAtomString(atable,
+                                                            lSymb->name));
+                                count++;
+                            }
                         } else {
                             CheckFunctionDefinition(NULL, lSymb, 0);
                         }

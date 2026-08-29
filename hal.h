@@ -89,6 +89,8 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS 12
 #define CAPS_ENTRY_INOUT_PARAMETERS   13
 #define CAPS_PRESERVE_TERMINAL_ENTRY_RETURN 14
+#define CAPS_DEFER_RECURSION_DIAGNOSTICS 15
+#define CAPS_CONDITIONAL_SIDE_EFFECTS 16
 
 struct slProfile_Rec {
     slProfile *next;

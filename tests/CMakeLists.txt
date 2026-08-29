@@ -1849,6 +1849,24 @@ add_hlsl_fixture(hlslv_output_member_name_collision hlslv
 add_hlsl_fixture(hlslv_reachable_helper_parameters hlslv
     tests/hlsl/profile/vp_reachable_helper_parameters.cg
     tests/hlsl/profile/vp_reachable_helper_parameters.expected)
+add_hlsl_fixture(hlslv_arithmetic hlslv
+    tests/hlsl/expressions/vp_arithmetic.cg
+    tests/hlsl/expressions/vp_arithmetic.expected)
+# The legacy source grammar does not admit a comma expression directly.
+# Standalone post-increment reaches the same common COMMA_OP expansion and
+# keeps the once-only ordering contract observable in the golden.
+add_hlsl_fixture(hlslv_side_effects hlslv
+    tests/hlsl/expressions/vp_side_effects.cg
+    tests/hlsl/expressions/vp_side_effects.expected)
+add_hlsl_fixture(hlslv_control hlslv
+    tests/hlsl/control/vp_control.cg
+    tests/hlsl/control/vp_control.expected)
+add_hlsl_fixture(hlslf_discard hlslf
+    tests/hlsl/control/fp_discard.cg
+    tests/hlsl/control/fp_discard.expected)
+add_hlsl_fixture(hlslv_helpers hlslv
+    tests/hlsl/functions/vp_helpers.cg
+    tests/hlsl/functions/vp_helpers.expected)
 
 add_test(
     NAME generic_entry_inout_still_rejected
@@ -1888,6 +1906,47 @@ add_hlsl_interface_failure(hlslv_interface_unbound_input
     tests/hlsl/diagnostics/vp_unbound_input.cg 6403 3 missingSemantic)
 add_hlsl_interface_failure(hlslv_binding_register_collision
     tests/hlsl/diagnostics/vp_register_collision.cg 6407 2 second)
+add_hlsl_interface_failure(hlslv_recursion
+    tests/hlsl/diagnostics/vp_recursion.cg 6401 3 recursive.HLSL.helper)
+
+add_generic_diagnostic(generic_hlsl_recursion_unchanged
+    tests/hlsl/diagnostics/vp_recursion.cg 5005 3 recurse)
+
+add_test(
+    NAME generic_hlsl_conditional_side_effects_unchanged
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/expressions/vp_side_effects.cg
+        -DCODE=1052
+        -DEXPECTED_LINE=31
+        -DMESSAGE=side.effects
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_discard.cg"
+    CONTENT [=[float4 main(float4 position : POSITION) : POSITION
+{
+    discard;
+    return position;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_discard
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv
+        "-DSOURCE=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_discard.cg"
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_discard.hlsl"
+        -DCODE=6402
+        -DEXPECTED_LINE=3
+        -DREASON=discard
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_failure.cmake
+)
 
 add_test(
     NAME hlslv_interface_attr_texcoord_conflict

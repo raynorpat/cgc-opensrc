@@ -57,12 +57,15 @@ typedef struct HlslLowerContext_Rec {
     const HlslProfileDesc *profile;
     Scope *scope;
     HlslFunction *function;
+    Symbol *collectingHelper;
     SourceLoc statementLoc;
     int entryFile;
+    int loopDepth;
 } HlslLowerContext;
 
 static int HlslEnsureType(HlslLowerContext *context, Type *type);
-static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source);
+static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
+                               HlslStmt **prefix, int valueRequired);
 
 static void HlslSetLoc(HlslLoc *target, const SourceLoc *source)
 {
@@ -400,6 +403,7 @@ static HlslDecl *HlslNewSourceDecl(HlslLowerContext *context,
     HlslType type;
     const char *sourceName;
     const char *name;
+    char *generatedName;
 
     if (!HlslEnsureType(context, symbol->type) ||
         !HlslLowerType(context, symbol->type, &type, &symbol->loc))
@@ -409,7 +413,12 @@ static HlslDecl *HlslNewSourceDecl(HlslLowerContext *context,
     sourceName = GetAtomString(atable, symbol->name);
     if (sourceName == NULL)
         return NULL;
-    if (nameSpace != NULL) {
+    if (sourceName[0] == '$' || sourceName[0] == '@') {
+        generatedName = HlslGeneratedSource(context, "temp");
+        name = generatedName != NULL ?
+               HlslAllocateGeneratedName(context->module, symbol,
+                                         generatedName) : NULL;
+    } else if (nameSpace != NULL) {
         name = HlslAllocateScopedSymbolName(context->module, nameSpace,
                                             symbol, sourceName);
     } else {
@@ -758,7 +767,7 @@ static int HlslCollectLocals(HlslLowerContext *context, Symbol *symbol)
         HlslFindDecl(context, symbol) == NULL)
     {
         name = GetAtomString(atable, symbol->name);
-        if (name == NULL || name[0] == '$')
+        if (name == NULL)
             return 0;
         decl = HlslNewSourceDecl(context, symbol,
                                  context->function->identity);
@@ -841,16 +850,247 @@ static HlslOperator HlslBinaryOperator(opcode op)
     case ASSIGN_V_OP:
     case ASSIGN_GEN_OP:
     case ASSIGN_DYN_OP: return HLSL_OP_ASSIGN;
-    case MUL_OP:
-    case MUL_V_OP:
-    case MUL_SV_OP:
-    case MUL_VS_OP: return HLSL_OP_MULTIPLY;
+    case ASSIGNPLUS_OP: return HLSL_OP_ADD_ASSIGN;
+    case ASSIGNMINUS_OP: return HLSL_OP_SUBTRACT_ASSIGN;
+    case ASSIGNSTAR_OP: return HLSL_OP_MULTIPLY_ASSIGN;
+    case ASSIGNSLASH_OP: return HLSL_OP_DIVIDE_ASSIGN;
+    case ASSIGNMOD_OP: return HLSL_OP_REMAINDER_ASSIGN;
+    case BOR_OP: case BOR_V_OP: case BOR_SV_OP: case BOR_VS_OP:
+        return HLSL_OP_LOGICAL_OR;
+    case BAND_OP: case BAND_V_OP: case BAND_SV_OP: case BAND_VS_OP:
+        return HLSL_OP_LOGICAL_AND;
+    case OR_OP: case OR_V_OP: case OR_SV_OP: case OR_VS_OP:
+        return HLSL_OP_BITWISE_OR;
+    case XOR_OP: case XOR_V_OP: case XOR_SV_OP: case XOR_VS_OP:
+        return HLSL_OP_BITWISE_XOR;
+    case AND_OP: case AND_V_OP: case AND_SV_OP: case AND_VS_OP:
+        return HLSL_OP_BITWISE_AND;
+    case EQ_OP: case EQ_V_OP: case EQ_SV_OP: case EQ_VS_OP:
+        return HLSL_OP_EQUAL;
+    case NE_OP: case NE_V_OP: case NE_SV_OP: case NE_VS_OP:
+        return HLSL_OP_NOT_EQUAL;
+    case LT_OP: case LT_V_OP: case LT_SV_OP: case LT_VS_OP:
+        return HLSL_OP_LESS;
+    case GT_OP: case GT_V_OP: case GT_SV_OP: case GT_VS_OP:
+        return HLSL_OP_GREATER;
+    case LE_OP: case LE_V_OP: case LE_SV_OP: case LE_VS_OP:
+        return HLSL_OP_LESS_EQUAL;
+    case GE_OP: case GE_V_OP: case GE_SV_OP: case GE_VS_OP:
+        return HLSL_OP_GREATER_EQUAL;
+    case SHL_OP: case SHL_V_OP: return HLSL_OP_SHIFT_LEFT;
+    case SHR_OP: case SHR_V_OP: return HLSL_OP_SHIFT_RIGHT;
+    case ADD_OP: case ADD_V_OP: case ADD_SV_OP: case ADD_VS_OP:
+        return HLSL_OP_ADD;
+    case SUB_OP: case SUB_V_OP: case SUB_SV_OP: case SUB_VS_OP:
+        return HLSL_OP_SUBTRACT;
+    case MUL_OP: case MUL_V_OP: case MUL_SV_OP: case MUL_VS_OP:
+        return HLSL_OP_MULTIPLY;
+    case DIV_OP: case DIV_V_OP: case DIV_SV_OP: case DIV_VS_OP:
+        return HLSL_OP_DIVIDE;
+    case MOD_OP: case MOD_V_OP: case MOD_SV_OP: case MOD_VS_OP:
+        return HLSL_OP_REMAINDER;
     default: return HLSL_OP_NONE;
     }
 } // HlslBinaryOperator
 
+static HlslOperator HlslUnaryOperator(opcode op)
+{
+    switch (op) {
+    case NEG_OP: case NEG_V_OP: return HLSL_OP_NEGATE;
+    case POS_OP: case POS_V_OP: return HLSL_OP_POSITIVE;
+    case BNOT_OP: case BNOT_V_OP: return HLSL_OP_LOGICAL_NOT;
+    case NOT_OP: case NOT_V_OP: return HLSL_OP_BITWISE_NOT;
+    case PREINC_OP: return HLSL_OP_PRE_INCREMENT;
+    case PREDEC_OP: return HLSL_OP_PRE_DECREMENT;
+    case POSTINC_OP: return HLSL_OP_POST_INCREMENT;
+    case POSTDEC_OP: return HLSL_OP_POST_DECREMENT;
+    default: return HLSL_OP_NONE;
+    }
+} // HlslUnaryOperator
+
+static int HlslIsComparison(HlslOperator op)
+{
+    return op == HLSL_OP_EQUAL || op == HLSL_OP_NOT_EQUAL ||
+           op == HLSL_OP_LESS || op == HLSL_OP_GREATER ||
+           op == HLSL_OP_LESS_EQUAL || op == HLSL_OP_GREATER_EQUAL;
+} // HlslIsComparison
+
+static HlslExpr *HlslNewSymbolExpr(HlslLowerContext *context,
+                                   HlslDecl *decl)
+{
+    HlslExpr *expression;
+
+    expression = HlslNewSourceExpr(context, HLSL_EXPR_SYMBOL, decl->type);
+    if (expression != NULL)
+        expression->u.symbol = decl;
+    return expression;
+} // HlslNewSymbolExpr
+
+static HlslDecl *HlslNewTemporary(HlslLowerContext *context,
+                                  const HlslType *type)
+{
+    HlslDecl *decl;
+    const char *name;
+    char source[32];
+
+    if (context == NULL || context->function == NULL || type == NULL)
+        return NULL;
+    context->module->temporaryCount++;
+    sprintf(source, "temp%d", context->module->temporaryCount);
+    name = HlslAllocateDistinctName(context->module, source);
+    if (name == NULL)
+        return NULL;
+    decl = HlslNewDecl(context->module, HLSL_STORAGE_NONE, *type, name);
+    if (decl == NULL)
+        return NULL;
+    decl->publicName = name;
+    HlslSetLoc(&decl->loc, &context->statementLoc);
+    HlslAppendDecl(&context->function->locals, decl);
+    return decl;
+} // HlslNewTemporary
+
+static HlslStmt *HlslNewExpressionStmt(HlslLowerContext *context,
+                                       HlslExpr *expression)
+{
+    HlslStmt *statement;
+
+    if (expression == NULL)
+        return NULL;
+    statement = HlslNewStmt(context->module, HLSL_STMT_EXPRESSION);
+    if (statement != NULL) {
+        statement->u.expression = expression;
+        HlslSetLoc(&statement->loc, &context->statementLoc);
+    }
+    return statement;
+} // HlslNewExpressionStmt
+
+static HlslExpr *HlslNewAssignment(HlslLowerContext *context,
+                                   HlslExpr *left, HlslExpr *right)
+{
+    HlslExpr *assignment;
+
+    if (left == NULL || right == NULL)
+        return NULL;
+    assignment = HlslNewSourceExpr(context, HLSL_EXPR_BINARY, left->type);
+    if (assignment != NULL) {
+        assignment->u.binary.op = HLSL_OP_ASSIGN;
+        assignment->u.binary.left = left;
+        assignment->u.binary.right = right;
+        assignment->hasSideEffects = 1;
+    }
+    return assignment;
+} // HlslNewAssignment
+
+static int HlslAppendExpression(HlslLowerContext *context, HlslStmt **list,
+                                HlslExpr *expression)
+{
+    HlslStmt *statement;
+
+    statement = HlslNewExpressionStmt(context, expression);
+    if (statement == NULL)
+        return 0;
+    HlslAppendStmt(list, statement);
+    return 1;
+} // HlslAppendExpression
+
+static HlslExpr *HlslCaptureValue(HlslLowerContext *context,
+                                  HlslStmt **list, HlslExpr *value)
+{
+    HlslDecl *temporary;
+    HlslExpr *left;
+    HlslExpr *result;
+    HlslExpr *assignment;
+
+    temporary = HlslNewTemporary(context, &value->type);
+    left = temporary != NULL ? HlslNewSymbolExpr(context, temporary) : NULL;
+    result = temporary != NULL ? HlslNewSymbolExpr(context, temporary) : NULL;
+    assignment = HlslNewAssignment(context, left, value);
+    if (assignment == NULL || result == NULL ||
+        !HlslAppendExpression(context, list, assignment))
+    {
+        return NULL;
+    }
+    return result;
+} // HlslCaptureValue
+
+static char *HlslCopyText(HlslLowerContext *context, const char *text)
+{
+    char *copy;
+    size_t length;
+
+    length = strlen(text) + 1;
+    copy = (char *) HlslLowerAlloc(context, length);
+    if (copy != NULL)
+        memcpy(copy, text, length);
+    return copy;
+} // HlslCopyText
+
+static HlslExpr *HlslNewSwizzle(HlslLowerContext *context,
+                                HlslExpr *object, const HlslType *type,
+                                const char *mask)
+{
+    HlslExpr *target;
+
+    target = HlslNewSourceExpr(context, HLSL_EXPR_SWIZZLE, *type);
+    if (target != NULL) {
+        target->u.swizzle.object = object;
+        target->u.swizzle.mask = HlslCopyText(context, mask);
+        if (target->u.swizzle.mask == NULL)
+            return NULL;
+    }
+    return target;
+} // HlslNewSwizzle
+
+static HlslExpr *HlslComponent(HlslLowerContext *context,
+                               HlslExpr *object, int component,
+                               HlslBase base)
+{
+    HlslType type;
+    char mask[2];
+
+    if (object->type.len <= 1)
+        return object;
+    type = HlslNumericType(base, 1);
+    mask[0] = "xyzw"[component];
+    mask[1] = '\0';
+    return HlslNewSwizzle(context, object, &type, mask);
+} // HlslComponent
+
+static HlslExpr *HlslLowerSwizzle(HlslLowerContext *context, expr *source,
+                                  const HlslType *type, HlslStmt **prefix)
+{
+    HlslExpr *object;
+    HlslExpr *target;
+    char maskText[5];
+    int count;
+    int mask;
+    int i;
+
+    object = HlslLowerExpr(context, source->un.arg, prefix, 1);
+    if (object == NULL)
+        return NULL;
+    count = SUBOP_GET_S2(source->un.subop);
+    if (count == 0)
+        count = 1;
+    if (count < 1 || count > 4)
+        return NULL;
+    mask = SUBOP_GET_MASK(source->un.subop);
+    for (i = count - 1; i >= 0; i--)
+        maskText[i] = "xyzw"[(mask >> (i * 2)) & 3];
+    maskText[count] = '\0';
+    if (object->type.len == 1) {
+        if (type->len == 1)
+            return object;
+        target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, *type);
+        if (target != NULL)
+            target->u.construct.arguments = object;
+        return target;
+    }
+    return HlslNewSwizzle(context, object, type, maskText);
+} // HlslLowerSwizzle
+
 static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
-                                   opcode listOp)
+                                   opcode listOp, HlslStmt **prefix)
 {
     HlslExpr *list;
     HlslExpr *item;
@@ -859,7 +1099,7 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
     for (; source != NULL; source = source->bin.right) {
         if (source->common.kind != BINARY_N || source->bin.op != listOp)
             return NULL;
-        item = HlslLowerExpr(context, source->bin.left);
+        item = HlslLowerExpr(context, source->bin.left, prefix, 1);
         if (item == NULL)
             return NULL;
         HlslAppendExpr(&list, item);
@@ -868,7 +1108,7 @@ static HlslExpr *HlslLowerExprList(HlslLowerContext *context, expr *source,
 } // HlslLowerExprList
 
 static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
-                               const HlslType *type)
+                               const HlslType *type, HlslStmt **prefix)
 {
     HlslExpr *target;
     HlslFunction *function;
@@ -889,19 +1129,175 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     target->u.call.function = function;
     target->u.call.name = function->name;
     target->u.call.arguments = HlslLowerExprList(context,
-        source->bin.right, FUN_ARG_OP);
+        source->bin.right, FUN_ARG_OP, prefix);
     if (source->bin.right != NULL && target->u.call.arguments == NULL)
         return NULL;
+    target->hasSideEffects = source->common.HasSideEffects;
     return target;
 } // HlslLowerCall
 
-static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
+static HlslExpr *HlslLowerConditional(HlslLowerContext *context,
+                                      expr *source, const HlslType *type,
+                                      HlslStmt **prefix)
+{
+    HlslExpr *target;
+    HlslExpr *condition;
+    HlslExpr *trueExpr;
+    HlslExpr *falseExpr;
+    HlslExpr *componentExpr;
+    HlslExpr *left;
+    HlslExpr *right;
+    HlslDecl *temporary;
+    HlslStmt *truePrefix;
+    HlslStmt *falsePrefix;
+    HlslStmt *ifStatement;
+    HlslType componentType;
+    int conditionLen;
+    int i;
+
+    conditionLen = 0;
+    IsVector(source->tri.arg1->common.type, &conditionLen);
+    condition = HlslLowerExpr(context, source->tri.arg1, prefix, 1);
+    if (condition == NULL)
+        return NULL;
+    if (conditionLen <= 1 &&
+        !source->tri.arg2->common.HasSideEffects &&
+        !source->tri.arg3->common.HasSideEffects)
+    {
+        trueExpr = HlslLowerExpr(context, source->tri.arg2, prefix, 1);
+        falseExpr = HlslLowerExpr(context, source->tri.arg3, prefix, 1);
+        target = HlslNewSourceExpr(context, HLSL_EXPR_CONDITIONAL, *type);
+        if (target == NULL || trueExpr == NULL || falseExpr == NULL)
+            return NULL;
+        target->u.conditional.condition = condition;
+        target->u.conditional.trueExpr = trueExpr;
+        target->u.conditional.falseExpr = falseExpr;
+        return target;
+    }
+    if (conditionLen <= 1) {
+        temporary = HlslNewTemporary(context, type);
+        if (temporary == NULL)
+            return NULL;
+        truePrefix = NULL;
+        falsePrefix = NULL;
+        trueExpr = HlslLowerExpr(context, source->tri.arg2,
+                                 &truePrefix, 1);
+        falseExpr = HlslLowerExpr(context, source->tri.arg3,
+                                  &falsePrefix, 1);
+        left = HlslNewSymbolExpr(context, temporary);
+        right = HlslNewAssignment(context, left, trueExpr);
+        if (right == NULL ||
+            !HlslAppendExpression(context, &truePrefix, right))
+        {
+            return NULL;
+        }
+        left = HlslNewSymbolExpr(context, temporary);
+        right = HlslNewAssignment(context, left, falseExpr);
+        if (right == NULL ||
+            !HlslAppendExpression(context, &falsePrefix, right))
+        {
+            return NULL;
+        }
+        ifStatement = HlslNewStmt(context->module, HLSL_STMT_IF);
+        if (ifStatement == NULL)
+            return NULL;
+        ifStatement->u.ifStmt.condition = condition;
+        ifStatement->u.ifStmt.trueBranch = truePrefix;
+        ifStatement->u.ifStmt.falseBranch = falsePrefix;
+        HlslSetLoc(&ifStatement->loc, &context->statementLoc);
+        HlslAppendStmt(prefix, ifStatement);
+        return HlslNewSymbolExpr(context, temporary);
+    }
+    if (conditionLen != type->len || type->len < 2 || type->len > 4)
+        return NULL;
+    condition = HlslCaptureValue(context, prefix, condition);
+    trueExpr = HlslLowerExpr(context, source->tri.arg2, prefix, 1);
+    if (trueExpr != NULL)
+        trueExpr = HlslCaptureValue(context, prefix, trueExpr);
+    falseExpr = HlslLowerExpr(context, source->tri.arg3, prefix, 1);
+    if (falseExpr != NULL)
+        falseExpr = HlslCaptureValue(context, prefix, falseExpr);
+    if (condition == NULL || trueExpr == NULL || falseExpr == NULL)
+        return NULL;
+    target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, *type);
+    if (target == NULL)
+        return NULL;
+    componentType = HlslNumericType(type->base, 1);
+    for (i = 0; i < type->len; i++) {
+        componentExpr = HlslNewSourceExpr(context,
+            HLSL_EXPR_CONDITIONAL, componentType);
+        if (componentExpr == NULL)
+            return NULL;
+        componentExpr->u.conditional.condition = HlslComponent(
+            context, condition, i, HLSL_BASE_BOOL);
+        componentExpr->u.conditional.trueExpr = HlslComponent(
+            context, trueExpr, i, type->base);
+        componentExpr->u.conditional.falseExpr = HlslComponent(
+            context, falseExpr, i, type->base);
+        if (componentExpr->u.conditional.condition == NULL ||
+            componentExpr->u.conditional.trueExpr == NULL ||
+            componentExpr->u.conditional.falseExpr == NULL)
+        {
+            return NULL;
+        }
+        HlslAppendExpr(&target->u.construct.arguments, componentExpr);
+    }
+    return target;
+} // HlslLowerConditional
+
+static HlslExpr *HlslLowerVectorComparison(HlslLowerContext *context,
+    expr *source, const HlslType *type, HlslOperator op, HlslStmt **prefix)
+{
+    HlslExpr *target;
+    HlslExpr *left;
+    HlslExpr *right;
+    HlslExpr *component;
+    HlslType componentType;
+    int i;
+
+    left = HlslLowerExpr(context, source->bin.left, prefix, 1);
+    right = HlslLowerExpr(context, source->bin.right, prefix, 1);
+    if (left == NULL || right == NULL)
+        return NULL;
+    left = HlslCaptureValue(context, prefix, left);
+    right = HlslCaptureValue(context, prefix, right);
+    if (left == NULL || right == NULL)
+        return NULL;
+    target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, *type);
+    if (target == NULL)
+        return NULL;
+    componentType = HlslNumericType(HLSL_BASE_BOOL, 1);
+    for (i = 0; i < type->len; i++) {
+        component = HlslNewSourceExpr(context, HLSL_EXPR_BINARY,
+                                      componentType);
+        if (component == NULL)
+            return NULL;
+        component->u.binary.op = op;
+        component->u.binary.left = HlslComponent(context, left, i,
+                                                  left->type.base);
+        component->u.binary.right = HlslComponent(context, right, i,
+                                                   right->type.base);
+        if (component->u.binary.left == NULL ||
+            component->u.binary.right == NULL)
+        {
+            return NULL;
+        }
+        HlslAppendExpr(&target->u.construct.arguments, component);
+    }
+    return target;
+} // HlslLowerVectorComparison
+
+static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
+                               HlslStmt **prefix, int valueRequired)
 {
     HlslExpr *target;
     HlslDecl *decl;
     HlslType type;
     HlslOperator op;
     Symbol *member;
+    HlslExpr *left;
+    HlslExpr *right;
+    HlslStmt *leftStatement;
 
     if (source == NULL ||
         !HlslEnsureType(context, source->common.type) ||
@@ -911,24 +1307,79 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
     }
     if (source->common.kind == SYMB_N && source->sym.op == VARIABLE_OP) {
         decl = HlslFindDecl(context, source->sym.symbol);
+        if (decl == NULL && context->function != NULL &&
+            source->sym.symbol != NULL)
+        {
+            const char *sourceName;
+
+            sourceName = GetAtomString(atable, source->sym.symbol->name);
+            if (sourceName != NULL &&
+                (sourceName[0] == '$' || sourceName[0] == '@'))
+            {
+                decl = HlslNewSourceDecl(context, source->sym.symbol,
+                                         context->function->identity);
+                if (decl != NULL)
+                    HlslInsertDecl(&context->function->locals, decl);
+            }
+        }
         if (decl == NULL)
             return NULL;
         target = HlslNewSourceExpr(context, HLSL_EXPR_SYMBOL, type);
-        if (target != NULL)
+        if (target != NULL) {
             target->u.symbol = decl;
+            target->hasSideEffects = source->common.HasSideEffects;
+        }
         return target;
     }
     if (source->common.kind == CONST_N)
         return HlslLowerConstant(context, source, &type);
-    if (source->common.kind == UNARY_N && source->un.op == VECTOR_V_OP) {
-        target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, type);
-        if (target == NULL)
-            return NULL;
-        target->u.construct.arguments = HlslLowerExprList(context,
-            source->un.arg, EXPR_LIST_OP);
-        return target->u.construct.arguments != NULL ? target : NULL;
+    if (source->common.kind == UNARY_N) {
+        if (source->un.op == SWIZZLE_Z_OP)
+            return HlslLowerSwizzle(context, source, &type, prefix);
+        if (source->un.op == VECTOR_V_OP) {
+            target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, type);
+            if (target == NULL)
+                return NULL;
+            target->u.construct.arguments = HlslLowerExprList(context,
+                source->un.arg, EXPR_LIST_OP, prefix);
+            return target->u.construct.arguments != NULL ? target : NULL;
+        }
+        if (source->un.op == CAST_CS_OP ||
+            source->un.op == CAST_CV_OP ||
+            source->un.op == CAST_CM_OP ||
+            source->un.op == CAST_SHAPE_OP)
+        {
+            target = HlslNewSourceExpr(context, HLSL_EXPR_CAST, type);
+            if (target == NULL)
+                return NULL;
+            target->u.cast.expression = HlslLowerExpr(
+                context, source->un.arg, prefix, 1);
+            return target->u.cast.expression != NULL ? target : NULL;
+        }
+        op = HlslUnaryOperator(source->un.op);
+        if (op != HLSL_OP_NONE) {
+            target = HlslNewSourceExpr(context, HLSL_EXPR_UNARY, type);
+            if (target == NULL)
+                return NULL;
+            target->u.unary.op = op;
+            target->u.unary.operand = HlslLowerExpr(
+                context, source->un.arg, prefix, 1);
+            target->hasSideEffects = source->common.HasSideEffects;
+            return target->u.unary.operand != NULL ? target : NULL;
+        }
     }
     if (source->common.kind == BINARY_N) {
+        if (source->bin.op == COMMA_OP) {
+            left = HlslLowerExpr(context, source->bin.left, prefix, 0);
+            if (left == NULL)
+                return NULL;
+            leftStatement = HlslNewExpressionStmt(context, left);
+            if (leftStatement == NULL)
+                return NULL;
+            HlslAppendStmt(prefix, leftStatement);
+            return HlslLowerExpr(context, source->bin.right, prefix,
+                                 valueRequired);
+        }
         if (source->bin.op == MEMBER_SELECTOR_OP) {
             if (source->bin.right == NULL ||
                 source->bin.right->common.kind != SYMB_N ||
@@ -943,8 +1394,8 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
             target = HlslNewSourceExpr(context, HLSL_EXPR_MEMBER, type);
             if (target == NULL)
                 return NULL;
-            target->u.member.object = HlslLowerExpr(context,
-                                                    source->bin.left);
+            target->u.member.object = HlslLowerExpr(
+                context, source->bin.left, prefix, 1);
             target->u.member.decl = decl;
             target->u.member.name = decl->name;
             return target->u.member.object != NULL ? target : NULL;
@@ -953,28 +1404,52 @@ static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source)
             target = HlslNewSourceExpr(context, HLSL_EXPR_INDEX, type);
             if (target == NULL)
                 return NULL;
-            target->u.index.object = HlslLowerExpr(context,
-                                                   source->bin.left);
-            target->u.index.index = HlslLowerExpr(context,
-                                                  source->bin.right);
+            target->u.index.object = HlslLowerExpr(
+                context, source->bin.left, prefix, 1);
+            target->u.index.index = HlslLowerExpr(
+                context, source->bin.right, prefix, 1);
             return target->u.index.object != NULL &&
                    target->u.index.index != NULL ? target : NULL;
         }
         if (source->bin.op == FUN_CALL_OP)
-            return HlslLowerCall(context, source, &type);
+            return HlslLowerCall(context, source, &type, prefix);
         op = HlslBinaryOperator(source->bin.op);
         if (op != HLSL_OP_NONE) {
+            if (HlslIsComparison(op) && type.base == HLSL_BASE_BOOL &&
+                type.len > 1)
+            {
+                return HlslLowerVectorComparison(context, source, &type,
+                                                  op, prefix);
+            }
+            left = HlslLowerExpr(context, source->bin.left, prefix, 1);
+            right = HlslLowerExpr(context, source->bin.right, prefix, 1);
+            if (left == NULL || right == NULL)
+                return NULL;
+            if (op == HLSL_OP_ASSIGN && valueRequired) {
+                right = HlslCaptureValue(context, prefix, right);
+                target = HlslNewAssignment(context, left, right);
+                if (target == NULL ||
+                    !HlslAppendExpression(context, prefix, target))
+                {
+                    return NULL;
+                }
+                return HlslNewSymbolExpr(context, right->u.symbol);
+            }
             target = HlslNewSourceExpr(context, HLSL_EXPR_BINARY, type);
             if (target == NULL)
                 return NULL;
             target->u.binary.op = op;
-            target->u.binary.left = HlslLowerExpr(context,
-                                                  source->bin.left);
-            target->u.binary.right = HlslLowerExpr(context,
-                                                   source->bin.right);
-            return target->u.binary.left != NULL &&
-                   target->u.binary.right != NULL ? target : NULL;
+            target->u.binary.left = left;
+            target->u.binary.right = right;
+            target->hasSideEffects = source->common.HasSideEffects;
+            return target;
         }
+    }
+    if (source->common.kind == TRINARY_N &&
+        (source->tri.op == COND_OP || source->tri.op == COND_V_OP ||
+         source->tri.op == COND_SV_OP || source->tri.op == COND_GEN_OP))
+    {
+        return HlslLowerConditional(context, source, &type, prefix);
     }
     HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_OPERATION,
                      "HLSL expression", NULL);
@@ -1009,6 +1484,9 @@ static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
                                HlslStmt **list)
 {
     HlslStmt *target;
+    HlslStmt *discard;
+    HlslExpr *condition;
+    expr *discardCondition;
 
     for (; source != NULL; source = source->commonst.next) {
         context->statementLoc = source->commonst.loc;
@@ -1025,20 +1503,112 @@ static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
             target = HlslNewStmt(context->module,
                                  HLSL_STMT_EXPRESSION);
             if (target != NULL)
-                target->u.expression = HlslLowerExpr(context,
-                                                      source->exprst.exp);
+                target->u.expression = HlslLowerExpr(
+                    context, source->exprst.exp, list, 0);
             if (target == NULL || target->u.expression == NULL)
                 return 0;
+        } else if (source->commonst.kind == IF_STMT) {
+            target = HlslNewStmt(context->module, HLSL_STMT_IF);
+            if (target == NULL)
+                return 0;
+            target->u.ifStmt.condition = HlslLowerExpr(
+                context, source->ifst.cond, list, 1);
+            if (target->u.ifStmt.condition == NULL ||
+                !HlslLowerStatements(context, source->ifst.thenstmt,
+                                     &target->u.ifStmt.trueBranch) ||
+                !HlslLowerStatements(context, source->ifst.elsestmt,
+                                     &target->u.ifStmt.falseBranch))
+            {
+                return 0;
+            }
+        } else if (source->commonst.kind == WHILE_STMT ||
+                   source->commonst.kind == DO_STMT)
+        {
+            target = HlslNewStmt(context->module,
+                source->commonst.kind == WHILE_STMT ?
+                HLSL_STMT_WHILE : HLSL_STMT_DO);
+            if (target == NULL)
+                return 0;
+            target->u.loop.condition = HlslLowerExpr(
+                context, source->whilest.cond, list, 1);
+            if (target->u.loop.condition == NULL)
+                return 0;
+            context->loopDepth++;
+            if (!HlslLowerStatements(context, source->whilest.body,
+                                     &target->u.loop.body))
+            {
+                context->loopDepth--;
+                return 0;
+            }
+            context->loopDepth--;
+        } else if (source->commonst.kind == FOR_STMT) {
+            target = HlslNewStmt(context->module, HLSL_STMT_FOR);
+            if (target == NULL ||
+                !HlslLowerStatements(context, source->forst.init,
+                                     &target->u.forStmt.init) ||
+                (source->forst.cond != NULL &&
+                 (target->u.forStmt.condition = HlslLowerExpr(
+                    context, source->forst.cond, list, 1)) == NULL) ||
+                !HlslLowerStatements(context, source->forst.step,
+                                     &target->u.forStmt.step))
+            {
+                return 0;
+            }
+            context->loopDepth++;
+            if (!HlslLowerStatements(context, source->forst.body,
+                                     &target->u.forStmt.body))
+            {
+                context->loopDepth--;
+                return 0;
+            }
+            context->loopDepth--;
         } else if (source->commonst.kind == RETURN_STMT) {
             target = HlslNewStmt(context->module, HLSL_STMT_RETURN);
             if (target != NULL && source->returnst.exp != NULL)
-                target->u.returnExpr = HlslLowerExpr(context,
-                                                     source->returnst.exp);
+                target->u.returnExpr = HlslLowerExpr(
+                    context, source->returnst.exp, list, 1);
             if (target == NULL || (source->returnst.exp != NULL &&
                                    target->u.returnExpr == NULL))
             {
                 return 0;
             }
+        } else if (source->commonst.kind == DISCARD_STMT) {
+            if (context->module->stage != HLSL_STAGE_PIXEL)
+                return HlslLowerFailure(context, HLSL_ERROR_STAGE_OPERATION,
+                                        "discard", NULL);
+            discardCondition = source->discardst.cond;
+            if (discardCondition != NULL &&
+                discardCondition->common.kind == UNARY_N &&
+                discardCondition->un.op == KILL_OP)
+            {
+                discardCondition = discardCondition->un.arg;
+            }
+            if (discardCondition == NULL) {
+                target = HlslNewStmt(context->module, HLSL_STMT_DISCARD);
+            } else {
+                condition = HlslLowerExpr(context, discardCondition,
+                                          list, 1);
+                discard = HlslNewStmt(context->module,
+                                      HLSL_STMT_DISCARD);
+                target = HlslNewStmt(context->module, HLSL_STMT_IF);
+                if (condition == NULL || discard == NULL || target == NULL)
+                    return 0;
+                target->u.ifStmt.condition = condition;
+                target->u.ifStmt.trueBranch = discard;
+                HlslSetLoc(&discard->loc, &source->commonst.loc);
+            }
+        } else if (source->commonst.kind == BREAK_STMT) {
+            if (context->loopDepth == 0)
+                return HlslLowerFailure(context,
+                    HLSL_ERROR_UNSUPPORTED_OPERATION,
+                    "break outside loop", NULL);
+            target = HlslNewStmt(context->module, HLSL_STMT_BREAK);
+        } else if (source->commonst.kind == CONTINUE_STMT) {
+            if (context->loopDepth == 0)
+                return HlslLowerFailure(context,
+                    HLSL_ERROR_UNSUPPORTED_OPERATION,
+                    "continue outside loop", NULL);
+            target = HlslNewStmt(context->module, HLSL_STMT_CONTINUE);
         } else if (source->commonst.kind == BLOCK_STMT) {
             target = HlslNewStmt(context->module, HLSL_STMT_BLOCK);
             if (target == NULL ||
@@ -1077,11 +1647,51 @@ static int HlslCollectCallsInStatements(HlslLowerContext *context,
                 return 0;
             }
             break;
+        case IF_STMT:
+            if (!HlslCollectCallsInExpr(context, source->ifst.cond) ||
+                !HlslCollectCallsInStatements(context,
+                                               source->ifst.thenstmt) ||
+                !HlslCollectCallsInStatements(context,
+                                               source->ifst.elsestmt))
+            {
+                return 0;
+            }
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            if (!HlslCollectCallsInExpr(context, source->whilest.cond) ||
+                !HlslCollectCallsInStatements(context,
+                                               source->whilest.body))
+            {
+                return 0;
+            }
+            break;
+        case FOR_STMT:
+            if (!HlslCollectCallsInStatements(context,
+                                               source->forst.init) ||
+                !HlslCollectCallsInExpr(context, source->forst.cond) ||
+                !HlslCollectCallsInStatements(context,
+                                               source->forst.step) ||
+                !HlslCollectCallsInStatements(context,
+                                               source->forst.body))
+            {
+                return 0;
+            }
+            break;
         case RETURN_STMT:
             if (!HlslCollectCallsInExpr(context, source->returnst.exp))
                 return 0;
             break;
         case COMMENT_STMT:
+        case DISCARD_STMT:
+        case BREAK_STMT:
+        case CONTINUE_STMT:
+            if (source->commonst.kind == DISCARD_STMT &&
+                !HlslCollectCallsInExpr(context,
+                                        source->discardst.cond))
+            {
+                return 0;
+            }
             break;
         default:
             return HlslLowerFailure(context,
@@ -1092,27 +1702,13 @@ static int HlslCollectCallsInStatements(HlslLowerContext *context,
     return 1;
 } // HlslCollectCallsInStatements
 
-static void HlslMoveFunctionToEnd(HlslModule *module,
-                                  HlslFunction *function)
-{
-    HlslFunction **place;
-
-    place = &module->functions;
-    while (*place != NULL && *place != function)
-        place = &(*place)->next;
-    if (*place == NULL)
-        return;
-    *place = function->next;
-    function->next = NULL;
-    HlslAppendFunction(&module->functions, function);
-} // HlslMoveFunctionToEnd
-
 static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
 {
     HlslFunction *function;
     HlslType result;
     char *generated;
     const char *name;
+    Symbol *caller;
 
     if (symbol == NULL || symbol->kind != FUNCTION_S)
         return 0;
@@ -1124,7 +1720,7 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
             return HlslLowerFailure(context,
                                     HLSL_ERROR_UNSUPPORTED_OPERATION,
                                     "recursive HLSL helper",
-                                    &symbol->loc);
+                                    &context->statementLoc);
         return 1;
     }
     if (!HlslEnsureType(context, symbol->type->fun.rettype) ||
@@ -1143,15 +1739,20 @@ static int HlslCollectHelper(HlslLowerContext *context, Symbol *symbol)
         return 0;
     function->identity = symbol;
     function->visitState = 1;
+    caller = context->collectingHelper;
+    if (caller != NULL)
+        function->needsPrototype = 1;
     HlslSetLoc(&function->loc, &symbol->loc);
     HlslAppendFunction(&context->module->functions, function);
+    context->collectingHelper = symbol;
     if (!HlslCollectCallsInStatements(context,
                                       symbol->details.fun.statements))
     {
+        context->collectingHelper = caller;
         return 0;
     }
+    context->collectingHelper = caller;
     function->visitState = 2;
-    HlslMoveFunctionToEnd(context->module, function);
     return 1;
 } // HlslCollectHelper
 

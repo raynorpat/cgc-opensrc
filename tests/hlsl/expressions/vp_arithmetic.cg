@@ -1,0 +1,32 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+VertexOut main(float4 position : POSITION, float4 texcoord : TEXCOORD0)
+{
+    VertexOut output;
+    float2 first;
+    float2 second;
+    bool2 vectorLess;
+    bool scalarLogic;
+    bool scalarEqual;
+    int element;
+    float arithmetic;
+
+    first = float2(+position.x, -position.y);
+    second = texcoord.xy + float2(2.0, 3.0);
+    arithmetic = ((first.x + second.x) - first.y * second.y) /
+                 (second.x + 1.0);
+    element = (int(position.x) + 5) % 2;
+    scalarEqual = arithmetic == 0.0 || arithmetic != 1.0;
+    scalarLogic = arithmetic < 4.0 && arithmetic > -4.0 &&
+                  arithmetic <= 3.0 && arithmetic >= -3.0 &&
+                  !scalarEqual;
+    vectorLess = first < second;
+    output.position = float4(first[element], arithmetic,
+                             float(element), position.w);
+    output.color = float4(float(vectorLess.x), float(vectorLess.y),
+                          float(scalarLogic), float(int(texcoord.z)));
+    return output;
+}

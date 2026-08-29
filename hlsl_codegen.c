@@ -177,12 +177,46 @@ static int HlslExprPrecedence(const HlslExpr *expression)
 {
     if (expression == NULL)
         return 0;
+    if (expression->kind == HLSL_EXPR_CONDITIONAL)
+        return 2;
+    if (expression->kind == HLSL_EXPR_UNARY ||
+        expression->kind == HLSL_EXPR_CAST)
+    {
+        return 13;
+    }
     if (expression->kind != HLSL_EXPR_BINARY)
-        return 100;
+        return 14;
     switch (expression->u.binary.op) {
-    case HLSL_OP_ASSIGN: return 10;
-    case HLSL_OP_MULTIPLY: return 70;
-    default: return 20;
+    case HLSL_OP_ASSIGN:
+    case HLSL_OP_ADD_ASSIGN:
+    case HLSL_OP_SUBTRACT_ASSIGN:
+    case HLSL_OP_MULTIPLY_ASSIGN:
+    case HLSL_OP_DIVIDE_ASSIGN:
+    case HLSL_OP_REMAINDER_ASSIGN:
+    case HLSL_OP_BITWISE_OR_ASSIGN:
+    case HLSL_OP_BITWISE_XOR_ASSIGN:
+    case HLSL_OP_BITWISE_AND_ASSIGN:
+    case HLSL_OP_SHIFT_LEFT_ASSIGN:
+    case HLSL_OP_SHIFT_RIGHT_ASSIGN: return 1;
+    case HLSL_OP_LOGICAL_OR: return 3;
+    case HLSL_OP_LOGICAL_AND: return 4;
+    case HLSL_OP_BITWISE_OR: return 5;
+    case HLSL_OP_BITWISE_XOR: return 6;
+    case HLSL_OP_BITWISE_AND: return 7;
+    case HLSL_OP_EQUAL:
+    case HLSL_OP_NOT_EQUAL: return 8;
+    case HLSL_OP_LESS:
+    case HLSL_OP_GREATER:
+    case HLSL_OP_LESS_EQUAL:
+    case HLSL_OP_GREATER_EQUAL: return 9;
+    case HLSL_OP_SHIFT_LEFT:
+    case HLSL_OP_SHIFT_RIGHT: return 10;
+    case HLSL_OP_ADD:
+    case HLSL_OP_SUBTRACT: return 11;
+    case HLSL_OP_MULTIPLY:
+    case HLSL_OP_DIVIDE:
+    case HLSL_OP_REMAINDER: return 12;
+    default: return 0;
     }
 } // HlslExprPrecedence
 
@@ -190,10 +224,50 @@ static const char *HlslOperatorText(HlslOperator op)
 {
     switch (op) {
     case HLSL_OP_ASSIGN: return "=";
+    case HLSL_OP_ADD_ASSIGN: return "+=";
+    case HLSL_OP_SUBTRACT_ASSIGN: return "-=";
+    case HLSL_OP_MULTIPLY_ASSIGN: return "*=";
+    case HLSL_OP_DIVIDE_ASSIGN: return "/=";
+    case HLSL_OP_REMAINDER_ASSIGN: return "%=";
+    case HLSL_OP_BITWISE_OR_ASSIGN: return "|=";
+    case HLSL_OP_BITWISE_XOR_ASSIGN: return "^=";
+    case HLSL_OP_BITWISE_AND_ASSIGN: return "&=";
+    case HLSL_OP_SHIFT_LEFT_ASSIGN: return "<<=";
+    case HLSL_OP_SHIFT_RIGHT_ASSIGN: return ">>=";
+    case HLSL_OP_LOGICAL_OR: return "||";
+    case HLSL_OP_LOGICAL_AND: return "&&";
+    case HLSL_OP_BITWISE_OR: return "|";
+    case HLSL_OP_BITWISE_XOR: return "^";
+    case HLSL_OP_BITWISE_AND: return "&";
+    case HLSL_OP_EQUAL: return "==";
+    case HLSL_OP_NOT_EQUAL: return "!=";
+    case HLSL_OP_LESS: return "<";
+    case HLSL_OP_GREATER: return ">";
+    case HLSL_OP_LESS_EQUAL: return "<=";
+    case HLSL_OP_GREATER_EQUAL: return ">=";
+    case HLSL_OP_SHIFT_LEFT: return "<<";
+    case HLSL_OP_SHIFT_RIGHT: return ">>";
+    case HLSL_OP_ADD: return "+";
+    case HLSL_OP_SUBTRACT: return "-";
     case HLSL_OP_MULTIPLY: return "*";
+    case HLSL_OP_DIVIDE: return "/";
+    case HLSL_OP_REMAINDER: return "%";
+    case HLSL_OP_NEGATE: return "-";
+    case HLSL_OP_POSITIVE: return "+";
+    case HLSL_OP_LOGICAL_NOT: return "!";
+    case HLSL_OP_BITWISE_NOT: return "~";
+    case HLSL_OP_PRE_INCREMENT:
+    case HLSL_OP_POST_INCREMENT: return "++";
+    case HLSL_OP_PRE_DECREMENT:
+    case HLSL_OP_POST_DECREMENT: return "--";
     default: return NULL;
     }
 } // HlslOperatorText
+
+static int HlslIsAssignmentOperator(HlslOperator op)
+{
+    return op >= HLSL_OP_ASSIGN && op <= HLSL_OP_SHIFT_RIGHT_ASSIGN;
+} // HlslIsAssignmentOperator
 
 static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
                          int parentPrecedence)
@@ -230,14 +304,47 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
         if (fputs(expression->u.literalBool ? "true" : "false", out) == EOF)
             return 0;
         break;
+    case HLSL_EXPR_UNARY:
+        text = HlslOperatorText(expression->u.unary.op);
+        if (text == NULL)
+            return 0;
+        if (expression->u.unary.op == HLSL_OP_POST_INCREMENT ||
+            expression->u.unary.op == HLSL_OP_POST_DECREMENT)
+        {
+            if (!HlslWriteExpr(out, expression->u.unary.operand,
+                               precedence) || fputs(text, out) == EOF)
+            {
+                return 0;
+            }
+        } else if (fputs(text, out) == EOF ||
+                   !HlslWriteExpr(out, expression->u.unary.operand,
+                                  precedence + 1))
+        {
+            return 0;
+        }
+        break;
     case HLSL_EXPR_BINARY:
         text = HlslOperatorText(expression->u.binary.op);
         if (text == NULL ||
             !HlslWriteExpr(out, expression->u.binary.left, precedence) ||
             fprintf(out, " %s ", text) < 0 ||
             !HlslWriteExpr(out, expression->u.binary.right,
-                           precedence + (expression->u.binary.op ==
-                                         HLSL_OP_ASSIGN ? 0 : 1)))
+                           precedence +
+                           (HlslIsAssignmentOperator(
+                                expression->u.binary.op) ? 0 : 1)))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_CONDITIONAL:
+        if (!HlslWriteExpr(out, expression->u.conditional.condition,
+                           precedence + 1) ||
+            fputs(" ? ", out) == EOF ||
+            !HlslWriteExpr(out, expression->u.conditional.trueExpr,
+                           precedence) ||
+            fputs(" : ", out) == EOF ||
+            !HlslWriteExpr(out, expression->u.conditional.falseExpr,
+                           precedence))
         {
             return 0;
         }
@@ -280,18 +387,35 @@ static int HlslWriteExpr(FILE *out, const HlslExpr *expression,
         if (fputc(')', out) == EOF)
             return 0;
         break;
+    case HLSL_EXPR_CAST:
+        text = HlslTypeName(&expression->type);
+        if (text == NULL || fprintf(out, "(%s) ", text) < 0 ||
+            !HlslWriteExpr(out, expression->u.cast.expression,
+                           precedence))
+        {
+            return 0;
+        }
+        break;
     case HLSL_EXPR_MEMBER:
-        if (!HlslWriteExpr(out, expression->u.member.object, 100) ||
+        if (!HlslWriteExpr(out, expression->u.member.object, 14) ||
             fprintf(out, ".%s", expression->u.member.name) < 0)
         {
             return 0;
         }
         break;
     case HLSL_EXPR_INDEX:
-        if (!HlslWriteExpr(out, expression->u.index.object, 100) ||
+        if (!HlslWriteExpr(out, expression->u.index.object, 14) ||
             fputc('[', out) == EOF ||
             !HlslWriteExpr(out, expression->u.index.index, 0) ||
             fputc(']', out) == EOF)
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_SWIZZLE:
+        if (!HlslWriteExpr(out, expression->u.swizzle.object, 14) ||
+            expression->u.swizzle.mask == NULL ||
+            fprintf(out, ".%s", expression->u.swizzle.mask) < 0)
         {
             return 0;
         }
@@ -390,15 +514,103 @@ static int HlslWriteParameters(FILE *out, const HlslDecl *parameter)
 } // HlslWriteParameters
 
 static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
+                               int indent);
+
+static int HlslWriteBracedBody(FILE *out, const HlslStmt *body, int indent)
+{
+    return HlslWriteIndent(out, indent) && fputs("{\n", out) != EOF &&
+           HlslWriteStatements(out, body, indent + 1) &&
+           HlslWriteIndent(out, indent) && fputs("}\n", out) != EOF;
+} // HlslWriteBracedBody
+
+static int HlslWriteForPart(FILE *out, const HlslStmt *statement)
+{
+    int first;
+
+    first = 1;
+    for (; statement != NULL; statement = statement->next) {
+        if (statement->kind != HLSL_STMT_EXPRESSION ||
+            (!first && fputs(", ", out) == EOF) ||
+            !HlslWriteExpr(out, statement->u.expression, 0))
+        {
+            return 0;
+        }
+        first = 0;
+    }
+    return 1;
+} // HlslWriteForPart
+
+static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
                                int indent)
 {
     for (; statement != NULL; statement = statement->next) {
         if (!HlslWriteIndent(out, indent))
             return 0;
         switch (statement->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (statement->u.declaration == NULL ||
+                !HlslWriteDecl(out, statement->u.declaration, 0, 0))
+            {
+                return 0;
+            }
+            break;
         case HLSL_STMT_EXPRESSION:
             if (!HlslWriteExpr(out, statement->u.expression, 0) ||
                 fputs(";\n", out) == EOF)
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_IF:
+            if (fputs("if (", out) == EOF ||
+                !HlslWriteExpr(out, statement->u.ifStmt.condition, 0) ||
+                fputs(")\n", out) == EOF ||
+                !HlslWriteBracedBody(out,
+                    statement->u.ifStmt.trueBranch, indent))
+            {
+                return 0;
+            }
+            if (statement->u.ifStmt.falseBranch != NULL &&
+                (!HlslWriteIndent(out, indent) ||
+                 fputs("else\n", out) == EOF ||
+                 !HlslWriteBracedBody(out,
+                    statement->u.ifStmt.falseBranch, indent)))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_WHILE:
+            if (fputs("while (", out) == EOF ||
+                !HlslWriteExpr(out, statement->u.loop.condition, 0) ||
+                fputs(")\n", out) == EOF ||
+                !HlslWriteBracedBody(out, statement->u.loop.body, indent))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_DO:
+            if (fputs("do\n", out) == EOF ||
+                !HlslWriteBracedBody(out, statement->u.loop.body, indent) ||
+                !HlslWriteIndent(out, indent) ||
+                fputs("while (", out) == EOF ||
+                !HlslWriteExpr(out, statement->u.loop.condition, 0) ||
+                fputs(");\n", out) == EOF)
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_FOR:
+            if (fputs("for (", out) == EOF ||
+                !HlslWriteForPart(out, statement->u.forStmt.init) ||
+                fputs("; ", out) == EOF ||
+                (statement->u.forStmt.condition != NULL &&
+                 !HlslWriteExpr(out,
+                    statement->u.forStmt.condition, 0)) ||
+                fputs("; ", out) == EOF ||
+                !HlslWriteForPart(out, statement->u.forStmt.step) ||
+                fputs(")\n", out) == EOF ||
+                !HlslWriteBracedBody(out,
+                    statement->u.forStmt.body, indent))
             {
                 return 0;
             }
@@ -422,6 +634,18 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
             {
                 return 0;
             }
+            break;
+        case HLSL_STMT_DISCARD:
+            if (fputs("discard;\n", out) == EOF)
+                return 0;
+            break;
+        case HLSL_STMT_BREAK:
+            if (fputs("break;\n", out) == EOF)
+                return 0;
+            break;
+        case HLSL_STMT_CONTINUE:
+            if (fputs("continue;\n", out) == EOF)
+                return 0;
             break;
         default:
             return 0;

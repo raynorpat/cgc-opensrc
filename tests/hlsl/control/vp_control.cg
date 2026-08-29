@@ -1,0 +1,45 @@
+float finish_total(float value)
+{
+    if (value < 0.0)
+        return -value;
+    return value + 1.0;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    int index;
+    float total;
+
+    index = 0;
+    total = 0.0;
+    if (position.x > 0.0)
+        total = position.x;
+    else
+        total = -position.x;
+
+    for (index = 0; index < 6; index++) {
+        if (index == 2)
+            continue;
+        total += float(index);
+        if (total > 8.0)
+            break;
+    }
+
+    while (index < 8) {
+        index++;
+        if (index == 7)
+            continue;
+        total += 1.0;
+    }
+
+    do {
+        total -= 1.0;
+    } while (total > 4.0);
+
+    total = finish_total(total + position.w);
+    output.position = float4(position.x, position.y, position.z, total);
+    return output;
+}

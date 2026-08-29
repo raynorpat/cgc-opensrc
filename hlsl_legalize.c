@@ -112,6 +112,30 @@ static int HlslIsNumericScalarOrVector(const HlslType *type)
            type->rows == 0 && type->cols == 0;
 } // HlslIsNumericScalarOrVector
 
+static int HlslIsBooleanScalarOrVector(const HlslType *type)
+{
+    return type != NULL && type->arraySize == 0 &&
+           type->base == HLSL_BASE_BOOL &&
+           type->len >= 1 && type->len <= 4 &&
+           type->rows == 0 && type->cols == 0;
+} // HlslIsBooleanScalarOrVector
+
+static int HlslIsIntegerScalarOrVector(const HlslType *type)
+{
+    return type != NULL && type->arraySize == 0 &&
+           type->base == HLSL_BASE_INT &&
+           type->len >= 1 && type->len <= 4 &&
+           type->rows == 0 && type->cols == 0;
+} // HlslIsIntegerScalarOrVector
+
+static int HlslScalarVectorLength(const HlslType *left,
+                                  const HlslType *right)
+{
+    if (left->len > 1 && right->len > 1 && left->len != right->len)
+        return 0;
+    return left->len > right->len ? left->len : right->len;
+} // HlslScalarVectorLength
+
 static int HlslMultiplyResult(const HlslType *left,
                               const HlslType *right, HlslType *result)
 {
@@ -158,6 +182,8 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
     HlslExpr *argument;
     HlslDecl *parameter;
     HlslType resultType;
+    int length;
+    int maskLength;
 
     if (expression == NULL || HlslTypeName(&expression->type) == NULL)
         return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
@@ -186,21 +212,50 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         if (HlslIsScalar(&expression->type, HLSL_BASE_BOOL))
             return 1;
         break;
-    case HLSL_EXPR_BINARY:
-        if (expression->u.binary.op != HLSL_OP_ASSIGN &&
-            expression->u.binary.op != HLSL_OP_MULTIPLY)
+    case HLSL_EXPR_UNARY:
+        if (expression->u.unary.operand == NULL ||
+            !HlslLegalizeExpr(module, expression->u.unary.operand) ||
+            !HlslTypesEqual(&expression->type,
+                            &expression->u.unary.operand->type))
         {
-            return HlslLegalizeFailure(module,
-                                       HLSL_ERROR_UNSUPPORTED_OPERATION,
+            return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                        &expression->loc,
-                                       "HLSL binary operation");
+                                       "HLSL unary operand");
         }
+        switch (expression->u.unary.op) {
+        case HLSL_OP_NEGATE:
+        case HLSL_OP_POSITIVE:
+        case HLSL_OP_PRE_INCREMENT:
+        case HLSL_OP_PRE_DECREMENT:
+        case HLSL_OP_POST_INCREMENT:
+        case HLSL_OP_POST_DECREMENT:
+            if (HlslIsNumericScalarOrVector(&expression->type))
+                return 1;
+            break;
+        case HLSL_OP_LOGICAL_NOT:
+            if (HlslIsBooleanScalarOrVector(&expression->type))
+                return 1;
+            break;
+        case HLSL_OP_BITWISE_NOT:
+            if (HlslIsIntegerScalarOrVector(&expression->type))
+                return 1;
+            break;
+        default:
+            break;
+        }
+        return HlslLegalizeFailure(module,
+                                   HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                   &expression->loc,
+                                   "HLSL unary operation");
+    case HLSL_EXPR_BINARY:
         if (!HlslLegalizeExpr(module, expression->u.binary.left) ||
             !HlslLegalizeExpr(module, expression->u.binary.right))
         {
             return 0;
         }
-        if (expression->u.binary.op == HLSL_OP_ASSIGN) {
+        if (expression->u.binary.op >= HLSL_OP_ASSIGN &&
+            expression->u.binary.op <= HLSL_OP_SHIFT_RIGHT_ASSIGN)
+        {
             if (HlslTypesEqual(&expression->type,
                                &expression->u.binary.left->type) &&
                 HlslTypesEqual(&expression->type,
@@ -208,16 +263,105 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
             {
                 return 1;
             }
-        } else if (HlslMultiplyResult(&expression->u.binary.left->type,
-                                      &expression->u.binary.right->type,
-                                      &resultType) &&
-                   HlslTypesEqual(&expression->type, &resultType))
+        } else if (expression->u.binary.op == HLSL_OP_ADD ||
+                   expression->u.binary.op == HLSL_OP_SUBTRACT ||
+                   expression->u.binary.op == HLSL_OP_MULTIPLY ||
+                   expression->u.binary.op == HLSL_OP_DIVIDE ||
+                   expression->u.binary.op == HLSL_OP_REMAINDER)
+        {
+            if (HlslMultiplyResult(&expression->u.binary.left->type,
+                                   &expression->u.binary.right->type,
+                                   &resultType) &&
+                HlslTypesEqual(&expression->type, &resultType) &&
+                (expression->u.binary.op != HLSL_OP_REMAINDER ||
+                 expression->type.base == HLSL_BASE_INT))
+            {
+                return 1;
+            }
+        } else if (expression->u.binary.op == HLSL_OP_EQUAL ||
+                   expression->u.binary.op == HLSL_OP_NOT_EQUAL ||
+                   expression->u.binary.op == HLSL_OP_LESS ||
+                   expression->u.binary.op == HLSL_OP_GREATER ||
+                   expression->u.binary.op == HLSL_OP_LESS_EQUAL ||
+                   expression->u.binary.op == HLSL_OP_GREATER_EQUAL)
+        {
+            length = HlslScalarVectorLength(
+                &expression->u.binary.left->type,
+                &expression->u.binary.right->type);
+            if (length > 0 &&
+                expression->u.binary.left->type.base ==
+                    expression->u.binary.right->type.base &&
+                HlslIsBooleanScalarOrVector(&expression->type) &&
+                expression->type.len == length)
+            {
+                return 1;
+            }
+        } else if (expression->u.binary.op == HLSL_OP_LOGICAL_OR ||
+                   expression->u.binary.op == HLSL_OP_LOGICAL_AND)
+        {
+            length = HlslScalarVectorLength(
+                &expression->u.binary.left->type,
+                &expression->u.binary.right->type);
+            if (length > 0 &&
+                HlslIsBooleanScalarOrVector(
+                    &expression->u.binary.left->type) &&
+                HlslIsBooleanScalarOrVector(
+                    &expression->u.binary.right->type) &&
+                HlslIsBooleanScalarOrVector(&expression->type) &&
+                expression->type.len == length)
+            {
+                return 1;
+            }
+        } else if (expression->u.binary.op == HLSL_OP_BITWISE_OR ||
+                   expression->u.binary.op == HLSL_OP_BITWISE_XOR ||
+                   expression->u.binary.op == HLSL_OP_BITWISE_AND ||
+                   expression->u.binary.op == HLSL_OP_SHIFT_LEFT ||
+                   expression->u.binary.op == HLSL_OP_SHIFT_RIGHT)
+        {
+            length = HlslScalarVectorLength(
+                &expression->u.binary.left->type,
+                &expression->u.binary.right->type);
+            if (length > 0 &&
+                HlslIsIntegerScalarOrVector(
+                    &expression->u.binary.left->type) &&
+                HlslIsIntegerScalarOrVector(
+                    &expression->u.binary.right->type) &&
+                HlslIsIntegerScalarOrVector(&expression->type) &&
+                expression->type.len == length)
+            {
+                return 1;
+            }
+        }
+        return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                                   &expression->loc,
+                                   "HLSL binary types");
+    case HLSL_EXPR_CONDITIONAL:
+        if (expression->u.conditional.condition == NULL ||
+            expression->u.conditional.trueExpr == NULL ||
+            expression->u.conditional.falseExpr == NULL ||
+            !HlslLegalizeExpr(module,
+                expression->u.conditional.condition) ||
+            !HlslLegalizeExpr(module,
+                expression->u.conditional.trueExpr) ||
+            !HlslLegalizeExpr(module,
+                expression->u.conditional.falseExpr))
+        {
+            return 0;
+        }
+        if (HlslIsScalar(&expression->u.conditional.condition->type,
+                         HLSL_BASE_BOOL) &&
+            HlslExprIsPure(expression->u.conditional.trueExpr) &&
+            HlslExprIsPure(expression->u.conditional.falseExpr) &&
+            HlslTypesEqual(&expression->type,
+                &expression->u.conditional.trueExpr->type) &&
+            HlslTypesEqual(&expression->type,
+                &expression->u.conditional.falseExpr->type))
         {
             return 1;
         }
         return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                    &expression->loc,
-                                   "HLSL binary types");
+                                   "HLSL conditional types");
     case HLSL_EXPR_CALL:
         if (expression->u.call.function == NULL ||
             expression->u.call.name == NULL ||
@@ -257,6 +401,26 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                 return 0;
         }
         return 1;
+    case HLSL_EXPR_CAST:
+        if (expression->u.cast.expression == NULL ||
+            !HlslLegalizeExpr(module, expression->u.cast.expression))
+        {
+            return 0;
+        }
+        if ((HlslIsNumericScalarOrVector(&expression->type) ||
+             HlslIsBooleanScalarOrVector(&expression->type)) &&
+            (HlslIsNumericScalarOrVector(
+                &expression->u.cast.expression->type) ||
+             HlslIsBooleanScalarOrVector(
+                &expression->u.cast.expression->type)) &&
+            expression->type.len ==
+                expression->u.cast.expression->type.len)
+        {
+            return 1;
+        }
+        return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                                   &expression->loc,
+                                   "HLSL cast types");
     case HLSL_EXPR_MEMBER:
         if (expression->u.member.decl == NULL ||
             expression->u.member.name == NULL ||
@@ -312,6 +476,26 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                    &expression->loc,
                                    "HLSL indexed object");
+    case HLSL_EXPR_SWIZZLE:
+        if (expression->u.swizzle.object == NULL ||
+            expression->u.swizzle.mask == NULL ||
+            !HlslLegalizeExpr(module, expression->u.swizzle.object))
+        {
+            return 0;
+        }
+        maskLength = (int) strlen(expression->u.swizzle.mask);
+        if (maskLength == expression->type.len &&
+            maskLength >= 1 && maskLength <= 4 &&
+            expression->u.swizzle.object->type.len >= 1 &&
+            expression->u.swizzle.object->type.len <= 4 &&
+            expression->type.base ==
+                expression->u.swizzle.object->type.base)
+        {
+            return 1;
+        }
+        return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                                   &expression->loc,
+                                   "HLSL swizzle type");
     default:
         return HlslLegalizeFailure(module,
                                    HLSL_ERROR_UNSUPPORTED_OPERATION,
@@ -352,17 +536,78 @@ static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl)
 } // HlslLegalizeDeclarations
 
 static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
-                                  const HlslType *result)
+                                  const HlslType *result, int loopDepth)
 {
     for (; statement != NULL; statement = statement->next) {
         switch (statement->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (statement->u.declaration == NULL ||
+                !HlslLegalizeDeclarations(module,
+                                           statement->u.declaration))
+            {
+                return 0;
+            }
+            break;
         case HLSL_STMT_EXPRESSION:
             if (!HlslLegalizeExpr(module, statement->u.expression))
                 return 0;
             break;
+        case HLSL_STMT_IF:
+            if (!HlslLegalizeExpr(module,
+                    statement->u.ifStmt.condition) ||
+                !HlslIsScalar(&statement->u.ifStmt.condition->type,
+                              HLSL_BASE_BOOL) ||
+                statement->u.ifStmt.trueBranch == NULL ||
+                !HlslLegalizeStatements(module,
+                    statement->u.ifStmt.trueBranch, result, loopDepth) ||
+                (statement->u.ifStmt.falseBranch != NULL &&
+                 !HlslLegalizeStatements(module,
+                    statement->u.ifStmt.falseBranch, result, loopDepth)))
+            {
+                return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                                           &statement->loc,
+                                           "HLSL if statement");
+            }
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslLegalizeExpr(module, statement->u.loop.condition) ||
+                !HlslIsScalar(&statement->u.loop.condition->type,
+                              HLSL_BASE_BOOL) ||
+                statement->u.loop.body == NULL ||
+                !HlslLegalizeStatements(module, statement->u.loop.body,
+                                         result, loopDepth + 1))
+            {
+                return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                                           &statement->loc,
+                                           "HLSL loop statement");
+            }
+            break;
+        case HLSL_STMT_FOR:
+            if ((statement->u.forStmt.init != NULL &&
+                 !HlslLegalizeStatements(module,
+                    statement->u.forStmt.init, result, loopDepth)) ||
+                (statement->u.forStmt.condition != NULL &&
+                 (!HlslLegalizeExpr(module,
+                    statement->u.forStmt.condition) ||
+                  !HlslIsScalar(
+                    &statement->u.forStmt.condition->type,
+                    HLSL_BASE_BOOL))) ||
+                (statement->u.forStmt.step != NULL &&
+                 !HlslLegalizeStatements(module,
+                    statement->u.forStmt.step, result, loopDepth)) ||
+                statement->u.forStmt.body == NULL ||
+                !HlslLegalizeStatements(module,
+                    statement->u.forStmt.body, result, loopDepth + 1))
+            {
+                return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                                           &statement->loc,
+                                           "HLSL for statement");
+            }
+            break;
         case HLSL_STMT_BLOCK:
             if (!HlslLegalizeStatements(module, statement->u.block,
-                                        result))
+                                        result, loopDepth))
                 return 0;
             break;
         case HLSL_STMT_RETURN:
@@ -390,6 +635,19 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
                                            &statement->loc,
                                            "HLSL void return type");
             }
+            break;
+        case HLSL_STMT_DISCARD:
+            if (module->stage != HLSL_STAGE_PIXEL)
+                return HlslLegalizeFailure(module,
+                    HLSL_ERROR_STAGE_OPERATION, &statement->loc,
+                    "discard");
+            break;
+        case HLSL_STMT_BREAK:
+        case HLSL_STMT_CONTINUE:
+            if (loopDepth <= 0)
+                return HlslLegalizeFailure(module,
+                    HLSL_ERROR_INVALID_IR, &statement->loc,
+                    "HLSL loop jump");
             break;
         default:
             return HlslLegalizeFailure(module,
@@ -429,7 +687,7 @@ int HlslLegalizeModule(HlslModule *module,
                                        "HLSL function");
         }
         if (!HlslLegalizeStatements(module, function->body,
-                                    &function->result))
+                                    &function->result, 0))
         {
             return 0;
         }

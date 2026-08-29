@@ -4036,7 +4036,10 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
         }
     }
     if (!HasError) {
-        if (lExpr->common.HasSideEffects || rexpr->common.HasSideEffects) {
+        if ((lExpr->common.HasSideEffects ||
+             rexpr->common.HasSideEffects) &&
+            !Cg->theHAL->GetCapsBit(CAPS_CONDITIONAL_SIDE_EFFECTS))
+        {
             SemanticError(loc, ERROR_S_OPERANDS_HAVE_SIDE_EFFECTS, "?:");
         }
         if (LIsSimple) {

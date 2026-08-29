@@ -135,11 +135,21 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
     case HLSL_EXPR_FLOAT:
     case HLSL_EXPR_BOOL:
         return 1;
+    case HLSL_EXPR_UNARY:
+        return HlslCountEntryCalls(module, expression->u.unary.operand,
+                                   count);
     case HLSL_EXPR_BINARY:
         return HlslCountEntryCalls(module, expression->u.binary.left,
                                    count) &&
                HlslCountEntryCalls(module, expression->u.binary.right,
                                    count);
+    case HLSL_EXPR_CONDITIONAL:
+        return HlslCountEntryCalls(module,
+                    expression->u.conditional.condition, count) &&
+               HlslCountEntryCalls(module,
+                    expression->u.conditional.trueExpr, count) &&
+               HlslCountEntryCalls(module,
+                    expression->u.conditional.falseExpr, count);
     case HLSL_EXPR_CALL:
         if (!HlslOwnsFunction(module, expression->u.call.function))
             return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
@@ -162,6 +172,9 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
                 return 0;
         }
         return 1;
+    case HLSL_EXPR_CAST:
+        return HlslCountEntryCalls(module, expression->u.cast.expression,
+                                   count);
     case HLSL_EXPR_MEMBER:
         if (!HlslOwnsDecl(module, expression->u.member.decl))
             return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
@@ -173,6 +186,9 @@ static int HlslCountEntryCalls(HlslModule *module, const HlslExpr *expression,
         return HlslCountEntryCalls(module, expression->u.index.object,
                                    count) &&
                HlslCountEntryCalls(module, expression->u.index.index,
+                                   count);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslCountEntryCalls(module, expression->u.swizzle.object,
                                    count);
     default:
         return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
@@ -187,9 +203,51 @@ static int HlslCountStatementCalls(HlslModule *module,
 {
     for (; statement != NULL; statement = statement->next) {
         switch (statement->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (!HlslOwnsDecl(module, statement->u.declaration) ||
+                !HlslCountEntryCalls(module,
+                    statement->u.declaration->initializer, count))
+            {
+                return 0;
+            }
+            break;
         case HLSL_STMT_EXPRESSION:
             if (!HlslCountEntryCalls(module, statement->u.expression,
                                      count))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_IF:
+            if (!HlslCountEntryCalls(module,
+                    statement->u.ifStmt.condition, count) ||
+                !HlslCountStatementCalls(module,
+                    statement->u.ifStmt.trueBranch, count) ||
+                !HlslCountStatementCalls(module,
+                    statement->u.ifStmt.falseBranch, count))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslCountEntryCalls(module,
+                    statement->u.loop.condition, count) ||
+                !HlslCountStatementCalls(module,
+                    statement->u.loop.body, count))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_FOR:
+            if (!HlslCountStatementCalls(module,
+                    statement->u.forStmt.init, count) ||
+                !HlslCountEntryCalls(module,
+                    statement->u.forStmt.condition, count) ||
+                !HlslCountStatementCalls(module,
+                    statement->u.forStmt.step, count) ||
+                !HlslCountStatementCalls(module,
+                    statement->u.forStmt.body, count))
             {
                 return 0;
             }
@@ -207,6 +265,10 @@ static int HlslCountStatementCalls(HlslModule *module,
             {
                 return 0;
             }
+            break;
+        case HLSL_STMT_DISCARD:
+        case HLSL_STMT_BREAK:
+        case HLSL_STMT_CONTINUE:
             break;
         default:
             return HlslValidateFailure(module, HLSL_ERROR_INVALID_IR,
