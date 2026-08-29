@@ -1,5 +1,5 @@
 foreach(required CGC VERTEX_SOURCE FRAGMENT_SOURCE
-                 VERTEX_OUTPUT FRAGMENT_OUTPUT)
+                 VERTEX_OUTPUT FRAGMENT_OUTPUT CONFIG)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} must be defined")
     endif()
@@ -14,6 +14,7 @@ if(DEFINED ENV{HLSL_EXPECT_LINK_MISMATCH} AND NOT HLSL_LINK_CHILD)
             -DCGC=${CGC}
             -DVERTEX_SOURCE=${VERTEX_SOURCE}
             -DFRAGMENT_SOURCE=${FRAGMENT_SOURCE}
+            -DCONFIG=${CONFIG}
             -DVERTEX_OUTPUT=${VERTEX_OUTPUT}
             -DFRAGMENT_OUTPUT=${FRAGMENT_OUTPUT}
             -DHLSL_LINK_CHILD=TRUE

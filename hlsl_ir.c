@@ -1658,8 +1658,10 @@ static int HlslTypeRegisterSpanInner(const HlslType *type,
     switch (type->base) {
     case HLSL_BASE_FLOAT:
     case HLSL_BASE_INT:
-    case HLSL_BASE_BOOL:
         return type->len >= 1 && type->len <= 4 ? 1 : 0;
+    case HLSL_BASE_BOOL:
+        /* Shader Model 3 exposes b# as scalar boolean registers. */
+        return type->len >= 1 && type->len <= 4 ? type->len : 0;
     case HLSL_BASE_SAMPLER1D:
     case HLSL_BASE_SAMPLER2D:
     case HLSL_BASE_SAMPLER3D:

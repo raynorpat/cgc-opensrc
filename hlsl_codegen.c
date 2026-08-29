@@ -158,6 +158,27 @@ static int HlslWriteTypeAndName(FILE *out, const HlslType *type,
     return 1;
 } // HlslWriteTypeAndName
 
+static int HlslIsScalarBooleanAggregate(const HlslType *type)
+{
+    const HlslDecl *member;
+
+    if (type == NULL)
+        return 0;
+    if (type->arraySize > 0)
+        return HlslIsScalarBooleanAggregate(type->elementType);
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->members == NULL)
+            return 0;
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslIsScalarBooleanAggregate(&member->type))
+                return 0;
+        }
+        return 1;
+    }
+    return type->base == HLSL_BASE_BOOL && type->rows == 0 &&
+           type->cols == 0 && type->len >= 1 && type->len <= 4;
+} // HlslIsScalarBooleanAggregate
+
 static int HlslWriteDeclTypeAndName(FILE *out, const HlslDecl *decl)
 {
     const HlslType *element;
@@ -180,6 +201,21 @@ static int HlslWriteDeclTypeAndName(FILE *out, const HlslDecl *decl)
             }
             return 1;
         }
+    }
+    if (decl->storage == HLSL_STORAGE_UNIFORM &&
+        decl->physical.bank == HLSL_REGISTER_B &&
+        decl->physical.span > 1)
+    {
+        /* Preserve one logical binding/default record for the runtime
+           setter, but expose its contiguous SM3 b# span as scalar storage. */
+        element = &decl->type;
+        if (HlslIsScalarBooleanAggregate(element) &&
+            fprintf(out, "bool %s[%d]", decl->name,
+                    decl->physical.span) >= 0)
+        {
+            return 1;
+        }
+        return 0;
     }
     return HlslWriteTypeAndName(out, &decl->type, decl->name);
 } // HlslWriteDeclTypeAndName
@@ -357,6 +393,111 @@ static const char *HlslPhysicalIntegerSwizzle(const HlslExpr *expression)
     }
 } // HlslPhysicalIntegerSwizzle
 
+static const HlslDecl *HlslPhysicalBooleanDecl(
+    const HlslExpr *expression, int *offset)
+{
+    const HlslDecl *member;
+    const HlslDecl *declaration;
+    int memberSpan;
+    int nestedOffset;
+
+    if (expression == NULL || offset == NULL)
+        return NULL;
+    if (expression->kind == HLSL_EXPR_SYMBOL) {
+        declaration = expression->u.symbol;
+        if (declaration == NULL ||
+            declaration->physical.bank != HLSL_REGISTER_B ||
+            declaration->physical.span <= 1)
+        {
+            return NULL;
+        }
+        *offset = 0;
+        return declaration;
+    }
+    if (expression->kind == HLSL_EXPR_INDEX &&
+        expression->u.index.object != NULL &&
+        expression->u.index.object->type.arraySize > 0 &&
+        expression->u.index.object->type.elementType != NULL &&
+        expression->u.index.index != NULL &&
+        expression->u.index.index->kind == HLSL_EXPR_INT &&
+        expression->u.index.index->u.literalInt >= 0 &&
+        expression->u.index.index->u.literalInt <
+            expression->u.index.object->type.arraySize)
+    {
+        declaration = HlslPhysicalBooleanDecl(
+            expression->u.index.object, &nestedOffset);
+        memberSpan = HlslTypeRegisterSpan(
+            expression->u.index.object->type.elementType);
+        if (declaration == NULL || memberSpan <= 0)
+            return NULL;
+        *offset = nestedOffset +
+            expression->u.index.index->u.literalInt * memberSpan;
+        return declaration;
+    }
+    if (expression->kind == HLSL_EXPR_MEMBER &&
+        expression->u.member.object != NULL &&
+        expression->u.member.object->type.base == HLSL_BASE_STRUCT)
+    {
+        declaration = HlslPhysicalBooleanDecl(
+            expression->u.member.object, &nestedOffset);
+        if (declaration == NULL)
+            return NULL;
+        for (member = expression->u.member.object->type.members;
+             member != NULL; member = member->next)
+        {
+            if (member == expression->u.member.decl ||
+                (expression->u.member.name != NULL && member->name != NULL &&
+                 !strcmp(member->name, expression->u.member.name)))
+            {
+                *offset = nestedOffset;
+                return declaration;
+            }
+            memberSpan = HlslTypeRegisterSpan(&member->type);
+            if (memberSpan <= 0)
+                return NULL;
+            nestedOffset += memberSpan;
+        }
+    }
+    return NULL;
+} // HlslPhysicalBooleanDecl
+
+static int HlslWritePhysicalBooleanValue(FILE *out,
+                                         const HlslExpr *expression)
+{
+    const HlslDecl *declaration;
+    const char *typeName;
+    int offset;
+    int i;
+
+    if (expression == NULL || expression->type.arraySize != 0 ||
+        expression->type.base != HLSL_BASE_BOOL ||
+        expression->type.rows != 0 || expression->type.cols != 0 ||
+        expression->type.len < 1 || expression->type.len > 4)
+    {
+        return 0;
+    }
+    declaration = HlslPhysicalBooleanDecl(expression, &offset);
+    if (declaration == NULL || offset < 0 ||
+        offset > declaration->physical.span - expression->type.len)
+    {
+        return 0;
+    }
+    if (expression->type.len == 1)
+        return fprintf(out, "%s[%d]", declaration->name, offset) >= 0 ?
+               1 : -1;
+    typeName = HlslValueTypeName(&expression->type);
+    if (typeName == NULL || fprintf(out, "%s(", typeName) < 0)
+        return -1;
+    for (i = 0; i < expression->type.len; i++) {
+        if ((i > 0 && fputs(", ", out) == EOF) ||
+            fprintf(out, "%s[%d]", declaration->name, offset + i) < 0)
+        {
+            return -1;
+        }
+    }
+    return fputc(')', out) == EOF ? -1 : 1;
+} // HlslWritePhysicalBooleanValue
+
 static int HlslWriteExprImpl(FILE *out, const HlslExpr *expression,
                              int parentPrecedence,
                              int writePhysicalSwizzle);
@@ -376,6 +517,7 @@ static int HlslWriteExprImpl(FILE *out, const HlslExpr *expression,
     const char *text;
     int precedence;
     int parentheses;
+    int physicalBoolean;
     int first;
 
     if (expression == NULL)
@@ -384,6 +526,12 @@ static int HlslWriteExprImpl(FILE *out, const HlslExpr *expression,
     parentheses = precedence < parentPrecedence;
     if (parentheses && fputc('(', out) == EOF)
         return 0;
+    physicalBoolean = writePhysicalSwizzle ?
+        HlslWritePhysicalBooleanValue(out, expression) : 0;
+    if (physicalBoolean < 0)
+        return 0;
+    if (physicalBoolean > 0)
+        goto wrote_expression;
     switch (expression->kind) {
     case HLSL_EXPR_SYMBOL:
         if (expression->u.symbol == NULL ||
@@ -542,6 +690,7 @@ static int HlslWriteExprImpl(FILE *out, const HlslExpr *expression,
            HlslPhysicalIntegerSwizzle(expression) : NULL;
     if (text != NULL && fprintf(out, ".%s", text) < 0)
         return 0;
+wrote_expression:
     if (parentheses && fputc(')', out) == EOF)
         return 0;
     return 1;

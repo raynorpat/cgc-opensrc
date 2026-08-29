@@ -221,6 +221,8 @@ static void TestReservedNames(void)
 static void TestTypeRegisterSpans(void)
 {
     HlslType scalar;
+    HlslType boolVector;
+    HlslType boolArray;
     HlslType matrix;
     HlslType array;
     HlslType structure;
@@ -236,6 +238,12 @@ static void TestTypeRegisterSpans(void)
     HlslDecl cycleMemberB;
 
     scalar = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    boolVector = HlslNumericType(HLSL_BASE_BOOL, 3);
+    memset(&boolArray, 0, sizeof(boolArray));
+    boolArray.arraySize = 2;
+    boolArray.elementType = &boolVector;
+    assert(HlslTypeRegisterSpan(&boolVector) == 3);
+    assert(HlslTypeRegisterSpan(&boolArray) == 6);
     matrix = HlslMatrixType(3, 4);
     memset(&array, 0, sizeof(array));
     array.arraySize = 2;

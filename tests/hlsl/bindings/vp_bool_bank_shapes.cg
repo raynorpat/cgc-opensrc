@@ -1,0 +1,39 @@
+struct BoolConfig {
+    bool2 gates;
+    bool enabled;
+};
+
+uniform bool3 flags : B0 = bool3(true, false, true);
+uniform bool2 masks[2] = {
+    bool2(false, true),
+    bool2(true, false)
+};
+uniform BoolConfig config : B7;
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    if (flags.x)
+        output.position.x += 1.0;
+    if (flags.y)
+        output.position.y += 1.0;
+    if (flags.z)
+        output.position.z += 1.0;
+    if (masks[0].x)
+        output.position.w += 1.0;
+    if (masks[0].y)
+        output.position.x += 1.0;
+    if (masks[1].x)
+        output.position.y += 1.0;
+    if (masks[1].y)
+        output.position.z += 1.0;
+    if (config.gates.x)
+        if (config.enabled)
+            output.position.w += 1.0;
+    return output;
+}

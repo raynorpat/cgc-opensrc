@@ -3,11 +3,20 @@ struct VertexOut {
 };
 
 VertexOut main(float4 position : POSITION,
+               uniform int count,
+               uniform int2 pair,
+               uniform int3 triple,
                uniform int2 ranges[2])
 {
     VertexOut output;
     int index;
     output.position = position;
+    for (index = 0; index < count; index++)
+        output.position.x += 0.001;
+    for (index = 0; index < pair.x; index++)
+        output.position.y += 0.001;
+    for (index = 0; index < triple.z; index++)
+        output.position.w += 0.001;
     for (index = 0; index < ranges[1].y; index++)
         output.position.z += 0.001;
     return output;

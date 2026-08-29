@@ -1,0 +1,94 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+// var bool3 flags : B0 : b[0] : 1 : 3
+// cgc-default flags 1.0 0.0 1.0
+// var cg_BoolConfig config : B7 : b[7] : 1 : 3
+// var bool2 masks :  : b[3] : 1 : 4
+// cgc-default masks 0.0 1.0 1.0 0.0
+
+uniform bool cg_flags[3] : register(b0);
+uniform bool cg_config[3] : register(b7);
+uniform bool cg_masks[4] : register(b3);
+
+struct cg_BoolConfig
+{
+    bool2 gates;
+    bool enabled;
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    bool3 flags;
+    bool2 masks[2];
+    cg_BoolConfig config;
+    cg_output.position = position;
+    flags = bool3(cg_flags[0], cg_flags[1], cg_flags[2]);
+    if (flags.x)
+    {
+        cg_output.position.x = cg_output.position.x + 1.0;
+    }
+    if (flags.y)
+    {
+        cg_output.position.y = cg_output.position.y + 1.0;
+    }
+    if (flags.z)
+    {
+        cg_output.position.z = cg_output.position.z + 1.0;
+    }
+    masks[0] = bool2(cg_masks[0], cg_masks[1]);
+    masks[1] = bool2(cg_masks[2], cg_masks[3]);
+    if (masks[0].x)
+    {
+        cg_output.position.w = cg_output.position.w + 1.0;
+    }
+    if (masks[0].y)
+    {
+        cg_output.position.x = cg_output.position.x + 1.0;
+    }
+    if (masks[1].x)
+    {
+        cg_output.position.y = cg_output.position.y + 1.0;
+    }
+    if (masks[1].y)
+    {
+        cg_output.position.z = cg_output.position.z + 1.0;
+    }
+    config.gates = bool2(cg_config[0], cg_config[1]);
+    config.enabled = cg_config[2];
+    if (config.gates.x)
+    {
+        if (config.enabled)
+        {
+            cg_output.position.w = cg_output.position.w + 1.0;
+        }
+    }
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

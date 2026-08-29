@@ -1868,6 +1868,7 @@ function(add_hlsl_validation_case name profile source packing)
                 -DPROFILE=${profile}
                 -DTARGET=${target}
                 -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                "-DCONFIG=$<CONFIG>"
                 -DPACKING=${packing}
                 -DSUPPRESS_WARNINGS=${suppress_warnings}
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.hlsl"
@@ -1935,6 +1936,12 @@ add_hlsl_fixture(hlslv_vp_register_banks hlslv
 add_hlsl_fixture(hlslv_vp_int_bank_shapes hlslv
     tests/hlsl/bindings/vp_int_bank_shapes.cg
     tests/hlsl/bindings/vp_int_bank_shapes.expected)
+add_hlsl_fixture(hlslv_vp_int_array_helpers hlslv
+    tests/hlsl/bindings/vp_int_array_helpers.cg
+    tests/hlsl/bindings/vp_int_array_helpers.expected)
+add_hlsl_fixture(hlslv_vp_bool_bank_shapes hlslv
+    tests/hlsl/bindings/vp_bool_bank_shapes.cg
+    tests/hlsl/bindings/vp_bool_bank_shapes.expected)
 add_hlsl_fixture(hlslv_vp_mixed_struct hlslv
     tests/hlsl/bindings/vp_mixed_struct.cg
     tests/hlsl/bindings/vp_mixed_struct.expected)
@@ -2062,6 +2069,7 @@ function(add_hlsl_link_test name vertex_source fragment_source)
             -DCGC=$<TARGET_FILE:cgc>
             -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/${vertex_source}
             -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/${fragment_source}
+            "-DCONFIG=$<CONFIG>"
             "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.vs.hlsl"
             "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.ps.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_link.cmake)
@@ -2075,6 +2083,44 @@ add_hlsl_link_test(hlsl_link_interface_mismatch
 set_tests_properties(hlsl_link_interface_mismatch PROPERTIES WILL_FAIL TRUE)
 set_property(TEST hlsl_link_interface_mismatch APPEND PROPERTY
     ENVIRONMENT "HLSL_EXPECT_LINK_MISMATCH=COLOR0 type mismatch")
+
+add_test(NAME hlsl_link_fresh_directory
+    COMMAND ${CMAKE_COMMAND}
+        -DMODE=link
+        -DCGC=$<TARGET_FILE:cgc>
+        "-DCONFIG=$<CONFIG>"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-link"
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/vp_link.cg
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/fp_link.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
+
+if(FXC_EXECUTABLE)
+    add_test(NAME hlsl_validate_fresh_directory
+        COMMAND ${CMAKE_COMMAND}
+            -DMODE=validate
+            -DCGC=$<TARGET_FILE:cgc>
+            -DFXC=${FXC_EXECUTABLE}
+            -DPROFILE=hlslv
+            -DTARGET=vs_3_0
+            "-DCONFIG=$<CONFIG>"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-validate"
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_passthrough.cg
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
+endif()
+
+add_test(NAME hlsl_metadata_direction_unit
+    COMMAND ${CMAKE_COMMAND}
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/metadata-direction/$<CONFIG>"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_oracle_normalization.cmake)
+
+add_test(NAME hlsl_positive_oracle_contract_unit
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/positive-oracle/$<CONFIG>"
+        -DVALID_EMPTY=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/empty.cg
+        -DINVALID_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_missing_position.cg
+        -DMISSING_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/oracle/missing.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_oracle_positive.cmake)
 
 function(add_hlsl_failure name profile source code line reason)
     add_test(

@@ -1,4 +1,4 @@
-foreach(required CGC FXC PROFILE TARGET SOURCE OUTPUT BYTECODE)
+foreach(required CGC FXC PROFILE TARGET SOURCE OUTPUT BYTECODE CONFIG)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} must be defined")
     endif()

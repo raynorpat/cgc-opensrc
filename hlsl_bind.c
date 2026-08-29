@@ -1838,8 +1838,28 @@ static int HlslInstallMixedBindingConsumer(HlslModule *module,
     return HlslInsertBeforeFirstUse(function, local, initializers);
 } // HlslInstallMixedBindingConsumer
 
-static int HlslInstallMixedBindingValue(HlslModule *module,
-                                        HlslBinding *binding)
+static int HlslTypeNeedsIntegerReconstruction(const HlslType *type)
+{
+    if (type == NULL)
+        return 0;
+    while (type->arraySize > 0)
+        type = type->elementType;
+    return type != NULL && type->base == HLSL_BASE_INT &&
+           type->rows == 0 && type->cols == 0 && type->len != 4;
+} // HlslTypeNeedsIntegerReconstruction
+
+static int HlslBindingNeedsReconstruction(const HlslBinding *binding)
+{
+    return binding != NULL && binding->leafBindings != NULL &&
+           (binding->leafBindings->next != NULL ||
+            (binding->leafBindings->physical.bank == HLSL_REGISTER_I &&
+             HlslTypeNeedsIntegerReconstruction(&binding->type)) ||
+            (binding->leafBindings->physical.bank == HLSL_REGISTER_B &&
+             binding->leafBindings->physical.span > 1));
+} // HlslBindingNeedsReconstruction
+
+static int HlslInstallReconstructedBindingValue(HlslModule *module,
+                                                HlslBinding *binding)
 {
     HlslDecl **parameterPlace;
     HlslDecl *valueDecl;
@@ -1847,8 +1867,7 @@ static int HlslInstallMixedBindingValue(HlslModule *module,
     int ordinal;
 
     if (module == NULL || module->entry == NULL || binding == NULL ||
-        binding->declaration == NULL || binding->leafBindings == NULL ||
-        binding->leafBindings->next == NULL)
+        binding->declaration == NULL || binding->leafBindings == NULL)
     {
         return 0;
     }
@@ -1879,12 +1898,13 @@ static int HlslInstallMixedBindingValue(HlslModule *module,
             return 0;
         }
     }
-    /* The aggregate identity declaration has been replaced by owned locals
-       in every consumer.  It is no longer part of the emitted module and
-       must not remain as a dangling binding declaration. */
-    binding->declaration = NULL;
+    /* A multi-leaf aggregate's identity declaration has been replaced by
+       owned locals in every consumer.  Its physical leaves remain global,
+       but the root must not remain as a dangling declaration. */
+    if (binding->leafBindings->next != NULL)
+        binding->declaration = NULL;
     return 1;
-} // HlslInstallMixedBindingValue
+} // HlslInstallReconstructedBindingValue
 
 int HlslAllocateBindings(HlslModule *module,
                          const HlslProfileDesc *profile)
@@ -1940,9 +1960,8 @@ int HlslAllocateBindings(HlslModule *module,
     for (i = 0; i < count; i++) {
         HlslMarkPhysicalIntegerParameter(module, ordered[i]);
         if (module->entry != NULL &&
-            ordered[i]->leafBindings != NULL &&
-            ordered[i]->leafBindings->next != NULL &&
-            !HlslInstallMixedBindingValue(module, ordered[i]))
+            HlslBindingNeedsReconstruction(ordered[i]) &&
+            !HlslInstallReconstructedBindingValue(module, ordered[i]))
         {
             return HlslBindFailure(module, ordered[i],
                                    HLSL_ERROR_INVALID_IR,
