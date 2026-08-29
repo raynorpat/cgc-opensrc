@@ -456,6 +456,7 @@ struct HlslDecl_Rec {
     HlslDecl *members;
     HlslParameterQualifier parameterQualifier;
     HlslPhysicalBinding physical;
+    HlslRegisterBank sourceBank;
 };
 
 struct HlslFunction_Rec {

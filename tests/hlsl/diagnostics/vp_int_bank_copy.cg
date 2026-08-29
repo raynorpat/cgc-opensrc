@@ -1,0 +1,14 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION, uniform int count)
+{
+    VertexOut output;
+    int copiedCount;
+    copiedCount = count;
+    output.position = position;
+    for (; copiedCount > 0; copiedCount--)
+        output.position.x += 0.001;
+    return output;
+}

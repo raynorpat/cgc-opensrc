@@ -1,0 +1,20 @@
+struct Mixed {
+    float scale;
+    int count;
+    bool enabled;
+};
+
+float consume(Mixed value)
+{
+    return value.enabled ? value.scale : float(value.count + 1);
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION, uniform Mixed value)
+{
+    VertexOut output;
+    output.position = position;
+    output.position.x += consume(value);
+    return output;
+}

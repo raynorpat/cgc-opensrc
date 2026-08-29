@@ -1788,6 +1788,7 @@ static HlslDecl *HlslNewMixedBindingLocal(HlslModule *module,
     const char *name;
     const char *sourceName;
     const void *nameSpace;
+    HlslRegisterBank bank;
 
     if (module == NULL || function == NULL || binding == NULL ||
         source == NULL)
@@ -1807,6 +1808,8 @@ static HlslDecl *HlslNewMixedBindingLocal(HlslModule *module,
         local->sourceOrdinal = source->sourceOrdinal;
         local->identity = source->identity;
         local->parameterQualifier = HLSL_PARAMETER_IN;
+        if (HlslHomogeneousBank(&binding->type, &bank))
+            local->sourceBank = bank;
     }
     return local;
 } // HlslNewMixedBindingLocal
@@ -1854,6 +1857,16 @@ static int HlslTypeIsScalarBoolean(const HlslType *type)
            type->base == HLSL_BASE_BOOL && type->len == 1 &&
            type->rows == 0 && type->cols == 0;
 } // HlslTypeIsScalarBoolean
+
+static int HlslBindingTypeIsSampler(const HlslType *type)
+{
+    if (type == NULL)
+        return 0;
+    while (type->arraySize > 0)
+        type = type->elementType;
+    return type != NULL && type->base >= HLSL_BASE_SAMPLER1D &&
+           type->base <= HLSL_BASE_SAMPLERCUBE;
+} // HlslBindingTypeIsSampler
 
 static int HlslBindingNeedsReconstruction(const HlslBinding *binding)
 {
@@ -1912,6 +1925,1130 @@ static int HlslInstallReconstructedBindingValue(HlslModule *module,
         binding->declaration = NULL;
     return 1;
 } // HlslInstallReconstructedBindingValue
+
+static int HlslBindingIdentityUsesBank(const HlslModule *module,
+                                       const HlslDecl *declaration,
+                                       HlslRegisterBank bank)
+{
+    const HlslBinding *binding;
+    const HlslBinding *leaf;
+    const void *identity;
+
+    if (module == NULL || declaration == NULL)
+        return 0;
+    if (declaration->physical.bank == bank)
+        return 1;
+    identity = declaration->identity;
+    if (identity == NULL)
+        return 0;
+    for (binding = module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        for (leaf = binding->leafBindings; leaf != NULL;
+             leaf = leaf->next)
+        {
+            if (leaf->physical.bank == bank && leaf->declaration != NULL &&
+                leaf->declaration->identity == identity)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+} // HlslBindingIdentityUsesBank
+
+static const HlslDecl *HlslReferenceRootDeclaration(
+    const HlslExpr *expression)
+{
+    while (expression != NULL && expression->kind != HLSL_EXPR_SYMBOL) {
+        if (expression->kind == HLSL_EXPR_MEMBER)
+            expression = expression->u.member.object;
+        else if (expression->kind == HLSL_EXPR_INDEX)
+            expression = expression->u.index.object;
+        else if (expression->kind == HLSL_EXPR_SWIZZLE)
+            expression = expression->u.swizzle.object;
+        else
+            return NULL;
+    }
+    return expression != NULL ? expression->u.symbol : NULL;
+} // HlslReferenceRootDeclaration
+
+static int HlslReferenceUsesBank(const HlslModule *module,
+                                 const HlslExpr *expression,
+                                 HlslRegisterBank bank)
+{
+    const HlslDecl *root;
+    HlslRegisterBank typeBank;
+
+    if (expression == NULL ||
+        !HlslHomogeneousBank(&expression->type, &typeBank) ||
+        typeBank != bank)
+    {
+        return 0;
+    }
+    root = HlslReferenceRootDeclaration(expression);
+    return root != NULL &&
+           (root->sourceBank == bank ||
+            HlslBindingIdentityUsesBank(module, root, bank));
+} // HlslReferenceUsesBank
+
+static int HlslReferenceIdentityUsesBank(const HlslModule *module,
+                                         const HlslExpr *expression,
+                                         HlslRegisterBank bank)
+{
+    const HlslDecl *root;
+
+    root = HlslReferenceRootDeclaration(expression);
+    return root != NULL &&
+           (root->sourceBank == bank ||
+            HlslBindingIdentityUsesBank(module, root, bank));
+} // HlslReferenceIdentityUsesBank
+
+static int HlslExpressionUsesBank(const HlslModule *module,
+                                  const HlslExpr *expression,
+                                  HlslRegisterBank bank)
+{
+    const HlslExpr *argument;
+
+    if (expression == NULL)
+        return 0;
+    switch (expression->kind) {
+    case HLSL_EXPR_SYMBOL:
+    case HLSL_EXPR_MEMBER:
+    case HLSL_EXPR_SWIZZLE:
+        return HlslReferenceUsesBank(module, expression, bank);
+    case HLSL_EXPR_INDEX:
+        return HlslReferenceUsesBank(module, expression, bank) ||
+               HlslExpressionUsesBank(module,
+                                      expression->u.index.index, bank);
+    case HLSL_EXPR_UNARY:
+        return HlslExpressionUsesBank(module,
+                                      expression->u.unary.operand, bank);
+    case HLSL_EXPR_BINARY:
+        return HlslExpressionUsesBank(module,
+                                      expression->u.binary.left, bank) ||
+               HlslExpressionUsesBank(module,
+                                      expression->u.binary.right, bank);
+    case HLSL_EXPR_CONDITIONAL:
+        return HlslExpressionUsesBank(
+                   module, expression->u.conditional.condition, bank) ||
+               HlslExpressionUsesBank(
+                   module, expression->u.conditional.trueExpr, bank) ||
+               HlslExpressionUsesBank(
+                   module, expression->u.conditional.falseExpr, bank);
+    case HLSL_EXPR_CALL:
+        argument = expression->u.call.arguments;
+        break;
+    case HLSL_EXPR_CONSTRUCT:
+        argument = expression->u.construct.arguments;
+        break;
+    case HLSL_EXPR_CAST:
+        return HlslExpressionUsesBank(module,
+                                      expression->u.cast.expression, bank);
+    case HLSL_EXPR_INT:
+    case HLSL_EXPR_FLOAT:
+    case HLSL_EXPR_BOOL:
+    default:
+        return 0;
+    }
+    for (; argument != NULL; argument = argument->next) {
+        if (HlslExpressionUsesBank(module, argument, bank))
+            return 1;
+    }
+    return 0;
+} // HlslExpressionUsesBank
+
+static int HlslUnsupportedRegisterUse(HlslModule *module,
+                                      const HlslLoc *loc,
+                                      const char *reason)
+{
+    /* C6402 is the public profile-boundary diagnostic.  These source
+       programs are legal Cg, but SM3 cannot represent the selected
+       i#/b# data path faithfully. */
+    return HlslFail(module, HLSL_ERROR_STAGE_OPERATION, loc, reason);
+} // HlslUnsupportedRegisterUse
+
+static int HlslExpressionValueUsesBank(const HlslModule *module,
+                                       const HlslExpr *expression,
+                                       HlslRegisterBank bank)
+{
+    HlslRegisterBank typeBank;
+
+    return expression != NULL &&
+           HlslHomogeneousBank(&expression->type, &typeBank) &&
+           typeBank == bank &&
+           HlslExpressionUsesBank(module, expression, bank);
+} // HlslExpressionValueUsesBank
+
+static int HlslPropagateCallBanksExpression(HlslModule *module,
+                                            HlslExpr *expression,
+                                            int *changed);
+
+static HlslDecl *HlslRegisterAssignmentRoot(HlslExpr *expression)
+{
+    while (expression != NULL && expression->kind != HLSL_EXPR_SYMBOL) {
+        if (expression->kind == HLSL_EXPR_MEMBER)
+            expression = expression->u.member.object;
+        else if (expression->kind == HLSL_EXPR_INDEX)
+            expression = expression->u.index.object;
+        else if (expression->kind == HLSL_EXPR_SWIZZLE)
+            expression = expression->u.swizzle.object;
+        else
+            return NULL;
+    }
+    return expression != NULL ? expression->u.symbol : NULL;
+} // HlslRegisterAssignmentRoot
+
+static int HlslPropagateCallBanksExpressionList(HlslModule *module,
+                                                HlslExpr *expression,
+                                                int *changed)
+{
+    for (; expression != NULL; expression = expression->next) {
+        if (!HlslPropagateCallBanksExpression(module, expression, changed))
+            return 0;
+    }
+    return 1;
+} // HlslPropagateCallBanksExpressionList
+
+static int HlslPropagateCallBanksExpression(HlslModule *module,
+                                            HlslExpr *expression,
+                                            int *changed)
+{
+    HlslExpr *argument;
+    HlslDecl *parameter;
+    HlslDecl *target;
+    HlslRegisterBank bank;
+
+    if (expression == NULL)
+        return 1;
+    switch (expression->kind) {
+    case HLSL_EXPR_UNARY:
+        return HlslPropagateCallBanksExpression(
+            module, expression->u.unary.operand, changed);
+    case HLSL_EXPR_BINARY:
+        if (expression->u.binary.op == HLSL_OP_ASSIGN &&
+            HlslExpressionUsesBank(module, expression->u.binary.right,
+                                   HLSL_REGISTER_B))
+        {
+            target = HlslRegisterAssignmentRoot(
+                expression->u.binary.left);
+            if (target != NULL &&
+                target->sourceBank == HLSL_REGISTER_NONE)
+            {
+                target->sourceBank = HLSL_REGISTER_B;
+                *changed = 1;
+            }
+        }
+        return HlslPropagateCallBanksExpression(
+                   module, expression->u.binary.left, changed) &&
+               HlslPropagateCallBanksExpression(
+                   module, expression->u.binary.right, changed);
+    case HLSL_EXPR_CONDITIONAL:
+        return HlslPropagateCallBanksExpression(
+                   module, expression->u.conditional.condition, changed) &&
+               HlslPropagateCallBanksExpression(
+                   module, expression->u.conditional.trueExpr, changed) &&
+               HlslPropagateCallBanksExpression(
+                   module, expression->u.conditional.falseExpr, changed);
+    case HLSL_EXPR_CALL:
+        argument = expression->u.call.arguments;
+        parameter = expression->u.call.function != NULL ?
+                    expression->u.call.function->parameters : NULL;
+        while (argument != NULL && parameter != NULL) {
+            bank = HLSL_REGISTER_NONE;
+            if (HlslExpressionUsesBank(module, argument, HLSL_REGISTER_I))
+                bank = HLSL_REGISTER_I;
+            else if (HlslExpressionUsesBank(module, argument,
+                                            HLSL_REGISTER_B))
+                bank = HLSL_REGISTER_B;
+            if (argument->type.arraySize > 0 &&
+                bank != HLSL_REGISTER_NONE &&
+                parameter->sourceBank == HLSL_REGISTER_NONE)
+            {
+                parameter->sourceBank = bank;
+                *changed = 1;
+            }
+            argument = argument->next;
+            parameter = parameter->next;
+        }
+        return HlslPropagateCallBanksExpressionList(
+            module, expression->u.call.arguments, changed);
+    case HLSL_EXPR_CONSTRUCT:
+        return HlslPropagateCallBanksExpressionList(
+            module, expression->u.construct.arguments, changed);
+    case HLSL_EXPR_CAST:
+        return HlslPropagateCallBanksExpression(
+            module, expression->u.cast.expression, changed);
+    case HLSL_EXPR_MEMBER:
+        return HlslPropagateCallBanksExpression(
+            module, expression->u.member.object, changed);
+    case HLSL_EXPR_INDEX:
+        return HlslPropagateCallBanksExpression(
+                   module, expression->u.index.object, changed) &&
+               HlslPropagateCallBanksExpression(
+                   module, expression->u.index.index, changed);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslPropagateCallBanksExpression(
+            module, expression->u.swizzle.object, changed);
+    default:
+        return 1;
+    }
+} // HlslPropagateCallBanksExpression
+
+static int HlslPropagateCallBanksStatements(HlslModule *module,
+                                            HlslStmt *statement,
+                                            int *changed)
+{
+    for (; statement != NULL; statement = statement->next) {
+        switch (statement->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (statement->u.declaration != NULL &&
+                statement->u.declaration->sourceBank ==
+                    HLSL_REGISTER_NONE &&
+                HlslExpressionUsesBank(module,
+                    statement->u.declaration->initializer,
+                    HLSL_REGISTER_B))
+            {
+                statement->u.declaration->sourceBank = HLSL_REGISTER_B;
+                *changed = 1;
+            }
+            if (statement->u.declaration != NULL &&
+                !HlslPropagateCallBanksExpression(module,
+                    statement->u.declaration->initializer, changed))
+                return 0;
+            break;
+        case HLSL_STMT_EXPRESSION:
+            if (!HlslPropagateCallBanksExpression(
+                    module, statement->u.expression, changed))
+                return 0;
+            break;
+        case HLSL_STMT_IF:
+            if (!HlslPropagateCallBanksExpression(
+                    module, statement->u.ifStmt.condition, changed) ||
+                !HlslPropagateCallBanksStatements(
+                    module, statement->u.ifStmt.trueBranch, changed) ||
+                !HlslPropagateCallBanksStatements(
+                    module, statement->u.ifStmt.falseBranch, changed))
+                return 0;
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslPropagateCallBanksExpression(
+                    module, statement->u.loop.condition, changed) ||
+                !HlslPropagateCallBanksStatements(
+                    module, statement->u.loop.body, changed))
+                return 0;
+            break;
+        case HLSL_STMT_FOR:
+            if (!HlslPropagateCallBanksStatements(
+                    module, statement->u.forStmt.init, changed) ||
+                !HlslPropagateCallBanksExpression(
+                    module, statement->u.forStmt.condition, changed) ||
+                !HlslPropagateCallBanksStatements(
+                    module, statement->u.forStmt.step, changed) ||
+                !HlslPropagateCallBanksStatements(
+                    module, statement->u.forStmt.body, changed))
+                return 0;
+            break;
+        case HLSL_STMT_BLOCK:
+            if (!HlslPropagateCallBanksStatements(
+                    module, statement->u.block, changed))
+                return 0;
+            break;
+        case HLSL_STMT_RETURN:
+            if (!HlslPropagateCallBanksExpression(
+                    module, statement->u.returnExpr, changed))
+                return 0;
+            break;
+        default:
+            break;
+        }
+    }
+    return 1;
+} // HlslPropagateCallBanksStatements
+
+static int HlslPropagateCallBanks(HlslModule *module)
+{
+    HlslFunction *function;
+    int changed;
+
+    do {
+        changed = 0;
+        for (function = module->functions; function != NULL;
+             function = function->next)
+        {
+            if (!HlslPropagateCallBanksStatements(module, function->body,
+                                                  &changed))
+                return 0;
+        }
+    } while (changed);
+    return 1;
+} // HlslPropagateCallBanks
+
+static HlslExpr *HlslRegisterSymbol(HlslModule *module, HlslDecl *decl)
+{
+    HlslExpr *expression;
+
+    expression = decl != NULL ?
+        HlslNewExpr(module, HLSL_EXPR_SYMBOL, decl->type) : NULL;
+    if (expression != NULL)
+        expression->u.symbol = decl;
+    return expression;
+} // HlslRegisterSymbol
+
+static HlslExpr *HlslRegisterBinary(HlslModule *module, HlslOperator op,
+                                    HlslType type, HlslExpr *left,
+                                    HlslExpr *right)
+{
+    HlslExpr *expression;
+
+    expression = left != NULL && right != NULL ?
+        HlslNewExpr(module, HLSL_EXPR_BINARY, type) : NULL;
+    if (expression != NULL) {
+        expression->u.binary.op = op;
+        expression->u.binary.left = left;
+        expression->u.binary.right = right;
+    }
+    return expression;
+} // HlslRegisterBinary
+
+static HlslStmt *HlslRegisterExpressionStatement(HlslModule *module,
+                                                 HlslExpr *expression)
+{
+    HlslStmt *statement;
+
+    statement = expression != NULL ?
+        HlslNewStmt(module, HLSL_STMT_EXPRESSION) : NULL;
+    if (statement != NULL)
+        statement->u.expression = expression;
+    return statement;
+} // HlslRegisterExpressionStatement
+
+static HlslStmt *HlslRegisterAssignment(HlslModule *module,
+                                        HlslExpr *target,
+                                        HlslExpr *value)
+{
+    HlslExpr *assignment;
+
+    assignment = target != NULL ?
+        HlslRegisterBinary(module, HLSL_OP_ASSIGN, target->type,
+                           target, value) : NULL;
+    return HlslRegisterExpressionStatement(module, assignment);
+} // HlslRegisterAssignment
+
+static HlslStmt *HlslBuildBooleanControl(HlslModule *module,
+                                         HlslExpr *condition,
+                                         HlslStmt *trueBranch,
+                                         HlslStmt *falseBranch)
+{
+    HlslStmt *outer;
+    HlslStmt *nested;
+
+    if (condition == NULL)
+        return NULL;
+    if (condition->kind == HLSL_EXPR_UNARY &&
+        condition->u.unary.op == HLSL_OP_LOGICAL_NOT)
+    {
+        return HlslBuildBooleanControl(module,
+            condition->u.unary.operand, falseBranch, trueBranch);
+    }
+    if (condition->kind == HLSL_EXPR_BINARY &&
+        condition->u.binary.op == HLSL_OP_LOGICAL_AND)
+    {
+        nested = HlslBuildBooleanControl(module,
+            condition->u.binary.right, trueBranch, falseBranch);
+        return nested != NULL ? HlslBuildBooleanControl(module,
+            condition->u.binary.left, nested, falseBranch) : NULL;
+    }
+    if (condition->kind == HLSL_EXPR_BINARY &&
+        condition->u.binary.op == HLSL_OP_LOGICAL_OR)
+    {
+        nested = HlslBuildBooleanControl(module,
+            condition->u.binary.right, trueBranch, falseBranch);
+        return nested != NULL ? HlslBuildBooleanControl(module,
+            condition->u.binary.left, trueBranch, nested) : NULL;
+    }
+    outer = HlslNewStmt(module, HLSL_STMT_IF);
+    if (outer != NULL) {
+        outer->loc = condition->loc;
+        outer->u.ifStmt.condition = condition;
+        outer->u.ifStmt.trueBranch = trueBranch;
+        outer->u.ifStmt.falseBranch = falseBranch;
+    }
+    return outer;
+} // HlslBuildBooleanControl
+
+static int HlslBooleanControlNeedsExpansion(const HlslExpr *condition)
+{
+    if (condition == NULL)
+        return 0;
+    if (condition->kind == HLSL_EXPR_BINARY)
+        return condition->u.binary.op == HLSL_OP_LOGICAL_AND ||
+               condition->u.binary.op == HLSL_OP_LOGICAL_OR;
+    if (condition->kind == HLSL_EXPR_UNARY &&
+        condition->u.unary.op == HLSL_OP_LOGICAL_NOT)
+    {
+        return HlslBooleanControlNeedsExpansion(
+            condition->u.unary.operand);
+    }
+    return 0;
+} // HlslBooleanControlNeedsExpansion
+
+static HlslDecl *HlslNewRegisterTemporary(HlslModule *module,
+                                          HlslFunction *function,
+                                          const HlslExpr *source,
+                                          HlslType type,
+                                          const char *baseName)
+{
+    HlslDecl *declaration;
+    const void *nameSpace;
+    void *identity;
+    const char *name;
+
+    if (module == NULL || function == NULL || source == NULL)
+        return NULL;
+    nameSpace = function->identity != NULL ? function->identity : function;
+    identity = HlslBindAlloc(module, 1);
+    name = identity != NULL ? HlslAllocateScopedSymbolName(
+        module, nameSpace, identity, baseName) : NULL;
+    declaration = name != NULL ?
+        HlslNewDecl(module, HLSL_STORAGE_NONE, type, name) : NULL;
+    if (declaration != NULL) {
+        declaration->identity = identity;
+        declaration->loc = source->loc;
+        HlslAppendDecl(&function->locals, declaration);
+    }
+    return declaration;
+} // HlslNewRegisterTemporary
+
+static int HlslRewriteRegisterExpression(HlslModule *module,
+    HlslFunction *function, HlslExpr **place, HlslStmt **prefix, int inLoop);
+
+static int HlslRewriteRegisterExpressionList(HlslModule *module,
+    HlslFunction *function, HlslExpr **place, HlslStmt **prefix, int inLoop)
+{
+    while (*place != NULL) {
+        if (!HlslRewriteRegisterExpression(module, function, place,
+                                            prefix, inLoop))
+        {
+            return 0;
+        }
+        place = &(*place)->next;
+    }
+    return 1;
+} // HlslRewriteRegisterExpressionList
+
+static int HlslExpressionHasIntegerIndex(const HlslModule *module,
+                                         const HlslExpr *expression)
+{
+    const HlslExpr *argument;
+
+    if (expression == NULL)
+        return 0;
+    switch (expression->kind) {
+    case HLSL_EXPR_INDEX:
+        return HlslExpressionUsesBank(module,
+                   expression->u.index.index, HLSL_REGISTER_I) ||
+               HlslExpressionHasIntegerIndex(
+                   module, expression->u.index.object) ||
+               HlslExpressionHasIntegerIndex(
+                   module, expression->u.index.index);
+    case HLSL_EXPR_MEMBER:
+        return HlslExpressionHasIntegerIndex(
+            module, expression->u.member.object);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslExpressionHasIntegerIndex(
+            module, expression->u.swizzle.object);
+    case HLSL_EXPR_UNARY:
+        return HlslExpressionHasIntegerIndex(
+            module, expression->u.unary.operand);
+    case HLSL_EXPR_BINARY:
+        return HlslExpressionHasIntegerIndex(
+                   module, expression->u.binary.left) ||
+               HlslExpressionHasIntegerIndex(
+                   module, expression->u.binary.right);
+    case HLSL_EXPR_CONDITIONAL:
+        return HlslExpressionHasIntegerIndex(
+                   module, expression->u.conditional.condition) ||
+               HlslExpressionHasIntegerIndex(
+                   module, expression->u.conditional.trueExpr) ||
+               HlslExpressionHasIntegerIndex(
+                   module, expression->u.conditional.falseExpr);
+    case HLSL_EXPR_CALL:
+        argument = expression->u.call.arguments;
+        break;
+    case HLSL_EXPR_CONSTRUCT:
+        argument = expression->u.construct.arguments;
+        break;
+    case HLSL_EXPR_CAST:
+        return HlslExpressionHasIntegerIndex(
+            module, expression->u.cast.expression);
+    default:
+        return 0;
+    }
+    for (; argument != NULL; argument = argument->next) {
+        if (HlslExpressionHasIntegerIndex(module, argument))
+            return 1;
+    }
+    return 0;
+} // HlslExpressionHasIntegerIndex
+
+static int HlslRewriteIntegerIndex(HlslModule *module,
+                                   HlslFunction *function,
+                                   HlslExpr **place, HlslStmt **prefix,
+                                   int inLoop)
+{
+    HlslExpr *expression;
+
+    (void)function;
+    (void)prefix;
+    (void)inLoop;
+    expression = *place;
+    if (expression == NULL || expression->kind != HLSL_EXPR_INDEX ||
+        !HlslExpressionUsesBank(module, expression->u.index.index,
+                                HLSL_REGISTER_I))
+    {
+        return 1;
+    }
+    return HlslUnsupportedRegisterUse(module, &expression->loc,
+                                      "i-register indexed data path");
+} // HlslRewriteIntegerIndex
+
+static int HlslRewriteBooleanSelection(HlslModule *module,
+                                       HlslFunction *function,
+                                       HlslExpr **place,
+                                       HlslStmt **prefix, int inLoop)
+{
+    HlslExpr *expression;
+    HlslDecl *selected;
+    HlslStmt *trueAssignment;
+    HlslStmt *falseAssignment;
+    HlslStmt *control;
+
+    expression = *place;
+    if (expression == NULL || expression->kind != HLSL_EXPR_CONDITIONAL ||
+        !HlslExpressionUsesBank(module,
+            expression->u.conditional.condition, HLSL_REGISTER_B))
+    {
+        return 1;
+    }
+    if (inLoop || expression->type.arraySize != 0 ||
+        expression->type.base == HLSL_BASE_BOOL ||
+        expression->type.base == HLSL_BASE_STRUCT ||
+        HlslBindingTypeIsSampler(&expression->type))
+    {
+        return HlslUnsupportedRegisterUse(module, &expression->loc,
+                                          "b-register conditional data path");
+    }
+    selected = HlslNewRegisterTemporary(module, function, expression,
+                                        expression->type, "bank_select");
+    trueAssignment = HlslRegisterAssignment(module,
+        HlslRegisterSymbol(module, selected),
+        expression->u.conditional.trueExpr);
+    falseAssignment = HlslRegisterAssignment(module,
+        HlslRegisterSymbol(module, selected),
+        expression->u.conditional.falseExpr);
+    control = selected != NULL ? HlslBuildBooleanControl(module,
+        expression->u.conditional.condition,
+        trueAssignment, falseAssignment) : NULL;
+    if (trueAssignment == NULL || falseAssignment == NULL || control == NULL)
+        return 0;
+    HlslAppendStmt(prefix, control);
+    *place = HlslRegisterSymbol(module, selected);
+    if (*place == NULL)
+        return 0;
+    (*place)->loc = expression->loc;
+    (*place)->next = expression->next;
+    expression->next = NULL;
+    return 1;
+} // HlslRewriteBooleanSelection
+
+static int HlslRewriteRegisterExpression(HlslModule *module,
+    HlslFunction *function, HlslExpr **place, HlslStmt **prefix, int inLoop)
+{
+    HlslExpr *expression;
+    HlslExpr *argument;
+    HlslDecl *parameter;
+
+    if (place == NULL || *place == NULL)
+        return 1;
+    expression = *place;
+    if (expression->kind == HLSL_EXPR_BINARY &&
+        expression->u.binary.op == HLSL_OP_ASSIGN &&
+        HlslExpressionHasIntegerIndex(module,
+                                      expression->u.binary.left))
+    {
+        return HlslUnsupportedRegisterUse(
+            module, &expression->loc, "i-register indexed lvalue");
+    }
+    if (expression->kind == HLSL_EXPR_UNARY &&
+        expression->u.unary.op >= HLSL_OP_PRE_INCREMENT &&
+        expression->u.unary.op <= HLSL_OP_POST_DECREMENT &&
+        HlslExpressionHasIntegerIndex(module,
+                                      expression->u.unary.operand))
+    {
+        return HlslUnsupportedRegisterUse(
+            module, &expression->loc, "i-register indexed lvalue");
+    }
+    switch (expression->kind) {
+    case HLSL_EXPR_UNARY:
+        if (!HlslRewriteRegisterExpression(module, function,
+                &expression->u.unary.operand, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_BINARY:
+        if (!HlslRewriteRegisterExpression(module, function,
+                &expression->u.binary.left, prefix, inLoop) ||
+            !HlslRewriteRegisterExpression(module, function,
+                &expression->u.binary.right, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_CONDITIONAL:
+        if (!HlslRewriteRegisterExpression(module, function,
+                &expression->u.conditional.condition, prefix, inLoop) ||
+            !HlslRewriteRegisterExpression(module, function,
+                &expression->u.conditional.trueExpr, prefix, inLoop) ||
+            !HlslRewriteRegisterExpression(module, function,
+                &expression->u.conditional.falseExpr, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_CALL:
+        argument = expression->u.call.arguments;
+        parameter = expression->u.call.function != NULL ?
+                    expression->u.call.function->parameters : NULL;
+        while (argument != NULL && parameter != NULL) {
+            if (parameter->parameterQualifier != HLSL_PARAMETER_IN &&
+                HlslExpressionHasIntegerIndex(module, argument))
+            {
+                return HlslUnsupportedRegisterUse(
+                    module, &argument->loc, "i-register indexed lvalue");
+            }
+            argument = argument->next;
+            parameter = parameter->next;
+        }
+        if (!HlslRewriteRegisterExpressionList(module, function,
+                &expression->u.call.arguments, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_CONSTRUCT:
+        if (!HlslRewriteRegisterExpressionList(module, function,
+                &expression->u.construct.arguments, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_CAST:
+        if (!HlslRewriteRegisterExpression(module, function,
+                &expression->u.cast.expression, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_MEMBER:
+        if (!HlslRewriteRegisterExpression(module, function,
+                &expression->u.member.object, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_INDEX:
+        if (!HlslRewriteRegisterExpression(module, function,
+                &expression->u.index.object, prefix, inLoop) ||
+            !HlslRewriteRegisterExpression(module, function,
+                &expression->u.index.index, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    case HLSL_EXPR_SWIZZLE:
+        if (!HlslRewriteRegisterExpression(module, function,
+                &expression->u.swizzle.object, prefix, inLoop))
+        {
+            return 0;
+        }
+        break;
+    default:
+        break;
+    }
+    if (!HlslRewriteIntegerIndex(module, function, place, prefix, inLoop))
+        return 0;
+    return HlslRewriteBooleanSelection(module, function, place,
+                                       prefix, inLoop);
+} // HlslRewriteRegisterExpression
+
+static int HlslRewriteRegisterStatements(HlslModule *module,
+                                         HlslFunction *function,
+                                         HlslStmt **statements,
+                                         int inLoop)
+{
+    HlslStmt *source;
+    HlslStmt *next;
+    HlslStmt *prefix;
+    HlslStmt *result;
+    HlslStmt *rewritten;
+
+    if (statements == NULL)
+        return 1;
+    source = *statements;
+    result = NULL;
+    while (source != NULL) {
+        next = source->next;
+        source->next = NULL;
+        prefix = NULL;
+        rewritten = source;
+        switch (source->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (source->u.declaration != NULL &&
+                !HlslRewriteRegisterExpression(module, function,
+                    &source->u.declaration->initializer, &prefix, inLoop))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_EXPRESSION:
+            if (!HlslRewriteRegisterExpression(module, function,
+                    &source->u.expression, &prefix, inLoop))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_IF:
+            if (!HlslRewriteRegisterStatements(module, function,
+                    &source->u.ifStmt.trueBranch, inLoop) ||
+                !HlslRewriteRegisterStatements(module, function,
+                    &source->u.ifStmt.falseBranch, inLoop) ||
+                !HlslRewriteRegisterExpression(module, function,
+                    &source->u.ifStmt.condition, &prefix, inLoop))
+            {
+                return 0;
+            }
+            if (HlslExpressionUsesBank(module,
+                    source->u.ifStmt.condition, HLSL_REGISTER_B) &&
+                HlslBooleanControlNeedsExpansion(
+                    source->u.ifStmt.condition))
+            {
+                rewritten = HlslBuildBooleanControl(module,
+                    source->u.ifStmt.condition,
+                    source->u.ifStmt.trueBranch,
+                    source->u.ifStmt.falseBranch);
+                if (rewritten == NULL)
+                    return 0;
+            }
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslRewriteRegisterStatements(module, function,
+                    &source->u.loop.body, 1) ||
+                !HlslRewriteRegisterExpression(module, function,
+                    &source->u.loop.condition, &prefix, 1))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_FOR:
+            if (!HlslRewriteRegisterStatements(module, function,
+                    &source->u.forStmt.init, 1) ||
+                !HlslRewriteRegisterExpression(module, function,
+                    &source->u.forStmt.condition, &prefix, 1) ||
+                !HlslRewriteRegisterStatements(module, function,
+                    &source->u.forStmt.step, 1) ||
+                !HlslRewriteRegisterStatements(module, function,
+                    &source->u.forStmt.body, 1))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_BLOCK:
+            if (!HlslRewriteRegisterStatements(module, function,
+                                                &source->u.block, inLoop))
+                return 0;
+            break;
+        case HLSL_STMT_RETURN:
+            if (!HlslRewriteRegisterExpression(module, function,
+                    &source->u.returnExpr, &prefix, inLoop))
+            {
+                return 0;
+            }
+            break;
+        default:
+            break;
+        }
+        HlslAppendStmt(&result, prefix);
+        HlslAppendStmt(&result, rewritten);
+        source = next;
+    }
+    *statements = result;
+    return 1;
+} // HlslRewriteRegisterStatements
+
+static int HlslValidateRegisterExpression(HlslModule *module,
+    const HlslExpr *expression, int controlFlags)
+{
+    const HlslExpr *argument;
+    HlslRegisterBank argumentBank;
+    int usesInteger;
+    int usesBoolean;
+
+    if (expression == NULL)
+        return 1;
+    usesInteger = HlslExpressionUsesBank(module, expression,
+                                         HLSL_REGISTER_I);
+    usesBoolean = HlslExpressionUsesBank(module, expression,
+                                         HLSL_REGISTER_B);
+    switch (expression->kind) {
+    case HLSL_EXPR_UNARY:
+        if (!HlslValidateRegisterExpression(module,
+                expression->u.unary.operand, controlFlags))
+        {
+            return 0;
+        }
+        if (usesBoolean &&
+            expression->u.unary.op == HLSL_OP_LOGICAL_NOT &&
+            (controlFlags & 2) != 0)
+        {
+            return 1;
+        }
+        if (usesInteger || usesBoolean)
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                usesInteger ? "i-register arithmetic data path" :
+                              "b-register data path");
+        return 1;
+    case HLSL_EXPR_BINARY:
+        if (!HlslValidateRegisterExpression(module,
+                expression->u.binary.left, controlFlags) ||
+            !HlslValidateRegisterExpression(module,
+                expression->u.binary.right, controlFlags))
+        {
+            return 0;
+        }
+        if (expression->u.binary.op == HLSL_OP_ASSIGN &&
+            HlslExpressionValueUsesBank(module,
+                expression->u.binary.right, HLSL_REGISTER_I) &&
+            expression->loc.line > 0)
+        {
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                                              "i-register assignment data path");
+        }
+        if ((expression->u.binary.op == HLSL_OP_LOGICAL_AND ||
+             expression->u.binary.op == HLSL_OP_LOGICAL_OR) && usesBoolean)
+        {
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                                              "b-register logical data path");
+        }
+        if (expression->u.binary.op != HLSL_OP_ASSIGN && usesInteger &&
+            !((controlFlags & 1) != 0 &&
+              expression->u.binary.op >= HLSL_OP_EQUAL &&
+              expression->u.binary.op <= HLSL_OP_GREATER_EQUAL))
+        {
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                expression->u.binary.op >= HLSL_OP_BITWISE_OR &&
+                expression->u.binary.op <= HLSL_OP_SHIFT_RIGHT ?
+                "i-register bitwise data path" :
+                "i-register arithmetic data path");
+        }
+        return 1;
+    case HLSL_EXPR_CONDITIONAL:
+        if (!HlslValidateRegisterExpression(module,
+                expression->u.conditional.condition, controlFlags) ||
+            !HlslValidateRegisterExpression(module,
+                expression->u.conditional.trueExpr, controlFlags) ||
+            !HlslValidateRegisterExpression(module,
+                expression->u.conditional.falseExpr, controlFlags))
+        {
+            return 0;
+        }
+        if (usesInteger || usesBoolean)
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                usesInteger ? "i-register conditional data path" :
+                              "b-register conditional data path");
+        return 1;
+    case HLSL_EXPR_CALL:
+        argument = expression->u.call.arguments;
+        for (; argument != NULL; argument = argument->next) {
+            if (!HlslValidateRegisterExpression(module, argument,
+                                                 controlFlags))
+                return 0;
+            if (expression->loc.line > 0 &&
+                !HlslHomogeneousBank(&argument->type, &argumentBank) &&
+                (HlslReferenceIdentityUsesBank(
+                     module, argument, HLSL_REGISTER_I) ||
+                 HlslReferenceIdentityUsesBank(
+                     module, argument, HLSL_REGISTER_B)))
+            {
+                return HlslUnsupportedRegisterUse(module, &expression->loc,
+                    "mixed constant-bank helper argument");
+            }
+            if (expression->loc.line > 0 && argument->type.arraySize == 0 &&
+                HlslExpressionUsesBank(module, argument, HLSL_REGISTER_I))
+            {
+                return HlslUnsupportedRegisterUse(
+                    module, &expression->loc, "i-register helper argument");
+            }
+            if (expression->loc.line > 0 && argument->type.arraySize == 0 &&
+                HlslExpressionUsesBank(module, argument, HLSL_REGISTER_B))
+            {
+                return HlslUnsupportedRegisterUse(
+                    module, &expression->loc, "b-register helper argument");
+            }
+        }
+        return 1;
+    case HLSL_EXPR_CONSTRUCT:
+        argument = expression->u.construct.arguments;
+        for (; argument != NULL; argument = argument->next) {
+            if (!HlslValidateRegisterExpression(module, argument,
+                                                 controlFlags))
+                return 0;
+        }
+        if (expression->loc.line > 0 && (usesInteger || usesBoolean))
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                usesInteger ? "i-register construction data path" :
+                              "b-register construction data path");
+        return 1;
+    case HLSL_EXPR_CAST:
+        if (!HlslValidateRegisterExpression(module,
+                expression->u.cast.expression, controlFlags))
+        {
+            return 0;
+        }
+        if (usesInteger || usesBoolean)
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                usesInteger ? "i-register cast data path" :
+                              "b-register cast data path");
+        return 1;
+    case HLSL_EXPR_INDEX:
+        if (!HlslValidateRegisterExpression(module,
+                expression->u.index.object, controlFlags) ||
+            !HlslValidateRegisterExpression(module,
+                expression->u.index.index, controlFlags))
+        {
+            return 0;
+        }
+        if (HlslExpressionUsesBank(module, expression->u.index.index,
+                                   HLSL_REGISTER_I))
+        {
+            return HlslUnsupportedRegisterUse(module, &expression->loc,
+                                              "i-register indexed data path");
+        }
+        return 1;
+    case HLSL_EXPR_MEMBER:
+        return HlslValidateRegisterExpression(module,
+            expression->u.member.object, controlFlags);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslValidateRegisterExpression(module,
+            expression->u.swizzle.object, controlFlags);
+    default:
+        return 1;
+    }
+} // HlslValidateRegisterExpression
+
+static int HlslValidateRegisterStatements(HlslModule *module,
+                                          const HlslStmt *statement,
+                                          int inLoop)
+{
+    for (; statement != NULL; statement = statement->next) {
+        switch (statement->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (statement->u.declaration != NULL &&
+                !HlslValidateRegisterExpression(module,
+                    statement->u.declaration->initializer, 0))
+                return 0;
+            break;
+        case HLSL_STMT_EXPRESSION:
+            if (!HlslValidateRegisterExpression(module,
+                                                 statement->u.expression, 0))
+                return 0;
+            break;
+        case HLSL_STMT_IF:
+            if (!HlslValidateRegisterExpression(module,
+                    statement->u.ifStmt.condition, 2) ||
+                !HlslValidateRegisterStatements(module,
+                    statement->u.ifStmt.trueBranch, inLoop) ||
+                !HlslValidateRegisterStatements(module,
+                    statement->u.ifStmt.falseBranch, inLoop))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslValidateRegisterExpression(module,
+                    statement->u.loop.condition, 3) ||
+                !HlslValidateRegisterStatements(module,
+                    statement->u.loop.body, 1))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_FOR:
+            if (!HlslValidateRegisterStatements(module,
+                    statement->u.forStmt.init, 1) ||
+                !HlslValidateRegisterExpression(module,
+                    statement->u.forStmt.condition, 3) ||
+                !HlslValidateRegisterStatements(module,
+                    statement->u.forStmt.step, 1) ||
+                !HlslValidateRegisterStatements(module,
+                    statement->u.forStmt.body, 1))
+            {
+                return 0;
+            }
+            break;
+        case HLSL_STMT_BLOCK:
+            if (!HlslValidateRegisterStatements(module,
+                                                 statement->u.block, inLoop))
+                return 0;
+            break;
+        case HLSL_STMT_RETURN:
+            if (HlslExpressionValueUsesBank(module,
+                    statement->u.returnExpr, HLSL_REGISTER_I))
+            {
+                return HlslUnsupportedRegisterUse(module,
+                    &statement->u.returnExpr->loc,
+                    "i-register helper return");
+            }
+            if (HlslExpressionValueUsesBank(module,
+                    statement->u.returnExpr, HLSL_REGISTER_B))
+            {
+                return HlslUnsupportedRegisterUse(module,
+                    &statement->u.returnExpr->loc,
+                    "b-register helper return");
+            }
+            if (!HlslValidateRegisterExpression(module,
+                    statement->u.returnExpr, 0))
+                return 0;
+            break;
+        default:
+            break;
+        }
+    }
+    return 1;
+} // HlslValidateRegisterStatements
+
+static int HlslLegalizeRegisterUses(HlslModule *module)
+{
+    HlslFunction *function;
+
+    if (!HlslPropagateCallBanks(module))
+        return 0;
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (!HlslRewriteRegisterStatements(module, function,
+                                            &function->body, 0) ||
+            !HlslValidateRegisterStatements(module, function->body, 0))
+        {
+            return 0;
+        }
+    }
+    return 1;
+} // HlslLegalizeRegisterUses
 
 int HlslAllocateBindings(HlslModule *module,
                          const HlslProfileDesc *profile)
@@ -1975,7 +3112,7 @@ int HlslAllocateBindings(HlslModule *module,
                                    "mixed HLSL binding value");
         }
     }
-    return 1;
+    return HlslLegalizeRegisterUses(module);
 } // HlslAllocateBindings
 
 static HlslExpr *HlslWrapperSymbol(HlslModule *module, HlslDecl *decl)

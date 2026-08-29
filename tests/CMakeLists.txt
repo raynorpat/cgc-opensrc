@@ -2246,6 +2246,48 @@ add_hlsl_failure(hlslv_diagnostic_position_wrong_width hlslv
     tests/hlsl/diagnostics/vp_position_wrong_width.cg 6403 2 POSITION)
 add_hlsl_failure(hlslv_diagnostic_position_wrong_base hlslv
     tests/hlsl/diagnostics/vp_position_wrong_base.cg 6403 2 POSITION)
+add_hlsl_failure(hlslv_diagnostic_int_bank_arithmetic hlslv
+    tests/hlsl/diagnostics/vp_int_bank_arithmetic.cg 6402 9
+    "i-register arithmetic data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_cast hlslv
+    tests/hlsl/diagnostics/vp_int_bank_cast.cg 6402 9
+    "i-register cast data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_helper hlslv
+    tests/hlsl/diagnostics/vp_int_bank_helper.cg 6402 14
+    "i-register helper argument")
+add_hlsl_failure(hlslv_diagnostic_int_bank_array_helper_use hlslv
+    tests/hlsl/diagnostics/vp_int_bank_array_helper_use.cg 6402 7
+    "i-register cast data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_bitwise hlslv
+    tests/hlsl/diagnostics/vp_int_bank_bitwise.cg 6402 9
+    "i-register bitwise data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_copy hlslv
+    tests/hlsl/diagnostics/vp_int_bank_copy.cg 6402 9
+    "i-register assignment data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_index_write hlslv
+    tests/hlsl/diagnostics/vp_int_bank_index_write.cg 6402 12
+    "i-register indexed lvalue")
+add_hlsl_failure(hlslv_diagnostic_int_bank_index_read hlslv
+    tests/hlsl/diagnostics/vp_int_bank_index_read.cg 6402 12
+    "i-register indexed data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_helper_return hlslv
+    tests/hlsl/diagnostics/vp_int_bank_helper_return.cg 6402 5
+    "i-register helper return")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_helper hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_helper.cg 6402 14
+    "b-register helper argument")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_logical_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_logical_value.cg 6402 10
+    "b-register logical data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_conditional_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_conditional_value.cg 6402 10
+    "b-register conditional data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_helper_return hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_helper_return.cg 6402 5
+    "b-register helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_argument hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_argument.cg 6402 18
+    "mixed constant-bank helper argument")
 
 add_hlsl_failure(hlslv_texture_implicit_stage hlslv
     tests/hlsl/diagnostics/vp_implicit_texture.cg 6409 5 tex2D)

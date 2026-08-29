@@ -26,7 +26,9 @@ VertexOut main(float4 position : POSITION,
                uniform NestedBool single : B10 = { { true } })
 {
     VertexOut output;
+    bool copiedEnabled;
     output.position = position;
+    copiedEnabled = config.enabled;
     if (flags.x)
         output.position.x += 1.0;
     if (flags.y)
@@ -46,5 +48,14 @@ VertexOut main(float4 position : POSITION,
             output.position.w += 1.0;
     if (single.inner.enabled)
         output.position.x += 1.0;
+    if (flags.x && config.enabled)
+        output.position.y += 0.25;
+    output.position.z += flags.z ? 0.5 : 0.75;
+    if (!flags.y || single.inner.enabled)
+        output.position.w += 0.125;
+    if (!(flags.x && config.enabled))
+        output.position.x += 0.03125;
+    if (copiedEnabled && flags.x)
+        output.position.y += copiedEnabled ? 0.0625 : 0.0;
     return output;
 }

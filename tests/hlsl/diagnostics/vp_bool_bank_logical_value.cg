@@ -1,0 +1,14 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION, uniform bool2 flags)
+{
+    VertexOut output;
+    bool selected;
+    output.position = position;
+    selected = flags.x && flags.y;
+    if (selected)
+        output.position.x += 1.0;
+    return output;
+}

@@ -50,11 +50,17 @@ struct cg_VertexOut_1
 cg_VertexOut cg_entry(float4 position)
 {
     cg_VertexOut cg_output = (cg_VertexOut) 0;
+    bool copiedEnabled;
     bool3 flags;
     bool2 masks[2];
     cg_BoolConfig config;
     cg_NestedBool single;
+    float bank_select;
+    float bank_select_1;
     cg_output.position = position;
+    config.gates = bool2(cg_config[0], cg_config[1]);
+    config.enabled = cg_config[2];
+    copiedEnabled = config.enabled;
     flags = bool3(cg_flags[0], cg_flags[1], cg_flags[2]);
     if (flags.x)
     {
@@ -86,8 +92,6 @@ cg_VertexOut cg_entry(float4 position)
     {
         cg_output.position.z = cg_output.position.z + 1.0;
     }
-    config.gates = bool2(cg_config[0], cg_config[1]);
-    config.enabled = cg_config[2];
     if (config.gates.x)
     {
         if (config.enabled)
@@ -99,6 +103,62 @@ cg_VertexOut cg_entry(float4 position)
     if (single.inner.enabled)
     {
         cg_output.position.x = cg_output.position.x + 1.0;
+    }
+    if (flags.x)
+    {
+        if (config.enabled)
+        {
+            cg_output.position.y = cg_output.position.y + 0.25;
+        }
+    }
+    if (flags.z)
+    {
+        bank_select = 0.5;
+    }
+    else
+    {
+        bank_select = 0.75;
+    }
+    cg_output.position.z = cg_output.position.z + (float) bank_select;
+    if (flags.y)
+    {
+        if (single.inner.enabled)
+        {
+            cg_output.position.w = cg_output.position.w + 0.125;
+        }
+    }
+    else
+    {
+        cg_output.position.w = cg_output.position.w + 0.125;
+    }
+    if (flags.x)
+    {
+        if (config.enabled)
+        {
+        }
+        else
+        {
+            cg_output.position.x = cg_output.position.x + 0.03125;
+        }
+    }
+    else
+    {
+        cg_output.position.x = cg_output.position.x + 0.03125;
+    }
+    if (copiedEnabled)
+    {
+        if (flags.x)
+        {
+            if (copiedEnabled)
+            {
+                bank_select_1 = 0.0625;
+            }
+            else
+            {
+                bank_select_1 = 0.0;
+            }
+            cg_output.position.y = cg_output.position.y + (float) bank_select_1;
+        }
     }
     return cg_output;
 }
