@@ -1,0 +1,84 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_Item
+{
+    float4 value;
+};
+
+struct cg_Batch
+{
+    cg_Item items[2];
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+void cg_transfer(out cg_Batch destination, inout cg_Batch current)
+{
+    destination.items[0].value = current.items[0].value;
+    destination.items[1].value = current.items[1].value;
+    current.items[0].value = current.items[0].value * (float) 2.0;
+    current.items[1].value = current.items[1].value * (float) 3.0;
+}
+
+int cg_next_index(inout int index)
+{
+    int result;
+    result = index;
+    index = index + (int) 1;
+    return result;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    cg_Batch generated[2];
+    cg_Batch current[2];
+    int outputIndex;
+    int currentIndex;
+    int temp1;
+    int temp2;
+    int temp3;
+    cg_Batch temp4;
+    cg_Batch temp5;
+    current[0].items[0].value = position;
+    current[0].items[1].value = position + 1.0;
+    outputIndex = 0;
+    currentIndex = 0;
+    temp1 = cg_next_index(outputIndex);
+    temp3 = temp1;
+    temp2 = cg_next_index(currentIndex);
+    temp5.items[0].value = current[temp2].items[0].value;
+    temp5.items[1].value = current[temp2].items[1].value;
+    cg_transfer(temp4, temp5);
+    generated[temp3].items[0].value = temp4.items[0].value;
+    generated[temp3].items[1].value = temp4.items[1].value;
+    current[temp2].items[0].value = temp5.items[0].value;
+    current[temp2].items[1].value = temp5.items[1].value;
+    cg_output.position = generated[0].items[0].value + current[0].items[1].value;
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

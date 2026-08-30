@@ -1,0 +1,23 @@
+uniform bool b0;  uniform bool b1;
+uniform bool b2;  uniform bool b3;
+uniform bool b4;  uniform bool b5;
+uniform bool b6;  uniform bool b7;
+uniform bool b8;  uniform bool b9;
+uniform bool b10; uniform bool b11;
+uniform bool b12; uniform bool b13;
+uniform bool b14; uniform bool b15;
+uniform bool b16;
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    if (b0) position.x += 1.0; if (b1) position.x += 1.0;
+    if (b2) position.x += 1.0; if (b3) position.x += 1.0;
+    if (b4) position.x += 1.0; if (b5) position.x += 1.0;
+    if (b6) position.x += 1.0; if (b7) position.x += 1.0;
+    if (b8) position.x += 1.0; if (b9) position.x += 1.0;
+    if (b10) position.x += 1.0; if (b11) position.x += 1.0;
+    if (b12) position.x += 1.0; if (b13) position.x += 1.0;
+    if (b14) position.x += 1.0; if (b15) position.x += 1.0;
+    if (b16) position.x += 1.0;
+    return position;
+}

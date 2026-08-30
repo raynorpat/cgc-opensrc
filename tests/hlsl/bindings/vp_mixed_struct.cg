@@ -1,0 +1,18 @@
+struct Mixed {
+    float scalar;
+    int integer;
+    bool enabled;
+    float4x4 matrix;
+    float values[2];
+};
+
+uniform Mixed mixed;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    return output;
+}

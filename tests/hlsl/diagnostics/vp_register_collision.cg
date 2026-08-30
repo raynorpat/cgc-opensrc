@@ -1,0 +1,11 @@
+uniform float4 first : C0;
+uniform float4 second : C0;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    return output;
+}

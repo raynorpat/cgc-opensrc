@@ -86,6 +86,16 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_AGGREGATE_DEFAULT_BINDINGS 9
 #define CAPS_PRESERVE_ENTRY_RETURNS    10
 #define CAPS_PRESERVE_NATIVE_AGGREGATE_TEMPS 11
+#define CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS 12
+#define CAPS_ENTRY_INOUT_PARAMETERS   13
+#define CAPS_PRESERVE_TERMINAL_ENTRY_RETURN 14
+#define CAPS_DEFER_RECURSION_DIAGNOSTICS 15
+#define CAPS_CONDITIONAL_SIDE_EFFECTS 16
+#define CAPS_TYPED_INC_DEC_EXPRESSIONS 17
+#define CAPS_PRESERVE_COMMA_EXPRESSIONS 18
+#define CAPS_PRESERVE_INLINE_HELPERS   19
+#define CAPS_AGGREGATE_DEFAULT_INITIALIZERS 20
+#define CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS 21
 
 struct slProfile_Rec {
     slProfile *next;
@@ -159,6 +169,8 @@ struct slHAL_Rec {
     int (*CheckDefinition)(SourceLoc *loc, int name, const Type *fType);
     int (*CheckStatement)(SourceLoc *loc, stmt *fstmt);
     int (*CheckInternalFunction)(Symbol *fSymb, int *group);
+    int (*HandleParameterTypeError)(SourceLoc *loc, const Symbol *fSymb,
+                                    int paramno);
     int (*IsNumericBase)(int fBase);
     int (*IsIntegralBase)(int fBase);
     int (*IsTexobjBase)(int fBase);

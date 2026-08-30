@@ -1,0 +1,27 @@
+struct FragmentOut {
+    float4 color : COLOR0;
+};
+
+float4 shade(float4 value)
+{
+    bool scalar;
+    bool2 pair;
+    bool3 triple;
+    bool4 quad;
+    scalar = value.x < 0.0;
+    pair = value.xy < float2(0.0, 0.0);
+    triple = value.xyz < float3(0.0, 0.0, 0.0);
+    quad = value < float4(0.0, 0.0, 0.0, 0.0);
+    discard scalar;
+    discard pair;
+    discard triple;
+    discard quad;
+    return value;
+}
+
+FragmentOut main(float4 value : TEXCOORD0)
+{
+    FragmentOut output;
+    output.color = shade(value);
+    return output;
+}

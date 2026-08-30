@@ -1,0 +1,31 @@
+float4 main(float4 position : POSITION,
+            uniform int4 i0, uniform int4 i1,
+            uniform int4 i2, uniform int4 i3,
+            uniform int4 i4, uniform int4 i5,
+            uniform int4 i6, uniform int4 i7,
+            uniform int4 i8, uniform int4 i9,
+            uniform int4 i10, uniform int4 i11,
+            uniform int4 i12, uniform int4 i13,
+            uniform int4 i14, uniform int4 i15,
+            uniform int4 i16) : POSITION
+{
+    int j;
+    for (j = 0; j < i0.x; j++) position.x += 1.0;
+    for (j = 0; j < i1.x; j++) position.x += 1.0;
+    for (j = 0; j < i2.x; j++) position.x += 1.0;
+    for (j = 0; j < i3.x; j++) position.x += 1.0;
+    for (j = 0; j < i4.x; j++) position.x += 1.0;
+    for (j = 0; j < i5.x; j++) position.x += 1.0;
+    for (j = 0; j < i6.x; j++) position.x += 1.0;
+    for (j = 0; j < i7.x; j++) position.x += 1.0;
+    for (j = 0; j < i8.x; j++) position.x += 1.0;
+    for (j = 0; j < i9.x; j++) position.x += 1.0;
+    for (j = 0; j < i10.x; j++) position.x += 1.0;
+    for (j = 0; j < i11.x; j++) position.x += 1.0;
+    for (j = 0; j < i12.x; j++) position.x += 1.0;
+    for (j = 0; j < i13.x; j++) position.x += 1.0;
+    for (j = 0; j < i14.x; j++) position.x += 1.0;
+    for (j = 0; j < i15.x; j++) position.x += 1.0;
+    for (j = 0; j < i16.x; j++) position.x += 1.0;
+    return position;
+}

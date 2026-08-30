@@ -1,0 +1,23 @@
+uniform bool enabled;
+
+float record(inout float trace, float digit)
+{
+    trace = trace * 10.0 + digit;
+    return trace;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    float trace;
+    int index;
+    output.position = position;
+    trace = 0.0;
+    for (index = 0; index < 2; index++)
+        output.position.x += enabled ? record(trace, 1.0) :
+                                       record(trace, 2.0);
+    output.position.y = trace;
+    return output;
+}

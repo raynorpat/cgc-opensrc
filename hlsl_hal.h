@@ -48,19 +48,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define __HLSL_HAL_H 1
 
 #include "hal.h"
-
-#ifdef __HLSL_IR_H
-#error hlsl_hal.h must be included before hlsl_ir.h; include hal.h
-#endif
-
-// Stage enum duplicated from hlsl_ir.h for the registration-only
-// skeleton.  Task 2 unifies them.
-#ifndef __HLSL_IR_H
-typedef enum HlslStage_Enum {
-    HLSL_STAGE_VERTEX,
-    HLSL_STAGE_PIXEL
-} HlslStage;
-#endif
+#include "hlsl_ir.h"
 
 #define VENDOR_STRING_HLSL         "Microsoft"
 #define VERSION_STRING_HLSL        "DirectX 9.0c Shader Model 3"
@@ -84,7 +72,31 @@ typedef struct HlslLimits_Rec {
     int colorOutputs;
 } HlslLimits;
 
-typedef struct HlslProfileDesc_Rec {
+typedef enum HlslInterface_Enum {
+    HLSL_INTERFACE_VARYING,
+    HLSL_INTERFACE_POSITION,
+    HLSL_INTERFACE_POINT_SIZE,
+    HLSL_INTERFACE_PIXEL_POSITION,
+    HLSL_INTERFACE_FACE,
+    HLSL_INTERFACE_COLOR,
+    HLSL_INTERFACE_DEPTH
+} HlslInterface;
+
+typedef struct HlslSemanticDesc_Rec {
+    const char *root;
+    int firstIndex;
+    int count;
+    int properties;
+    int width;
+    HlslInterface interfaceKind;
+} HlslSemanticDesc;
+
+typedef struct HlslSemanticAlias_Rec {
+    const char *source;
+    const char *target;
+} HlslSemanticAlias;
+
+struct HlslProfileDesc_Rec {
     HlslStage stage;
     const char *name;
     const char *target;
@@ -93,12 +105,20 @@ typedef struct HlslProfileDesc_Rec {
     int outputCid;
     ConnectorDescriptor *connectors;
     int numConnectors;
+    const HlslSemanticDesc *inputSemantics;
+    int numInputSemantics;
+    const HlslSemanticAlias *inputAliases;
+    int numInputAliases;
+    const HlslSemanticDesc *outputSemantics;
+    int numOutputSemantics;
+    const HlslSemanticAlias *outputAliases;
+    int numOutputAliases;
     ConnectorRegisters *inputRegs;
     int numInputRegs;
     ConnectorRegisters *outputRegs;
     int numOutputRegs;
     const HlslLimits *limits;
-} HlslProfileDesc;
+};
 
 // Stage descriptors:
 extern const HlslProfileDesc HlslProfile_hlslv;
@@ -108,5 +128,31 @@ extern const HlslProfileDesc HlslProfile_hlslf;
 int RegisterProfiles_hlsl(void);
 int InitHAL_hlslv(slHAL *hal);
 int InitHAL_hlslf(slHAL *hal);
+
+// Interface semantic helpers:
+int HlslParseSemantic(const char *semantic, char *root, size_t rootSize,
+    int *index);
+int HlslDescribeSourceType(const Type *source, HlslSourceType *target);
+const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
+    const char *semantic, int IsOutVal);
+
+// HLSL backend phases:
+int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
+    SourceLoc *loc, Scope *scope, Symbol *program);
+int HlslBuildEntryWrapper(HlslModule *module,
+    const HlslProfileDesc *profile);
+int HlslLegalizeModule(HlslModule *module,
+    const HlslProfileDesc *profile);
+int HlslAllocateBindings(HlslModule *module,
+    const HlslProfileDesc *profile);
+int HlslValidateSamplerUsage(HlslModule *module,
+    const HlslProfileDesc *profile);
+int HlslValidateModule(HlslModule *module,
+    const HlslProfileDesc *profile);
+
+#if defined(HLSL_DIAGNOSTIC_TESTING)
+int HlslReportFailureForTesting(const HlslModule *module,
+    const HlslProfileDesc *profile, const Symbol *program);
+#endif
 
 #endif // !defined(__HLSL_HAL_H)

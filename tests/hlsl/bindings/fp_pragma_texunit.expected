@@ -1,0 +1,32 @@
+// profile hlslf
+// target ps_3_0
+// cgc-bind interface in coord float2 TEXCOORD0
+// cgc-bind interface out result float4 COLOR0
+
+// var sampler2D image :  : s[3] : 1 : 1
+// var sampler2D explicitImage :  : s[5] : 1 : 1
+
+sampler2D cg_image : register(s3);
+sampler2D cg_explicitImage : register(s5);
+
+struct cg_PixelIn
+{
+    float2 coord : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_entry(float2 coord, sampler2D image, sampler2D explicitImage)
+{
+    return tex2D(image, coord) + tex2D(explicitImage, coord) * 0.0;
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.coord, cg_image, cg_explicitImage);
+    return output;
+}

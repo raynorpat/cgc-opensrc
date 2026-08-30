@@ -1,0 +1,32 @@
+struct Settings {
+    float2 offset;
+    int count;
+    bool enabled;
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION,
+               uniform float scale = 2.0,
+               uniform float3 bias = float3(3.0, 4.0, 5.0),
+               uniform float2x3 transform =
+                   float2x3(6.0, 7.0, 8.0,
+                            9.0, 10.0, 11.0),
+               uniform float weights[2] = { 12.0, 13.0 },
+               uniform Settings settings =
+                   { { 14.0, 15.0 }, 2147483647, true })
+{
+    VertexOut output;
+    float selectedWeight;
+    float2 transformed;
+    transformed = mul(transform, position.xyz);
+    selectedWeight = weights[1];
+    output.position = position * scale +
+                      float4(transformed.x + settings.offset.x,
+                             transformed.y + settings.offset.y,
+                             bias.x + selectedWeight,
+                             1.0);
+    return output;
+}

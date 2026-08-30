@@ -653,6 +653,8 @@ expr *NewCastOperator(SourceLoc *loc, expr *fExpr, Type *toType);
 expr *NewMemberSelectorOrSwizzleOrWriteMaskOperator(SourceLoc *loc, expr *fExpr, int ident);
 expr *NewIndexOperator(SourceLoc *loc, expr *fExpr, expr *ixExpr);
 expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals);
+void RecordExprCallSite(expr *call, const SourceLoc *loc);
+const SourceLoc *GetExprCallSite(const expr *call);
 
 expr *NewSimpleAssignment(SourceLoc *loc, expr *fvar, expr *fExpr, int InInit);
 stmt *NewSimpleAssignmentStmt(SourceLoc *loc, expr *fvar, expr *fExpr, int InInit);

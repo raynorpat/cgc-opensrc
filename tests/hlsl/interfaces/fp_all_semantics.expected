@@ -1,0 +1,73 @@
+// profile hlslf
+// target ps_3_0
+// cgc-bind interface in color0 float4 COLOR0
+// cgc-bind interface in color1 float4 COLOR1
+// cgc-bind interface in tex0 float4 TEXCOORD0
+// cgc-bind interface in tex1 float4 TEXCOORD1
+// cgc-bind interface in tex2 float4 TEXCOORD2
+// cgc-bind interface in tex3 float4 TEXCOORD3
+// cgc-bind interface in tex4 float4 TEXCOORD4
+// cgc-bind interface in fog float FOG0
+// cgc-bind interface in position float2 VPOS
+// cgc-bind interface in face float VFACE
+// cgc-bind interface out color0 float4 COLOR0
+// cgc-bind interface out color1 float4 COLOR1
+// cgc-bind interface out color2 float4 COLOR2
+// cgc-bind interface out color3 float4 COLOR3
+// cgc-bind interface out depth float DEPTH0
+
+struct cg_PixelOut
+{
+    float4 color0;
+    float4 color1;
+    float4 color2;
+    float4 color3;
+    float depth;
+};
+
+struct cg_PixelIn
+{
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 tex0 : TEXCOORD0;
+    float4 tex1 : TEXCOORD1;
+    float4 tex2 : TEXCOORD2;
+    float4 tex3 : TEXCOORD3;
+    float4 tex4 : TEXCOORD4;
+    float fog : FOG0;
+    float2 position : VPOS;
+    float face : VFACE;
+};
+
+struct cg_PixelOut_1
+{
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 color2 : COLOR2;
+    float4 color3 : COLOR3;
+    float depth : DEPTH0;
+};
+
+cg_PixelOut cg_entry(float4 color0, float4 color1, float4 tex0, float4 tex1, float4 tex2, float4 tex3, float4 tex4, float fog, float2 position, float face)
+{
+    cg_PixelOut cg_output = (cg_PixelOut) 0;
+    cg_output.color0 = color0;
+    cg_output.color1 = color1;
+    cg_output.color2 = tex0;
+    cg_output.color3 = tex1;
+    cg_output.depth = fog;
+    return cg_output;
+}
+
+cg_PixelOut_1 main(cg_PixelIn input)
+{
+    cg_PixelOut_1 output;
+    cg_PixelOut cg_result;
+    cg_result = cg_entry(input.color0, input.color1, input.tex0, input.tex1, input.tex2, input.tex3, input.tex4, input.fog, input.position, input.face);
+    output.color0 = cg_result.color0;
+    output.color1 = cg_result.color1;
+    output.color2 = cg_result.color2;
+    output.color3 = cg_result.color3;
+    output.depth = cg_result.depth;
+    return output;
+}

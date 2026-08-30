@@ -1,0 +1,16 @@
+uniform int4 cg_i0 : register(i0);
+uniform int4 cg_i1 : register(i1);
+uniform int4 cg_i2 : register(i2);
+uniform int4 cg_i3 : register(i3);
+uniform int4 cg_i4 : register(i4);
+uniform int4 cg_i5 : register(i5);
+uniform int4 cg_i6 : register(i6);
+uniform int4 cg_i7 : register(i7);
+uniform int4 cg_i8 : register(i8);
+uniform int4 cg_i9 : register(i9);
+uniform int4 cg_i10 : register(i10);
+uniform int4 cg_i11 : register(i11);
+uniform int4 cg_i12 : register(i12);
+uniform int4 cg_i13 : register(i13);
+uniform int4 cg_i14 : register(i14);
+uniform int4 cg_i15 : register(i15);

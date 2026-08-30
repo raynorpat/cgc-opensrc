@@ -1,0 +1,17 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+bool use_flag(bool value)
+{
+    return value;
+}
+
+VertexOut main(float4 position : POSITION, uniform bool enabled)
+{
+    VertexOut output;
+    output.position = position;
+    if (use_flag(enabled))
+        output.position.x += 1.0;
+    return output;
+}

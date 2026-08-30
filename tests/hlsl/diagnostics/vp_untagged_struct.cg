@@ -1,0 +1,8 @@
+typedef struct { float value; } ScalarBox;
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    ScalarBox box;
+    box.value = position.x;
+    return position + box.value * 0.0;
+}

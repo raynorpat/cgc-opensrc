@@ -1,0 +1,9 @@
+float4 main(float4 color : COLOR0,
+            uniform float4 values[225]) : COLOR0
+{
+    float4 total = color;
+    int index;
+    for (index = 0; index < 225; index++)
+        total += values[index];
+    return total;
+}

@@ -1,0 +1,48 @@
+struct VertexOut
+{
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    float a = position.x;
+    float b = position.y + 2.0;
+    float3 v = float3(position.x, position.y, position.z);
+    float3 w = float3(position.w, position.z, position.y);
+    int3 iv = int3(1, -2, 3);
+    bool flag = position.x > position.y;
+    bool3 flags = bool3(flag, !flag, flag);
+    half1 halfVector = half1(half(position.x));
+    half halfDot = dot(halfVector, halfVector);
+
+    a = abs(a) + sign(b) + floor(a) + ceil(b) + round(a) + trunc(b);
+    a = a + sqrt(abs(b)) + rsqrt(abs(b) + 1.0);
+    a = a + pow(abs(a) + 1.0, b) + exp(a) + exp2(b);
+    a = a + log(abs(a) + 1.0) + log2(abs(b) + 1.0);
+    a = a + sin(a) + cos(b) + tan(a) + asin(saturate(a));
+    a = a + acos(saturate(b)) + atan(a) + atan2(a, b);
+    a = a + sinh(a) + cosh(b) + tanh(a);
+    a = a + frac(b) + fmod(a, b) + step(a, b);
+    a = min(max(a, b), b + 1.0);
+    a = clamp(a, 0.0, 1.0);
+    a = lerp(a, b, 0.5) + smoothstep(0.0, 1.0, b);
+    flag = any(flag) || all(flag) || any(flags) || all(flags);
+
+    v = abs(v) + sign(w) + floor(v) + ceil(w) + round(v) + trunc(w);
+    v = sqrt(abs(v)) + rsqrt(abs(w) + 1.0);
+    v = pow(abs(v) + 1.0, w) + exp(v) + exp2(w);
+    v = log(abs(v) + 1.0) + log2(abs(w) + 1.0);
+    v = sin(v) + cos(w) + tan(v) + asin(saturate(v));
+    v = acos(saturate(w)) + atan(v) + atan2(v, w);
+    v = sinh(v) + cosh(w) + tanh(v);
+    v = frac(w) + fmod(v, w) + step(v, w);
+    v = min(max(v, a), w);
+    v = clamp(v, 0.0, 1.0);
+    v = lerp(v, w, 0.5) + smoothstep(0.0, 1.0, w);
+    iv = abs(iv) + sign(iv);
+
+    output.position = float4(v.x + a + float(halfDot), v.y, v.z,
+                             flag ? float(iv.x) : float(iv.y));
+    return output;
+}

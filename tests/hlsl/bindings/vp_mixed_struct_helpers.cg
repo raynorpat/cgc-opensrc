@@ -1,0 +1,50 @@
+struct Mixed {
+    float scalar;
+    int integer;
+    bool enabled;
+};
+
+uniform Mixed mixed;
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+float consume_first(float value)
+{
+    int index;
+    float result;
+    result = value;
+    if (mixed.enabled)
+        result = result + mixed.scalar;
+    else
+        for (index = 0; index < mixed.integer; index++)
+            result = result + 1.0;
+    return result;
+}
+
+float consume_second(float value)
+{
+    int index;
+    float result;
+    result = value;
+    result = result + mixed.scalar;
+    for (index = 0; index < mixed.integer; index++)
+        result = result + 1.0;
+    return result;
+}
+
+float consume_none(float value)
+{
+    return value + 1.0;
+}
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position +
+        float4(consume_first(position.x),
+               consume_second(position.y),
+               consume_none(position.z), 0.0);
+    return output;
+}

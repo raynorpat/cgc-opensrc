@@ -1,0 +1,7 @@
+typedef float Values[2];
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    Values(1.0, 2.0);
+    return position;
+}

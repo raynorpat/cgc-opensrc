@@ -1,0 +1,60 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+// var int2 ranges :  : i[0] : 1 : 2
+
+uniform int4 cg_ranges[2] : register(i0);
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_consume_first(int2 ranges[2], float value)
+{
+    return value;
+}
+
+float cg_forward_ranges(int2 ranges[2], float value)
+{
+    return cg_consume_first(ranges, value);
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    int count;
+    int cg_temp;
+    int2 ranges[2];
+    cg_output.position = position;
+    ranges[0] = cg_ranges[0].xy;
+    ranges[1] = cg_ranges[1].xy;
+    cg_output.position.x = cg_consume_first(ranges, position.x);
+    cg_output.position.y = cg_forward_ranges(ranges, position.y);
+    for (count = 0; count < ranges[1].y; cg_temp = count, count = count + 1, cg_temp)
+    {
+        cg_output.position.z = cg_output.position.z + 1.0;
+    }
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

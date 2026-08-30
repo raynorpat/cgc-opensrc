@@ -1,0 +1,6 @@
+float4 main(float4 value : TEXCOORD0) : COLOR0
+{
+    float scalar = ddx(value.x) + ddy(value.y);
+    float3 gradient = ddx(value.xyz) + ddy(value.xyz);
+    return float4(gradient.x, gradient.y, gradient.z, scalar);
+}

@@ -19,6 +19,42 @@
 #ifdef PROFILE_GLSLF
 #define PROFILE_GLSL 1
 #endif
+#ifdef PROFILE_HLSLV
+#define PROFILE_HLSL 1
+#endif
+#ifdef PROFILE_HLSLF
+#define PROFILE_HLSL 1
+#endif
+
+#ifdef PROFILE_HLSL
+
+// trunc predates the declarative Cg 2.0 catalog.  Keep only its exact
+// HLSL-supported overloads as source-level internal markers; every catalog
+// intrinsic continues to resolve through cg_stdlib.def/cg_stdlib.c.
+
+__internal float  trunc(float  x);
+__internal float1 trunc(float1 x);
+__internal float2 trunc(float2 x);
+__internal float3 trunc(float3 x);
+__internal float4 trunc(float4 x);
+
+// DirectX 9 exposes bias and explicit-LOD texture forms as distinct
+// intrinsics.  Base, projected, and gradient signatures come from the
+// declarative Cg 2.0 catalog; only these HLSL-specific names need markers.
+
+__internal float4 tex1Dlod(sampler1D image, float4 coord);
+__internal float4 tex2Dlod(sampler2D image, float4 coord);
+__internal float4 tex3Dlod(sampler3D image, float4 coord);
+__internal float4 texCUBElod(samplerCUBE image, float4 coord);
+
+#ifdef PROFILE_HLSLF
+__internal float4 tex1Dbias(sampler1D image, float4 coord);
+__internal float4 tex2Dbias(sampler2D image, float4 coord);
+__internal float4 tex3Dbias(sampler3D image, float4 coord);
+__internal float4 texCUBEbias(samplerCUBE image, float4 coord);
+#endif
+
+#endif /* PROFILE_HLSL */
 
 #ifdef PROFILE_GLSL
 

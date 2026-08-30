@@ -1,0 +1,229 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_nestedModify(inout float value, float amount);
+
+float cg_bumpValue(inout float value);
+
+float cg_record(inout float trace, float digit)
+{
+    trace = trace * (float) 10.0 + digit;
+    return trace;
+}
+
+float cg_combine(float left, float right)
+{
+    return left + right;
+}
+
+float2 cg_record2(inout float trace, float digit)
+{
+    trace = trace * (float) 10.0 + digit;
+    return float2(trace, trace + (float) 1.0);
+}
+
+float cg_modify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float cg_replace(out float value, float amount)
+{
+    value = amount + (float) 1.0;
+    return value;
+}
+
+float cg_forwardWrapper(inout float value, inout float trace)
+{
+    return cg_nestedModify(value, cg_bumpValue(trace));
+}
+
+float cg_nestedModify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float cg_bumpValue(inout float value)
+{
+    value = value + (float) 1.0;
+    return value;
+}
+
+float cg_moveIndex(inout int index, int next)
+{
+    index = next;
+    return (float) index;
+}
+
+int cg_mutateVector(inout float4 value)
+{
+    value = value + (float4) float4(10.0, 20.0, 30.0, 40.0);
+    return (int) 1;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    bool choose;
+    bool2 lanes;
+    bool2 comparison;
+    float trace;
+    float binary;
+    float called;
+    float readBinary;
+    float readCall;
+    float aliasValue;
+    float aliasResult;
+    float outValue;
+    float outResult;
+    float nestedValue;
+    float nestedTrace;
+    float nestedResult;
+    float effectTrace;
+    float effectRead;
+    float constructorTrace;
+    float2 constructed;
+    float4 indexedValues;
+    int indexedPosition;
+    float indexedResult;
+    float4 rvalueValues;
+    float rvalueIndexed;
+    float2 temp1;
+    float2 temp2;
+    bool temp3;
+    float temp4;
+    float temp5;
+    float temp6;
+    bool temp7;
+    float temp8;
+    float temp9;
+    float temp10;
+    float2 temp11;
+    bool2 temp12;
+    float2 temp13;
+    float2 temp14;
+    float2 temp15;
+    bool temp16;
+    float temp17;
+    float temp18;
+    float temp19;
+    bool temp20;
+    float temp21;
+    float temp22;
+    float temp23;
+    bool temp24;
+    float temp25;
+    float temp26;
+    bool temp27;
+    float temp28;
+    float temp29;
+    float temp30;
+    float temp31;
+    bool temp32;
+    float temp33;
+    float temp34;
+    int temp35;
+    bool temp36;
+    float temp37;
+    float temp38;
+    int temp39;
+    int temp40;
+    float4 temp41;
+    choose = position.x > 0.0;
+    temp1 = position.xy;
+    temp2 = float2(0.0, 0.0);
+    lanes = bool2(temp1.x > temp2.x, temp1.y > temp2.y);
+    trace = 0.0;
+    temp6 = cg_record(trace, 1.0);
+    temp3 = choose;
+    temp4 = cg_record(trace, 2.0);
+    temp5 = cg_record(trace, 3.0);
+    binary = temp6 + (temp3 ? temp4 : temp5);
+    temp10 = cg_record(trace, 4.0);
+    temp7 = choose;
+    temp8 = cg_record(trace, 5.0);
+    temp9 = cg_record(trace, 6.0);
+    called = cg_combine(temp10, temp7 ? temp8 : temp9);
+    temp11 = cg_record2(trace, 7.0);
+    temp12 = lanes;
+    temp13 = cg_record2(trace, 8.0);
+    temp14 = cg_record2(trace, 9.0);
+    temp15 = float2(temp12.x ? temp13.x : temp14.x, temp12.y ? temp13.y : temp14.y);
+    comparison = bool2(temp11.x < temp15.x, temp11.y < temp15.y);
+    temp19 = trace;
+    temp16 = choose;
+    temp17 = cg_record(trace, 10.0);
+    temp18 = cg_record(trace, 11.0);
+    readBinary = temp19 + (temp16 ? temp17 : temp18);
+    temp23 = trace;
+    temp20 = choose;
+    temp21 = cg_record(trace, 12.0);
+    temp22 = cg_record(trace, 13.0);
+    readCall = cg_combine(temp23, temp20 ? temp21 : temp22);
+    aliasValue = 1.0;
+    temp24 = choose;
+    temp25 = cg_record(aliasValue, 17.0);
+    temp26 = cg_record(aliasValue, 18.0);
+    aliasResult = cg_modify(aliasValue, temp24 ? temp25 : temp26);
+    outValue = 2.0;
+    temp27 = choose;
+    temp28 = cg_record(outValue, 19.0);
+    temp29 = cg_record(outValue, 20.0);
+    outResult = cg_replace(outValue, temp27 ? temp28 : temp29);
+    nestedValue = 3.0;
+    nestedTrace = 4.0;
+    nestedResult = cg_forwardWrapper(nestedValue, nestedTrace);
+    effectTrace = 5.0;
+    temp30 = cg_record(effectTrace, 21.0);
+    effectRead = cg_combine(temp30, effectTrace);
+    constructorTrace = 6.0;
+    temp31 = cg_record(constructorTrace, 22.0);
+    constructed = float2(temp31, constructorTrace);
+    indexedValues = float4(1.0, 2.0, 3.0, 4.0);
+    indexedPosition = 0;
+    temp35 = indexedPosition;
+    temp32 = choose;
+    temp33 = cg_moveIndex(indexedPosition, 1);
+    temp34 = cg_moveIndex(indexedPosition, 2);
+    indexedResult = cg_modify(indexedValues[temp35], temp32 ? temp33 : temp34);
+    indexedPosition = 0;
+    temp39 = indexedPosition;
+    temp36 = choose;
+    temp37 = cg_moveIndex(indexedPosition, 2);
+    temp38 = cg_moveIndex(indexedPosition, 3);
+    indexedValues[temp39] = temp36 ? temp37 : temp38;
+    rvalueValues = float4(1.0, 2.0, 3.0, 4.0);
+    temp41 = rvalueValues;
+    temp40 = cg_mutateVector(rvalueValues);
+    rvalueIndexed = temp41[temp40];
+    cg_output.position = float4(binary + readBinary + effectRead + rvalueIndexed, called + readCall + constructed.x + constructed.y + rvalueValues.x, (float) comparison.x + aliasValue + nestedValue + indexedValues.x + indexedValues.y + rvalueValues.y, trace + aliasResult + outValue + outResult + nestedTrace + nestedResult + indexedResult + indexedValues.z + indexedValues.w + rvalueValues.z + rvalueValues.w);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

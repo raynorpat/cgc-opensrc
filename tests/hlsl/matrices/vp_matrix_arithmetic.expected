@@ -1,0 +1,57 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    row_major float2x3 left;
+    row_major float2x3 right;
+    row_major float2x3 sum;
+    row_major float2x3 difference;
+    row_major float2x3 product;
+    row_major float2x3 quotient;
+    row_major float2x3 matrixScalar;
+    row_major float2x3 scalarMatrix;
+    left = float2x3(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+    right = float2x3(7.0, 8.0, 9.0, 10.0, 11.0, 12.0);
+    sum[0] = left[0] + right[0];
+    sum[1] = left[1] + right[1];
+    difference[0] = left[0] - right[0];
+    difference[1] = left[1] - right[1];
+    product[0] = left[0] * right[0];
+    product[1] = left[1] * right[1];
+    quotient[0] = left[0] / right[0];
+    quotient[1] = left[1] / right[1];
+    matrixScalar[0] = left[0] * 2.0;
+    matrixScalar[1] = left[1] * 2.0;
+    scalarMatrix[0] = 24.0 / right[0];
+    scalarMatrix[1] = 24.0 / right[1];
+    cg_output.position = float4(sum[0].x + difference[0].y, product[0].z + quotient[1].x, matrixScalar[1].y, scalarMatrix[1].z) + position;
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

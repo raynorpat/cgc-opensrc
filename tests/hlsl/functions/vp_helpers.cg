@@ -1,0 +1,28 @@
+float adjust(float value)
+{
+    return value + 1.0;
+}
+
+float2 adjust(float2 value);
+
+void write_adjusted(float2 value, out float2 result)
+{
+    result = adjust(value);
+}
+
+float2 adjust(float2 value)
+{
+    return value * 2.0;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    float2 adjusted;
+    write_adjusted(position.xy, adjusted);
+    output.position = float4(adjust(position.z), adjusted.x,
+                             adjusted.y, position.w);
+    return output;
+}

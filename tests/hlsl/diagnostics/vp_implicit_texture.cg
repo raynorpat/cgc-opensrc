@@ -1,0 +1,6 @@
+float4 main(float4 position : POSITION,
+            float2 coord : TEXCOORD0,
+            uniform sampler2D image : TEXUNIT0) : POSITION
+{
+    return position + tex2D(image, coord);
+}

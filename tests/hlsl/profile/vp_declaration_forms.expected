@@ -1,0 +1,159 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in input float4 TEXCOORD0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 cg_cg_input : TEXCOORD0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+void cg_finish(inout float value)
+{
+    value = value + (float) 0.0;
+    return;
+}
+
+float cg_choose(float value, float scale)
+{
+    return value * scale;
+}
+
+cg_VertexOut cg_entry(float4 cg_input)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    float floatVector1;
+    float2 floatVector2;
+    float3 floatVector3;
+    float4 floatVector4;
+    int intVector1;
+    int2 intVector2;
+    int3 intVector3;
+    int4 intVector4;
+    bool boolVector1;
+    bool2 boolVector2;
+    bool3 boolVector3;
+    bool4 boolVector4;
+    float one;
+    float compileFloat1;
+    float2 compileFloat2;
+    float3 compileFloat3;
+    float4 compileFloatVector;
+    int index;
+    int compileInt1;
+    int2 compileInt2;
+    int3 compileInt3;
+    int4 compileIntVector;
+    int byteValue;
+    int byteVector1;
+    int2 byteVector2;
+    int3 byteVector3;
+    int4 byteVector;
+    int ubyteValue;
+    int ubyteCanonical;
+    int ubyteVector1;
+    int2 ubyteVector2;
+    int3 ubyteVector3;
+    int4 ubyteVector;
+    int shortValue;
+    int shortVector1;
+    int2 shortVector2;
+    int3 shortVector3;
+    int4 shortVector;
+    int ushortValue;
+    int ushortCanonical;
+    int ushortVector1;
+    int2 ushortVector2;
+    int3 ushortVector3;
+    int4 ushortVector;
+    int uintValue;
+    int explicitUintValue;
+    int uintCanonical;
+    int uintVector1;
+    int2 uintVector2;
+    int3 uintVector3;
+    int4 uintVector;
+    int longValue;
+    int longVector1;
+    int2 longVector2;
+    int3 longVector3;
+    int4 longVector;
+    int ulongValue;
+    int ulongCanonical;
+    int ulongVector1;
+    int2 ulongVector2;
+    int3 ulongVector3;
+    int4 ulongVector;
+    float offset;
+    float fixedValue;
+    float fixedVector1;
+    float2 fixedVector2;
+    float3 fixedVector3;
+    float4 fixedVector;
+    float halfValue;
+    float halfVector1;
+    float2 halfVector2;
+    float3 halfVector3;
+    float4 halfVector4;
+    float doubleValue;
+    float doubleVector1;
+    float2 doubleVector2;
+    float3 doubleVector3;
+    float4 doubleVector;
+    row_major float1x1 matrix11;
+    row_major float1x2 matrix12;
+    row_major float1x3 matrix13;
+    row_major float1x4 matrix14;
+    row_major float2x1 matrix21;
+    row_major float2x2 matrix22;
+    row_major float2x3 matrix23;
+    row_major float2x4 matrix24;
+    row_major float3x1 matrix31;
+    row_major float3x2 matrix32;
+    row_major float3x3 matrix33;
+    row_major float3x4 matrix34;
+    row_major float4x1 matrix41;
+    row_major float4x2 matrix42;
+    row_major float4x3 matrix43;
+    row_major float4x4 matrix44;
+    float lengthVector[5];
+    int aggregateLength;
+    float finished;
+    one = 1.0;
+    index = 2;
+    byteValue = 7;
+    ubyteValue = 8;
+    shortValue = 9;
+    ushortValue = 10;
+    uintValue = 11;
+    longValue = 12;
+    ulongValue = 13;
+    offset = 0.0;
+    fixedValue = 0.25 + (float) cg_input.x;
+    halfValue = 0.5 + (float) cg_input.y;
+    doubleValue = 0.75 + (float) cg_input.z;
+    aggregateLength = 11;
+    finished = 1.0 * cg_input.w;
+    cg_finish(finished);
+    cg_output.position = float4(cg_choose((float) fixedValue, 3.0), cg_choose((float) halfValue, (float) index), (float) doubleValue * (float) one + offset, finished + (float) aggregateLength * 0.0);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.cg_cg_input);
+    output.position = cg_result.position;
+    return output;
+}

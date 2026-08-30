@@ -1,0 +1,7 @@
+__internal double sqrt(double value);
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    double value = sqrt(double(position.x));
+    return float4(float(value), position.y, position.z, position.w);
+}

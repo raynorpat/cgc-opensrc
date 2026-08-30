@@ -1,0 +1,62 @@
+foreach(required CGC FXC PROFILE TARGET SOURCE OUTPUT BYTECODE CONFIG)
+    if(NOT DEFINED ${required})
+        message(FATAL_ERROR "${required} must be defined")
+    endif()
+endforeach()
+
+include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
+prepare_config_output("${OUTPUT}")
+prepare_config_output("${BYTECODE}")
+get_filename_component(source_directory "${SOURCE}" DIRECTORY)
+
+file(REMOVE "${OUTPUT}" "${BYTECODE}")
+set(cgc_arguments -quiet)
+if(DEFINED SUPPRESS_WARNINGS AND SUPPRESS_WARNINGS)
+    list(APPEND cgc_arguments -nowarn)
+endif()
+list(APPEND cgc_arguments -profile "${PROFILE}" -o "${OUTPUT}" "${SOURCE}")
+execute_process(
+    COMMAND "${CGC}" ${cgc_arguments}
+    WORKING_DIRECTORY "${source_directory}"
+    RESULT_VARIABLE cgc_result
+    OUTPUT_VARIABLE cgc_stdout
+    ERROR_VARIABLE cgc_stderr)
+if(NOT cgc_result EQUAL 0)
+    message(FATAL_ERROR
+        "${PROFILE} compile failed (${cgc_result}):\n"
+        "${cgc_stdout}${cgc_stderr}")
+endif()
+if(NOT cgc_stdout STREQUAL "" OR NOT cgc_stderr STREQUAL "")
+    message(FATAL_ERROR
+        "${PROFILE} compile produced diagnostics:\n"
+        "${cgc_stdout}${cgc_stderr}")
+endif()
+if(NOT EXISTS "${OUTPUT}")
+    message(FATAL_ERROR "cgc did not create ${OUTPUT}")
+endif()
+
+# /Ges rejects the legal legacy sampler1D/sampler2D/sampler3D/samplerCUBE
+# syntax required by DirectX 9 (X3086).  /Gec keeps that DX9-compatible
+# syntax while /WX still makes every validator warning fatal.
+set(fxc_arguments /nologo /Gec /WX /T "${TARGET}" /E main)
+if(DEFINED PACKING AND NOT PACKING STREQUAL "")
+    list(APPEND fxc_arguments "${PACKING}")
+endif()
+list(APPEND fxc_arguments /Fo "${BYTECODE}" "${OUTPUT}")
+execute_process(
+    COMMAND "${FXC}" ${fxc_arguments}
+    RESULT_VARIABLE fxc_result
+    OUTPUT_VARIABLE fxc_stdout
+    ERROR_VARIABLE fxc_stderr)
+if(NOT fxc_result EQUAL 0)
+    message(FATAL_ERROR
+        "FXC rejected ${OUTPUT} (${fxc_result}):\n"
+        "${fxc_stdout}${fxc_stderr}")
+endif()
+if(NOT EXISTS "${BYTECODE}")
+    message(FATAL_ERROR "FXC did not create ${BYTECODE}")
+endif()
+file(SIZE "${BYTECODE}" bytecode_size)
+if(bytecode_size EQUAL 0)
+    message(FATAL_ERROR "FXC created empty bytecode ${BYTECODE}")
+endif()

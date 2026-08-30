@@ -4,11 +4,28 @@ if(NOT GLSLANG_VALIDATOR)
         "glslangValidator not found; GLSL source validation tests are disabled")
 endif()
 
+find_program(FXC_EXECUTABLE NAMES fxc fxc.exe)
+if(WIN32 AND NOT FXC_EXECUTABLE)
+    file(GLOB FXC_EXECUTABLE_CANDIDATES
+        "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*/x64/fxc.exe")
+    list(SORT FXC_EXECUTABLE_CANDIDATES COMPARE NATURAL ORDER DESCENDING)
+    if(FXC_EXECUTABLE_CANDIDATES)
+        list(GET FXC_EXECUTABLE_CANDIDATES 0 FXC_EXECUTABLE)
+        set(FXC_EXECUTABLE "${FXC_EXECUTABLE}" CACHE FILEPATH
+            "DirectX HLSL compiler used for SM3 validation" FORCE)
+    endif()
+endif()
+if(NOT FXC_EXECUTABLE)
+    message(STATUS "fxc not found; HLSL SM3 validation tests are disabled")
+endif()
+
 # Golden regeneration switch (Task 8 Step 7): used only by the fixture
 # registration below; flip to ON to rewrite the tracked GLSL
 # expectations, inspect every diff before committing, then turn it off.
 set(CGC_UPDATE_GLSL_EXPECTED OFF CACHE BOOL
     "Regenerate tracked GLSL expectations; inspect before committing")
+set(CGC_UPDATE_HLSL_EXPECTED OFF CACHE BOOL
+    "Regenerate tracked HLSL expectations; inspect before committing")
 
 function(add_glsl_validation name profile stage source)
     if(GLSLANG_VALIDATOR)
@@ -222,6 +239,12 @@ endfunction()
 function(add_cg20_failure name)
     set_property(GLOBAL APPEND PROPERTY CG20_TEST_NAMES "${name}")
     add_test(NAME "${name}" COMMAND ${CMAKE_COMMAND} ${ARGN})
+    foreach(argument IN LISTS ARGN)
+        if(argument MATCHES "^-DCODE=([0-9][0-9][0-9][0-9])$")
+            set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+                "${name}|${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
 endfunction()
 
 # Output transaction (Task 18): a failed compilation must preserve the
@@ -1395,6 +1418,145 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
 )
 
+add_executable(hlsl_ir_unit
+    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
+    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
+    ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
+    hlsl_ir_test.c
+)
+
+target_compile_definitions(hlsl_ir_unit PRIVATE
+    HLSL_CANONICALIZATION_ONLY
+)
+
+target_include_directories(hlsl_ir_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(hlsl_ir_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME hlsl_ir_unit
+    COMMAND hlsl_ir_unit
+)
+
+add_test(
+    NAME hlsl_pipeline_phase_order
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE=${PROJECT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_phase_order.cmake
+)
+
+add_executable(hlsl_invariants_unit
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
+    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
+    hlsl_invariants_test.c
+)
+
+target_compile_definitions(hlsl_invariants_unit PRIVATE
+    HLSL_CANONICALIZATION_ONLY
+)
+
+target_include_directories(hlsl_invariants_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+add_test(
+    NAME hlsl_invariants_unit
+    COMMAND hlsl_invariants_unit
+)
+
+add_test(
+    NAME hlsl_binding_register_sampler_unit
+    COMMAND hlsl_ir_unit
+)
+
+add_test(
+    NAME hlsl_semantic_canonicalization
+    COMMAND hlsl_ir_unit
+)
+
+add_test(
+    NAME hlsl_ir_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_ir_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+
+add_executable(hlsl_semantics_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
+    hlsl_semantics_test.c
+)
+
+target_compile_definitions(hlsl_semantics_unit PRIVATE
+    HLSL_DIAGNOSTIC_TESTING
+)
+
+target_include_directories(hlsl_semantics_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(hlsl_semantics_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(NAME hlsl_semantics_unit COMMAND hlsl_semantics_unit)
+add_test(
+    NAME hlsl_name_collision_reporting
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:hlsl_semantics_unit>
+        -DPROFILE=hlsl-report-name
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_name_collision_report.cg
+        -DCODE=6411
+        -DEXPECTED_LINE=3
+        "-DMESSAGE=HLSL name cannot be resolved for.*exhaustedName"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_name_collision_reporting.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+)
+add_test(
+    NAME hlsl_failure_runner_rejects_metadata
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_semantics_unit>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_name_collision_report.cg
+        -DCHECKER=${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_failure_runner_metadata.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure_rejects_metadata.cmake
+)
+add_test(
+    NAME hlsl_semantics_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_semantics_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+add_test(NAME hlsl_interface_same_owner_same_slot
+    COMMAND hlsl_semantics_unit same-slot)
+add_test(NAME hlsl_interface_same_owner_different_slot
+    COMMAND hlsl_semantics_unit different-slot)
+add_test(NAME hlsl_interface_same_owner_different_direction
+    COMMAND hlsl_semantics_unit different-direction)
+add_test(NAME hlsl_interface_different_owner_collision
+    COMMAND hlsl_semantics_unit different-owner)
+add_test(NAME hlsl_interface_fresh_hal_isolation
+    COMMAND hlsl_semantics_unit fresh-hal)
+
 add_executable(glsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
@@ -1690,6 +1852,46 @@ endfunction()
 add_glsl_registration(glslv)
 add_glsl_registration(glslf)
 
+function(add_hlsl_validation_case name profile source packing)
+    if(FXC_EXECUTABLE)
+        if(profile STREQUAL "hlslv")
+            set(target vs_3_0)
+        else()
+            set(target ps_3_0)
+        endif()
+        # These vertex limit fixtures intentionally do not write POSITION;
+        # cgc reports only the known C7005 boundary warning for them.
+        set(suppress_warnings FALSE)
+        if(name MATCHES
+           "^hlslv_limit_(inputs16|constants256|int16|bool16|samplers4)$")
+            set(suppress_warnings TRUE)
+        endif()
+        add_test(
+            NAME hlsl_validate_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DFXC=${FXC_EXECUTABLE}
+                -DPROFILE=${profile}
+                -DTARGET=${target}
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                "-DCONFIG=$<CONFIG>"
+                -DPACKING=${packing}
+                -DSUPPRESS_WARNINGS=${suppress_warnings}
+                "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.hlsl"
+                "-DBYTECODE=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.fxc"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/validate_hlsl.cmake)
+    endif()
+endfunction()
+
+function(add_hlsl_validation name profile source)
+    if(name MATCHES "matrix|rectangular")
+        add_hlsl_validation_case(${name}_zpr ${profile} ${source} /Zpr)
+        add_hlsl_validation_case(${name}_zpc ${profile} ${source} /Zpc)
+    else()
+        add_hlsl_validation_case(${name} ${profile} ${source} "")
+    endif()
+endfunction()
+
 function(add_hlsl_fixture name profile source expected)
     add_test(
         NAME ${name}
@@ -1698,15 +1900,823 @@ function(add_hlsl_fixture name profile source expected)
             -DPROFILE=${profile}
             -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
             -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    # The two registration goldens intentionally exercise the Task 1 void
+    # profile skeleton.  SM3 bytecode requires a POSITION/COLOR write, so
+    # these are the only successful HLSL fixtures that cannot run via FXC.
+    if(NOT name STREQUAL "hlslv_registration" AND
+       NOT name STREQUAL "hlslf_registration")
+        add_hlsl_validation(${name} ${profile} ${source})
+    endif()
 endfunction()
 
 add_hlsl_fixture(hlslv_registration hlslv
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-vs.expected)
 add_hlsl_fixture(hlslf_registration hlslf
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-ps.expected)
+add_hlsl_fixture(hlslv_vp_passthrough hlslv
+    tests/hlsl/profile/vp_passthrough.cg
+    tests/hlsl/profile/vp_passthrough.expected)
+add_hlsl_fixture(hlslf_fp_passthrough hlslf
+    tests/hlsl/profile/fp_passthrough.cg
+    tests/hlsl/profile/fp_passthrough.expected)
+add_hlsl_fixture(hlslv_vp_out_inout hlslv
+    tests/hlsl/profile/vp_out_inout.cg
+    tests/hlsl/profile/vp_out_inout.expected)
+# These historical "all semantics" fixtures retain every semantic family but
+# use a legal simultaneous SM3 boundary subset.  Exhaustive descriptor, alias,
+# and one-past coverage lives in hlsl_semantics_unit; the complete tables
+# cannot all occupy one 16-input VS or 10-input PS interface at once.
+add_hlsl_fixture(hlslv_vp_all_semantics hlslv
+    tests/hlsl/interfaces/vp_all_semantics.cg
+    tests/hlsl/interfaces/vp_all_semantics.expected)
+add_hlsl_fixture(hlslf_fp_all_semantics hlslf
+    tests/hlsl/interfaces/fp_all_semantics.cg
+    tests/hlsl/interfaces/fp_all_semantics.expected)
+add_hlsl_fixture(hlslv_vp_register_banks hlslv
+    tests/hlsl/bindings/vp_register_banks.cg
+    tests/hlsl/bindings/vp_register_banks.expected)
+add_hlsl_fixture(hlslv_vp_int_bank_shapes hlslv
+    tests/hlsl/bindings/vp_int_bank_shapes.cg
+    tests/hlsl/bindings/vp_int_bank_shapes.expected)
+add_hlsl_fixture(hlslv_vp_int_bank_aggregate_shapes hlslv
+    tests/hlsl/bindings/vp_int_bank_aggregate_shapes.cg
+    tests/hlsl/bindings/vp_int_bank_aggregate_shapes.expected)
+add_hlsl_fixture(hlslv_vp_int_array_helpers hlslv
+    tests/hlsl/bindings/vp_int_array_helpers.cg
+    tests/hlsl/bindings/vp_int_array_helpers.expected)
+add_hlsl_fixture(hlslv_vp_bool_bank_shapes hlslv
+    tests/hlsl/bindings/vp_bool_bank_shapes.cg
+    tests/hlsl/bindings/vp_bool_bank_shapes.expected)
+add_hlsl_fixture(hlslv_vp_mixed_struct hlslv
+    tests/hlsl/bindings/vp_mixed_struct.cg
+    tests/hlsl/bindings/vp_mixed_struct.expected)
+add_hlsl_fixture(hlslf_fp_samplers hlslf
+    tests/hlsl/bindings/fp_samplers.cg
+    tests/hlsl/bindings/fp_samplers.expected)
+add_hlsl_fixture(hlslv_global_entry_name_collision hlslv
+    tests/hlsl/bindings/vp_global_entry_name_collision.cg
+    tests/hlsl/bindings/vp_global_entry_name_collision.expected)
+add_hlsl_fixture(hlslv_output_member_name_collision hlslv
+    tests/hlsl/interfaces/vp_output_member_name_collision.cg
+    tests/hlsl/interfaces/vp_output_member_name_collision.expected)
+add_hlsl_fixture(hlslv_reachable_helper_parameters hlslv
+    tests/hlsl/profile/vp_reachable_helper_parameters.cg
+    tests/hlsl/profile/vp_reachable_helper_parameters.expected)
+add_hlsl_fixture(hlslv_arithmetic hlslv
+    tests/hlsl/expressions/vp_arithmetic.cg
+    tests/hlsl/expressions/vp_arithmetic.expected)
+# The legacy source grammar does not admit a comma expression directly.
+# Standalone post-increment reaches the same common COMMA_OP expansion and
+# keeps the once-only ordering contract observable in the golden.
+add_hlsl_fixture(hlslv_side_effects hlslv
+    tests/hlsl/expressions/vp_side_effects.cg
+    tests/hlsl/expressions/vp_side_effects.expected)
+add_hlsl_fixture(hlslv_scalar_conditional_order hlslv
+    tests/hlsl/expressions/vp_scalar_conditional_order.cg
+    tests/hlsl/expressions/vp_scalar_conditional_order.expected)
+add_hlsl_fixture(hlslv_evaluation_order hlslv
+    tests/hlsl/expressions/vp_evaluation_order.cg
+    tests/hlsl/expressions/vp_evaluation_order.expected)
+add_hlsl_fixture(hlslv_operator_surface hlslv
+    tests/hlsl/expressions/vp_operator_surface.cg
+    tests/hlsl/expressions/vp_operator_surface.expected)
+add_hlsl_fixture(hlslv_nested_postinc hlslv
+    tests/hlsl/expressions/vp_nested_postinc.cg
+    tests/hlsl/expressions/vp_nested_postinc.expected)
+add_hlsl_fixture(hlslv_control hlslv
+    tests/hlsl/control/vp_control.cg
+    tests/hlsl/control/vp_control.expected)
+add_hlsl_fixture(hlslv_loop_prefixes hlslv
+    tests/hlsl/control/vp_loop_prefixes.cg
+    tests/hlsl/control/vp_loop_prefixes.expected)
+add_hlsl_fixture(hlslv_empty_control hlslv
+    tests/hlsl/control/vp_empty_control.cg
+    tests/hlsl/control/vp_empty_control.expected)
+add_hlsl_fixture(hlslv_bool_bank_loop_selection hlslv
+    tests/hlsl/control/vp_bool_bank_loop_selection.cg
+    tests/hlsl/control/vp_bool_bank_loop_selection.expected)
+add_hlsl_fixture(hlslf_discard hlslf
+    tests/hlsl/control/fp_discard.cg
+    tests/hlsl/control/fp_discard.expected)
+add_hlsl_fixture(hlslf_vector_discard hlslf
+    tests/hlsl/control/fp_vector_discard.cg
+    tests/hlsl/control/fp_vector_discard.expected)
+add_hlsl_fixture(hlslv_helpers hlslv
+    tests/hlsl/functions/vp_helpers.cg
+    tests/hlsl/functions/vp_helpers.expected)
+add_hlsl_fixture(hlslv_inline_helper hlslv
+    tests/hlsl/functions/vp_inline_helper.cg
+    tests/hlsl/functions/vp_inline_helper.expected)
+add_hlsl_fixture(hlslv_declaration_forms hlslv
+    tests/hlsl/profile/vp_declaration_forms.cg
+    tests/hlsl/profile/vp_declaration_forms.expected)
+add_hlsl_fixture(hlslv_default_domains hlslv
+    tests/hlsl/profile/vp_default_domains.cg
+    tests/hlsl/profile/vp_default_domains.expected)
+add_hlsl_fixture(hlslv_parameter_shapes hlslv
+    tests/hlsl/profile/vp_parameter_shapes.cg
+    tests/hlsl/profile/vp_parameter_shapes.expected)
+add_hlsl_fixture(hlslv_annotation hlslv
+    tests/hlsl/profile/vp_annotation.cg
+    tests/hlsl/profile/vp_annotation.expected)
+add_hlsl_fixture(hlslv_struct_array hlslv
+    tests/hlsl/aggregates/vp_struct_array.cg
+    tests/hlsl/aggregates/vp_struct_array.expected)
+add_hlsl_fixture(hlslv_nested_out hlslv
+    tests/hlsl/aggregates/vp_nested_out.cg
+    tests/hlsl/aggregates/vp_nested_out.expected)
+add_hlsl_fixture(hlslv_aliased_out hlslv
+    tests/hlsl/aggregates/vp_aliased_out.cg
+    tests/hlsl/aggregates/vp_aliased_out.expected)
+add_hlsl_fixture(hlslv_rectangular hlslv
+    tests/hlsl/matrices/vp_rectangular.cg
+    tests/hlsl/matrices/vp_rectangular.expected)
+add_hlsl_fixture(hlslv_matrix_arithmetic hlslv
+    tests/hlsl/matrices/vp_matrix_arithmetic.cg
+    tests/hlsl/matrices/vp_matrix_arithmetic.expected)
+add_hlsl_fixture(hlslv_matrix_order hlslv
+    tests/hlsl/matrices/vp_matrix_order.cg
+    tests/hlsl/matrices/vp_matrix_order.expected)
+add_hlsl_fixture(hlslv_defaults hlslv
+    tests/hlsl/bindings/vp_defaults.cg
+    tests/hlsl/bindings/vp_defaults.expected)
+add_hlsl_fixture(hlslv_pragma_bindings hlslv
+    tests/hlsl/bindings/vp_pragma_bindings.cg
+    tests/hlsl/bindings/vp_pragma_bindings.expected)
+add_hlsl_fixture(hlslf_pragma_texunit hlslf
+    tests/hlsl/bindings/fp_pragma_texunit.cg
+    tests/hlsl/bindings/fp_pragma_texunit.expected)
+add_hlsl_fixture(hlslv_mixed_struct_helpers hlslv
+    tests/hlsl/bindings/vp_mixed_struct_helpers.cg
+    tests/hlsl/bindings/vp_mixed_struct_helpers.expected)
+add_hlsl_fixture(hlslv_position hlslv
+    position.cg tests/hlsl/vertex/position.expected)
+add_hlsl_fixture(hlslv_reflection hlslv
+    reflection.cg tests/hlsl/vertex/reflection.expected)
+add_hlsl_fixture(hlslv_vertexlight hlslv
+    vertexlight.cg tests/hlsl/vertex/vertexlight.expected)
+add_hlsl_fixture(hlslv_vertexlight4 hlslv
+    vertexlight4.cg tests/hlsl/vertex/vertexlight4.expected)
+add_hlsl_fixture(hlslv_intrinsic_numeric hlslv
+    tests/hlsl/intrinsics/vp_numeric.cg
+    tests/hlsl/intrinsics/vp_numeric.expected)
+add_hlsl_fixture(hlslv_intrinsic_geometric hlslv
+    tests/hlsl/intrinsics/vp_geometric.cg
+    tests/hlsl/intrinsics/vp_geometric.expected)
+add_hlsl_fixture(hlslf_intrinsic_derivatives hlslf
+    tests/hlsl/intrinsics/fp_derivatives.cg
+    tests/hlsl/intrinsics/fp_derivatives.expected)
+add_hlsl_fixture(hlslv_intrinsic_user_same_name hlslv
+    tests/hlsl/intrinsics/vp_user_same_name.cg
+    tests/hlsl/intrinsics/vp_user_same_name.expected)
+add_hlsl_fixture(hlslf_texture_1d hlslf
+    tests/hlsl/textures/fp_tex1d.cg
+    tests/hlsl/textures/fp_tex1d.expected)
+add_hlsl_fixture(hlslf_texture_2d hlslf
+    tests/hlsl/textures/fp_tex2d.cg
+    tests/hlsl/textures/fp_tex2d.expected)
+add_hlsl_fixture(hlslf_texture_3d hlslf
+    tests/hlsl/textures/fp_tex3d.cg
+    tests/hlsl/textures/fp_tex3d.expected)
+add_hlsl_fixture(hlslf_texture_cube hlslf
+    tests/hlsl/textures/fp_texcube.cg
+    tests/hlsl/textures/fp_texcube.expected)
+add_hlsl_fixture(hlslf_texture_forms hlslf
+    tests/hlsl/textures/fp_project_bias_lod_grad.cg
+    tests/hlsl/textures/fp_project_bias_lod_grad.expected)
+add_hlsl_fixture(hlslf_all_texture_forms hlslf
+    tests/hlsl/textures/fp_all_texture_forms.cg
+    tests/hlsl/textures/fp_all_texture_forms.expected)
+add_hlsl_fixture(hlslv_texture_lod hlslv
+    tests/hlsl/textures/vp_tex2dlod.cg
+    tests/hlsl/textures/vp_tex2dlod.expected)
+add_hlsl_fixture(hlslv_all_texture_lod hlslv
+    tests/hlsl/textures/vp_all_texture_lod.cg
+    tests/hlsl/textures/vp_all_texture_lod.expected)
+add_hlsl_fixture(hlslf_texture_sampler_helper_parameter hlslf
+    tests/hlsl/textures/fp_sampler_helper_parameter.cg
+    tests/hlsl/textures/fp_sampler_helper_parameter.expected)
+
+function(add_hlsl_link_test name vertex_source fragment_source)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/${vertex_source}
+            -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/${fragment_source}
+            "-DCONFIG=$<CONFIG>"
+            "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.vs.hlsl"
+            "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.ps.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_link.cmake)
+endfunction()
+
+add_hlsl_link_test(hlsl_link_interface
+    tests/hlsl/link/vp_link.cg tests/hlsl/link/fp_link.cg)
+add_hlsl_link_test(hlsl_link_interface_mismatch
+    tests/hlsl/link/vp_link_mismatch.cg
+    tests/hlsl/link/fp_link_mismatch.cg)
+set_tests_properties(hlsl_link_interface_mismatch PROPERTIES WILL_FAIL TRUE)
+set_property(TEST hlsl_link_interface_mismatch APPEND PROPERTY
+    ENVIRONMENT "HLSL_EXPECT_LINK_MISMATCH=COLOR0 type mismatch")
+
+add_test(NAME hlsl_link_fresh_directory
+    COMMAND ${CMAKE_COMMAND}
+        -DMODE=link
+        -DCGC=$<TARGET_FILE:cgc>
+        "-DCONFIG=$<CONFIG>"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-link"
+        "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/vp_link.cg
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/fp_link.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
+
+if(FXC_EXECUTABLE)
+    add_test(NAME hlsl_validate_fresh_directory
+        COMMAND ${CMAKE_COMMAND}
+            -DMODE=validate
+            -DCGC=$<TARGET_FILE:cgc>
+            -DFXC=${FXC_EXECUTABLE}
+            -DPROFILE=hlslv
+            -DTARGET=vs_3_0
+            "-DCONFIG=$<CONFIG>"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-validate"
+            "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_passthrough.cg
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
+endif()
+
+add_test(NAME hlsl_fresh_directory_cleanup_safety
+    COMMAND ${CMAKE_COMMAND}
+        "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}/fresh-safety/$<CONFIG>"
+        "-DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory_safety.cmake)
+
+add_test(NAME hlsl_metadata_direction_unit
+    COMMAND ${CMAKE_COMMAND}
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/metadata-direction/$<CONFIG>"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_oracle_normalization.cmake)
+
+add_test(NAME hlsl_positive_oracle_contract_unit
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/positive-oracle/$<CONFIG>"
+        -DVALID_EMPTY=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/empty.cg
+        -DINVALID_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_missing_position.cg
+        -DMISSING_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/oracle/missing.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_oracle_positive.cmake)
+
+function(add_hlsl_failure name profile source code line reason)
+    set(extra_failure_args)
+    if(ARGC GREATER 6)
+        list(APPEND extra_failure_args -DEXPECTED_ERROR_COUNT=${ARGV6})
+    endif()
+    if(ARGC GREATER 8)
+        list(APPEND extra_failure_args
+            -DSECONDARY_CODE=${ARGV7}
+            "-DSECONDARY_MESSAGE=${ARGV8}")
+    endif()
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -DCODE=${code}
+            -DEXPECTED_LINE=${line}
+            -DMESSAGE=${reason}
+            ${extra_failure_args}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+    set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+        "${name}|${code}")
+endfunction()
+
+function(add_hlsl_limit_success name profile source)
+    add_test(
+        NAME ${name}
+        COMMAND $<TARGET_FILE:cgc>
+            -quiet
+            -profile ${profile}
+            -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl
+            ${PROJECT_SOURCE_DIR}/${source}
+    )
+    add_hlsl_validation(${name} ${profile} ${source})
+endfunction()
+
+function(add_hlsl_bank_boundary name source expected bank type count)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=hlslv
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            "-DFXC=${FXC_EXECUTABLE}"
+            -DBANK=${bank}
+            -DTYPE=${type}
+            -DCOUNT=${count}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_bank_boundary.cmake)
+    add_hlsl_validation(${name} hlslv ${source})
+endfunction()
+
+add_hlsl_limit_success(hlslv_limit_inputs16 hlslv
+    tests/hlsl/limits/vp_inputs16.cg)
+add_hlsl_failure(hlslv_limit_inputs17 hlslv
+    tests/hlsl/limits/vp_inputs17.cg 6408 17
+    "HLSL inputs limit exceeded: 17 used, 16 available")
+add_hlsl_limit_success(hlslv_limit_outputs12 hlslv
+    tests/hlsl/limits/vp_outputs12.cg)
+add_hlsl_failure(hlslv_limit_outputs13 hlslv
+    tests/hlsl/limits/vp_outputs13.cg 6408 14
+    "HLSL outputs limit exceeded: 13 used, 12 available")
+add_hlsl_limit_success(hlslf_limit_inputs10 hlslf
+    tests/hlsl/limits/fp_inputs10.cg)
+add_hlsl_failure(hlslf_limit_inputs11 hlslf
+    tests/hlsl/limits/fp_inputs11.cg 6408 11
+    "HLSL inputs limit exceeded: 11 used, 10 available")
+add_hlsl_limit_success(hlslv_limit_constants256 hlslv
+    tests/hlsl/limits/vp_constants256.cg)
+add_hlsl_failure(hlslv_limit_constants257 hlslv
+    tests/hlsl/limits/vp_constants257.cg 6408 2
+    "HLSL c limit exceeded: 257 used, 256 available")
+add_hlsl_limit_success(hlslf_limit_constants224 hlslf
+    tests/hlsl/limits/fp_constants224.cg)
+add_hlsl_failure(hlslf_limit_constants225 hlslf
+    tests/hlsl/limits/fp_constants225.cg 6408 2
+    "HLSL c limit exceeded: 225 used, 224 available")
+add_hlsl_bank_boundary(hlslv_limit_int16
+    tests/hlsl/limits/vp_int16.cg
+    tests/hlsl/limits/vp_int16.expected i int4 16)
+add_hlsl_failure(hlslv_limit_int17 hlslv
+    tests/hlsl/limits/vp_int17.cg 6408 10
+    "HLSL i limit exceeded: 17 used, 16 available")
+add_hlsl_bank_boundary(hlslv_limit_bool16
+    tests/hlsl/limits/vp_bool16.cg
+    tests/hlsl/limits/vp_bool16.expected b bool 16)
+add_hlsl_failure(hlslv_limit_bool17 hlslv
+    tests/hlsl/limits/vp_bool17.cg 6408 9
+    "HLSL b limit exceeded: 17 used, 16 available")
+add_hlsl_limit_success(hlslv_limit_samplers4 hlslv
+    tests/hlsl/limits/vp_samplers4.cg)
+add_hlsl_failure(hlslv_limit_samplers5 hlslv
+    tests/hlsl/limits/vp_samplers5.cg 6408 6
+    "HLSL s limit exceeded: 5 used, 4 available")
+add_hlsl_limit_success(hlslf_limit_samplers16 hlslf
+    tests/hlsl/limits/fp_samplers16.cg)
+add_hlsl_failure(hlslf_limit_samplers17 hlslf
+    tests/hlsl/limits/fp_samplers17.cg 6408 18
+    "HLSL s limit exceeded: 17 used, 16 available")
+add_hlsl_limit_success(hlslf_limit_colors4 hlslf
+    tests/hlsl/limits/fp_colors4.cg)
+add_hlsl_failure(hlslf_limit_colors5 hlslf
+    tests/hlsl/limits/fp_colors5.cg 6408 6
+    "HLSL color outputs limit exceeded: 5 used, 4 available")
+add_hlsl_failure(hlslf_limit_colors5_alias_lowercase hlslf
+    tests/hlsl/limits/fp_colors5_alias_lowercase.cg 6408 6
+    "HLSL color outputs limit exceeded: 5 used, 4 available")
+add_hlsl_failure(hlslf_limit_sparse_color4 hlslf
+    tests/hlsl/limits/fp_sparse_color4.cg 6408 1
+    "HLSL color outputs limit exceeded: 5 used, 4 available")
+add_hlsl_failure(hlslf_limit_outputs6 hlslf
+    tests/hlsl/limits/fp_outputs6.cg 6408 7
+    "HLSL outputs limit exceeded: 6 used, 5 available")
+
+add_hlsl_failure(hlslv_diagnostic_unsupported_type hlslv
+    tests/hlsl/diagnostics/vp_unsupported_type.cg 6400 2
+    "HLSL Shader Model 3 does not support type")
+add_hlsl_failure(hlslv_diagnostic_static_storage hlslv
+    tests/hlsl/profile/vp_static.cg 6401 1 "static storage")
+add_hlsl_failure(hlslv_diagnostic_extern_storage hlslv
+    tests/hlsl/profile/vp_extern.cg 6401 1 "extern storage")
+add_hlsl_failure(hlslv_diagnostic_static_function hlslv
+    tests/hlsl/diagnostics/vp_static_function.cg 6401 1 "static storage")
+add_hlsl_failure(hlslv_diagnostic_extern_function hlslv
+    tests/hlsl/diagnostics/vp_extern_function.cg 6401 1 "extern storage")
+add_hlsl_failure(hlslv_diagnostic_static_entry hlslv
+    tests/hlsl/diagnostics/vp_static_entry.cg 6401 1 "static storage")
+add_hlsl_failure(hlslv_diagnostic_static_function_redeclaration hlslv
+    tests/hlsl/diagnostics/vp_static_function_redeclaration.cg 6401 1 "static storage")
+add_hlsl_failure(hlslv_diagnostic_extern_function_redeclaration hlslv
+    tests/hlsl/diagnostics/vp_extern_function_redeclaration.cg 6401 1 "extern storage")
+add_hlsl_failure(hlslv_diagnostic_static_entry_redeclaration hlslv
+    tests/hlsl/diagnostics/vp_static_entry_redeclaration.cg 6401 1 "static storage")
+add_hlsl_failure(hlslv_diagnostic_conflicting_function_storage hlslv
+    tests/hlsl/diagnostics/vp_conflicting_function_storage.cg 1063 2
+    "storage class conflicts")
+add_hlsl_failure(hlslv_diagnostic_struct_method hlslv
+    tests/hlsl/aggregates/vp_struct_method.cg 6401 5 "structure method")
+add_hlsl_failure(hlslv_diagnostic_struct_method_prototype hlslv
+    tests/hlsl/aggregates/vp_struct_method_prototype.cg 6401 5
+    "structure method")
+add_hlsl_failure(hlslv_diagnostic_struct_cast hlslv
+    tests/hlsl/diagnostics/vp_struct_cast.cg 6401 19 "aggregate cast")
+add_hlsl_failure(hlslv_diagnostic_array_cast hlslv
+    tests/hlsl/diagnostics/vp_array_cast.cg 6401 10 "aggregate cast")
+add_hlsl_failure(hlslv_diagnostic_matrix_cast hlslv
+    tests/hlsl/diagnostics/vp_matrix_cast.cg 6401 8 "aggregate cast")
+add_hlsl_failure(hlslv_diagnostic_struct_constructor hlslv
+    tests/hlsl/diagnostics/vp_struct_constructor.cg 1066 5
+    "invalid type in type constructor")
+add_hlsl_failure(hlslv_diagnostic_array_constructor hlslv
+    tests/hlsl/diagnostics/vp_array_constructor.cg 1066 5
+    "invalid type in type constructor")
+add_hlsl_failure(hlslv_diagnostic_interface_constructor hlslv
+    tests/hlsl/diagnostics/vp_interface_constructor.cg 1066 8
+    "invalid type in type constructor" 2 5503
+    "non-scalar not allowed in vector constructor")
+add_hlsl_failure(hlslf_diagnostic_sampler_constructor hlslf
+    tests/hlsl/diagnostics/fp_sampler_constructor.cg 5502 4
+    "constructed vector requires numeric or bool elements")
+add_hlsl_failure(hlslf_diagnostic_sampler_cast hlslf
+    tests/hlsl/diagnostics/fp_sampler_cast.cg 1033 4
+    "cast not allowed")
+add_hlsl_failure(hlslv_diagnostic_connector_tag hlslv
+    tests/glsl/profile/unsupported_connector.cg 5001 4 "connector type")
+add_hlsl_failure(hlslv_diagnostic_pragma_constant hlslv
+    tests/hlsl/diagnostics/vp_pragma_constant.cg 5040 3 scale)
+add_hlsl_failure(hlslv_diagnostic_pragma_float_to_int_bank hlslv
+    tests/hlsl/diagnostics/vp_pragma_float_to_int_bank.cg 5040 3 scale)
+add_hlsl_failure(hlslv_diagnostic_pragma_int_to_float_bank hlslv
+    tests/hlsl/diagnostics/vp_pragma_int_to_float_bank.cg 5040 3 offset)
+add_hlsl_failure(hlslv_diagnostic_pragma_bool_to_sampler_bank hlslv
+    tests/hlsl/diagnostics/vp_pragma_bool_to_sampler_bank.cg 5040 3 enabled)
+add_hlsl_failure(hlslv_diagnostic_pragma_float_struct_array_to_int_bank hlslv
+    tests/hlsl/diagnostics/vp_pragma_float_struct_array_to_int_bank.cg 5040 6 settings)
+add_hlsl_failure(hlslv_diagnostic_pragma_int_struct_to_float_bank hlslv
+    tests/hlsl/diagnostics/vp_pragma_int_struct_to_float_bank.cg 5040 6 settings)
+add_hlsl_failure(hlslv_diagnostic_pragma_connector hlslv
+    tests/hlsl/diagnostics/vp_pragma_connector.cg 5040 3 scale)
+add_hlsl_failure(hlslv_diagnostic_internal_function hlslv
+    tests/hlsl/diagnostics/vp_internal_function.cg 5201 1 helper)
+add_hlsl_failure(hlslv_diagnostic_untagged_struct hlslv
+    tests/hlsl/diagnostics/vp_untagged_struct.cg 6400 1
+    "anonymous structure")
+add_hlsl_failure(hlslv_diagnostic_unsized_array hlslv
+    tests/hlsl/diagnostics/vp_unsized_array.cg 6400 1
+    "HLSL Shader Model 3 does not support type \"unsized array\"")
+add_hlsl_failure(hlslv_diagnostic_interface_dispatch hlslv
+    tests/hlsl/diagnostics/vp_interface_dispatch.cg 6400 4
+    "HLSL Shader Model 3 does not support type \"interface\"")
+add_hlsl_failure(hlslv_diagnostic_geometry_entry hlslv
+    tests/hlsl/diagnostics/vp_geometry_entry.cg 6410 3 emitVertex)
+add_hlsl_failure(hlslv_diagnostic_geometry_input_modifier hlslv
+    tests/hlsl/diagnostics/vp_geometry_input_modifier.cg 6401 1
+    "geometry input modifier")
+add_hlsl_failure(hlslv_diagnostic_geometry_output_modifier hlslv
+    tests/hlsl/diagnostics/vp_geometry_output_modifier.cg 6401 1
+    "geometry output modifier")
+add_hlsl_failure(hlslv_diagnostic_intrinsic_angle hlslv
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_angle.cg 6410 3 degrees)
+add_hlsl_failure(hlslv_diagnostic_intrinsic_matrix hlslv
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_matrix.cg 6410 4 determinant)
+add_hlsl_failure(hlslv_diagnostic_intrinsic_log10 hlslv
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_log10.cg 6410 3 log10)
+add_hlsl_failure(hlslv_diagnostic_intrinsic_decompose hlslv
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_decompose.cg 6410 4 frexp)
+add_hlsl_failure(hlslv_diagnostic_intrinsic_classify hlslv
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_classify.cg 6410 3 isfinite)
+add_hlsl_failure(hlslv_diagnostic_intrinsic_outparam hlslv
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_outparam.cg 6410 4 modf)
+add_hlsl_failure(hlslv_diagnostic_intrinsic_misc hlslv
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_misc.cg 6410 3 lit)
+add_hlsl_failure(hlslv_diagnostic_missing_position hlslv
+    tests/hlsl/diagnostics/vp_missing_position.cg 6405 1
+    "HLSL vertex entry must write POSITION0")
+add_hlsl_failure(hlslv_diagnostic_entry_abi hlslv
+    tests/hlsl/diagnostics/vp_empty_input_abi.cg 6406 1
+    "HLSL entry interface cannot represent")
+add_hlsl_failure(hlslv_diagnostic_position_wrong_width hlslv
+    tests/hlsl/diagnostics/vp_position_wrong_width.cg 6403 2 POSITION)
+add_hlsl_failure(hlslv_diagnostic_position_wrong_base hlslv
+    tests/hlsl/diagnostics/vp_position_wrong_base.cg 6403 2 POSITION)
+add_hlsl_failure(hlslv_diagnostic_int_bank_arithmetic hlslv
+    tests/hlsl/diagnostics/vp_int_bank_arithmetic.cg 6402 9
+    "i-register arithmetic data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_cast hlslv
+    tests/hlsl/diagnostics/vp_int_bank_cast.cg 6402 9
+    "i-register cast data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_helper hlslv
+    tests/hlsl/diagnostics/vp_int_bank_helper.cg 6402 14
+    "i-register helper argument")
+add_hlsl_failure(hlslv_diagnostic_int_bank_array_helper_use hlslv
+    tests/hlsl/diagnostics/vp_int_bank_array_helper_use.cg 6402 7
+    "i-register cast data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_bitwise hlslv
+    tests/hlsl/diagnostics/vp_int_bank_bitwise.cg 6402 9
+    "i-register bitwise data path")
+add_hlsl_failure(hlslv_diagnostic_bitwise_operator hlslv
+    tests/hlsl/diagnostics/vp_bitwise_operator.cg 6401 9
+    "bitwise and shift operators")
+add_hlsl_failure(hlslv_diagnostic_shift_operator hlslv
+    tests/hlsl/diagnostics/vp_shift_operator.cg 6401 9
+    "bitwise and shift operators")
+add_hlsl_failure(hlslv_diagnostic_right_shift_operator hlslv
+    tests/hlsl/diagnostics/vp_right_shift_operator.cg 6401 4
+    "bitwise and shift operators")
+add_hlsl_failure(hlslv_diagnostic_bitwise_and hlslv
+    tests/hlsl/diagnostics/vp_bitwise_and.cg 6401 4
+    "bitwise and shift operators")
+add_hlsl_failure(hlslv_diagnostic_bitwise_xor hlslv
+    tests/hlsl/diagnostics/vp_bitwise_xor.cg 6401 4
+    "bitwise and shift operators")
+add_hlsl_failure(hlslv_diagnostic_bitwise_not hlslv
+    tests/hlsl/diagnostics/vp_bitwise_not.cg 6401 9
+    "bitwise and shift operators")
+add_hlsl_failure(hlslv_diagnostic_int_bank_copy hlslv
+    tests/hlsl/diagnostics/vp_int_bank_copy.cg 6402 9
+    "i-register assignment data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_index_write hlslv
+    tests/hlsl/diagnostics/vp_int_bank_index_write.cg 6402 12
+    "i-register indexed lvalue")
+add_hlsl_failure(hlslv_diagnostic_int_bank_index_read hlslv
+    tests/hlsl/diagnostics/vp_int_bank_index_read.cg 6402 12
+    "i-register indexed data path")
+add_hlsl_failure(hlslv_diagnostic_int_bank_helper_return hlslv
+    tests/hlsl/diagnostics/vp_int_bank_helper_return.cg 6402 5
+    "i-register helper return")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_helper hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_helper.cg 6402 14
+    "b-register helper argument")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_logical_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_logical_value.cg 6402 10
+    "b-register logical data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_conditional_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_conditional_value.cg 6402 10
+    "b-register conditional data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_helper_return hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_helper_return.cg 6402 5
+    "b-register helper return")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_equal_control hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_equal_control.cg 6402 10
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_not_equal_control hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_not_equal_control.cg 6402 10
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_equal_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_equal_value.cg 6402 11
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_not_equal_value hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_not_equal_value.cg 6402 11
+    "b-register comparison data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_loop_condition_selection hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_loop_condition_selection.cg 6402 10
+    "b-register conditional data path")
+add_hlsl_failure(hlslv_diagnostic_bool_bank_loop_step_selection hlslv
+    tests/hlsl/diagnostics/vp_bool_bank_loop_step_selection.cg 6402 10
+    "b-register conditional data path")
+add_hlsl_failure(hlslv_diagnostic_invalid_local_struct_initializer hlslv
+    tests/hlsl/diagnostics/vp_invalid_local_struct_initializer.cg 1056 10
+    "invalid initialization")
+add_hlsl_failure(hlslv_diagnostic_invalid_short_struct_initializer hlslv
+    tests/hlsl/diagnostics/vp_invalid_short_struct_initializer.cg 1056 10
+    "invalid initialization")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_argument hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_argument.cg 6402 18
+    "mixed constant-bank helper argument")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_int hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_int.cg 6402 11
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_bool hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_bool.cg 6402 11
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_alias hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_alias.cg 6402 13
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_conditional_alias hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_conditional_alias.cg 6402 15
+    "mixed constant-bank helper return")
+add_hlsl_failure(hlslv_diagnostic_mixed_bank_helper_return_conditional hlslv
+    tests/hlsl/diagnostics/vp_mixed_bank_helper_return_conditional.cg 6402 13
+    "mixed constant-bank helper return")
+
+add_hlsl_failure(hlslv_texture_implicit_stage hlslv
+    tests/hlsl/diagnostics/vp_implicit_texture.cg 6409 5 tex2D)
+add_hlsl_failure(hlslf_sampler_unit_type_conflict hlslf
+    tests/hlsl/diagnostics/fp_sampler_unit_type_conflict.cg 6409 2 TEXUNIT0)
+add_hlsl_failure(hlslf_texture_sampler_coord_mismatch hlslf
+    tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg 6409 4 tex2D)
+add_hlsl_failure(hlslf_texture_bias_coord_mismatch hlslf
+    tests/hlsl/diagnostics/fp_tex2dbias_coord_mismatch.cg 6409 4 tex2Dbias)
+add_hlsl_failure(hlslf_texture_lod_coord_mismatch hlslf
+    tests/hlsl/diagnostics/fp_tex2dlod_coord_mismatch.cg 6409 4 tex2Dlod)
+add_hlsl_failure(hlslv_texture_lod_coord_mismatch hlslv
+    tests/hlsl/diagnostics/vp_tex2dlod_coord_mismatch.cg 6409 5 tex2Dlod)
+add_hlsl_failure(glslf_texture_sampler_coord_mismatch_unchanged glslf
+    tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg 1102 4
+    incompatible.type.for.parameter)
+add_hlsl_failure(hlslf_texture_local_sampler hlslf
+    tests/hlsl/diagnostics/fp_local_sampler.cg 1151 4 localImage)
+add_hlsl_failure(hlslf_texture_sampler_array hlslf
+    tests/hlsl/diagnostics/fp_sampler_array.cg 6409 1 sampler.array)
+add_hlsl_failure(hlslf_texture_sampler_rect hlslf
+    tests/cg20/samplers/rect.cg 6409 9 samplerRECT)
+add_hlsl_failure(hlslf_texture_rect_alias hlslf
+    tests/hlsl/diagnostics/fp_texture_rect_alias.cg 6409 1 samplerRECT)
+add_hlsl_failure(hlslf_texture_rect hlslf
+    tests/hlsl/diagnostics/fp_texture_rect.cg 6409 1 samplerRECT)
+add_hlsl_failure(hlslf_texture_rect_proj hlslf
+    tests/hlsl/diagnostics/fp_texture_rect_proj.cg 6409 5 texRECTproj)
+add_hlsl_failure(hlslf_texture_rect_x4 hlslf
+    tests/hlsl/diagnostics/fp_texture_rect_x4.cg 6409 1 samplerRECT)
+add_hlsl_failure(hlslf_texture_rect_h4_proj hlslf
+    tests/hlsl/diagnostics/fp_texture_rect_h4_proj.cg 6409 5 h4texRECTproj)
+add_hlsl_failure(hlslf_texture_rect_x4_proj hlslf
+    tests/hlsl/diagnostics/fp_texture_rect_x4_proj.cg 6409 5 x4texRECTproj)
+
+add_test(
+    NAME generic_entry_inout_still_rejected
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_out_inout.cg
+        -DCODE=5046
+        -DMESSAGE=cannot.be.in.out
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+
+function(add_hlsl_interface_failure name source code line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=hlslv
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -DCODE=${code}
+            -DEXPECTED_LINE=${line}
+            -DMESSAGE=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+    )
+    set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+        "${name}|${code}")
+endfunction()
+
+add_hlsl_interface_failure(hlslv_interface_exact_output_conflict
+    tests/hlsl/diagnostics/vp_exact_output_conflict.cg 6404 4 COLOR0)
+add_hlsl_interface_failure(hlslv_interface_case_output_conflict
+    tests/hlsl/diagnostics/vp_case_output_conflict.cg 6404 4 COLOR0)
+add_hlsl_interface_failure(hlslv_interface_alias_output_conflict
+    tests/hlsl/diagnostics/vp_alias_output_conflict.cg 6404 4 COLOR0)
+add_hlsl_interface_failure(hlslv_interface_invalid_width
+    tests/hlsl/diagnostics/vp_invalid_width.cg 6403 2 POSITION)
+add_hlsl_interface_failure(hlslv_interface_unbound_input
+    tests/hlsl/diagnostics/vp_unbound_input.cg 6403 3 missingSemantic)
+add_hlsl_interface_failure(hlslv_binding_register_collision
+    tests/hlsl/diagnostics/vp_register_collision.cg 6407 2 second)
+add_hlsl_interface_failure(hlslv_intrinsic_derivative_stage
+    tests/hlsl/diagnostics/vp_derivative.cg 6402 3 ddx)
+add_hlsl_interface_failure(hlslv_intrinsic_bad_overload
+    tests/hlsl/diagnostics/vp_bad_intrinsic.cg 6410 1
+    "cross.*float2.*float2")
+add_hlsl_interface_failure(hlslv_intrinsic_scalar_vector1_mismatch
+    tests/hlsl/diagnostics/vp_bad_intrinsic_shape.cg 6410 1
+    "dot.*float.*float1")
+add_hlsl_interface_failure(hlslv_intrinsic_uint_kind
+    tests/hlsl/diagnostics/vp_bad_intrinsic_uint.cg 6410 1 abs)
+add_hlsl_interface_failure(hlslv_intrinsic_double_kind
+    tests/hlsl/diagnostics/vp_bad_intrinsic_double.cg 6410 1 sqrt)
+add_hlsl_interface_failure(hlslv_intrinsic_char_kind
+    tests/hlsl/diagnostics/vp_bad_intrinsic_char.cg 6410 1 abs)
+add_hlsl_interface_failure(hlslv_intrinsic_short_kind
+    tests/hlsl/diagnostics/vp_bad_intrinsic_short.cg 6410 1 abs)
+add_hlsl_interface_failure(hlslv_intrinsic_long_kind
+    tests/hlsl/diagnostics/vp_bad_intrinsic_long.cg 6410 1 abs)
+add_hlsl_interface_failure(hlslv_recursion
+    tests/hlsl/diagnostics/vp_recursion.cg 6401 3 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_nested_recursion
+    tests/hlsl/diagnostics/vp_nested_recursion.cg 6401 10 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_recursion_call_location
+    tests/hlsl/diagnostics/vp_recursion_call_location.cg 6401 11 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_inline_recursion
+    tests/hlsl/diagnostics/vp_inline_recursion.cg 6401 4 recursive.HLSL.helper)
+add_hlsl_interface_failure(hlslv_inline_mutual_recursion
+    tests/hlsl/diagnostics/vp_inline_mutual_recursion.cg 6401 6 recursive.HLSL.helper)
+
+add_generic_diagnostic(generic_hlsl_recursion_unchanged
+    tests/hlsl/diagnostics/vp_recursion.cg 5005 3 recurse)
+add_generic_regression(hlsl_inline_helper_unchanged
+    tests/hlsl/functions/vp_inline_helper.cg
+    49d0d0f7ee9e40c652333d2cce56438bf3f89cb9928d93a14bc6e548f4c97c76)
+
+add_test(
+    NAME generic_hlsl_conditional_side_effects_unchanged
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=generic
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/expressions/vp_side_effects.cg
+        -DCODE=1052
+        -DEXPECTED_LINE=31
+        -DMESSAGE=side.effects
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_discard.cg"
+    CONTENT [=[float4 main(float4 position : POSITION) : POSITION
+{
+    discard;
+    return position;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_discard
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv
+        "-DSOURCE=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_discard.cg"
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_discard.hlsl"
+        -DCODE=6402
+        -DEXPECTED_LINE=3
+        -DMESSAGE=discard
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+)
+set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+    "hlslv_discard|6402")
+
+add_test(
+    NAME hlslv_interface_attr_texcoord_conflict
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_attr_texcoord_conflict.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_attr_texcoord_conflict.hlsl"
+        -DCODE=6404
+        -DEXPECTED_LINE=3
+        -DMESSAGE=TEXCOORD0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_input.cg"
+    CONTENT [=[varying float4 globalTexcoord : TEXCOORD0;
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position + globalTexcoord;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_interface_global_input
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile hlslv
+        "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_input.cg"
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_output.cg"
+    CONTENT [=[varying float4 globalPosition : HPOS;
+float4 main(float4 position : POSITION) : COLOR0
+{
+    globalPosition = position;
+    return position;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_interface_global_output
+    COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile hlslv
+        "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_global_output.cg"
+)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_invalid_semantic.cg"
+    CONTENT [=[struct VertexIn { float4 invalid : CLP0; };
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(VertexIn input)
+{
+    VertexOut output;
+    output.position = input.invalid;
+    return output;
+}
+]=]
+)
+
+add_test(
+    NAME hlslv_interface_invalid_semantic
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv
+        "-DSOURCE=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_invalid_semantic.cg"
+        "-DCONFIG=$<CONFIG>"
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_interface_invalid_semantic.hlsl"
+        -DCODE=6403
+        -DEXPECTED_LINE=1
+        -DMESSAGE=CLP0
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+)
+set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+    "hlslv_interface_invalid_semantic|6403")
 
 add_glsl_fixture(glslv_passthrough glslv
     tests/glsl/profile/vp_passthrough.cg
@@ -2897,6 +3907,22 @@ if(CGC_REFERENCE_EXECUTABLE)
     add_arb_oracle(vp_uniform arbvp1 tests/arb/oracle/vp_uniform.cg)
     add_arb_oracle(fp_passthrough arbfp1 tests/arb/oracle/fp_passthrough.cg)
     add_arb_oracle(fp_texture arbfp1 tests/arb/oracle/fp_texture.cg)
+
+    function(add_hlsl_oracle name profile source)
+        add_test(NAME hlsl_oracle_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC_UNDER_TEST=$<TARGET_FILE:cgc>
+                -DREFERENCE_CGC=${CGC_REFERENCE_EXECUTABLE}
+                -DPROFILE=${profile}
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DENTRY=main
+                -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/hlsl-oracle/$<CONFIG>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_oracle.cmake)
+        set_tests_properties(hlsl_oracle_${name} PROPERTIES LABELS oracle)
+    endfunction()
+
+    add_hlsl_oracle(vp_uniform hlslv tests/hlsl/oracle/vp_uniform.cg)
+    add_hlsl_oracle(fp_texture hlslf tests/hlsl/oracle/fp_texture.cg)
 endif()
 
 # Core GLSL 1.50 contract on representative vertex and fragment
@@ -2914,3 +3940,26 @@ add_glsl150_contract(glsl150_glslf_tex2d glslf
     tests/glsl/textures/fp_tex2d.cg)
 add_glsl150_contract(glsl150_glslv_position glslv
     position.cg)
+
+# The checked-in compatibility contract is executable documentation: every
+# row uses the closed status vocabulary and names one registered CTest.
+add_test(NAME hlsl_compatibility_matrix
+    COMMAND ${CMAKE_COMMAND}
+        -DMATRIX=${PROJECT_SOURCE_DIR}/docs/hlsl-sm3-compatibility.md
+        "-DREGISTERED_TESTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-tests.txt"
+        "-DREGISTERED_CONTRACTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_compatibility_matrix.cmake)
+get_property(hlsl_registered_tests DIRECTORY PROPERTY TESTS)
+get_property(hlsl_registered_contracts DIRECTORY
+    PROPERTY HLSL_FAILURE_CONTRACTS)
+string(REPLACE ";" "\n" hlsl_registered_contract_lines
+    "${hlsl_registered_contracts}")
+string(APPEND hlsl_registered_contract_lines "\n")
+string(REPLACE ";" "\n" hlsl_registered_test_lines
+    "${hlsl_registered_tests}")
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-tests.txt"
+    CONTENT "${hlsl_registered_test_lines}\n")
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
+    CONTENT "${hlsl_registered_contract_lines}")

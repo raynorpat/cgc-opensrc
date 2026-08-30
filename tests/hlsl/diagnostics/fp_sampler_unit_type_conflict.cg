@@ -1,0 +1,7 @@
+uniform sampler2D surface : TEXUNIT0;
+uniform sampler3D volume : TEXUNIT0;
+
+float4 main(float4 color : COLOR0) : COLOR0
+{
+    return color;
+}

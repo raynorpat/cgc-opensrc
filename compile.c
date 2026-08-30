@@ -1745,9 +1745,22 @@ expr *ExpandIncDecExpr(expr *fExpr, void *arg1, int arg2)
         expr *incdec = (expr *) NewBinopNode(newop, DupNode(fExpr->un.arg), oneExpr);
         expr *rval = DupNode(tmp);
         result = (expr *) NewBinopNode(COMMA_OP, incdec, rval);
+        if (Cg->theHAL->GetCapsBit(CAPS_TYPED_INC_DEC_EXPRESSIONS)) {
+            result->common.type = fExpr->common.type;
+            result->common.HasSideEffects = 1;
+        }
         result = (expr *) NewBinopNode(COMMA_OP, tmpAssign, result);
-        if (idxAssigns)
+        if (Cg->theHAL->GetCapsBit(CAPS_TYPED_INC_DEC_EXPRESSIONS)) {
+            result->common.type = fExpr->common.type;
+            result->common.HasSideEffects = 1;
+        }
+        if (idxAssigns) {
             result = (expr *) NewBinopNode(COMMA_OP, idxAssigns, result);
+            if (Cg->theHAL->GetCapsBit(CAPS_TYPED_INC_DEC_EXPRESSIONS)) {
+                result->common.type = fExpr->common.type;
+                result->common.HasSideEffects = 1;
+            }
+        }
     }
 
     return result;
@@ -2055,6 +2068,9 @@ static expr *LinearizeCommasExpr(expr *fExpr, void *arg1, int arg2)
 static stmt *FlattenCommasStmt(stmt *fStmt, void *arg1, int arg2)
 {
     stmt *preCommaStmts = NULL;
+
+    if (Cg->theHAL->GetCapsBit(CAPS_PRESERVE_COMMA_EXPRESSIONS))
+        return fStmt;
     PreApplyToExpressionsLocal(FlattenCommasExpr, fStmt, NULL, 0);
     PreApplyToExpressionsLocal(LinearizeCommasExpr, fStmt, &preCommaStmts, 0);
     return ConcatStmts(preCommaStmts, fStmt);
@@ -2440,7 +2456,9 @@ stmt *FlattenStructAssignment(stmt *fStmt, void *arg1, int flevel)
                         rExpr = eExpr->bin.right;
                         if (data->normalizeOperands &&
                             AggregateExprNeedsMaterialization(rExpr) &&
-                            AggregateContainsArray(lType))
+                            AggregateContainsArray(lType) &&
+                            !Cg->theHAL->GetCapsBit(
+                                CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS))
                         {
                             if (Cg->theHAL->pid == PROFILE_GLSLV_ID ||
                                 Cg->theHAL->pid == PROFILE_GLSLF_ID)
@@ -3257,7 +3275,9 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                 lStmt = program->details.fun.statements;
                 lStmt = ConcatStmts(fScope->initStmts, lStmt);
                 if (GetErrorCount() == 0) {
-                    lStmt = ExpandInlineFunctionCalls(lScope, lStmt, NULL);
+                    if (!theHAL->GetCapsBit(CAPS_PRESERVE_INLINE_HELPERS))
+                        lStmt = ExpandInlineFunctionCalls(lScope, lStmt,
+                                                          NULL);
                     PostApplyToExpressions(CheckForHiddenVaryingReferences, lStmt, NULL, 0);
                     if (Cg->options.DumpParseTree || Cg->options.DumpNodeTree) {
                         program->details.fun.statements = lStmt;

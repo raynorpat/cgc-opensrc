@@ -1,0 +1,5 @@
+TRIANGLE void main(AttribArray<float4> position : POSITION)
+{
+    emitVertex(position[0] : POSITION);
+    restartStrip();
+}

@@ -53,6 +53,13 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Repeatable raw "-po value" occurrences, owned by the option list:
 
 typedef struct CgProfileOption_Rec CgProfileOption;
+typedef struct CgCallSite_Rec CgCallSite;
+
+struct CgCallSite_Rec {
+    CgCallSite *next;
+    const void *expression;
+    SourceLoc loc;
+};
 
 int InitCgStruct(void);
 void FreeCgStruct(void);
@@ -108,6 +115,7 @@ struct CgStruct_Rec {
 
     // Private members
     SourceLoc lastSourceLoc;
+    CgCallSite *callSites;
 
     // Scanner data:
 

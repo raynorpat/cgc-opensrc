@@ -1,0 +1,16 @@
+uniform int count;
+
+int get_count(int unused)
+{
+    return count;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    output.position.x += get_count(0) + 1;
+    return output;
+}

@@ -1,0 +1,12 @@
+typedef float SourceValues[2];
+typedef int TargetValues[2];
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    SourceValues source;
+    TargetValues target;
+    source[0] = 1.0;
+    source[1] = 2.0;
+    target = (TargetValues) source;
+    return position + float(target[0]) * 0.0;
+}

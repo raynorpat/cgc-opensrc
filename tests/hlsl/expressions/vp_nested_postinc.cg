@@ -1,0 +1,17 @@
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    bool choose;
+    float left;
+    float right;
+    float selected;
+
+    choose = position.x > 0.0;
+    left = 1.0;
+    right = 2.0;
+    selected = choose ? left++ : right++;
+    output.position = float4(selected, left, right, position.w);
+    return output;
+}

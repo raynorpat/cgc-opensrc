@@ -31,7 +31,7 @@ arrays (including `.length` and dynamic assignment), the full sampler
 family as language types, interfaces with single inheritance and dynamic
 dispatch, struct methods, profile-qualified overloads with wildcard
 precedence, default arguments, and a backend-neutral normalized Cg IR.
-Reserved words of Cg 2.0 that are not implemented syntax (CgFX words,
+Reserved words of Cg 2.0 that have no grammar productions (CgFX words,
 C++-isms) are rejected with a reserved-word diagnostic; `technique`,
 `pass`, and `compile` are recognized case-insensitively. The reserved-word
 grid shipped in this release is best-effort pending direct verification
@@ -77,6 +77,8 @@ The compiler provides these profiles:
   valid program and emits the normalized IR described above.
 - `glslv`, `glslg`, and `glslf` translate Cg vertex, geometry, and fragment
   entry points to core GLSL 1.50.
+- `hlslv` and `hlslf` translate Cg vertex and fragment entry points to
+  DirectX 9 HLSL Shader Model 3.
 - `arbvp1` emits base `!!ARBvp1.0` vertex assembly.
 - `arbfp1` emits base `!!ARBfp1.0` fragment assembly.
 
@@ -168,6 +170,56 @@ cmake -S . -B build -DBUILD_TESTING=ON
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
+
+## DirectX 9 HLSL Shader Model 3 profiles
+
+`hlslv` emits standalone `vs_3_0` source and `hlslf` emits standalone
+`ps_3_0` source. A Windows Release build can translate and optionally compile
+the result with the legacy DirectX compiler as follows:
+
+```powershell
+.\build\Release\cgc.exe -quiet -profile hlslv -entry main -o shader.vs.hlsl shader.cg
+fxc /nologo /Gec /WX /T vs_3_0 /E main /Fo shader.vso shader.vs.hlsl
+.\build\Release\cgc.exe -quiet -profile hlslf -entry main -o shader.ps.hlsl shader.cg
+fxc /nologo /Gec /WX /T ps_3_0 /E main /Fo shader.pso shader.ps.hlsl
+```
+
+Generated files contain exactly one public HLSL `main`; source helpers and the
+selected Cg entry remain behind that wrapper. Uniforms receive explicit
+physical bindings in the DirectX 9 banks: floating-point data uses `c`, integer
+data uses `i`, boolean data uses `b`, and samplers use `s`. A source `C#`,
+`I#`, `B#`, `S#`, or `TEXUNIT#` semantic and the supported `#pragma bind`
+forms reserve an explicit location. Remaining uniforms are allocated in
+source order by deterministic first fit, with arrays, matrices, and
+homogeneous structures reserving their complete register spans. Mixed-bank
+structures are split into named leaves.
+
+Cg defaults are preserved both as generated HLSL initializers and as
+`// cgc-default` metadata for hosts that inspect the binding contract.
+Matrices are declared `row_major`, matching the Cg source data convention.
+Interface comments retain the source name while generated signatures use the
+canonical DirectX semantic. Accepted aliases include vertex `HPOS`, `COL#`,
+`TEX#`, `ATTR#`, and `ATTRIB#`, and pixel `WPOS`, `FACE`, `COL#`, and `TEX#`;
+alias and case normalization still participate in duplicate detection.
+
+The test suite performs exact source comparison, stage validation, and
+cross-stage semantic, direction, shape, and type link checks. When `fxc` is
+available it is an optional validation dependency. The automated validation
+uses `/Gec /WX` so backward-compatible DirectX 9 syntax is accepted while all
+warnings remain errors; `cgc` itself never invokes `fxc`. The exhaustive
+[HLSL SM3 compatibility matrix](docs/hlsl-sm3-compatibility.md) classifies
+every exposed type, qualifier, statement, operator, intrinsic, texture form,
+semantic, binding, aggregate, and resource limit with a registered test.
+
+These profiles intentionally do not emit DirectX assembly or bytecode and do
+not invoke `fxc`, D3DX, `D3DCompile`, or another compiler. They do not target
+Shader Models 1, 2, 4, 5, or 6; geometry, hull, domain, or compute stages; or
+the DirectX effects framework, techniques, passes, and state blocks. DirectX
+10+ `SV_*` semantics, DXIL compatibility, runtime rendering or image tests,
+and updates to the parser or standard library for a newer Cg release are also
+out of scope. Output is not promised to be byte-identical to NVIDIA Cg, and
+the profiles do not predict optimization-dependent instruction or temporary
+register usage without an external HLSL compiler.
 
 ## OpenGL ARB Profiles
 

@@ -1,0 +1,5 @@
+float4 main(float2 coord : TEXCOORD0,
+            uniform sampler2D image) : COLOR0
+{
+    return tex2D((sampler2D) image, coord);
+}

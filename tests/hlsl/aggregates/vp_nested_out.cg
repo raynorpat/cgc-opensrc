@@ -1,0 +1,44 @@
+struct Item {
+    float4 value;
+};
+
+struct Batch {
+    Item items[2];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+int next_index(inout int index)
+{
+    int result;
+    result = index;
+    index = index + 1;
+    return result;
+}
+
+void transfer(out Batch destination, inout Batch current)
+{
+    destination = current;
+    current.items[0].value = current.items[0].value * 2.0;
+    current.items[1].value = current.items[1].value * 3.0;
+}
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    Batch generated[2];
+    Batch current[2];
+    int outputIndex;
+    int currentIndex;
+    current[0].items[0].value = position;
+    current[0].items[1].value = position + 1.0;
+    outputIndex = 0;
+    currentIndex = 0;
+    transfer(generated[next_index(outputIndex)],
+             current[next_index(currentIndex)]);
+    output.position = generated[0].items[0].value +
+                      current[0].items[1].value;
+    return output;
+}

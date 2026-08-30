@@ -1,0 +1,60 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_record(inout float trace, float digit);
+
+float cg_selectTrace(bool choose, inout float trace, float trueDigit, float falseDigit)
+{
+    bool temp1;
+    float temp2;
+    float temp3;
+    temp1 = choose;
+    temp2 = cg_record(trace, trueDigit);
+    temp3 = cg_record(trace, falseDigit);
+    return temp1 ? temp2 : temp3;
+}
+
+float cg_record(inout float trace, float digit)
+{
+    trace = trace * (float) 10.0 + digit;
+    return trace;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    float trace;
+    float trueResult;
+    float falseResult;
+    trace = 0.0;
+    trueResult = cg_selectTrace(true, trace, 1.0, 2.0);
+    falseResult = cg_selectTrace(false, trace, 3.0, 4.0);
+    cg_output.position = float4(trueResult, falseResult, trace, trueResult + falseResult);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

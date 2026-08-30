@@ -1,0 +1,120 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface in blendWeight float4 BLENDWEIGHT0
+// cgc-bind interface in blendIndices float4 BLENDINDICES0
+// cgc-bind interface in normal float3 NORMAL0
+// cgc-bind interface in psize float PSIZE0
+// cgc-bind interface in tangent float3 TANGENT0
+// cgc-bind interface in binormal float3 BINORMAL0
+// cgc-bind interface in color0 float4 COLOR0
+// cgc-bind interface in color1 float4 COLOR1
+// cgc-bind interface in tex0 float4 TEXCOORD0
+// cgc-bind interface in tex1 float4 TEXCOORD1
+// cgc-bind interface in tex2 float4 TEXCOORD2
+// cgc-bind interface in tex3 float4 TEXCOORD3
+// cgc-bind interface in tex4 float4 TEXCOORD4
+// cgc-bind interface in tex5 float4 TEXCOORD5
+// cgc-bind interface in tex6 float4 TEXCOORD6
+// cgc-bind interface out position float4 POSITION0
+// cgc-bind interface out psize float PSIZE0
+// cgc-bind interface out fog float FOG0
+// cgc-bind interface out color0 float4 COLOR0
+// cgc-bind interface out color1 float4 COLOR1
+// cgc-bind interface out tex0 float4 TEXCOORD0
+// cgc-bind interface out tex1 float4 TEXCOORD1
+// cgc-bind interface out tex2 float4 TEXCOORD2
+// cgc-bind interface out tex3 float4 TEXCOORD3
+// cgc-bind interface out tex4 float4 TEXCOORD4
+// cgc-bind interface out tex5 float4 TEXCOORD5
+// cgc-bind interface out tex6 float4 TEXCOORD6
+
+struct cg_VertexOut
+{
+    float4 position;
+    float psize;
+    float fog;
+    float4 color0;
+    float4 color1;
+    float4 tex0;
+    float4 tex1;
+    float4 tex2;
+    float4 tex3;
+    float4 tex4;
+    float4 tex5;
+    float4 tex6;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+    float4 blendWeight : BLENDWEIGHT0;
+    float4 blendIndices : BLENDINDICES0;
+    float3 normal : NORMAL0;
+    float psize : PSIZE0;
+    float3 tangent : TANGENT0;
+    float3 binormal : BINORMAL0;
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 tex0 : TEXCOORD0;
+    float4 tex1 : TEXCOORD1;
+    float4 tex2 : TEXCOORD2;
+    float4 tex3 : TEXCOORD3;
+    float4 tex4 : TEXCOORD4;
+    float4 tex5 : TEXCOORD5;
+    float4 tex6 : TEXCOORD6;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+    float psize : PSIZE0;
+    float fog : FOG0;
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 tex0 : TEXCOORD0;
+    float4 tex1 : TEXCOORD1;
+    float4 tex2 : TEXCOORD2;
+    float4 tex3 : TEXCOORD3;
+    float4 tex4 : TEXCOORD4;
+    float4 tex5 : TEXCOORD5;
+    float4 tex6 : TEXCOORD6;
+};
+
+cg_VertexOut cg_entry(float4 position, float4 blendWeight, float4 blendIndices, float3 normal, float psize, float3 tangent, float3 binormal, float4 color0, float4 color1, float4 tex0, float4 tex1, float4 tex2, float4 tex3, float4 tex4, float4 tex5, float4 tex6)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    cg_output.position = position;
+    cg_output.psize = psize;
+    cg_output.fog = psize;
+    cg_output.color0 = color0;
+    cg_output.color1 = color1;
+    cg_output.tex0 = tex0;
+    cg_output.tex1 = tex1;
+    cg_output.tex2 = tex2;
+    cg_output.tex3 = tex3;
+    cg_output.tex4 = tex4;
+    cg_output.tex5 = tex5;
+    cg_output.tex6 = tex6;
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, input.blendWeight, input.blendIndices, input.normal, input.psize, input.tangent, input.binormal, input.color0, input.color1, input.tex0, input.tex1, input.tex2, input.tex3, input.tex4, input.tex5, input.tex6);
+    output.position = cg_result.position;
+    output.psize = cg_result.psize;
+    output.fog = cg_result.fog;
+    output.color0 = cg_result.color0;
+    output.color1 = cg_result.color1;
+    output.tex0 = cg_result.tex0;
+    output.tex1 = cg_result.tex1;
+    output.tex2 = cg_result.tex2;
+    output.tex3 = cg_result.tex3;
+    output.tex4 = cg_result.tex4;
+    output.tex5 = cg_result.tex5;
+    output.tex6 = cg_result.tex6;
+    return output;
+}

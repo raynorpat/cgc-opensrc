@@ -296,6 +296,14 @@ unary *NewUnopNode(opcode op, expr *arg)
     pun->HasSideEffects = 0;
     if (arg)
         pun->HasSideEffects = arg->common.HasSideEffects;
+    if (arg != NULL && Cg->theHAL != NULL &&
+        Cg->theHAL->GetCapsBit(CAPS_TYPED_INC_DEC_EXPRESSIONS) &&
+        (op == PREINC_OP || op == PREDEC_OP ||
+         op == POSTINC_OP || op == POSTDEC_OP))
+    {
+        pun->type = arg->common.type;
+        pun->HasSideEffects = 1;
+    }
     pun->op = op;
     pun->subop = 0;
     pun->arg = arg;
@@ -1494,6 +1502,20 @@ decl *Function_Definition_Header(SourceLoc *loc, decl *fDecl)
  *         with variable.
  */
 
+static void lFindNextStructInitMember(Symbol *tree, int after,
+                                      Symbol **best)
+{
+    if (tree == NULL)
+        return;
+    lFindNextStructInitMember(tree->left, after, best);
+    if (tree->kind == VARIABLE_S && tree->sourceOrdinal > after &&
+        (*best == NULL || tree->sourceOrdinal < (*best)->sourceOrdinal))
+    {
+        *best = tree;
+    }
+    lFindNextStructInitMember(tree->right, after, best);
+} // lFindNextStructInitMember
+
 static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, int IsGlobal)
 {
     int category, base, ii, vlen, subop;
@@ -1600,8 +1622,51 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
             SemanticError(loc, ERROR___INVALID_INITIALIZATION);
         }
         return 0;
-    case TYPE_CATEGORY_FUNCTION:
     case TYPE_CATEGORY_STRUCT:
+        if (Cg->theHAL->GetCapsBit(
+                CAPS_AGGREGATE_DEFAULT_INITIALIZERS) &&
+            vType->str.members != NULL && dExpr->common.kind == BINARY_N &&
+            dExpr->bin.op == EXPR_LIST_OP)
+        {
+            Symbol *member;
+            Symbol *best;
+            expr *memberExpr;
+            int after;
+
+            memberExpr = dExpr->bin.left;
+            after = -1;
+            for (;;) {
+                best = NULL;
+                lFindNextStructInitMember(vType->str.members->symbols,
+                                          after, &best);
+                member = best;
+                if (member == NULL)
+                    break;
+                if (memberExpr == NULL) {
+                    SemanticError(loc, ERROR___INVALID_INITIALIZATION);
+                    return 0;
+                }
+                if (memberExpr->common.kind != BINARY_N ||
+                    memberExpr->bin.op != EXPR_LIST_OP)
+                {
+                    SemanticError(loc, ERROR___INVALID_INITIALIZATION);
+                    return 0;
+                }
+                if (!lCheckInitializationData(loc, member->type,
+                                              memberExpr, IsGlobal))
+                    return 0;
+                after = member->sourceOrdinal;
+                memberExpr = memberExpr->bin.right;
+            }
+            if (memberExpr != NULL) {
+                SemanticError(loc, ERROR___TOO_MUCH_DATA);
+                return 0;
+            }
+            return 1;
+        }
+        SemanticError(loc, ERROR___INVALID_INITIALIZATION);
+        return 0;
+    case TYPE_CATEGORY_FUNCTION:
     case TYPE_CATEGORY_CONNECTOR:
         SemanticError(loc, ERROR___INVALID_INITIALIZATION);
         return 0;
@@ -1791,6 +1856,16 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                         } else {
                             lExpr = (expr *) NewSymbNode(VARIABLE_OP, lSymb);
                             lStmt = NewSimpleAssignmentStmt(loc, lExpr, fExpr->bin.left, 1);
+                        }
+                        break;
+                    case TYPE_CATEGORY_STRUCT:
+                        if (DontAssign && Cg->theHAL->GetCapsBit(
+                                CAPS_AGGREGATE_DEFAULT_INITIALIZERS))
+                        {
+                            lSymb->details.var.init = fExpr;
+                        } else {
+                            SemanticError(loc,
+                                          ERROR___INVALID_INITIALIZATION);
                         }
                         break;
                     }
@@ -2344,6 +2419,7 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                     lScope = NewScope();
                     params = AddFormalParamDecls(lScope, fDecl->params);
                     lSymb = DeclareFunc(&fDecl->loc, CurrentScope, NULL, fDecl->name, lType, lScope, params);
+                    lSymb->storageClass = fDecl->type.storageClass;
                     lAttachPendingProfileSpecifier(lSymb);
                     lMergeGeometryModifiers(&lSymb->details.fun.geometry,
                                             &fDecl->type.geometry);
@@ -2431,7 +2507,16 @@ decl *Declarator(SourceLoc *loc, decl *fDecl, int semantics)
                                         &fDecl->type.geometry);
                 lCheckAttribArrayFunction(&fDecl->loc, fDecl, lSymb);
                 lValidateParameterDefaults(&fDecl->loc, lSymb);
-                lSymb->storageClass = fDecl->type.storageClass;
+                if (fDecl->type.storageClass != SC_UNKNOWN) {
+                    if (lSymb->storageClass != SC_UNKNOWN &&
+                        lSymb->storageClass != fDecl->type.storageClass)
+                    {
+                        SemanticError(&fDecl->loc,
+                                      ERROR___CONFLICTING_STORAGE);
+                    } else {
+                        lSymb->storageClass = fDecl->type.storageClass;
+                    }
+                }
                 // See the matching new-declaration path above.
                 if (semantics)
                     lSymb->details.fun.semantics = semantics;
@@ -2650,10 +2735,12 @@ decl *SetFunTypeParams(Scope *fScope, decl *func, decl *params, decl *actuals)
 decl *FunctionDeclHeader(SourceLoc *loc, Scope *fScope, decl *func)
 {
     Type *rtnType = GetTypePointer(Cg->tokenLoc, &func->type);
+    StorageClass storageClass = func->type.storageClass;
 
     if (IsUnsizedArray(rtnType))
         SemanticError(loc, ERROR_S_UNSIZED_ARRAY, GetAtomString(atable, func->name));
     NewDType(&func->type, NULL, TYPE_CATEGORY_FUNCTION);
+    func->type.storageClass = storageClass;
     CurrentScope->InFormalParameters++;
     func->type.type.properties |= rtnType->properties & (TYPE_MISC_INLINE | TYPE_MISC_INTERNAL);
     rtnType->properties &= ~(TYPE_MISC_INLINE | TYPE_MISC_INTERNAL);
@@ -4036,7 +4123,10 @@ expr *NewConditionalOperator(SourceLoc *loc, expr *bexpr, expr *lExpr, expr *rex
         }
     }
     if (!HasError) {
-        if (lExpr->common.HasSideEffects || rexpr->common.HasSideEffects) {
+        if ((lExpr->common.HasSideEffects ||
+             rexpr->common.HasSideEffects) &&
+            !Cg->theHAL->GetCapsBit(CAPS_CONDITIONAL_SIDE_EFFECTS))
+        {
             SemanticError(loc, ERROR_S_OPERANDS_HAVE_SIDE_EFFECTS, "?:");
         }
         if (LIsSimple) {
@@ -4761,6 +4851,34 @@ static void lRejectStrayGeometryArguments(SourceLoc *loc, expr *fActuals,
     }
 } // lRejectStrayGeometryArguments
 
+void RecordExprCallSite(expr *call, const SourceLoc *loc)
+{
+    CgCallSite *site;
+
+    if (Cg == NULL || call == NULL || loc == NULL)
+        return;
+    site = (CgCallSite *) malloc(sizeof(CgCallSite));
+    if (site == NULL)
+        return;
+    site->expression = call;
+    site->loc = *loc;
+    site->next = Cg->callSites;
+    Cg->callSites = site;
+} // RecordExprCallSite
+
+const SourceLoc *GetExprCallSite(const expr *call)
+{
+    CgCallSite *site;
+
+    if (Cg == NULL || call == NULL)
+        return NULL;
+    for (site = Cg->callSites; site != NULL; site = site->next) {
+        if (site->expression == call)
+            return &site->loc;
+    }
+    return NULL;
+} // GetExprCallSite
+
 /*
  * NewFunctionCallOperator() - Construct a function call node.  Check types of parameters,
  *         resolve overloaded function, etc.
@@ -4778,8 +4896,13 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
     int paramno, inout;
     int lop, lsubop = FUN_CALL_OP;
 
-    if (lIsMethodSelection(funExpr))
-        return lNewMethodCallOperator(loc, funExpr, actuals);
+    if (lIsMethodSelection(funExpr)) {
+        expr *methodCall;
+
+        methodCall = lNewMethodCallOperator(loc, funExpr, actuals);
+        RecordExprCallSite(methodCall, loc);
+        return methodCall;
+    }
 
     lUnwrapPlainGeometryArguments(actuals);
 
@@ -4825,7 +4948,7 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
             /* A selected geometry operation owns its argument syntax:
              * annotated arguments stay wrapped for the statement
              * classifier, and arity, types, and placement are checked
-             * there -- never against the placeholder empty parameter
+             * there -- never against the declarative empty parameter
              * list. */
             result = NewBinopSubNode(FUN_CALL_OP, 0, funExpr, actuals);
             result->IsLValue = 0;
@@ -4907,7 +5030,14 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
                 SUBOP_SET_MASK(lActuals->bin.subop, inout);
             } else if (!CgTypeIsPoison(actualType) &&
                        !CgTypeIsPoison(formalType)) {
-                SemanticError(loc, ERROR_D_INCOMPATIBLE_PARAMETER, paramno);
+                if (Cg == NULL || Cg->theHAL == NULL ||
+                    Cg->theHAL->HandleParameterTypeError == NULL ||
+                    !Cg->theHAL->HandleParameterTypeError(loc, lSymb,
+                                                          paramno))
+                {
+                    SemanticError(loc, ERROR_D_INCOMPATIBLE_PARAMETER,
+                                  paramno);
+                }
             }
             lFormals = lFormals->next;
             lActuals = lActuals->bin.right;
@@ -4930,6 +5060,7 @@ expr *NewFunctionCallOperator(SourceLoc *loc, expr *funExpr, expr *actuals)
         result = NewBinopNode(FUN_CALL_OP, funExpr, actuals);
         result->type = UndefinedType;
     }
+    RecordExprCallSite((expr *) result, loc);
     return (expr *) result;
 } // NewFunctionCallOperator
 

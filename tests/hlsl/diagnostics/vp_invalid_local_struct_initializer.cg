@@ -1,0 +1,15 @@
+struct Value {
+    float scalar;
+};
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    Value source;
+    Value copy = source;
+    VertexOut output;
+    source.scalar = position.x;
+    output.position = position + copy.scalar;
+    return output;
+}

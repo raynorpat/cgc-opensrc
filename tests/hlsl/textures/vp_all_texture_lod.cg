@@ -1,0 +1,15 @@
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 coord : ATTRIB0,
+               uniform sampler1D lineImage : TEXUNIT0,
+               uniform sampler2D planeImage : TEXUNIT1,
+               uniform sampler3D volumeImage : TEXUNIT2,
+               uniform samplerCUBE cubeImage : TEXUNIT3)
+{
+    VertexOut output;
+    output.position = tex1Dlod(lineImage, coord) +
+                      tex2Dlod(planeImage, coord) +
+                      tex3Dlod(volumeImage, coord) +
+                      texCUBElod(cubeImage, coord);
+    return output;
+}

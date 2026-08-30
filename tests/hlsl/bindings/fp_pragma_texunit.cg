@@ -1,0 +1,8 @@
+#pragma bind main.image = texunit 3
+#pragma bind main.explicitImage = s 5
+
+float4 main(float2 coord : TEXCOORD0, uniform sampler2D image,
+            uniform sampler2D explicitImage) : COLOR0
+{
+    return tex2D(image, coord) + tex2D(explicitImage, coord) * 0.0;
+}

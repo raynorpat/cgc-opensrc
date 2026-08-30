@@ -1,0 +1,30 @@
+// profile hlslf
+// target ps_3_0
+// cgc-bind interface in color float4 COLOR0
+// cgc-bind interface out result float4 COLOR0
+
+struct cg_PixelIn
+{
+    float4 color : COLOR0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_entry(float4 color)
+{
+    if (color.w < 0.5)
+    {
+        discard;
+    }
+    return color;
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.color);
+    return output;
+}

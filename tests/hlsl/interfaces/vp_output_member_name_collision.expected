@@ -1,0 +1,40 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out value float4 POSITION0
+// cgc-bind interface out value float4 COLOR0
+
+struct cg_VertexOut
+{
+    float4 value;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 value : POSITION0;
+    float4 value_1 : COLOR0;
+};
+
+cg_VertexOut cg_entry(float4 position, out float4 value)
+{
+    cg_VertexOut result = (cg_VertexOut) 0;
+    result.value = position;
+    value = position;
+    return result;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    float4 value;
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, value);
+    output.value = cg_result.value;
+    output.value_1 = value;
+    return output;
+}

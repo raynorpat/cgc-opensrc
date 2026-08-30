@@ -1675,7 +1675,9 @@ static CgIRFunction *lLowerFunction(CgIRLower *L, Symbol *symbol)
 
     isEntry = (symbol == L->entry);
     resultType = VoidType;
-    if (!isEntry) {
+    if (!isEntry || Cg->theHAL->GetCapsBit(
+                        CAPS_PRESERVE_TERMINAL_ENTRY_RETURN))
+    {
         resultType = symbol->type->fun.rettype;
         if (resultType == NULL) {
             lUnlowerable(L, "function without result type");

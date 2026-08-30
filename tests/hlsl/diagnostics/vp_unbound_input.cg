@@ -1,0 +1,8 @@
+struct VertexIn {
+    float4 position : POSITION;
+    float4 missingSemantic;
+};
+float4 main(VertexIn input) : POSITION
+{
+    return input.position + input.missingSemantic;
+}

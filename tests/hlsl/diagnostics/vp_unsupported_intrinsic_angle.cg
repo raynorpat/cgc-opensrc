@@ -1,0 +1,4 @@
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    return float4(degrees(position.x), position.y, position.z, position.w);
+}

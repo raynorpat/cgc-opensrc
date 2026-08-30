@@ -1,0 +1,12 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION, uniform int count)
+{
+    VertexOut output;
+    output.position = position;
+    if ((count & 1) != 0)
+        output.position.x += 1.0;
+    return output;
+}

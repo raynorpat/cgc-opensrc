@@ -1,0 +1,56 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+// var float mixed.scalar :  : c[0] : 1 : 1
+// var int mixed.integer :  : i[0] : 1 : 1
+// var bool mixed.enabled :  : b[0] : 1 : 1
+// var row_major float4x4 mixed.matrix :  : c[1] : 1 : 4
+// var float mixed.values :  : c[5] : 1 : 2
+
+float cg_mixed_scalar : register(c0);
+uniform int4 cg_mixed_integer : register(i0);
+uniform bool cg_mixed_enabled : register(b0);
+row_major float4x4 cg_mixed_matrix : register(c1);
+float cg_mixed_values[2] : register(c5);
+
+struct cg_Mixed
+{
+    float scalar;
+    int integer;
+    bool enabled;
+    row_major float4x4 cg_matrix;
+    float values[2];
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    cg_output.position = position;
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

@@ -6,10 +6,12 @@ endforeach()
 
 include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${ACTUAL}")
+get_filename_component(source_directory "${SOURCE}" DIRECTORY)
 
 file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
 execute_process(
     COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
+    WORKING_DIRECTORY "${source_directory}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr

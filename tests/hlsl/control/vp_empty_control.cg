@@ -1,0 +1,34 @@
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    bool choose;
+    int index;
+    float value;
+
+    choose = position.x > 0.0;
+    value = position.w;
+    if (choose)
+        ;
+    if (choose)
+        ;
+    else
+        value = value + 1.0;
+    if (choose)
+        value = value + 2.0;
+    else
+        ;
+    while (false)
+        ;
+    do
+        ;
+    while (false);
+    for (index = 0; false; index++)
+        ;
+    for (;;) {
+        break;
+    }
+    output.position = float4(position.x, position.y, position.z, value);
+    return output;
+}

@@ -1,0 +1,45 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+// var float4 color :  : c[0] : 1 : 1
+// var row_major float4x4 matrix :  : c[1] : 1 : 4
+// var int4 indices :  : i[0] : 1 : 1
+// var bool enabled :  : b[0] : 1 : 1
+
+float4 cg_color : register(c0);
+row_major float4x4 cg_matrix : register(c1);
+uniform int4 cg_indices : register(i0);
+uniform bool cg_enabled : register(b0);
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position, float4 color, row_major float4x4 cg_matrix, int4 indices, bool enabled)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    cg_output.position = position;
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, cg_color, cg_matrix, cg_indices, cg_enabled);
+    output.position = cg_result.position;
+    return output;
+}

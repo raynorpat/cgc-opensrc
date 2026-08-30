@@ -1,0 +1,16 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+float consume_first(int2 ranges[2])
+{
+    return float(ranges[0].x);
+}
+
+VertexOut main(float4 position : POSITION, uniform int2 ranges[2])
+{
+    VertexOut output;
+    output.position = position;
+    output.position.x += consume_first(ranges);
+    return output;
+}

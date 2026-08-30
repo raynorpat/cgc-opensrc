@@ -1,0 +1,7 @@
+__internal float dot(float left, float1 right);
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    float value = dot(position.x, float1(position.y));
+    return float4(value, position.y, position.z, position.w);
+}

@@ -174,7 +174,6 @@ static const CgScalarKind floatKinds[] = {
 #define FLTF (CG_INTRINSIC_PURE | CG_INTRINSIC_FOLDABLE)
 
 static const CgScalarKind intKind = CG_SCALAR_INT;
-static const CgScalarKind boolKind = CG_SCALAR_BOOL;
 
 /*
  * lKindShape() - The interned scalar (len 0) or packed vector shape.
@@ -243,6 +242,25 @@ static void lExpandUnaryTo(CgIntrinsic id, unsigned flags,
         }
     }
 } // lExpandUnaryTo
+
+/*
+ * lBuildBoolReductions() - all/any reduce every admitted boolean shape to
+ *          one scalar boolean.  They are not component-wise unary families.
+ */
+
+static void lBuildBoolReductions(void)
+{
+    Type *types[1];
+    Type *result;
+    int len;
+
+    result = lKindShape(CG_SCALAR_BOOL, 0);
+    for (len = 0; len <= 4; len++) {
+        types[0] = lKindShape(CG_SCALAR_BOOL, len);
+        lAddSignature(CG_INTRINSIC_ALL, result, types, 1, FLTF);
+        lAddSignature(CG_INTRINSIC_ANY, result, types, 1, FLTF);
+    }
+} // lBuildBoolReductions
 
 static void lExpandBinaryReplicated(CgIntrinsic id, unsigned flags,
                                     const CgScalarKind *kinds, int nkinds)
@@ -697,8 +715,7 @@ static void lBuildCatalog(void)
     lExpandUnary(CG_INTRINSIC_ABS, FLTF, floatKinds, FLOAT_KIND_COUNT);
     lExpandUnary(CG_INTRINSIC_ABS, FLTF, &intKind, 1);
     lExpandUnary(CG_INTRINSIC_ACOS, FLTF, floatKinds, FLOAT_KIND_COUNT);
-    lExpandUnary(CG_INTRINSIC_ALL, FLTF, &boolKind, 1);
-    lExpandUnary(CG_INTRINSIC_ANY, FLTF, &boolKind, 1);
+    lBuildBoolReductions();
     lExpandUnary(CG_INTRINSIC_ASIN, FLTF, floatKinds, FLOAT_KIND_COUNT);
     lExpandUnary(CG_INTRINSIC_ATAN, FLTF, floatKinds, FLOAT_KIND_COUNT);
     lExpandBinaryReplicated(CG_INTRINSIC_ATAN2, FLTF,

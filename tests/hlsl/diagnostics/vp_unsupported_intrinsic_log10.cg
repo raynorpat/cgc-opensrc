@@ -1,0 +1,4 @@
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    return float4(log10(position.x), position.y, position.z, position.w);
+}

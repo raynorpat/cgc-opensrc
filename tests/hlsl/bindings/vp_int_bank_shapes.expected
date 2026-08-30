@@ -1,0 +1,75 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+// var int count :  : i[0] : 1 : 1
+// var int2 pair :  : i[1] : 1 : 1
+// var int3 triple :  : i[2] : 1 : 1
+// var int2 ranges :  : i[3] : 1 : 2
+
+uniform int4 cg_count : register(i0);
+uniform int4 cg_pair : register(i1);
+uniform int4 cg_triple : register(i2);
+uniform int4 cg_ranges[2] : register(i3);
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    int index;
+    int cg_temp;
+    int cg_temp_1;
+    int cg_temp_2;
+    int cg_temp_3;
+    int count;
+    int2 pair;
+    int3 triple;
+    int2 ranges[2];
+    cg_output.position = position;
+    count = cg_count.x;
+    for (index = 0; index < count; cg_temp = index, index = index + 1, cg_temp)
+    {
+        cg_output.position.x = cg_output.position.x + 0.00100000005;
+    }
+    pair = cg_pair.xy;
+    for (index = 0; index < pair.x; cg_temp_1 = index, index = index + 1, cg_temp_1)
+    {
+        cg_output.position.y = cg_output.position.y + 0.00100000005;
+    }
+    triple = cg_triple.xyz;
+    for (index = 0; index < triple.z; cg_temp_2 = index, index = index + 1, cg_temp_2)
+    {
+        cg_output.position.w = cg_output.position.w + 0.00100000005;
+    }
+    ranges[0] = cg_ranges[0].xy;
+    ranges[1] = cg_ranges[1].xy;
+    for (index = 0; index < ranges[1].y; cg_temp_3 = index, index = index + 1, cg_temp_3)
+    {
+        cg_output.position.z = cg_output.position.z + 0.00100000005;
+    }
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

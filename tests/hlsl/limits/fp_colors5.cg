@@ -1,0 +1,18 @@
+struct PixelOut {
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 color2 : COLOR2;
+    float4 color3 : COLOR3;
+    float4 color4 : COLOR4;
+};
+
+PixelOut main(float4 color : COLOR0)
+{
+    PixelOut output;
+    output.color0 = color;
+    output.color1 = color;
+    output.color2 = color;
+    output.color3 = color;
+    output.color4 = color;
+    return output;
+}

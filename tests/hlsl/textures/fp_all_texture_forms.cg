@@ -1,0 +1,34 @@
+float4 main(float4 coord : TEXCOORD0,
+            uniform sampler1D lineImage : TEXUNIT0,
+            uniform sampler2D planeImage : TEXUNIT1,
+            uniform sampler3D volumeImage : TEXUNIT2,
+            uniform samplerCUBE cubeImage : TEXUNIT3) : COLOR0
+{
+    float4 result;
+    result = tex1D(lineImage, coord.x);
+    result += tex1Dproj(lineImage, coord);
+    result += tex1Dbias(lineImage, coord);
+    result += tex1Dlod(lineImage, coord);
+    result += tex1D(lineImage, coord.x, ddx(coord.x), ddy(coord.x));
+    result += tex2D(planeImage, coord.xy);
+    result += tex2Dproj(planeImage, coord);
+    result += tex2Dbias(planeImage, coord);
+    result += tex2Dlod(planeImage, coord);
+    result += tex2D(planeImage, coord.xy, ddx(coord.xy), ddy(coord.xy));
+    result += tex3D(volumeImage, coord.xyz);
+    result += tex3Dproj(volumeImage, coord);
+    result += tex3Dbias(volumeImage, coord);
+    result += tex3Dlod(volumeImage, coord);
+    result += tex3D(volumeImage, coord.xyz, ddx(coord.xyz), ddy(coord.xyz));
+    result += texCUBE(cubeImage, coord.xyz);
+    result += texCUBEproj(cubeImage, coord);
+    result += texCUBEbias(cubeImage, coord);
+    result += texCUBElod(cubeImage, coord);
+    result += texCUBE(cubeImage, coord.xyz,
+                      ddx(coord.xyz), ddy(coord.xyz));
+    result += h4tex1D(lineImage, coord.x);
+    result += x4tex2Dproj(planeImage, coord);
+    result += h4tex3D(volumeImage, coord.xyz);
+    result += x4texCUBEproj(cubeImage, coord);
+    return result;
+}

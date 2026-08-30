@@ -1,0 +1,40 @@
+// profile hlslf
+// target ps_3_0
+// cgc-bind interface in coord float4 TEXCOORD0
+// cgc-bind interface out result float4 COLOR0
+
+// var sampler2D image : TEXUNIT0 : s[0] : 1 : 1
+
+sampler2D cg_image : register(s0);
+
+struct cg_PixelIn
+{
+    float4 coord : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : COLOR0;
+};
+
+float4 cg_entry(float4 coord, sampler2D image)
+{
+    float2 uv;
+    float4 projected;
+    float4 biased;
+    float4 leveled;
+    float4 gradient;
+    uv = coord.xy;
+    projected = tex2Dproj(image, coord);
+    biased = tex2Dbias(image, coord);
+    leveled = tex2Dlod(image, coord);
+    gradient = tex2Dgrad(image, uv, ddx(uv), ddy(uv));
+    return projected + biased + leveled + gradient;
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.coord, cg_image);
+    return output;
+}

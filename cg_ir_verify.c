@@ -177,8 +177,9 @@ static int lIntegralKind(CgScalarKind kind)
 
 /*
  * lIsBooleanType() - Any Boolean scalar or vector, matching the
- *          language's Boolean-expression rules (discards accept
- *         vectors; conditions stay scalar).
+ *          language's Boolean-expression rules (discards and
+ *          conditional selection accept vectors; statement conditions
+ *          stay scalar).
  */
 
 static int lIsBooleanType(const Type *type)
@@ -752,6 +753,7 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
     const Symbol *methodFormals;
     CgConversionRank rank;
     int len, components, argumentCount, parameterCount, singleScalar;
+    int conditionLen, resultLen;
 
     assert(expr != NULL);
     switch (expr->kind) {
@@ -1001,10 +1003,24 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
         {
             return 0;
         }
-        if (!IsScalar(expr->u.conditional.condition->type) ||
+        conditionLen = 0;
+        resultLen = 0;
+        if ((!IsScalar(expr->u.conditional.condition->type) &&
+             !IsVector(expr->u.conditional.condition->type,
+                       &conditionLen)) ||
             !lIsBooleanType(expr->u.conditional.condition->type))
         {
             return CgIRFail(ctx, CGIR_VERIFY_OPERAND, expr->loc, expr);
+        }
+        if (conditionLen > 0 &&
+            (!IsVector(expr->type, &resultLen) ||
+             resultLen != conditionLen ||
+             !IsVector(expr->u.conditional.trueExpr->type, &resultLen) ||
+             resultLen != conditionLen ||
+             !IsVector(expr->u.conditional.falseExpr->type, &resultLen) ||
+             resultLen != conditionLen))
+        {
+            return CgIRFail(ctx, CGIR_VERIFY_TYPE, expr->loc, expr);
         }
         rank = CgClassifyConversion(expr->u.conditional.trueExpr->type,
                                     expr->u.conditional.falseExpr->type, 0);

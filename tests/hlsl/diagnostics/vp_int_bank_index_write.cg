@@ -1,0 +1,15 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : POSITION, uniform int count)
+{
+    VertexOut output;
+    float values[3];
+    values[0] = 0.0;
+    values[1] = 1.0;
+    values[2] = 2.0;
+    values[count] = 8.0;
+    output.position = position + values[0];
+    return output;
+}

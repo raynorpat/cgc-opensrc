@@ -1,0 +1,9 @@
+#pragma bind main.settings = c 0
+
+struct Settings { int offset; };
+
+float4 main(float4 position : ATTRIB0,
+            uniform Settings settings) : POSITION
+{
+    return position + float4(float(settings.offset), 0.0, 0.0, 0.0);
+}

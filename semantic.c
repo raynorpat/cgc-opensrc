@@ -397,11 +397,15 @@ static Symbol *lBindVaryingVariable(Symbol *fSymb, int gname, int IsOutVal,
             {
                 return NULL;
             }
-            /* Case-canonical identity: reject the second use of an
-             * output semantic before profile binding sees either
-             * spelling of the name. */
-            if (IsOutVal && lCheckOutputSemantic(fSymb, lname))
+            /* Profiles without canonical conflict ownership use the common
+             * case-insensitive output map before profile binding. */
+            if (IsOutVal &&
+                !Cg->theHAL->GetCapsBit(
+                    CAPS_CANONICAL_OUTPUT_SEMANTIC_CONFLICTS) &&
+                lCheckOutputSemantic(fSymb, lname))
+            {
                 return NULL;
+            }
             errorsBefore = GetErrorCount();
             if (Cg->theHAL->BindVaryingSemantic(&fSymb->loc, fSymb, lname, lBind, IsOutVal)) {
                 if (lBind->none.properties & BIND_INPUT) {
@@ -754,7 +758,8 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
                 continue;
             }
         }
-        if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT)
+        if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT &&
+            !Cg->theHAL->GetCapsBit(CAPS_ENTRY_INOUT_PARAMETERS))
             SemanticError(&formal->loc, ERROR_S_MAIN_PARAMS_CANT_BE_INOUT,
                           GetAtomString(atable, formal->name));
         entryDomain = EffectiveProgramDomain(formal, 1);
@@ -897,7 +902,11 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
             rettype = lSynthesizeEntryReturnConnector(loc, fScope, program,
                                                       rettype);
             if (rettype != NULL) {
-                lType->fun.rettype = rettype;
+                if (!Cg->theHAL->GetCapsBit(
+                        CAPS_PRESERVE_TERMINAL_ENTRY_RETURN))
+                {
+                    lType->fun.rettype = rettype;
+                }
                 category = TYPE_CATEGORY_STRUCT;
             }
         }

@@ -1,0 +1,46 @@
+#include "vp_user_mul.cginc"
+
+struct Item {
+    float4 value;
+};
+
+struct Batch {
+    Item items[2];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+int next_index(inout int index)
+{
+    int result;
+    result = index;
+    index = index + 1;
+    return result;
+}
+
+Batch select_batch(Batch source, inout int callCount)
+{
+    callCount = callCount + 1;
+    return source;
+}
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    Batch source;
+    Batch batches[2];
+    Batch selected;
+    int writeIndex;
+    int callCount;
+    source.items[0].value = position;
+    source.items[1].value = position * 2.0;
+    writeIndex = mul(0, 0);
+    batches[next_index(writeIndex)] = source;
+    callCount = 0;
+    selected = select_batch(batches[0], callCount);
+    output.position = selected.items[0].value + selected.items[1].value +
+                      float4((float) callCount, 0.0, 0.0, 0.0);
+    return output;
+}

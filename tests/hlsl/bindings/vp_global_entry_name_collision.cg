@@ -1,0 +1,8 @@
+uniform float entry;
+struct VertexOut { float4 position : POSITION; };
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position * entry;
+    return output;
+}

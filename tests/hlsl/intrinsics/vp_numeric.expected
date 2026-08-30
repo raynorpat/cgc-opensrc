@@ -1,0 +1,105 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 TEXCOORD0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : TEXCOORD0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_rsqrt_float(float value);
+
+float cg_saturate_float(float value);
+
+float3 cg_rsqrt_float3(float3 value);
+
+float3 cg_saturate_float3(float3 value);
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    float a;
+    float b;
+    float3 v;
+    float3 w;
+    int3 iv;
+    bool flag;
+    bool3 flags;
+    float halfVector;
+    float halfDot;
+    a = position.x;
+    b = position.y + 2.0;
+    v = float3(position.x, position.y, position.z);
+    w = float3(position.w, position.z, position.y);
+    iv = int3(1, -2, 3);
+    flag = position.x > position.y;
+    flags = bool3(flag, !flag, flag);
+    halfVector = float((float) position.x);
+    halfDot = dot(halfVector, halfVector);
+    a = abs(a) + sign(b) + floor(a) + ceil(b) + round(a) + trunc(b);
+    a = a + sqrt(abs(b)) + cg_rsqrt_float(abs(b) + 1.0);
+    a = a + pow(abs(a) + 1.0, b) + exp(a) + exp2(b);
+    a = a + log(abs(a) + 1.0) + log2(abs(b) + 1.0);
+    a = a + sin(a) + cos(b) + tan(a) + asin(cg_saturate_float(a));
+    a = a + acos(cg_saturate_float(b)) + atan(a) + atan2(a, b);
+    a = a + sinh(a) + cosh(b) + tanh(a);
+    a = a + frac(b) + fmod(a, b) + step(a, b);
+    a = min(max(a, b), b + 1.0);
+    a = clamp(a, 0.0, 1.0);
+    a = lerp(a, b, 0.5) + smoothstep(0.0, 1.0, b);
+    flag = any(flag) || all(flag) || any(flags) || all(flags);
+    v = abs(v) + sign(w) + floor(v) + ceil(w) + round(v) + trunc(w);
+    v = sqrt(abs(v)) + cg_rsqrt_float3(abs(w) + 1.0);
+    v = pow(abs(v) + 1.0, w) + exp(v) + exp2(w);
+    v = log(abs(v) + 1.0) + log2(abs(w) + 1.0);
+    v = sin(v) + cos(w) + tan(v) + asin(cg_saturate_float3(v));
+    v = acos(cg_saturate_float3(w)) + atan(v) + atan2(v, w);
+    v = sinh(v) + cosh(w) + tanh(v);
+    v = frac(w) + fmod(v, w) + step(v, w);
+    v = min(max(v, a), w);
+    v = clamp(v, 0.0, 1.0);
+    v = lerp(v, w, 0.5) + smoothstep(0.0, 1.0, w);
+    iv = abs(iv) + sign(iv);
+    cg_output.position = float4(v.x + a + (float) halfDot, v.y, v.z, flag ? (float) iv.x : (float) iv.y);
+    return cg_output;
+}
+
+float cg_rsqrt_float(float value)
+{
+    return rsqrt(value);
+}
+
+float cg_saturate_float(float value)
+{
+    return min(max(value, 0.0), 1.0);
+}
+
+float3 cg_rsqrt_float3(float3 value)
+{
+    return rsqrt(value);
+}
+
+float3 cg_saturate_float3(float3 value)
+{
+    return min(max(value, float3(0.0, 0.0, 0.0)), float3(1.0, 1.0, 1.0));
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

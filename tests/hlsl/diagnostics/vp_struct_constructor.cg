@@ -1,0 +1,7 @@
+struct Payload { float value; };
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    Payload(position.x);
+    return position;
+}

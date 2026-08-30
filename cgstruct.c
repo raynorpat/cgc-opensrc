@@ -86,6 +86,7 @@ int InitCgStruct(void)
 
     Cg->lastSourceLoc.file = 0;
     Cg->lastSourceLoc.line = 0;
+    Cg->callSites = NULL;
     return 1;
 } // InitCgStruct
 
@@ -124,9 +125,18 @@ int AppendProfileOption(Options *options, const char *text)
 
 void FreeCgStruct(void)
 {
+    CgCallSite *callSite;
+    CgCallSite *nextCallSite;
     CgProfileOption *option;
     CgProfileOption *next;
 
+    callSite = Cg->callSites;
+    while (callSite != NULL) {
+        nextCallSite = callSite->next;
+        free(callSite);
+        callSite = nextCallSite;
+    }
+    Cg->callSites = NULL;
     option = Cg->options.profileOptions;
     while (option != NULL) {
         next = option->next;

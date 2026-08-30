@@ -1,0 +1,47 @@
+struct VertexOut {
+    float4 position : POSITION;
+    float psize : PSIZE;
+    float fog : FOG;
+    float4 color0 : COLOR0;
+    float4 color1 : COLOR1;
+    float4 tex0 : TEXCOORD0;
+    float4 tex1 : TEXCOORD1;
+    float4 tex2 : TEXCOORD2;
+    float4 tex3 : TEXCOORD3;
+    float4 tex4 : TEXCOORD4;
+    float4 tex5 : TEXCOORD5;
+    float4 tex6 : TEXCOORD6;
+};
+
+VertexOut main(float4 position : POSITION,
+               float4 blendWeight : BLENDWEIGHT,
+               float4 blendIndices : BLENDINDICES,
+               float3 normal : NORMAL,
+               float psize : PSIZE,
+               float3 tangent : TANGENT,
+               float3 binormal : BINORMAL,
+               float4 color0 : COLOR0,
+               float4 color1 : COLOR1,
+               float4 tex0 : TEXCOORD0,
+               float4 tex1 : TEXCOORD1,
+               float4 tex2 : TEXCOORD2,
+               float4 tex3 : TEXCOORD3,
+               float4 tex4 : TEXCOORD4,
+               float4 tex5 : TEXCOORD5,
+               float4 tex6 : TEXCOORD6)
+{
+    VertexOut output;
+    output.position = position;
+    output.psize = psize;
+    output.fog = psize;
+    output.color0 = color0;
+    output.color1 = color1;
+    output.tex0 = tex0;
+    output.tex1 = tex1;
+    output.tex2 = tex2;
+    output.tex3 = tex3;
+    output.tex4 = tex4;
+    output.tex5 = tex5;
+    output.tex6 = tex6;
+    return output;
+}

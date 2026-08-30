@@ -1,0 +1,27 @@
+uniform float3x3 transform;
+
+struct VertexOut
+{
+    float4 position : POSITION;
+};
+
+VertexOut main(float4 position : ATTRIB0)
+{
+    VertexOut output;
+    float a = position.x;
+    float b = position.y;
+    float3 v = float3(position.x, position.y, position.z);
+    float3 w = float3(position.w, position.z, position.y);
+    float3 mv = mul(transform, v);
+    float3 vm = mul(w, transform);
+
+    a = mul(a, b) + dot(a, b) + length(a) + distance(a, b);
+    a = a + normalize(b) + reflect(a, b) + refract(a, b, 0.75);
+    a = a + dot(v, w) + length(v) + distance(v, w);
+    v = cross(v, w) + normalize(v);
+    v = v + reflect(v, w) + refract(v, w, 0.75);
+    output.position = float4(v.x + mv.x + vm.x,
+                             v.y + mv.y + vm.y,
+                             v.z + mv.z + vm.z, a);
+    return output;
+}

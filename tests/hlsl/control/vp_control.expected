@@ -1,0 +1,93 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 POSITION0
+// cgc-bind interface out position float4 POSITION0
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+float cg_finish_total(float value)
+{
+    if (value < (float) 0.0)
+    {
+        return -value;
+    }
+    return value + (float) 1.0;
+}
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    int index;
+    float total;
+    int cg_temp;
+    int cg_temp_1;
+    index = 0;
+    total = 0.0;
+    if (position.x > 0.0)
+    {
+        total = position.x;
+    }
+    else
+    {
+        total = -position.x;
+    }
+    for (index = 0; index < 6; cg_temp = index, index = index + 1, cg_temp)
+    {
+        {
+            if (index == 2)
+            {
+                continue;
+            }
+            total = total + (float) index;
+            if (total > 8.0)
+            {
+                break;
+            }
+        }
+    }
+    while (index < 8)
+    {
+        {
+            cg_temp_1 = index;
+            index = index + 1;
+            cg_temp_1;
+            if (index == 7)
+            {
+                continue;
+            }
+            total = total + 1.0;
+        }
+    }
+    do
+    {
+        {
+            total = total - 1.0;
+        }
+    }
+    while (total > 4.0);
+    total = cg_finish_total(total + position.w);
+    cg_output.position = float4(position.x, position.y, position.z, total);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

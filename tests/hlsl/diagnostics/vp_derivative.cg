@@ -1,0 +1,4 @@
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    return ddx(position);
+}

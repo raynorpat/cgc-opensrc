@@ -1,0 +1,20 @@
+interface Scale
+{
+    float apply(float value);
+};
+
+struct Twice : Scale
+{
+    float apply(float value)
+    {
+        return value * 2.0;
+    }
+};
+
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    Twice concrete;
+    Scale operation;
+    operation = concrete;
+    return position * operation.apply(position.x);
+}

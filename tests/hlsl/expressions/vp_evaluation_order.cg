@@ -1,0 +1,141 @@
+float record(inout float trace, float digit)
+{
+    trace = trace * 10.0 + digit;
+    return trace;
+}
+
+float2 record2(inout float trace, float digit)
+{
+    trace = trace * 10.0 + digit;
+    return float2(trace, trace + 1.0);
+}
+
+float combine(float left, float right)
+{
+    return left + right;
+}
+
+float modify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float replace(out float value, float amount)
+{
+    value = amount + 1.0;
+    return value;
+}
+
+float nestedModify(inout float value, float amount)
+{
+    value = value + amount;
+    return value;
+}
+
+float bumpValue(inout float value)
+{
+    value = value + 1.0;
+    return value;
+}
+
+float moveIndex(inout int index, int next)
+{
+    index = next;
+    return float(index);
+}
+
+int mutateVector(inout float4 value)
+{
+    value = value + float4(10.0, 20.0, 30.0, 40.0);
+    return 1;
+}
+
+float forwardWrapper(inout float value, inout float trace)
+{
+    return nestedModify(value, bumpValue(trace));
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    bool choose;
+    bool2 lanes;
+    bool2 comparison;
+    float trace;
+    float binary;
+    float called;
+    float readBinary;
+    float readCall;
+    float aliasValue;
+    float aliasResult;
+    float outValue;
+    float outResult;
+    float nestedValue;
+    float nestedTrace;
+    float nestedResult;
+    float effectTrace;
+    float effectRead;
+    float constructorTrace;
+    float2 constructed;
+    float4 indexedValues;
+    int indexedPosition;
+    float indexedResult;
+    float4 rvalueValues;
+    float rvalueIndexed;
+
+    choose = position.x > 0.0;
+    lanes = position.xy > float2(0.0, 0.0);
+    trace = 0.0;
+    binary = record(trace, 1.0) +
+             (choose ? record(trace, 2.0) : record(trace, 3.0));
+    called = combine(record(trace, 4.0),
+                     choose ? record(trace, 5.0) : record(trace, 6.0));
+    comparison = record2(trace, 7.0) <
+                 (lanes ? record2(trace, 8.0) : record2(trace, 9.0));
+    readBinary = trace +
+                 (choose ? record(trace, 10.0) : record(trace, 11.0));
+    readCall = combine(trace,
+                       choose ? record(trace, 12.0) : record(trace, 13.0));
+    aliasValue = 1.0;
+    aliasResult = modify(aliasValue,
+                         choose ? record(aliasValue, 17.0) :
+                                  record(aliasValue, 18.0));
+    outValue = 2.0;
+    outResult = replace(outValue,
+                        choose ? record(outValue, 19.0) :
+                                 record(outValue, 20.0));
+    nestedValue = 3.0;
+    nestedTrace = 4.0;
+    nestedResult = forwardWrapper(nestedValue, nestedTrace);
+    effectTrace = 5.0;
+    effectRead = combine(record(effectTrace, 21.0), effectTrace);
+    constructorTrace = 6.0;
+    constructed = float2(record(constructorTrace, 22.0),
+                         constructorTrace);
+    indexedValues = float4(1.0, 2.0, 3.0, 4.0);
+    indexedPosition = 0;
+    indexedResult = modify(indexedValues[indexedPosition],
+                           choose ? moveIndex(indexedPosition, 1) :
+                                    moveIndex(indexedPosition, 2));
+    indexedPosition = 0;
+    indexedValues[indexedPosition] =
+        choose ? moveIndex(indexedPosition, 2) :
+                 moveIndex(indexedPosition, 3);
+    rvalueValues = float4(1.0, 2.0, 3.0, 4.0);
+    rvalueIndexed = rvalueValues[mutateVector(rvalueValues)];
+    output.position = float4(binary + readBinary + effectRead +
+                             rvalueIndexed,
+                             called + readCall + constructed.x +
+                             constructed.y + rvalueValues.x,
+                             float(comparison.x) + aliasValue + nestedValue +
+                             indexedValues.x + indexedValues.y +
+                             rvalueValues.y,
+                             trace + aliasResult + outValue + outResult +
+                             nestedTrace + nestedResult + indexedResult +
+                             indexedValues.z + indexedValues.w +
+                             rvalueValues.z + rvalueValues.w);
+    return output;
+}

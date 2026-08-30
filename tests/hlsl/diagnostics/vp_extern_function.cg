@@ -1,0 +1,9 @@
+extern float4 adjust(float4 position)
+{
+    return position;
+}
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return adjust(position);
+}

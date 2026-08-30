@@ -1,0 +1,56 @@
+// profile hlslv
+// target vs_3_0
+// cgc-bind interface in position float4 TEXCOORD0
+// cgc-bind interface out position float4 POSITION0
+
+// var row_major float3x3 transform :  : c[0] : 1 : 3
+
+row_major float3x3 cg_transform : register(c0);
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : TEXCOORD0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : POSITION0;
+};
+
+cg_VertexOut cg_entry(float4 position)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    float a;
+    float b;
+    float3 v;
+    float3 w;
+    float3 mv;
+    float3 vm;
+    a = position.x;
+    b = position.y;
+    v = float3(position.x, position.y, position.z);
+    w = float3(position.w, position.z, position.y);
+    mv = mul(cg_transform, v);
+    vm = mul(w, cg_transform);
+    a = mul(a, b) + dot(a, b) + length(a) + distance(a, b);
+    a = a + normalize(b) + reflect(a, b) + refract(a, b, 0.75);
+    a = a + dot(v, w) + length(v) + distance(v, w);
+    v = cross(v, w) + normalize(v);
+    v = v + reflect(v, w) + refract(v, w, 0.75);
+    cg_output.position = float4(v.x + mv.x + vm.x, v.y + mv.y + vm.y, v.z + mv.z + vm.z, a);
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position);
+    output.position = cg_result.position;
+    return output;
+}

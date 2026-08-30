@@ -1,0 +1,26 @@
+struct Pair {
+    float4 values[2];
+};
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+void update(out Pair destination, inout Pair current)
+{
+    destination.values[0] = current.values[0] + 1.0;
+    destination.values[1] = current.values[1] + 2.0;
+    current.values[0] = current.values[0] * 3.0;
+    current.values[1] = current.values[1] * 4.0;
+}
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    Pair common;
+    common.values[0] = position;
+    common.values[1] = position + 1.0;
+    update(common, common);
+    output.position = common.values[0] + common.values[1];
+    return output;
+}

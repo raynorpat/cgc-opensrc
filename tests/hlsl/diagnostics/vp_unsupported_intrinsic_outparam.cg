@@ -1,0 +1,6 @@
+float4 main(float4 position : ATTRIB0) : POSITION
+{
+    float whole;
+    float fraction = modf(position.x, whole);
+    return float4(fraction, whole, position.z, position.w);
+}

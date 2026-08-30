@@ -1,0 +1,16 @@
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+float use_count(int value)
+{
+    return value;
+}
+
+VertexOut main(float4 position : POSITION, uniform int count)
+{
+    VertexOut output;
+    output.position = position;
+    output.position.x += use_count(count);
+    return output;
+}

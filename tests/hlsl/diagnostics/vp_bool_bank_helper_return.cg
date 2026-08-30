@@ -1,0 +1,16 @@
+uniform bool enabled;
+
+bool get_enabled(bool unused)
+{
+    return enabled;
+}
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut main(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    output.position.x += get_enabled(false) ? 1.0 : 0.0;
+    return output;
+}

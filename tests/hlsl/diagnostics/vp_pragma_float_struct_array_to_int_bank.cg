@@ -1,0 +1,9 @@
+#pragma bind main.settings = i 0
+
+struct Settings { float scale; };
+
+float4 main(float4 position : ATTRIB0,
+            uniform Settings settings[1]) : POSITION
+{
+    return position * settings[0].scale;
+}
