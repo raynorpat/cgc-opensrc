@@ -2573,6 +2573,52 @@ static void AssertInvalidValidationFixture(ValidationFixture *fixture,
     assert(fixture->module.errors == 1);
 }
 
+static void TestTargetValidatorRejectsImpossibleProfiles(void)
+{
+    ValidationFixture fixture;
+    HlslProfileDesc profile;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.model = HLSL_SHADER_MODEL_4;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.model = HLSL_SHADER_MODEL_5;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.syntax = HLSL_SYNTAX_MODERN;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.stage = HLSL_STAGE_GEOMETRY;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.target = NULL;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.target = "";
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.version = NULL;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.version = "";
+    AssertInvalidValidationFixture(&fixture, &profile);
+}
+
 static void AssertPhasePreservesFirstFailure(int phase)
 {
     HlslModule module;
@@ -3295,6 +3341,15 @@ int main(int argc, char **argv)
                               &semanticIndex));
     assert(!HlslParseSemantic("TEXCOORD0", semanticRoot, 4,
                               &semanticIndex));
+    assert(HlslProfile_hlslv.stage == HLSL_STAGE_VERTEX);
+    assert(HlslProfile_hlslv.model == HLSL_SHADER_MODEL_3);
+    assert(HlslProfile_hlslv.syntax == HLSL_SYNTAX_LEGACY);
+    assert(HlslProfile_hlslf.stage == HLSL_STAGE_PIXEL);
+    assert(HlslProfile_hlslf.model == HLSL_SHADER_MODEL_3);
+    assert(!HlslProfileHasCapability(&HlslProfile_hlslv,
+                                     HLSL_CAP_GEOMETRY));
+    assert(HlslProfileHasCapability(&HlslProfile_hlslf,
+                                    HLSL_CAP_DISCARD));
     assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
         "HPOS", 1), "POSITION0"));
     assert(!strcmp(HlslCanonicalSemantic(&HlslProfile_hlslv,
@@ -3347,6 +3402,7 @@ int main(int argc, char **argv)
     TestTextureAndSamplerRejections();
     TestHlslErrorMappingAndFirstFailure();
     TestStructuralValidatorRejectsMalformedGraphs();
+    TestTargetValidatorRejectsImpossibleProfiles();
     TestTargetValidatorInterfaceLimits();
     TestStructuralValidatorRejectsCyclicSignatureGraphs();
     TestStructuralValidatorPreflightsBeforeInitializers();

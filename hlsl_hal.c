@@ -208,6 +208,13 @@ const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
     return NULL;
 } // HlslCanonicalSemantic
 
+int HlslProfileHasCapability(const HlslProfileDesc *profile,
+                             unsigned int capability)
+{
+    return profile != NULL &&
+           (profile->capabilities & capability) != 0;
+} // HlslProfileHasCapability
+
 #if !defined(HLSL_CANONICALIZATION_ONLY)
 
 #define HLSL_MAX_INTERFACE_REGISTERS 32
@@ -324,7 +331,7 @@ static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
 
     // Data members:
     fHAL->vendor = VENDOR_STRING_HLSL;
-    fHAL->version = VERSION_STRING_HLSL;
+    fHAL->version = profile->version;
     fHAL->comment = "//";
 
     // Point to per-compilation state and expose the stage connectors:

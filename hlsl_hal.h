@@ -51,7 +51,9 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hlsl_ir.h"
 
 #define VENDOR_STRING_HLSL         "Microsoft"
-#define VERSION_STRING_HLSL        "DirectX 9.0c Shader Model 3"
+#define VERSION_STRING_HLSL_SM3    "DirectX 9.0c Shader Model 3"
+#define VERSION_STRING_HLSL_SM4    "DirectX 10 Shader Model 4"
+#define VERSION_STRING_HLSL_SM5    "DirectX 11 Shader Model 5"
 #define PROFILE_HLSLV_NAME         "hlslv"
 #define PROFILE_HLSLF_NAME         "hlslf"
 #define PROFILE_HLSLV_ID           15
@@ -80,6 +82,33 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define CID_HLSLF50_OUT_ID         35
 #define HLSL_BUILTIN_GROUP         4
 
+typedef enum HlslShaderModel_Enum {
+    HLSL_SHADER_MODEL_3 = 30,
+    HLSL_SHADER_MODEL_4 = 40,
+    HLSL_SHADER_MODEL_5 = 50
+} HlslShaderModel;
+
+typedef enum HlslSyntaxFamily_Enum {
+    HLSL_SYNTAX_LEGACY,
+    HLSL_SYNTAX_MODERN
+} HlslSyntaxFamily;
+
+typedef enum HlslSemanticPolicy_Enum {
+    HLSL_SEMANTIC_POLICY_DX9,
+    HLSL_SEMANTIC_POLICY_MODERN
+} HlslSemanticPolicy;
+
+typedef enum HlslResourcePolicy_Enum {
+    HLSL_RESOURCE_POLICY_DX9,
+    HLSL_RESOURCE_POLICY_MODERN
+} HlslResourcePolicy;
+
+#define HLSL_CAP_DISCARD          0x0001u
+#define HLSL_CAP_DERIVATIVES      0x0002u
+#define HLSL_CAP_GEOMETRY         0x0004u
+#define HLSL_CAP_TEXTURE_METHODS  0x0008u
+#define HLSL_CAP_CBUFFERS         0x0010u
+
 typedef struct HlslLimits_Rec {
     int inputs;
     int outputs;
@@ -88,6 +117,13 @@ typedef struct HlslLimits_Rec {
     int boolConstants;
     int samplers;
     int colorOutputs;
+    int depthOutputs;
+    int clipDistanceComponents;
+    int constantBufferSlots;
+    int constantBufferVectors;
+    int resources;
+    int geometryMaxVertices;
+    int geometryTotalOutputComponents;
 } HlslLimits;
 
 typedef enum HlslInterface_Enum {
@@ -116,8 +152,13 @@ typedef struct HlslSemanticAlias_Rec {
 
 struct HlslProfileDesc_Rec {
     HlslStage stage;
+    HlslShaderModel model;
+    HlslSyntaxFamily syntax;
+    HlslSemanticPolicy semanticPolicy;
+    HlslResourcePolicy resourcePolicy;
     const char *name;
     const char *target;
+    const char *version;
     int pid;
     int inputCid;
     int outputCid;
@@ -136,6 +177,7 @@ struct HlslProfileDesc_Rec {
     ConnectorRegisters *outputRegs;
     int numOutputRegs;
     const HlslLimits *limits;
+    unsigned int capabilities;
 };
 
 // Stage descriptors:
@@ -153,6 +195,8 @@ int HlslParseSemantic(const char *semantic, char *root, size_t rootSize,
 int HlslDescribeSourceType(const Type *source, HlslSourceType *target);
 const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
     const char *semantic, int IsOutVal);
+int HlslProfileHasCapability(const HlslProfileDesc *profile,
+    unsigned int capability);
 
 // HLSL backend phases:
 int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,

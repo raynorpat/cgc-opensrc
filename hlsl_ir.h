@@ -58,7 +58,8 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 typedef enum HlslStage_Enum {
     HLSL_STAGE_VERTEX,
-    HLSL_STAGE_PIXEL
+    HLSL_STAGE_PIXEL,
+    HLSL_STAGE_GEOMETRY
 } HlslStage;
 
 typedef enum HlslBase_Enum {

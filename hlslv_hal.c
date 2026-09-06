@@ -64,7 +64,14 @@ static const HlslLimits limits_hlslv = {
     16,   // intConstants
     16,   // boolConstants
     4,    // samplers
-    0     // colorOutputs
+    0,    // colorOutputs
+    0,    // depthOutputs
+    0,    // clipDistanceComponents
+    0,    // constantBufferSlots
+    0,    // constantBufferVectors
+    0,    // resources
+    0,    // geometryMaxVertices
+    0     // geometryTotalOutputComponents
 };
 
 static ConnectorRegisters inputCRegs_hlslv[] = {
@@ -223,8 +230,13 @@ static ConnectorDescriptor connectors_hlslv[] = {
 
 const HlslProfileDesc HlslProfile_hlslv = {
     HLSL_STAGE_VERTEX,
+    HLSL_SHADER_MODEL_3,
+    HLSL_SYNTAX_LEGACY,
+    HLSL_SEMANTIC_POLICY_DX9,
+    HLSL_RESOURCE_POLICY_DX9,
     PROFILE_HLSLV_NAME,
     "vs_3_0",
+    VERSION_STRING_HLSL_SM3,
     PROFILE_HLSLV_ID,
     CID_HLSLV_IN_ID,
     CID_HLSLV_OUT_ID,
@@ -242,7 +254,8 @@ const HlslProfileDesc HlslProfile_hlslv = {
     NUMELS(inputCRegs_hlslv),
     outputCRegs_hlslv,
     NUMELS(outputCRegs_hlslv),
-    &limits_hlslv
+    &limits_hlslv,
+    0u
 };
 
 ///////////////////////////////////////////////////////////////////////////////
