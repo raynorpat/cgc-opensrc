@@ -16,6 +16,11 @@ float4 sample_plane(sampler2D image, float2 uv)
 {
     return tex2D(image, uv);
 }
+
+float2 coords(sampler2D image, float2 uv)
+{
+    return tex2D(image, uv).xy;
+}
 #endif
 
 #ifdef MODERN_TEXTURE_VERTEX
@@ -64,6 +69,7 @@ float4 texture_pixel(float4 coord : TEXCOORD0,
     result += tex2Dbias(planeImage, coord);
     result += tex2Dlod(planeImage, coord);
     result += tex2D(planeImage, coord.xy, ddx(coord.xy), ddy(coord.xy));
+    result += tex2D(planeImage, coords(planeImage, coord.xy));
     result += tex3D(volumeImage, coord.xyz);
     result += tex3Dproj(volumeImage, coord);
     result += tex3Dbias(volumeImage, coord);

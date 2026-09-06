@@ -32,6 +32,11 @@ float4 cg_sample_plane(Texture2D<float4> cgc_texture_image, SamplerState cgc_sam
     return cgc_texture_image.Sample(cgc_sampler_image, uv);
 }
 
+float2 cg_coords(Texture2D<float4> cgc_texture_image, SamplerState cgc_sampler_image, float2 uv)
+{
+    return cgc_texture_image.Sample(cgc_sampler_image, uv).xy;
+}
+
 float4 cg_entry(float4 coord, Texture1D<float4> cgc_texture_lineImage, SamplerState cgc_sampler_lineImage, Texture2D<float4> cgc_texture_planeImage, SamplerState cgc_sampler_planeImage, Texture3D<float4> cgc_texture_volumeImage, SamplerState cgc_sampler_volumeImage, TextureCube<float4> cgc_texture_cubeImage, SamplerState cgc_sampler_cubeImage)
 {
     float4 result;
@@ -81,6 +86,7 @@ float4 cg_entry(float4 coord, Texture1D<float4> cgc_texture_lineImage, SamplerSt
     temp11 = coord;
     result = temp12 + cgc_texture_planeImage.SampleLevel(cgc_sampler_planeImage, temp11.xy, temp11.w);
     result = result + cgc_texture_planeImage.SampleGrad(cgc_sampler_planeImage, coord.xy, ddx(coord.xy), ddy(coord.xy));
+    result = result + cgc_texture_planeImage.Sample(cgc_sampler_planeImage, cg_coords(cgc_texture_planeImage, cgc_sampler_planeImage, coord.xy));
     result = result + cgc_texture_volumeImage.Sample(cgc_sampler_volumeImage, coord.xyz);
     temp14 = result;
     temp13 = coord;

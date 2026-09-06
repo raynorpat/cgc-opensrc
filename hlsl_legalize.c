@@ -1060,6 +1060,8 @@ static int HlslModernRewriteTextureCall(HlslModule *module,
     const char *spatialMask;
 
     texture = expression->u.call.arguments;
+    if (!HlslModernRewriteExpressionList(module, profile, texture))
+        return 0;
     coordinates = texture != NULL ? texture->next : NULL;
     textureDecl = HlslModernExpressionDecl(texture);
     if (textureDecl == NULL || textureDecl->resourcePair == NULL ||

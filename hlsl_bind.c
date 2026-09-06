@@ -3570,6 +3570,14 @@ typedef struct HlslModernSamplerPlan_Rec {
     int pairId;
 } HlslModernSamplerPlan;
 
+typedef struct HlslModernSamplerSnapshot_Rec {
+    HlslBinding *binding;
+    HlslBinding bindingValue;
+    HlslDecl *declaration;
+    HlslDecl declarationValue;
+    int hasDeclaration;
+} HlslModernSamplerSnapshot;
+
 static HlslBase HlslModernTextureBase(HlslBase samplerBase)
 {
     switch (samplerBase) {
@@ -3790,10 +3798,14 @@ static int HlslAllocateModernSamplerBindings(HlslModule *module,
         record->name = plans[i].binding->name;
         record->publicName = HlslPublicBindingName(plans[i].binding);
         record->logicalTypeName = plans[i].binding->logicalTypeName;
+        record->semantic = plans[i].binding->semantic;
         record->loc = plans[i].binding->loc;
         record->sourceOrdinal = plans[i].binding->sourceOrdinal;
+        record->hasExplicitRegister =
+            plans[i].binding->hasExplicitRegister;
         record->isAllocated = 1;
         record->declaration = plans[i].textureDecl;
+        record->sourceBase = plans[i].binding->sourceBase;
         record->physical.bank = HLSL_REGISTER_S;
         record->physical.regno = plans[i].slot;
         record->physical.span = 1;
@@ -3812,6 +3824,7 @@ static int HlslAllocateModernSamplerBindings(HlslModule *module,
         declaration->name = plans[i].textureName;
         declaration->resourcePair = pair;
         declaration->resourcePairId = plans[i].pairId;
+        declaration->sourceOrdinal = binding->sourceOrdinal;
         declaration->physical.bank = HLSL_REGISTER_T;
         declaration->physical.regno = plans[i].slot;
         declaration->physical.span = 1;
@@ -3852,7 +3865,16 @@ int HlslAllocateBindings(HlslModule *module,
     HlslBinding **ordered;
     HlslBinding *binding;
     HlslBinding *swap;
+    HlslBinding *savedAllocations;
+    HlslBinding *allocationTail;
+    HlslBinding *savedAllocationNext;
+    HlslModernSamplerSnapshot *samplerSnapshots;
+    HlslName *savedNames;
+    HlslResource *savedResources;
+    HlslResource *resourceTail;
+    HlslResource *savedResourceNext;
     int count;
+    int samplerCount;
     int i;
     int j;
     int explicitPass;
@@ -3889,10 +3911,83 @@ int HlslAllocateBindings(HlslModule *module,
         ordered[j] = swap;
     }
     if (profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN) {
+        for (i = 0; i < count; i++) {
+            if (ordered[i]->sourceOrdinal < 0)
+                return HlslBindFailure(module, ordered[i],
+                    HLSL_ERROR_INVALID_IR,
+                    "invalid modern HLSL source ordinal");
+            if (i > 0 && ordered[i - 1]->sourceOrdinal ==
+                         ordered[i]->sourceOrdinal)
+            {
+                return HlslBindFailure(module, ordered[i],
+                    HLSL_ERROR_INVALID_IR,
+                    "duplicate modern HLSL source ordinal");
+            }
+        }
+        samplerCount = 0;
+        for (i = 0; i < count; i++) {
+            if (ordered[i]->storage == HLSL_STORAGE_SAMPLER)
+                samplerCount++;
+        }
+        samplerSnapshots = samplerCount > 0 ?
+            (HlslModernSamplerSnapshot *) HlslBindAlloc(module,
+                (size_t) samplerCount *
+                    sizeof(HlslModernSamplerSnapshot)) : NULL;
+        if (samplerCount > 0 && samplerSnapshots == NULL)
+            return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
+                                   "modern HLSL allocation snapshot");
+        j = 0;
+        for (i = 0; i < count; i++) {
+            if (ordered[i]->storage != HLSL_STORAGE_SAMPLER)
+                continue;
+            samplerSnapshots[j].binding = ordered[i];
+            samplerSnapshots[j].bindingValue = *ordered[i];
+            samplerSnapshots[j].declaration = ordered[i]->declaration;
+            samplerSnapshots[j].hasDeclaration =
+                ordered[i]->declaration != NULL;
+            if (samplerSnapshots[j].hasDeclaration) {
+                samplerSnapshots[j].declarationValue =
+                    *ordered[i]->declaration;
+            }
+            j++;
+        }
+        savedNames = module->names;
+        savedResources = module->resources;
+        resourceTail = savedResources;
+        while (resourceTail != NULL && resourceTail->next != NULL)
+            resourceTail = resourceTail->next;
+        savedResourceNext = resourceTail != NULL ?
+                            resourceTail->next : NULL;
+        savedAllocations = module->allocatedBindings;
+        allocationTail = savedAllocations;
+        while (allocationTail != NULL &&
+               allocationTail->allocationNext != NULL)
+        {
+            allocationTail = allocationTail->allocationNext;
+        }
+        savedAllocationNext = allocationTail != NULL ?
+                              allocationTail->allocationNext : NULL;
         if (!HlslAllocateModernSamplerBindings(module, profile,
                                                ordered, count))
             return 0;
-        return HlslAllocateModernBindings(module, profile, ordered, count);
+        if (HlslAllocateModernBindings(module, profile, ordered, count))
+            return 1;
+        module->names = savedNames;
+        module->resources = savedResources;
+        if (resourceTail != NULL)
+            resourceTail->next = savedResourceNext;
+        module->allocatedBindings = savedAllocations;
+        if (allocationTail != NULL)
+            allocationTail->allocationNext = savedAllocationNext;
+        for (i = 0; i < samplerCount; i++) {
+            *samplerSnapshots[i].binding =
+                samplerSnapshots[i].bindingValue;
+            if (samplerSnapshots[i].hasDeclaration) {
+                *samplerSnapshots[i].declaration =
+                    samplerSnapshots[i].declarationValue;
+            }
+        }
+        return 0;
     }
     for (explicitPass = 1; explicitPass >= 0; explicitPass--) {
         for (i = 0; i < count; i++) {
