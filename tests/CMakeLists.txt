@@ -1917,6 +1917,35 @@ add_hlsl_fixture(hlslv_registration hlslv
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-vs.expected)
 add_hlsl_fixture(hlslf_registration hlslf
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-ps.expected)
+
+# Registration metadata must make the SM3 profiles answer to their
+# stage-family wildcard selectors.  The shared overload fixture gives
+# each wildcard a distinct generated-code marker.
+add_test(
+    NAME hlslv_profile_identity_vertex_wildcard
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv
+        -DENTRY=mainV
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/overloads/profile.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslv_profile_identity_vertex_wildcard.hlsl"
+        "-DMESSAGE=0\\.125, *0\\.5, *0\\.5, *1\\.0"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake
+)
+add_test(
+    NAME hlslf_profile_identity_fragment_wildcard
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslf
+        -DENTRY=mainF
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/overloads/profile.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslf_profile_identity_fragment_wildcard.hlsl"
+        "-DMESSAGE=0\\.375, *0\\.5, *0\\.5, *1\\.0"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_output.cmake
+)
+
 add_hlsl_fixture(hlslv_vp_passthrough hlslv
     tests/hlsl/profile/vp_passthrough.cg
     tests/hlsl/profile/vp_passthrough.expected)

@@ -58,6 +58,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "hlsl_hal.h"
 #include "glsl_hal.h"
+#include "generic_hal.h"
 
 #undef malloc
 #undef calloc
@@ -84,6 +85,9 @@ static int AssertUnique(const int *ids, int count)
 static int TestModernProfileIdentities(void)
 {
     static const int profileIds[] = {
+        PROFILE_GENERIC_ID,
+        PROFILE_GLSLV_ID,
+        PROFILE_GLSLF_ID,
         PROFILE_GLSLG_ID,
         PROFILE_HLSLV_ID,
         PROFILE_HLSLF_ID,
@@ -95,6 +99,12 @@ static int TestModernProfileIdentities(void)
         PROFILE_HLSLF50_ID
     };
     static const int connectorIds[] = {
+        CID_GENERIC_IN_ID,
+        CID_GENERIC_OUT_ID,
+        CID_GLSLV_IN_ID,
+        CID_GLSLV_OUT_ID,
+        CID_GLSLF_IN_ID,
+        CID_GLSLF_OUT_ID,
         CID_GLSLG_IN_ID,
         CID_GLSLG_OUT_ID,
         CID_HLSLV_IN_ID,
