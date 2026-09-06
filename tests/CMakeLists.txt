@@ -1449,6 +1449,34 @@ add_test(
     COMMAND hlsl_ir_unit
 )
 
+add_executable(hlsl_profile_identity_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    hlsl_profile_identity_test.c
+)
+
+target_compile_definitions(hlsl_profile_identity_unit PRIVATE
+    HAL_PROFILE_REGISTRATION_ONLY
+    HLSL_PROFILE_REGISTRATION_ONLY
+)
+
+target_include_directories(hlsl_profile_identity_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(hlsl_profile_identity_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME hlsl_profile_identity_unit
+    COMMAND hlsl_profile_identity_unit
+)
+
 add_test(
     NAME hlsl_pipeline_phase_order
     COMMAND ${CMAKE_COMMAND}

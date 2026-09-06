@@ -54,6 +54,25 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cg_stdlib.h"
 #include "hlsl_hal.h"
 
+#if !defined(HLSL_CANONICALIZATION_ONLY)
+
+/*
+ * RegisterProfiles_hlsl() - Register both HLSL profiles.
+ */
+
+int RegisterProfiles_hlsl(void)
+{
+    RegisterProfile(InitHAL_hlslv, PROFILE_HLSLV_NAME, PROFILE_HLSLV_ID);
+    SetProfileIdentity(PROFILE_HLSLV_NAME, CG_PROFILE_STAGE_VERTEX, "vs", 10);
+    RegisterProfile(InitHAL_hlslf, PROFILE_HLSLF_NAME, PROFILE_HLSLF_ID);
+    SetProfileIdentity(PROFILE_HLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT, "ps", 10);
+    return 1;
+} // RegisterProfiles_hlsl
+
+#endif // !defined(HLSL_CANONICALIZATION_ONLY)
+
+#if !defined(HLSL_PROFILE_REGISTRATION_ONLY)
+
 #define NUMELS(x) (sizeof(x) / sizeof((x)[0]))
 #define HLSL_SEMANTIC_NAME_MAX 128
 
@@ -268,23 +287,6 @@ static const HlslProfileDesc *GetHlslProfile(void)
     data = GetHlslData();
     return data != NULL ? data->profile : NULL;
 } // GetHlslProfile
-
-///////////////////////////////////////////////////////////////////////////////
-/////////////////////////// Profile Registration //////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-
-/*
- * RegisterProfiles_hlsl() - Register both HLSL profiles.
- */
-
-int RegisterProfiles_hlsl(void)
-{
-    RegisterProfile(InitHAL_hlslv, PROFILE_HLSLV_NAME, PROFILE_HLSLV_ID);
-    SetProfileIdentity(PROFILE_HLSLV_NAME, CG_PROFILE_STAGE_VERTEX, "vs", 10);
-    RegisterProfile(InitHAL_hlslf, PROFILE_HLSLF_NAME, PROFILE_HLSLF_ID);
-    SetProfileIdentity(PROFILE_HLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT, "ps", 10);
-    return 1;
-} // RegisterProfiles_hlsl
 
 /*
  * InitHAL_hlsl() - Shared HAL initialization.
@@ -1299,3 +1301,5 @@ int InitHAL_hlslf(slHAL *fHAL)
 ///////////////////////////////////////////////////////////////////////////////
 
 #endif // !defined(HLSL_CANONICALIZATION_ONLY)
+
+#endif // !defined(HLSL_PROFILE_REGISTRATION_ONLY)
