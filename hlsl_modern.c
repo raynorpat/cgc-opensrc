@@ -66,6 +66,37 @@ typedef struct HlslModernSemanticDesc_Rec {
     int count;
 } HlslModernSemanticDesc;
 
+typedef struct HlslModernTypeFrame_Rec {
+    const struct HlslModernTypeFrame_Rec *parent;
+    const HlslType *type;
+} HlslModernTypeFrame;
+
+static int HlslModernTypeFrameContains(const HlslModernTypeFrame *frame,
+                                       const HlslType *type)
+{
+    for (; frame != NULL; frame = frame->parent) {
+        if (frame->type == type)
+            return 1;
+    }
+    return 0;
+} // HlslModernTypeFrameContains
+
+static int HlslModernDeclListHasCycle(const HlslDecl *list)
+{
+    const HlslDecl *slow;
+    const HlslDecl *fast;
+
+    slow = list;
+    fast = list;
+    while (fast != NULL && fast->next != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast)
+            return 1;
+    }
+    return 0;
+} // HlslModernDeclListHasCycle
+
 static int HlslModernRoundPackCursor(HlslModernPackCursor *cursor)
 {
     if (cursor->component == 0)
@@ -86,49 +117,160 @@ static int HlslModernAdvanceVector(HlslModernPackCursor *cursor)
     return 1;
 } // HlslModernAdvanceVector
 
-static int HlslModernPackTypeInner(const HlslType *type,
-                                   HlslModernPackCursor *cursor)
+static int HlslModernLogicalComponentCountInner(const HlslType *type,
+    const HlslModernTypeFrame *parent, int depth, int *result)
 {
+    HlslModernTypeFrame frame;
     const HlslDecl *member;
-    int i;
+    int count;
+    int memberCount;
 
-    if (type == NULL || cursor == NULL || cursor->vector < 0 ||
-        cursor->component < 0 || cursor->component > 3)
+    if (type == NULL || result == NULL || depth > 128 ||
+        type->arraySize < 0 || HlslModernTypeFrameContains(parent, type))
     {
         return 0;
     }
+    frame.parent = parent;
+    frame.type = type;
     if (type->arraySize > 0) {
-        if (type->elementType == NULL || !HlslModernRoundPackCursor(cursor))
+        if (!HlslModernLogicalComponentCountInner(type->elementType, &frame,
+                                                  depth + 1, &count) ||
+            count <= 0 || type->arraySize > INT_MAX / count)
+        {
             return 0;
-        for (i = 0; i < type->arraySize; i++) {
-            if (!HlslModernPackTypeInner(type->elementType, cursor) ||
-                !HlslModernRoundPackCursor(cursor))
+        }
+        *result = type->arraySize * count;
+        return 1;
+    }
+    if (type->elementType != NULL)
+        return 0;
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->members == NULL ||
+            HlslModernDeclListHasCycle(type->members))
+        {
+            return 0;
+        }
+        count = 0;
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslModernLogicalComponentCountInner(&member->type, &frame,
+                    depth + 1, &memberCount) || memberCount <= 0 ||
+                count > INT_MAX - memberCount)
             {
                 return 0;
             }
+            count += memberCount;
         }
+        if (count <= 0)
+            return 0;
+        *result = count;
         return 1;
     }
-    if (type->base == HLSL_BASE_STRUCT) {
-        if (type->members == NULL || !HlslModernRoundPackCursor(cursor))
+    if (type->members != NULL || type->structName != NULL)
+        return 0;
+    if (type->rows > 0 || type->cols > 0) {
+        if (type->base != HLSL_BASE_FLOAT || type->rows < 1 ||
+            type->rows > 4 || type->cols < 1 || type->cols > 4 ||
+            type->len != 0 || type->rows > INT_MAX / type->cols)
+        {
             return 0;
+        }
+        *result = type->rows * type->cols;
+        return 1;
+    }
+    if ((type->base != HLSL_BASE_FLOAT && type->base != HLSL_BASE_INT &&
+         type->base != HLSL_BASE_UINT && type->base != HLSL_BASE_BOOL) ||
+        type->len < 1 || type->len > 4)
+    {
+        return 0;
+    }
+    *result = type->len;
+    return 1;
+} // HlslModernLogicalComponentCountInner
+
+int HlslModernLogicalComponentCount(const HlslType *type, int *count)
+{
+    int result;
+
+    if (count == NULL ||
+        !HlslModernLogicalComponentCountInner(type, NULL, 0, &result))
+    {
+        return 0;
+    }
+    *count = result;
+    return 1;
+} // HlslModernLogicalComponentCount
+
+static int HlslModernPackTypeInner(const HlslType *type,
+    HlslModernPackCursor *cursor, const HlslModernTypeFrame *parent,
+    int depth)
+{
+    HlslModernPackCursor elementCursor;
+    HlslModernTypeFrame frame;
+    const HlslDecl *member;
+    int elementVectors;
+    int vectors;
+
+    if (type == NULL || cursor == NULL || depth > 128 ||
+        cursor->vector < 0 || cursor->component < 0 ||
+        cursor->component > 3 || type->arraySize < 0 ||
+        HlslModernTypeFrameContains(parent, type))
+    {
+        return 0;
+    }
+    frame.parent = parent;
+    frame.type = type;
+    if (type->arraySize > 0) {
+        if (type->elementType == NULL || !HlslModernRoundPackCursor(cursor))
+            return 0;
+        elementCursor.vector = 0;
+        elementCursor.component = 0;
+        if (!HlslModernPackTypeInner(type->elementType, &elementCursor,
+                                     &frame, depth + 1) ||
+            !HlslModernRoundPackCursor(&elementCursor))
+        {
+            return 0;
+        }
+        elementVectors = elementCursor.vector;
+        if (elementVectors <= 0 ||
+            type->arraySize > INT_MAX / elementVectors)
+        {
+            return 0;
+        }
+        vectors = type->arraySize * elementVectors;
+        if (cursor->vector > INT_MAX - vectors)
+            return 0;
+        cursor->vector += vectors;
+        return 1;
+    }
+    if (type->elementType != NULL)
+        return 0;
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->members == NULL ||
+            HlslModernDeclListHasCycle(type->members) ||
+            !HlslModernRoundPackCursor(cursor))
+        {
+            return 0;
+        }
         for (member = type->members; member != NULL; member = member->next) {
-            if (!HlslModernPackTypeInner(&member->type, cursor))
+            if (!HlslModernPackTypeInner(&member->type, cursor, &frame,
+                                         depth + 1))
+            {
                 return 0;
+            }
         }
         return HlslModernRoundPackCursor(cursor);
     }
     if (type->rows > 0 || type->cols > 0) {
         if (type->base != HLSL_BASE_FLOAT || type->rows < 1 ||
             type->rows > 4 || type->cols < 1 || type->cols > 4 ||
-            type->len != 0 || !HlslModernRoundPackCursor(cursor))
+            type->len != 0 || type->members != NULL ||
+            type->structName != NULL ||
+            !HlslModernRoundPackCursor(cursor) ||
+            cursor->vector > INT_MAX - type->rows)
         {
             return 0;
         }
-        for (i = 0; i < type->rows; i++) {
-            if (!HlslModernAdvanceVector(cursor))
-                return 0;
-        }
+        cursor->vector += type->rows;
         return 1;
     }
     if ((type->base != HLSL_BASE_FLOAT && type->base != HLSL_BASE_INT &&
@@ -175,7 +317,7 @@ int HlslModernPackType(const HlslType *type, HlslModernPackCursor *cursor,
         return 0;
     }
     start = work;
-    if (!HlslModernPackTypeInner(type, &work))
+    if (!HlslModernPackTypeInner(type, &work, NULL, 0))
         return 0;
     if (work.vector < start.vector)
         return 0;

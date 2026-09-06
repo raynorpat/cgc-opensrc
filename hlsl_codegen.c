@@ -45,6 +45,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
 #include <stdio.h>
+#include <limits.h>
 #include <string.h>
 
 #include "slglobals.h"
@@ -144,6 +145,18 @@ static int HlslWriteIndent(FILE *out, int indent)
     return 1;
 } // HlslWriteIndent
 
+static int HlslWriteArrayDimensions(FILE *out, const HlslType *type,
+                                    int depth)
+{
+    if (type == NULL || depth > 128 || type->arraySize < 0)
+        return 0;
+    if (type->arraySize == 0)
+        return 1;
+    return type->elementType != NULL &&
+           fprintf(out, "[%d]", type->arraySize) >= 0 &&
+           HlslWriteArrayDimensions(out, type->elementType, depth + 1);
+} // HlslWriteArrayDimensions
+
 static int HlslWriteTypeAndName(FILE *out, const HlslType *type,
                                 const char *name)
 {
@@ -155,7 +168,7 @@ static int HlslWriteTypeAndName(FILE *out, const HlslType *type,
     {
         return 0;
     }
-    if (type->arraySize > 0 && fprintf(out, "[%d]", type->arraySize) < 0)
+    if (!HlslWriteArrayDimensions(out, type, 0))
         return 0;
     return 1;
 } // HlslWriteTypeAndName
@@ -1202,19 +1215,11 @@ static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module,
     return wroteRecord;
 } // HlslWriteInterfaceMetadata
 
-static int HlslWriteBindingMetadata(FILE *out,
-                                    const HlslBinding *binding)
+static int HlslWriteBindingDefault(FILE *out,
+                                   const HlslBinding *binding)
 {
     int i;
 
-    if (fprintf(out, "// var %s %s : %s : %s[%d] : 1 : %d\n",
-            HlslTypeName(&binding->type), binding->publicName,
-            binding->semantic != NULL ? binding->semantic : "",
-            HlslBankText(binding->physical.bank),
-            binding->physical.regno, binding->physical.span) < 0)
-    {
-        return 0;
-    }
     if (binding->defaultCount <= 0)
         return 1;
     if (fprintf(out, "// cgc-default %s", binding->publicName) < 0)
@@ -1229,7 +1234,91 @@ static int HlslWriteBindingMetadata(FILE *out,
         }
     }
     return fputc('\n', out) != EOF;
+} // HlslWriteBindingDefault
+
+static int HlslWriteBindingMetadata(FILE *out,
+                                    const HlslBinding *binding)
+{
+    if (fprintf(out, "// var %s %s : %s : %s[%d] : 1 : %d\n",
+            HlslTypeName(&binding->type), binding->publicName,
+            binding->semantic != NULL ? binding->semantic : "",
+            HlslBankText(binding->physical.bank),
+            binding->physical.regno, binding->physical.span) < 0)
+    {
+        return 0;
+    }
+    return HlslWriteBindingDefault(out, binding);
 } // HlslWriteBindingMetadata
+
+static const HlslResource *HlslBindingCbuffer(const HlslModule *module,
+                                              const HlslBinding *binding)
+{
+    const HlslResource *resource;
+    const HlslDecl *member;
+
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->kind != HLSL_RESOURCE_CBUFFER)
+            continue;
+        for (member = resource->members; member != NULL;
+             member = member->next)
+        {
+            if (binding->declaration == member)
+                return resource;
+        }
+    }
+    return NULL;
+} // HlslBindingCbuffer
+
+/* Stable modern runtime contract:
+ * // cgc-bind uniform NAME TYPE bN cV.C byte=B size=S span=V semantic=SEM
+ * byte and size are physical bytes; span is the full 16-byte-vector span.
+ */
+static int HlslWriteModernBindingRecord(FILE *out,
+                                        const HlslModule *module,
+                                        const HlslBinding *binding)
+{
+    static const char components[] = "xyzw";
+    const HlslBinding *leaf;
+    const HlslDecl *declaration;
+    const HlslResource *resource;
+    int byteOffset;
+    int byteSize;
+
+    leaf = binding->leafBindings;
+    declaration = leaf != NULL ? leaf->declaration : NULL;
+    resource = leaf != NULL ? HlslBindingCbuffer(module, leaf) : NULL;
+    if (binding->publicName == NULL || binding->logicalTypeName == NULL ||
+        declaration == NULL || resource == NULL ||
+        resource->binding.slot < 0 || !declaration->hasPackOffset ||
+        declaration->packOffset.vector < 0 ||
+        declaration->packOffset.vector > (INT_MAX - 12) / 16 ||
+        declaration->packOffset.component < 0 ||
+        declaration->packOffset.component > 3 ||
+        declaration->packOffset.componentCount <= 0 ||
+        declaration->packOffset.componentCount > INT_MAX / 4 ||
+        leaf->physical.span <= 0)
+    {
+        return 0;
+    }
+    byteOffset = declaration->packOffset.vector * 16 +
+                 declaration->packOffset.component * 4;
+    byteSize = declaration->packOffset.componentCount * 4;
+    if (fprintf(out,
+            "// cgc-bind uniform %s %s b%d c%d.%c byte=%d size=%d "
+            "span=%d semantic=%s\n",
+            binding->publicName, binding->logicalTypeName,
+            resource->binding.slot, declaration->packOffset.vector,
+            components[declaration->packOffset.component], byteOffset,
+            byteSize, leaf->physical.span,
+            binding->semantic != NULL && binding->semantic[0] != '\0' ?
+                binding->semantic : "-") < 0)
+    {
+        return 0;
+    }
+    return HlslWriteBindingDefault(out, binding);
+} // HlslWriteModernBindingRecord
 
 static int HlslWriteModernBindingMetadata(FILE *out,
                                           const HlslModule *module)
@@ -1257,7 +1346,7 @@ static int HlslWriteModernBindingMetadata(FILE *out,
         }
         if (next == NULL)
             break;
-        if (!HlslWriteBindingMetadata(out, next))
+        if (!HlslWriteModernBindingRecord(out, module, next))
             return -1;
         lastOrdinal = next->sourceOrdinal;
         wrote = 1;

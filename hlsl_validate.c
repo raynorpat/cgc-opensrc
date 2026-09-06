@@ -2713,6 +2713,7 @@ static int HlslValidateModernBindings(HlslModule *module,
     HlslModernPackCursor cursor;
     HlslBinding *binding;
     HlslBinding *leaf;
+    HlslBinding *other;
     HlslPackOffset packed;
     int vectorSpan;
 
@@ -2721,6 +2722,18 @@ static int HlslValidateModernBindings(HlslModule *module,
     {
         if (binding->storage != HLSL_STORAGE_UNIFORM)
             continue;
+        if (binding->sourceOrdinal < 0) {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
+                            "invalid modern HLSL source ordinal");
+        }
+        for (other = binding->next; other != NULL; other = other->next) {
+            if (other->storage == HLSL_STORAGE_UNIFORM &&
+                other->sourceOrdinal == binding->sourceOrdinal)
+            {
+                return HlslFail(module, HLSL_ERROR_INVALID_IR, &other->loc,
+                                "duplicate modern HLSL source ordinal");
+            }
+        }
         leaf = binding->leafBindings;
         if (!binding->isAllocated || leaf == NULL || leaf->next != NULL ||
             binding->declaration == NULL ||
@@ -2732,6 +2745,10 @@ static int HlslValidateModernBindings(HlslModule *module,
             leaf->storage != binding->storage ||
             !HlslTypesEqual(&leaf->type, &binding->type) ||
             !HlslTypesEqual(&leaf->type, &leaf->declaration->type) ||
+            binding->logicalTypeName == NULL ||
+            binding->logicalTypeName[0] == '\0' ||
+            !HlslStringsEqual(leaf->logicalTypeName,
+                              binding->logicalTypeName) ||
             !HlslStringsEqual(leaf->semantic, binding->semantic) ||
             !HlslLocationsEqual(&leaf->loc, &binding->loc) ||
             leaf->sourceOrdinal != binding->sourceOrdinal ||

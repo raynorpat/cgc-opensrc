@@ -9,7 +9,7 @@ struct Settings {
     float3 tint;
 };
 
-uniform float scale : C0 = 2.0;
+uniform half scale : C0;
 uniform float3 axis = float3(3.0, 4.0, 5.0);
 uniform float2 bias = float2(6.0, 7.0);
 uniform float3x2 transform : C2 =
@@ -21,6 +21,7 @@ uniform float4 colors[2] = {
     float4(18.0, 19.0, 20.0, 21.0)
 };
 uniform Settings settings;
+uniform Settings table[2][3];
 
 struct VertexOut {
     float4 position : POSITION;
@@ -33,7 +34,8 @@ VertexOut uniform_vertex(float4 position : POSITION,
     float3 transformed;
     transformed = mul(transform, position.xy);
     output.position = position * (scale * gain) +
-        float4(axis.x + bias.x + transformed.x + colors[0].x,
+        float4(axis.x + bias.x + transformed.x + colors[0].x +
+                   table[1][2].inner.offset.x,
                settings.inner.offset.y + transformed.y,
                settings.tint.z + (float) settings.inner.count,
                settings.inner.enabled ? 1.0 : 0.0);

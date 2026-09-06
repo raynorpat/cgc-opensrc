@@ -80,6 +80,8 @@ typedef struct HlslLeafPlanList_Rec {
 
 typedef struct HlslModernBindingPlan_Rec {
     HlslBinding *binding;
+    HlslBinding *record;
+    const char *fieldName;
     HlslPackOffset offset;
     int vectorSpan;
 } HlslModernBindingPlan;
@@ -208,46 +210,9 @@ static int HlslHomogeneousBank(const HlslType *type,
 
 static int HlslTypeComponentCount(const HlslType *type)
 {
-    const HlslDecl *member;
     int count;
-    int memberCount;
 
-    if (type == NULL || type->arraySize < 0)
-        return 0;
-    if (type->arraySize > 0) {
-        count = HlslTypeComponentCount(type->elementType);
-        if (count <= 0 || type->arraySize > INT_MAX / count)
-            return 0;
-        return type->arraySize * count;
-    }
-    if (type->base == HLSL_BASE_STRUCT) {
-        count = 0;
-        for (member = type->members; member != NULL; member = member->next) {
-            memberCount = HlslTypeComponentCount(&member->type);
-            if (memberCount <= 0 || count > INT_MAX - memberCount)
-                return 0;
-            count += memberCount;
-        }
-        return count;
-    }
-    if (type->rows > 0 && type->cols > 0)
-        return type->rows * type->cols;
-    switch (type->base) {
-    case HLSL_BASE_FLOAT:
-    case HLSL_BASE_INT:
-    case HLSL_BASE_UINT:
-    case HLSL_BASE_BOOL:
-        return type->len;
-    case HLSL_BASE_SAMPLER1D:
-    case HLSL_BASE_SAMPLER2D:
-    case HLSL_BASE_SAMPLER3D:
-    case HLSL_BASE_SAMPLERCUBE:
-        return 0;
-    case HLSL_BASE_VOID:
-    case HLSL_BASE_STRUCT:
-        return 0;
-    }
-    return 0;
+    return HlslModernLogicalComponentCount(type, &count) ? count : 0;
 } // HlslTypeComponentCount
 
 static const char *HlslJoinPublicPath(HlslModule *module,
@@ -3235,6 +3200,8 @@ static int HlslModernValidateBinding(HlslModule *module,
 
     if (binding == NULL || binding->storage != HLSL_STORAGE_UNIFORM ||
         binding->name == NULL || HlslPublicBindingName(binding) == NULL ||
+        binding->logicalTypeName == NULL ||
+        binding->logicalTypeName[0] == '\0' ||
         binding->declaration == NULL || binding->isAllocated)
     {
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
@@ -3308,8 +3275,7 @@ static int HlslModernPlanExplicit(HlslModule *module,
 static int HlslModernPlanImplicit(HlslModule *module,
                                   const HlslProfileDesc *profile,
                                   HlslModernBindingPlan *plan,
-                                  unsigned char *used,
-                                  HlslModernPackCursor *cursor)
+                                  unsigned char *used)
 {
     HlslModernPackCursor candidate;
     HlslPackOffset offset;
@@ -3317,7 +3283,8 @@ static int HlslModernPlanImplicit(HlslModule *module,
     int span;
 
     limit = profile->limits->constantBufferVectors * 4;
-    candidate = *cursor;
+    candidate.vector = 0;
+    candidate.component = 0;
     while (candidate.vector < profile->limits->constantBufferVectors) {
         if (!HlslModernPackType(&plan->binding->type, &candidate,
                                 &offset, &span))
@@ -3331,7 +3298,6 @@ static int HlslModernPlanImplicit(HlslModule *module,
         {
             plan->offset = offset;
             plan->vectorSpan = span;
-            *cursor = candidate;
             HlslModernMarkRange(used, &offset);
             return 1;
         }
@@ -3367,17 +3333,14 @@ static const char *HlslModernFieldName(HlslModule *module,
     return HlslAllocateGeneratedName(module, identity, source);
 } // HlslModernFieldName
 
-static int HlslModernCommitBinding(HlslModule *module,
-                                   HlslModernBindingPlan *plan,
-                                   HlslDecl **members)
+static int HlslModernPrepareBinding(HlslModule *module,
+                                    HlslModernBindingPlan *plan)
 {
     HlslBinding *binding;
     HlslBinding *record;
-    HlslDecl *declaration;
     const char *name;
 
     binding = plan->binding;
-    declaration = binding->declaration;
     record = HlslNewBinding(module, binding->storage, binding->type,
                             binding->name, binding->semantic);
     name = record != NULL ? HlslModernFieldName(module, binding, record) :
@@ -3385,7 +3348,39 @@ static int HlslModernCommitBinding(HlslModule *module,
     if (name == NULL || record == NULL)
         return HlslBindFailure(module, binding, HLSL_ERROR_INVALID_IR,
                                "modern HLSL binding allocation");
-    declaration->name = name;
+    record->publicName = HlslPublicBindingName(binding);
+    record->logicalTypeName = binding->logicalTypeName;
+    record->loc = binding->loc;
+    record->sourceOrdinal = binding->sourceOrdinal;
+    record->hasExplicitRegister = binding->hasExplicitRegister;
+    record->isAllocated = 1;
+    record->declaration = binding->declaration;
+    record->defaultCount = binding->defaultCount;
+    record->defaultValues = binding->defaultValues;
+    record->defaultLiterals = binding->defaultLiterals;
+    record->sourceBase = binding->sourceBase;
+    record->physical.bank = HLSL_REGISTER_C;
+    record->physical.regno = plan->offset.vector;
+    record->physical.component = plan->offset.component;
+    record->physical.span = plan->vectorSpan;
+    plan->record = record;
+    plan->fieldName = name;
+    return 1;
+} // HlslModernPrepareBinding
+
+static void HlslModernCommitBinding(HlslModule *module,
+                                    HlslModernBindingPlan *plan,
+                                    HlslDecl **members)
+{
+    HlslBinding *binding;
+    HlslBinding *record;
+    HlslDecl *declaration;
+
+    binding = plan->binding;
+    record = plan->record;
+    declaration = binding->declaration;
+    declaration->next = NULL;
+    declaration->name = plan->fieldName;
     declaration->storage = HLSL_STORAGE_UNIFORM;
     declaration->initializer = NULL;
     declaration->loc = binding->loc;
@@ -3397,16 +3392,7 @@ static int HlslModernCommitBinding(HlslModule *module,
     declaration->hasPackOffset = 1;
     declaration->packOffset = plan->offset;
 
-    record->publicName = HlslPublicBindingName(binding);
-    record->loc = binding->loc;
-    record->sourceOrdinal = binding->sourceOrdinal;
-    record->hasExplicitRegister = binding->hasExplicitRegister;
-    record->isAllocated = 1;
     record->declaration = declaration;
-    record->defaultCount = binding->defaultCount;
-    record->defaultValues = binding->defaultValues;
-    record->defaultLiterals = binding->defaultLiterals;
-    record->sourceBase = binding->sourceBase;
     record->physical = declaration->physical;
 
     binding->leafBindings = record;
@@ -3414,8 +3400,41 @@ static int HlslModernCommitBinding(HlslModule *module,
     binding->physical = record->physical;
     HlslAppendAllocatedBinding(&module->allocatedBindings, record);
     HlslAppendDecl(members, declaration);
-    return 1;
 } // HlslModernCommitBinding
+
+static HlslResource *HlslModernPrepareCbuffer(HlslModule *module,
+                                              const char *name)
+{
+    HlslResource *resource;
+
+    resource = (HlslResource *) HlslBindAlloc(module, sizeof(HlslResource));
+    if (resource == NULL)
+        return NULL;
+    resource->owner = module;
+    resource->kind = HLSL_RESOURCE_CBUFFER;
+    resource->type.base = HLSL_BASE_STRUCT;
+    resource->type.structName = name;
+    resource->name = name;
+    resource->binding.kind = HLSL_RESOURCE_CBUFFER;
+    resource->binding.slot = 0;
+    resource->binding.pairId = -1;
+    return resource;
+} // HlslModernPrepareCbuffer
+
+static void HlslModernAppendResource(HlslModule *module,
+                                     HlslResource *resource)
+{
+    HlslResource *last;
+
+    if (module->resources == NULL) {
+        module->resources = resource;
+        return;
+    }
+    last = module->resources;
+    while (last->next != NULL)
+        last = last->next;
+    last->next = resource;
+} // HlslModernAppendResource
 
 static int HlslAllocateModernBindings(HlslModule *module,
                                       const HlslProfileDesc *profile,
@@ -3423,17 +3442,16 @@ static int HlslAllocateModernBindings(HlslModule *module,
 {
     HlslModernBindingPlan *plans;
     HlslModernBindingPlan swap;
-    HlslModernPackCursor cursor;
     HlslResource *resource;
     HlslDecl *members;
-    HlslLoc loc;
-    HlslType type;
     const char *cbufferName;
+    HlslName *savedNames;
     unsigned char *used;
     int uniformCount;
     int limit;
     int i;
     int j;
+    int k;
 
     if (profile->limits->constantBufferSlots < 1 ||
         profile->limits->constantBufferVectors < 1 ||
@@ -3456,33 +3474,51 @@ static int HlslAllocateModernBindings(HlslModule *module,
     if (plans == NULL || used == NULL)
         return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
                                "modern HLSL cbuffer allocation");
-    cbufferName = HlslAllocateGeneratedName(module,
-        &hlslModernCbufferIdentity, "cgc_Uniforms");
-    if (cbufferName == NULL || strcmp(cbufferName, "cgc_Uniforms"))
-        return HlslBindFailure(module, NULL, HLSL_ERROR_NAME_COLLISION,
-                               "cgc_Uniforms");
     j = 0;
     for (i = 0; i < count; i++) {
         if (ordered[i]->storage != HLSL_STORAGE_UNIFORM)
             continue;
-        if (!HlslModernValidateBinding(module, ordered[i]))
+        if (!HlslModernValidateBinding(module, ordered[i]) ||
+            ordered[i]->sourceOrdinal < 0)
+        {
+            if (module->errors == 0) {
+                HlslBindFailure(module, ordered[i], HLSL_ERROR_INVALID_IR,
+                                "invalid modern HLSL source ordinal");
+            }
             return 0;
+        }
+        for (k = 0; k < j; k++) {
+            if (plans[k].binding->sourceOrdinal ==
+                ordered[i]->sourceOrdinal)
+            {
+                return HlslBindFailure(module, ordered[i],
+                    HLSL_ERROR_INVALID_IR,
+                    "duplicate modern HLSL source ordinal");
+            }
+        }
         plans[j++].binding = ordered[i];
+    }
+    savedNames = module->names;
+    cbufferName = HlslAllocateGeneratedName(module,
+        &hlslModernCbufferIdentity, "cgc_Uniforms");
+    if (cbufferName == NULL || strcmp(cbufferName, "cgc_Uniforms")) {
+        module->names = savedNames;
+        return HlslBindFailure(module, NULL, HLSL_ERROR_NAME_COLLISION,
+                               "cgc_Uniforms");
     }
     for (i = 0; i < uniformCount; i++) {
         if (plans[i].binding->hasExplicitRegister &&
             !HlslModernPlanExplicit(module, profile, &plans[i], used))
         {
+            module->names = savedNames;
             return 0;
         }
     }
-    cursor.vector = 0;
-    cursor.component = 0;
     for (i = 0; i < uniformCount; i++) {
         if (!plans[i].binding->hasExplicitRegister &&
-            !HlslModernPlanImplicit(module, profile, &plans[i], used,
-                                    &cursor))
+            !HlslModernPlanImplicit(module, profile, &plans[i], used))
         {
+            module->names = savedNames;
             return 0;
         }
     }
@@ -3499,22 +3535,24 @@ static int HlslAllocateModernBindings(HlslModule *module,
         }
         plans[j] = swap;
     }
-    members = NULL;
     for (i = 0; i < uniformCount; i++) {
-        if (!HlslModernCommitBinding(module, &plans[i], &members))
+        if (!HlslModernPrepareBinding(module, &plans[i])) {
+            module->names = savedNames;
             return 0;
+        }
     }
-    memset(&type, 0, sizeof(type));
-    memset(&loc, 0, sizeof(loc));
-    type.base = HLSL_BASE_STRUCT;
-    type.structName = cbufferName;
-    type.members = members;
-    resource = HlslNewResource(module, HLSL_RESOURCE_CBUFFER, type,
-                               cbufferName, loc);
-    if (resource == NULL || !HlslBindResource(module, resource, 0, -1))
+    resource = HlslModernPrepareCbuffer(module, cbufferName);
+    if (resource == NULL) {
+        module->names = savedNames;
         return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
                                "modern HLSL cbuffer resource");
+    }
+    members = NULL;
+    for (i = 0; i < uniformCount; i++)
+        HlslModernCommitBinding(module, &plans[i], &members);
+    resource->type.members = members;
     resource->members = members;
+    HlslModernAppendResource(module, resource);
     return 1;
 } // HlslAllocateModernBindings
 

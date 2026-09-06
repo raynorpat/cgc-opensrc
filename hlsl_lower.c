@@ -152,6 +152,85 @@ static char *HlslGeneratedSource(HlslLowerContext *context,
     return name;
 } // HlslGeneratedSource
 
+static Type *HlslCanonicalStructType(Type *type);
+
+static const char *HlslLogicalTypeName(HlslLowerContext *context,
+                                       Type *source)
+{
+    Type *current;
+    Type *seen[129];
+    Type *canonical;
+    HlslSourceType described;
+    const char *base;
+    char dimension[32];
+    char *result;
+    char *write;
+    int dimensions[128];
+    int dimensionCount;
+    int cols;
+    int rows;
+    int vectorLength;
+    int i;
+    size_t length;
+    size_t dimensionLength;
+
+    if (context == NULL || source == NULL)
+        return NULL;
+    current = source;
+    dimensionCount = 0;
+    while (GetCategory(current) == TYPE_CATEGORY_ARRAY &&
+           !IsMatrix(current, &cols, &rows) &&
+           !IsVector(current, &vectorLength))
+    {
+        if (dimensionCount >= 128 || current->arr.numels <= 0 ||
+            current->arr.eltype == NULL)
+        {
+            return NULL;
+        }
+        for (i = 0; i < dimensionCount; i++) {
+            if (seen[i] == current)
+                return NULL;
+        }
+        seen[dimensionCount] = current;
+        dimensions[dimensionCount++] = current->arr.numels;
+        current = current->arr.eltype;
+    }
+    if (GetCategory(current) == TYPE_CATEGORY_STRUCT) {
+        canonical = HlslCanonicalStructType(current);
+        base = canonical != NULL && canonical->str.tag != 0 ?
+               GetAtomString(atable, canonical->str.tag) : NULL;
+    } else if (HlslDescribeSourceType(current, &described)) {
+        base = HlslSourceTypeName(&described);
+    } else {
+        base = NULL;
+    }
+    if (base == NULL || base[0] == '\0')
+        return NULL;
+    length = strlen(base);
+    for (i = 0; i < dimensionCount; i++) {
+        sprintf(dimension, "[%d]", dimensions[i]);
+        dimensionLength = strlen(dimension);
+        if (length > (size_t) -1 - dimensionLength)
+            return NULL;
+        length += dimensionLength;
+    }
+    if (length == (size_t) -1)
+        return NULL;
+    result = (char *) HlslLowerAlloc(context, length + 1);
+    if (result == NULL)
+        return NULL;
+    memcpy(result, base, strlen(base));
+    write = result + strlen(base);
+    for (i = 0; i < dimensionCount; i++) {
+        sprintf(dimension, "[%d]", dimensions[i]);
+        dimensionLength = strlen(dimension);
+        memcpy(write, dimension, dimensionLength);
+        write += dimensionLength;
+    }
+    *write = '\0';
+    return result;
+} // HlslLogicalTypeName
+
 static Type *HlslCanonicalStructType(Type *type)
 {
     Type *canonical;
@@ -840,6 +919,7 @@ static int HlslCollectUniform(HlslLowerContext *context, Symbol *symbol)
     HlslStorage storage;
     HlslRegisterBank bank;
     char *generatedName;
+    const char *logicalTypeName;
     const char *sourceName;
     const char *semantic;
     int regno;
@@ -868,16 +948,18 @@ static int HlslCollectUniform(HlslLowerContext *context, Symbol *symbol)
     sourceName = GetAtomString(atable, symbol->name);
     semantic = symbol->details.var.semantics != 0 ?
                GetAtomString(atable, symbol->details.var.semantics) : NULL;
+    logicalTypeName = HlslLogicalTypeName(context, symbol->type);
     binding = HlslNewBinding(context->module, storage, type,
                              sourceName, semantic);
     generatedName = HlslGeneratedSource(context, sourceName);
     identityDecl = generatedName != NULL ?
         HlslNewDecl(context->module, storage, type, generatedName) : NULL;
-    if (binding == NULL || identityDecl == NULL)
+    if (logicalTypeName == NULL || binding == NULL || identityDecl == NULL)
         return 0;
     identityDecl->identity = symbol;
     binding->declaration = identityDecl;
     binding->publicName = sourceName;
+    binding->logicalTypeName = logicalTypeName;
     binding->sourceOrdinal = symbol->sourceOrdinal;
     HlslSetLoc(&binding->loc, &symbol->loc);
     sourceBinding = symbol->details.var.bind;

@@ -234,6 +234,14 @@ static void *InitializerFaultAlloc(void *arg, size_t size)
     return calloc(1, size);
 }
 
+static void *ResourceFaultAlloc(void *arg, size_t size)
+{
+    (void) arg;
+    if (size == sizeof(HlslResource))
+        return NULL;
+    return calloc(1, size);
+}
+
 typedef struct LimitedAllocState_Rec {
     int calls;
     int limit;
@@ -2432,6 +2440,15 @@ static void TestModernConstantBufferPacking(void)
     HlslType matrix;
     HlslType vector4;
     HlslType array;
+    HlslType hugeArray;
+    HlslType arrayCycle[2];
+    HlslType nestedArray;
+    HlslType nestedStructure;
+    HlslType cyclicStructure;
+    HlslDecl nestedMembers[2];
+    HlslDecl cyclicMember;
+    HlslPackOffset invalidOffset;
+    int invalidSpan;
 
     cursor.vector = 0;
     cursor.component = 0;
@@ -2454,6 +2471,52 @@ static void TestModernConstantBufferPacking(void)
     assert(cursor.vector == 5 && cursor.component == 0);
     AssertModernPacking(&array, &cursor, 5, 0, 8, 2);
     assert(cursor.vector == 7 && cursor.component == 0);
+
+    memset(nestedMembers, 0, sizeof(nestedMembers));
+    nestedMembers[0].name = "value";
+    nestedMembers[0].type = scalar;
+    nestedMembers[0].next = &nestedMembers[1];
+    nestedMembers[1].name = "items";
+    memset(&nestedArray, 0, sizeof(nestedArray));
+    nestedArray.arraySize = 2;
+    nestedArray.elementType = &vector2;
+    nestedMembers[1].type = nestedArray;
+    memset(&nestedStructure, 0, sizeof(nestedStructure));
+    nestedStructure.base = HLSL_BASE_STRUCT;
+    nestedStructure.structName = "NestedPacking";
+    nestedStructure.members = nestedMembers;
+    cursor.vector = 0;
+    cursor.component = 0;
+    AssertModernPacking(&nestedStructure, &cursor, 0, 0, 12, 3);
+    assert(cursor.vector == 3 && cursor.component == 0);
+
+    memset(&hugeArray, 0, sizeof(hugeArray));
+    hugeArray.arraySize = INT_MAX;
+    hugeArray.elementType = &scalar;
+    cursor.vector = 0;
+    cursor.component = 0;
+    assert(!HlslModernPackType(&hugeArray, &cursor, &invalidOffset,
+                               &invalidSpan));
+    assert(cursor.vector == 0 && cursor.component == 0);
+
+    memset(arrayCycle, 0, sizeof(arrayCycle));
+    arrayCycle[0].arraySize = 1;
+    arrayCycle[0].elementType = &arrayCycle[1];
+    arrayCycle[1].arraySize = 1;
+    arrayCycle[1].elementType = &arrayCycle[0];
+    assert(!HlslModernPackType(&arrayCycle[0], &cursor, &invalidOffset,
+                               &invalidSpan));
+
+    memset(&cyclicMember, 0, sizeof(cyclicMember));
+    cyclicMember.name = "cycle";
+    cyclicMember.type = scalar;
+    cyclicMember.next = &cyclicMember;
+    memset(&cyclicStructure, 0, sizeof(cyclicStructure));
+    cyclicStructure.base = HLSL_BASE_STRUCT;
+    cyclicStructure.structName = "CyclicPacking";
+    cyclicStructure.members = &cyclicMember;
+    assert(!HlslModernPackType(&cyclicStructure, &cursor, &invalidOffset,
+                               &invalidSpan));
 }
 
 static HlslBinding *AddModernUniformBinding(HlslModule *module,
@@ -2469,6 +2532,7 @@ static HlslBinding *AddModernUniformBinding(HlslModule *module,
     declaration = HlslNewDecl(module, HLSL_STORAGE_UNIFORM, type, name);
     assert(binding != NULL && declaration != NULL);
     binding->declaration = declaration;
+    binding->logicalTypeName = HlslTypeName(&type);
     binding->sourceOrdinal = ordinal;
     declaration->sourceOrdinal = ordinal;
     declaration->identity = binding;
@@ -2506,11 +2570,20 @@ static void TestModernConstantBufferBinding(void)
     HlslBinding *overlapMatrix;
     HlslBinding *overlap;
     HlslBinding *implicit;
+    HlslBinding *implicitTail;
     HlslBinding *explicitBinding;
     HlslBinding *collisionSafe;
+    HlslBinding *duplicateOrdinal;
+    HlslProfileDesc profile;
+    HlslLimits limits;
     HlslType vector4;
     HlslType array;
+    HlslType hugeArray;
+    HlslType cyclicArray[2];
     HlslResource *resource;
+    HlslName *savedNames;
+    HlslDecl declarationBefore;
+    char collisionIdentity;
     FILE *stream;
     char *output;
     long length;
@@ -2576,6 +2649,24 @@ static void TestModernConstantBufferBinding(void)
            implicit->leafBindings->declaration);
 
     HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    profile = HlslProfile_hlslv40;
+    limits = *profile.limits;
+    limits.constantBufferVectors = 2;
+    profile.limits = &limits;
+    explicitBinding = AddModernUniformBinding(&module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "blocker", 0);
+    explicitBinding->hasExplicitRegister = 1;
+    explicitBinding->physical.bank = HLSL_REGISTER_C;
+    explicitBinding->physical.regno = 0;
+    implicit = AddModernUniformBinding(&module, vector4, "wide", 1);
+    implicitTail = AddModernUniformBinding(&module,
+        HlslNumericType(HLSL_BASE_FLOAT, 3), "tail", 2);
+    assert(HlslAllocateBindings(&module, &profile));
+    AssertModernBindingOffset(explicitBinding, 0, 0, 1);
+    AssertModernBindingOffset(implicit, 1, 0, 4);
+    AssertModernBindingOffset(implicitTail, 0, 1, 3);
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
     collisionSafe = AddModernUniformBinding(&module,
         HlslNumericType(HLSL_BASE_FLOAT, 1), "Uniforms", 0);
     assert(HlslAllocateBindings(&module, &HlslProfile_hlslv40));
@@ -2583,14 +2674,108 @@ static void TestModernConstantBufferBinding(void)
     assert(!strcmp(collisionSafe->leafBindings->declaration->name,
                    "cgc_Uniforms_1"));
 
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    implicit = AddModernUniformBinding(&module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "negativeOrdinal", -1);
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+    assert(!implicit->isAllocated && implicit->leafBindings == NULL);
+    assert(module.resources == NULL && module.allocatedBindings == NULL &&
+           module.names == NULL);
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    memset(&hugeArray, 0, sizeof(hugeArray));
+    hugeArray.arraySize = INT_MAX;
+    hugeArray.elementType = &vector4;
+    implicit = AddModernUniformBinding(&module, hugeArray, "hugeArray", 0);
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR ||
+           module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(!implicit->isAllocated && implicit->leafBindings == NULL);
+    assert(module.resources == NULL && module.allocatedBindings == NULL &&
+           module.names == NULL);
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    memset(cyclicArray, 0, sizeof(cyclicArray));
+    cyclicArray[0].arraySize = 1;
+    cyclicArray[0].elementType = &cyclicArray[1];
+    cyclicArray[1].arraySize = 1;
+    cyclicArray[1].elementType = &cyclicArray[0];
+    implicit = AddModernUniformBinding(&module, cyclicArray[0],
+                                       "cyclicArray", 0);
+    implicit->logicalTypeName = "float[1][1]";
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+    assert(!implicit->isAllocated && implicit->leafBindings == NULL);
+    assert(module.resources == NULL && module.allocatedBindings == NULL &&
+           module.names == NULL);
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    implicit = AddModernUniformBinding(&module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "firstOrdinal", 4);
+    duplicateOrdinal = AddModernUniformBinding(&module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "secondOrdinal", 4);
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+    assert(!implicit->isAllocated && !duplicateOrdinal->isAllocated);
+    assert(implicit->leafBindings == NULL &&
+           duplicateOrdinal->leafBindings == NULL);
+    assert(module.resources == NULL && module.allocatedBindings == NULL &&
+           module.names == NULL);
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    implicit = AddModernUniformBinding(&module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "collisionRollback", 0);
+    declarationBefore = *implicit->declaration;
+    assert(HlslAllocateGeneratedName(&module, &collisionIdentity,
+                                     "cgc_Uniforms") != NULL);
+    savedNames = module.names;
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
+    assert(module.errorKind == HLSL_ERROR_NAME_COLLISION);
+    assert(module.names == savedNames && module.resources == NULL &&
+           module.allocatedBindings == NULL);
+    assert(!implicit->isAllocated && implicit->leafBindings == NULL);
+    assert(!memcmp(implicit->declaration, &declarationBefore,
+                   sizeof(declarationBefore)));
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    implicit = AddModernUniformBinding(&module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "allocationRollback", 0);
+    declarationBefore = *implicit->declaration;
+    savedNames = module.names;
+    module.alloc = ResourceFaultAlloc;
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
+    assert(module.errorKind == HLSL_ERROR_INVALID_IR);
+    assert(module.names == savedNames && module.resources == NULL &&
+           module.allocatedBindings == NULL);
+    assert(!implicit->isAllocated && implicit->leafBindings == NULL);
+    assert(!memcmp(implicit->declaration, &declarationBefore,
+                   sizeof(declarationBefore)));
+    module.alloc = TestAlloc;
+    module.errors = 0;
+    module.errorKind = HLSL_ERROR_NONE;
+    module.errorReason = NULL;
+    assert(HlslAllocateBindings(&module, &HlslProfile_hlslv40));
+    AssertModernBindingOffset(implicit, 0, 0, 1);
+
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
     scalar = AddModernUniformBinding(&fixture.module,
         HlslNumericType(HLSL_BASE_FLOAT, 1), "scale", 0);
+    scalar->logicalTypeName = "half";
+    scalar->semantic = "C0";
+    scalar->hasExplicitRegister = 1;
+    scalar->physical.bank = HLSL_REGISTER_C;
+    scalar->physical.regno = 0;
     scalar->defaultCount = 1;
     scalar->defaultLiterals = (HlslDefaultLiteral *) &scaleDefault;
+    vector3 = AddModernUniformBinding(&fixture.module,
+        HlslNumericType(HLSL_BASE_FLOAT, 3), "axis", 1);
+    vector3->logicalTypeName = "half3";
     matrix = AddModernUniformBinding(&fixture.module,
-        HlslMatrixType(3, 2), "transform", 1);
+        HlslMatrixType(3, 2), "transform", 2);
+    matrix->logicalTypeName = "float3x2";
+    matrix->semantic = "C2";
     matrix->hasExplicitRegister = 1;
     matrix->physical.bank = HLSL_REGISTER_C;
     matrix->physical.regno = 2;
@@ -2605,11 +2790,21 @@ static void TestModernConstantBufferBinding(void)
     assert(fread(output, 1, (size_t) length, stream) == (size_t) length);
     output[length] = '\0';
     assert(strstr(output,
+        "// cgc-bind uniform scale half b0 c0.x byte=0 size=4 span=1 "
+        "semantic=C0\n") != NULL);
+    assert(strstr(output,
+        "// cgc-bind uniform axis half3 b0 c0.y byte=4 size=12 span=1 "
+        "semantic=-\n") != NULL);
+    assert(strstr(output,
+        "// cgc-bind uniform transform float3x2 b0 c2.x byte=32 "
+        "size=48 span=3 semantic=C2\n") != NULL);
+    assert(strstr(output,
         "// cgc-default scale 2.0\n") != NULL);
     assert(strstr(output,
         "cbuffer cgc_Uniforms : register(b0)\n"
         "{\n"
         "    float cgc_scale : packoffset(c0.x);\n"
+        "    float3 cgc_axis : packoffset(c0.y);\n"
         "    row_major float3x2 cgc_transform : packoffset(c2);\n"
         "};\n") != NULL);
     assert(strstr(output, "cgc_scale =") == NULL);
@@ -2799,6 +2994,8 @@ static void TestModernResourceValidation(void)
     HlslResource *sampler;
     HlslResource *secondTexture;
     HlslResource *secondSampler;
+    HlslBinding *firstBinding;
+    HlslBinding *secondBinding;
     HlslDecl *first;
     HlslDecl *nestedStructure;
     HlslDecl *second;
@@ -2807,6 +3004,31 @@ static void TestModernResourceValidation(void)
     HlslType nestedType;
     HlslPackOffset offset;
     FILE *stream;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    firstBinding = AddModernUniformBinding(&fixture.module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "negativeOrdinal", 0);
+    assert(HlslAllocateBindings(&fixture.module, &HlslProfile_hlslv40));
+    firstBinding->sourceOrdinal = -1;
+    firstBinding->leafBindings->sourceOrdinal = -1;
+    firstBinding->leafBindings->declaration->sourceOrdinal = -1;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_INVALID_IR);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    firstBinding = AddModernUniformBinding(&fixture.module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "firstOrdinal", 0);
+    secondBinding = AddModernUniformBinding(&fixture.module,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "secondOrdinal", 1);
+    assert(HlslAllocateBindings(&fixture.module, &HlslProfile_hlslv40));
+    secondBinding->sourceOrdinal = firstBinding->sourceOrdinal;
+    secondBinding->leafBindings->sourceOrdinal = firstBinding->sourceOrdinal;
+    secondBinding->leafBindings->declaration->sourceOrdinal =
+        firstBinding->sourceOrdinal;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_INVALID_IR);
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);

@@ -63,6 +63,7 @@ typedef struct HlslModernPackCursor_Rec {
 
 int HlslModernPackType(const HlslType *type, HlslModernPackCursor *cursor,
                        HlslPackOffset *offset, int *vectorSpan);
+int HlslModernLogicalComponentCount(const HlslType *type, int *count);
 
 HlslSemanticKind HlslModernSemantic(HlslStage stage,
     HlslDirection direction, const char *root, int index);

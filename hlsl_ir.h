@@ -587,6 +587,8 @@ struct HlslBinding_Rec {
     const char *name;
     /* Source-facing metadata root; NULL or empty falls back to name. */
     const char *publicName;
+    /* Complete source-facing Cg spelling, including array dimensions. */
+    const char *logicalTypeName;
     const char *semantic;
     HlslLoc loc;
     int sourceOrdinal;
