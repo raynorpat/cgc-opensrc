@@ -102,6 +102,25 @@ static int HlslTypeIsSampler(const HlslType *type)
            type->base == HLSL_BASE_SAMPLERCUBE;
 } // HlslTypeIsSampler
 
+static int HlslTypeContainsUint(const HlslType *type, int depth)
+{
+    const HlslDecl *member;
+
+    if (type == NULL)
+        return 0;
+    if (depth >= 32)
+        return 1;
+    if (type->base == HLSL_BASE_UINT)
+        return 1;
+    if (type->arraySize > 0)
+        return HlslTypeContainsUint(type->elementType, depth + 1);
+    for (member = type->members; member != NULL; member = member->next) {
+        if (HlslTypeContainsUint(&member->type, depth + 1))
+            return 1;
+    }
+    return 0;
+} // HlslTypeContainsUint
+
 static int HlslIsScalar(const HlslType *type, HlslBase base)
 {
     return type != NULL && type->arraySize == 0 && type->base == base &&
@@ -256,7 +275,8 @@ static int HlslMemberInList(const HlslDecl *members,
     return 0;
 } // HlslMemberInList
 
-static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
+static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression,
+                            int allowUint)
 {
     HlslExpr *argument;
     HlslDecl *parameter;
@@ -266,7 +286,8 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
     int length;
     int maskLength;
 
-    if (expression == NULL || HlslTypeName(&expression->type) == NULL)
+    if (expression == NULL || HlslTypeName(&expression->type) == NULL ||
+        (!allowUint && HlslTypeContainsUint(&expression->type, 0)))
         return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
             expression != NULL ? &expression->loc : NULL,
             "HLSL expression type");
@@ -295,7 +316,8 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         break;
     case HLSL_EXPR_UNARY:
         if (expression->u.unary.operand == NULL ||
-            !HlslLegalizeExpr(module, expression->u.unary.operand) ||
+            !HlslLegalizeExpr(module, expression->u.unary.operand,
+                              allowUint) ||
             !HlslTypesEqual(&expression->type,
                             &expression->u.unary.operand->type))
         {
@@ -329,8 +351,10 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                                    &expression->loc,
                                    "HLSL unary operation");
     case HLSL_EXPR_BINARY:
-        if (!HlslLegalizeExpr(module, expression->u.binary.left) ||
-            !HlslLegalizeExpr(module, expression->u.binary.right))
+        if (!HlslLegalizeExpr(module, expression->u.binary.left,
+                              allowUint) ||
+            !HlslLegalizeExpr(module, expression->u.binary.right,
+                              allowUint))
         {
             return 0;
         }
@@ -435,11 +459,11 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
             expression->u.conditional.trueExpr == NULL ||
             expression->u.conditional.falseExpr == NULL ||
             !HlslLegalizeExpr(module,
-                expression->u.conditional.condition) ||
+                expression->u.conditional.condition, allowUint) ||
             !HlslLegalizeExpr(module,
-                expression->u.conditional.trueExpr) ||
+                expression->u.conditional.trueExpr, allowUint) ||
             !HlslLegalizeExpr(module,
-                expression->u.conditional.falseExpr))
+                expression->u.conditional.falseExpr, allowUint))
         {
             return 0;
         }
@@ -474,7 +498,7 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                  argument != NULL; argument = argument->next)
             {
                 if (builtinParamCount >= HLSL_MAX_BUILTIN_ARGS ||
-                    !HlslLegalizeExpr(module, argument))
+                    !HlslLegalizeExpr(module, argument, allowUint))
                 {
                     return HlslLegalizeFailure(module,
                         HLSL_ERROR_INVALID_IR, &expression->loc,
@@ -512,7 +536,7 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         parameter = expression->u.call.function->parameters;
         while (argument != NULL && parameter != NULL)
         {
-            if (!HlslLegalizeExpr(module, argument))
+            if (!HlslLegalizeExpr(module, argument, allowUint))
                 return 0;
             if (!HlslTypesEqual(&argument->type, &parameter->type))
                 return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
@@ -530,13 +554,14 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         for (argument = expression->u.construct.arguments;
              argument != NULL; argument = argument->next)
         {
-            if (!HlslLegalizeExpr(module, argument))
+            if (!HlslLegalizeExpr(module, argument, allowUint))
                 return 0;
         }
         return 1;
     case HLSL_EXPR_CAST:
         if (expression->u.cast.expression == NULL ||
-            !HlslLegalizeExpr(module, expression->u.cast.expression))
+            !HlslLegalizeExpr(module, expression->u.cast.expression,
+                              allowUint))
         {
             return 0;
         }
@@ -566,7 +591,8 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
                                        &expression->loc,
                                        "HLSL member declaration");
         }
-        if (!HlslLegalizeExpr(module, expression->u.member.object))
+        if (!HlslLegalizeExpr(module, expression->u.member.object,
+                              allowUint))
             return 0;
         if (expression->u.member.object->type.base != HLSL_BASE_STRUCT ||
             expression->u.member.decl->name == NULL ||
@@ -583,8 +609,10 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
         }
         return 1;
     case HLSL_EXPR_INDEX:
-        if (!HlslLegalizeExpr(module, expression->u.index.object) ||
-            !HlslLegalizeExpr(module, expression->u.index.index))
+        if (!HlslLegalizeExpr(module, expression->u.index.object,
+                              allowUint) ||
+            !HlslLegalizeExpr(module, expression->u.index.index,
+                              allowUint))
         {
             return 0;
         }
@@ -624,7 +652,8 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
     case HLSL_EXPR_SWIZZLE:
         if (expression->u.swizzle.object == NULL ||
             expression->u.swizzle.mask == NULL ||
-            !HlslLegalizeExpr(module, expression->u.swizzle.object))
+            !HlslLegalizeExpr(module, expression->u.swizzle.object,
+                              allowUint))
         {
             return 0;
         }
@@ -653,10 +682,11 @@ static int HlslLegalizeExpr(HlslModule *module, HlslExpr *expression)
 } // HlslLegalizeExpr
 
 static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl,
-                                    int allowSampler)
+                                    int allowSampler, int allowUint)
 {
     for (; decl != NULL; decl = decl->next) {
-        if (decl->name == NULL || HlslTypeName(&decl->type) == NULL)
+        if (decl->name == NULL || HlslTypeName(&decl->type) == NULL ||
+            (!allowUint && HlslTypeContainsUint(&decl->type, 0)))
             return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                        &decl->loc,
                                        "HLSL declaration");
@@ -669,7 +699,7 @@ static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl,
                 "sampler array" : "local sampler");
         }
         if (decl->initializer != NULL &&
-            !HlslLegalizeExpr(module, decl->initializer))
+            !HlslLegalizeExpr(module, decl->initializer, allowUint))
         {
             return 0;
         }
@@ -681,7 +711,8 @@ static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl,
                                        "HLSL initializer type");
         }
         if (decl->members != NULL &&
-            !HlslLegalizeDeclarations(module, decl->members, 0))
+            !HlslLegalizeDeclarations(module, decl->members, 0,
+                                      allowUint))
         {
             return 0;
         }
@@ -690,31 +721,35 @@ static int HlslLegalizeDeclarations(HlslModule *module, HlslDecl *decl,
 } // HlslLegalizeDeclarations
 
 static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
-                                  const HlslType *result, int loopDepth)
+                                  const HlslType *result, int loopDepth,
+                                  int allowUint)
 {
     for (; statement != NULL; statement = statement->next) {
         switch (statement->kind) {
         case HLSL_STMT_DECLARATION:
             if (statement->u.declaration == NULL ||
                 !HlslLegalizeDeclarations(module,
-                    statement->u.declaration, 0))
+                    statement->u.declaration, 0, allowUint))
             {
                 return 0;
             }
             break;
         case HLSL_STMT_EXPRESSION:
-            if (!HlslLegalizeExpr(module, statement->u.expression))
+            if (!HlslLegalizeExpr(module, statement->u.expression,
+                                  allowUint))
                 return 0;
             break;
         case HLSL_STMT_IF:
             if (!HlslLegalizeExpr(module,
-                    statement->u.ifStmt.condition) ||
+                    statement->u.ifStmt.condition, allowUint) ||
                 !HlslIsScalar(&statement->u.ifStmt.condition->type,
                               HLSL_BASE_BOOL) ||
                 !HlslLegalizeStatements(module,
-                    statement->u.ifStmt.trueBranch, result, loopDepth) ||
+                    statement->u.ifStmt.trueBranch, result, loopDepth,
+                    allowUint) ||
                 !HlslLegalizeStatements(module,
-                    statement->u.ifStmt.falseBranch, result, loopDepth))
+                    statement->u.ifStmt.falseBranch, result, loopDepth,
+                    allowUint))
             {
                 return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                            &statement->loc,
@@ -723,11 +758,13 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
             break;
         case HLSL_STMT_WHILE:
         case HLSL_STMT_DO:
-            if (!HlslLegalizeExpr(module, statement->u.loop.condition) ||
+            if (!HlslLegalizeExpr(module, statement->u.loop.condition,
+                                  allowUint) ||
                 !HlslIsScalar(&statement->u.loop.condition->type,
                               HLSL_BASE_BOOL) ||
                 !HlslLegalizeStatements(module, statement->u.loop.body,
-                                         result, loopDepth + 1))
+                                         result, loopDepth + 1,
+                                         allowUint))
             {
                 return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                            &statement->loc,
@@ -737,18 +774,21 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
         case HLSL_STMT_FOR:
             if ((statement->u.forStmt.init != NULL &&
                  !HlslLegalizeStatements(module,
-                    statement->u.forStmt.init, result, loopDepth)) ||
+                    statement->u.forStmt.init, result, loopDepth,
+                    allowUint)) ||
                 (statement->u.forStmt.condition != NULL &&
                  (!HlslLegalizeExpr(module,
-                    statement->u.forStmt.condition) ||
+                    statement->u.forStmt.condition, allowUint) ||
                   !HlslIsScalar(
                     &statement->u.forStmt.condition->type,
                     HLSL_BASE_BOOL))) ||
                 (statement->u.forStmt.step != NULL &&
                  !HlslLegalizeStatements(module,
-                    statement->u.forStmt.step, result, loopDepth)) ||
+                    statement->u.forStmt.step, result, loopDepth,
+                    allowUint)) ||
                 !HlslLegalizeStatements(module,
-                    statement->u.forStmt.body, result, loopDepth + 1))
+                    statement->u.forStmt.body, result, loopDepth + 1,
+                    allowUint))
             {
                 return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
                                            &statement->loc,
@@ -757,12 +797,13 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
             break;
         case HLSL_STMT_BLOCK:
             if (!HlslLegalizeStatements(module, statement->u.block,
-                                        result, loopDepth))
+                                        result, loopDepth, allowUint))
                 return 0;
             break;
         case HLSL_STMT_RETURN:
             if (statement->u.returnExpr != NULL) {
-                if (!HlslLegalizeExpr(module, statement->u.returnExpr))
+                if (!HlslLegalizeExpr(module, statement->u.returnExpr,
+                                      allowUint))
                     return 0;
                 if (result->base == HLSL_BASE_VOID ||
                     !HlslTypesEqual(result,
@@ -813,6 +854,7 @@ int HlslLegalizeModule(HlslModule *module,
                        const HlslProfileDesc *profile)
 {
     HlslFunction *function;
+    int allowUint;
 
     if (module == NULL || profile == NULL ||
         module->stage != profile->stage || module->entry == NULL)
@@ -820,18 +862,26 @@ int HlslLegalizeModule(HlslModule *module,
         return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR, NULL,
                                    "invalid HLSL legalization module");
     }
-    if (!HlslLegalizeDeclarations(module, module->globals, 1) ||
-        !HlslLegalizeDeclarations(module, module->structs, 0))
+    allowUint = profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN;
+    if (!HlslLegalizeDeclarations(module, module->globals, 1,
+                                  allowUint) ||
+        !HlslLegalizeDeclarations(module, module->structs, 0,
+                                  allowUint))
     {
         return 0;
     }
     for (function = module->functions; function != NULL;
          function = function->next)
     {
-        if (function->name == NULL || HlslTypeName(&function->result) == NULL ||
+        if (function->name == NULL ||
+            HlslTypeName(&function->result) == NULL ||
+            (!allowUint &&
+             HlslTypeContainsUint(&function->result, 0)) ||
             HlslTypeIsSampler(&function->result) ||
-            !HlslLegalizeDeclarations(module, function->parameters, 1) ||
-            !HlslLegalizeDeclarations(module, function->locals, 0))
+            !HlslLegalizeDeclarations(module, function->parameters, 1,
+                                      allowUint) ||
+            !HlslLegalizeDeclarations(module, function->locals, 0,
+                                      allowUint))
         {
             return HlslLegalizeFailure(module,
                 HlslTypeIsSampler(&function->result) ? HLSL_ERROR_SAMPLER :
@@ -841,7 +891,7 @@ int HlslLegalizeModule(HlslModule *module,
                                                        "HLSL function");
         }
         if (!HlslLegalizeStatements(module, function->body,
-                                    &function->result, 0))
+                                    &function->result, 0, allowUint))
         {
             return 0;
         }

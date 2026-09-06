@@ -470,6 +470,100 @@ static int TestReturnType(void)
     return RejectedAsInvalid(&module, "return type mismatch was accepted");
 }
 
+static HlslProfileDesc ModernProfile(void)
+{
+    HlslProfileDesc modernProfile;
+
+    modernProfile = profile;
+    modernProfile.model = HLSL_SHADER_MODEL_4;
+    modernProfile.syntax = HLSL_SYNTAX_MODERN;
+    modernProfile.semanticPolicy = HLSL_SEMANTIC_POLICY_MODERN;
+    modernProfile.resourcePolicy = HLSL_RESOURCE_POLICY_MODERN;
+    modernProfile.target = "vs_4_0";
+    modernProfile.version = VERSION_STRING_HLSL_SM4;
+    return modernProfile;
+}
+
+static int TestUintDeclarationPolicy(void)
+{
+    HlslModule module;
+    HlslFunction *entry;
+    HlslDecl *value;
+    HlslProfileDesc modernProfile;
+    HlslType uintType;
+    HlslType voidType;
+
+    uintType = HlslNumericType(HLSL_BASE_UINT, 1);
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    entry = InitModule(&module, voidType);
+    value = HlslNewDecl(&module, HLSL_STORAGE_NONE, uintType, "value");
+    if (entry == NULL || value == NULL)
+        return 0;
+    entry->locals = value;
+    if (!RejectedAsInvalid(&module,
+            "SM3 uint declaration was accepted"))
+    {
+        return 0;
+    }
+
+    entry = InitModule(&module, voidType);
+    value = HlslNewDecl(&module, HLSL_STORAGE_NONE, uintType, "value");
+    if (entry == NULL || value == NULL)
+        return 0;
+    entry->locals = value;
+    modernProfile = ModernProfile();
+    return Require(HlslProfileIsValid(&modernProfile),
+                   "synthetic modern profile was invalid") &&
+           Require(HlslLegalizeModule(&module, &modernProfile),
+                   "modern uint declaration was rejected");
+}
+
+static int TestUintExpressionPolicy(HlslExprKind kind,
+                                    const char *legacyMessage,
+                                    const char *modernMessage)
+{
+    HlslModule module;
+    HlslFunction *entry;
+    HlslExpr *expression;
+    HlslExpr *argument;
+    HlslProfileDesc modernProfile;
+    HlslType intType;
+    HlslType uintType;
+    HlslType voidType;
+
+    intType = HlslNumericType(HLSL_BASE_INT, 1);
+    uintType = HlslNumericType(HLSL_BASE_UINT, 1);
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    entry = InitModule(&module, voidType);
+    expression = HlslNewExpr(&module, kind, uintType);
+    argument = HlslNewExpr(&module, HLSL_EXPR_INT, intType);
+    if (entry == NULL || expression == NULL || argument == NULL)
+        return 0;
+    if (kind == HLSL_EXPR_CONSTRUCT)
+        expression->u.construct.arguments = argument;
+    else
+        expression->u.cast.expression = argument;
+    entry->body = ExpressionStmt(&module, expression);
+    if (!RejectedAsInvalid(&module, legacyMessage))
+        return 0;
+
+    entry = InitModule(&module, voidType);
+    expression = HlslNewExpr(&module, kind, uintType);
+    argument = HlslNewExpr(&module, HLSL_EXPR_INT, intType);
+    if (entry == NULL || expression == NULL || argument == NULL)
+        return 0;
+    if (kind == HLSL_EXPR_CONSTRUCT)
+        expression->u.construct.arguments = argument;
+    else
+        expression->u.cast.expression = argument;
+    entry->body = ExpressionStmt(&module, expression);
+    modernProfile = ModernProfile();
+    return Require(HlslProfileIsValid(&modernProfile),
+                   "synthetic modern profile was invalid") &&
+           Require(HlslLegalizeModule(&module, &modernProfile),
+                   modernMessage);
+}
+
 static int TestInitializerAndBodyEntryCalls(void)
 {
     HlslModule module;
@@ -562,5 +656,12 @@ int main(void)
            TestMemberOwnership() &&
            TestIndexLegality() &&
            TestReturnType() &&
+           TestUintDeclarationPolicy() &&
+           TestUintExpressionPolicy(HLSL_EXPR_CONSTRUCT,
+               "SM3 uint constructor was accepted",
+               "modern uint constructor was rejected") &&
+           TestUintExpressionPolicy(HLSL_EXPR_CAST,
+               "SM3 uint cast was accepted",
+               "modern uint cast was rejected") &&
            TestInitializerAndBodyEntryCalls() ? 0 : 1;
 }

@@ -2347,6 +2347,79 @@ static void InitValidationFixture(ValidationFixture *fixture,
     fixture->module.wrapper = fixture->wrapper;
 }
 
+static void ConfigureModernValidationFixture(ValidationFixture *fixture)
+{
+    HlslDecl *input;
+    HlslDecl *output;
+
+    input = fixture->inputStruct->members;
+    output = fixture->outputStruct->members;
+    input->canonicalSemantic = "POSITION0";
+    output->semantic = "SV_Position";
+    output->canonicalSemantic = "SV_Position";
+    output->semanticKind = HLSL_SEMANTIC_SV_POSITION;
+}
+
+static void AssertUintValidationPolicy(HlslExprKind kind,
+                                       const HlslProfileDesc *profile,
+                                       int accepted)
+{
+    ValidationFixture fixture;
+    HlslDecl *value;
+    HlslExpr *expression;
+    HlslExpr *argument;
+    HlslStmt *statement;
+    HlslType intType;
+    HlslType uintType;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN)
+        ConfigureModernValidationFixture(&fixture);
+    intType = HlslNumericType(HLSL_BASE_INT, 1);
+    uintType = HlslNumericType(HLSL_BASE_UINT, 1);
+    if (kind == HLSL_EXPR_SYMBOL) {
+        value = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                            uintType, "value");
+        assert(value != NULL);
+        fixture.entry->locals = value;
+    } else {
+        expression = HlslNewExpr(&fixture.module, kind, uintType);
+        argument = HlslNewExpr(&fixture.module, HLSL_EXPR_INT, intType);
+        statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+        assert(expression != NULL && argument != NULL &&
+               statement != NULL);
+        if (kind == HLSL_EXPR_CONSTRUCT)
+            expression->u.construct.arguments = argument;
+        else
+            expression->u.cast.expression = argument;
+        statement->u.expression = expression;
+        fixture.entry->body = statement;
+    }
+    if (accepted) {
+        assert(HlslValidateModule(&fixture.module, profile));
+    } else {
+        assert(!HlslValidateModule(&fixture.module, profile));
+        assert(fixture.module.errorKind == HLSL_ERROR_INVALID_IR);
+        assert(fixture.module.errors == 1);
+    }
+}
+
+static void TestUintValidationPolicy(void)
+{
+    AssertUintValidationPolicy(HLSL_EXPR_SYMBOL,
+                               &HlslProfile_hlslv, 0);
+    AssertUintValidationPolicy(HLSL_EXPR_CONSTRUCT,
+                               &HlslProfile_hlslv, 0);
+    AssertUintValidationPolicy(HLSL_EXPR_CAST,
+                               &HlslProfile_hlslv, 0);
+    AssertUintValidationPolicy(HLSL_EXPR_SYMBOL,
+                               &HlslProfile_hlslv40, 1);
+    AssertUintValidationPolicy(HLSL_EXPR_CONSTRUCT,
+                               &HlslProfile_hlslv40, 1);
+    AssertUintValidationPolicy(HLSL_EXPR_CAST,
+                               &HlslProfile_hlslv40, 1);
+}
+
 static void TestInterfaceMetadataWriter(void)
 {
     ValidationFixture fixture;
@@ -3524,6 +3597,7 @@ int main(int argc, char **argv)
     TestHlslErrorMappingAndFirstFailure();
     TestStructuralValidatorRejectsMalformedGraphs();
     TestTargetValidatorRejectsImpossibleProfiles();
+    TestUintValidationPolicy();
     TestTargetValidatorInterfaceLimits();
     TestStructuralValidatorRejectsCyclicSignatureGraphs();
     TestStructuralValidatorPreflightsBeforeInitializers();

@@ -250,6 +250,30 @@ static int HlslTypeIsValid(const HlslType *type, int allowVoid)
     return HlslTypeIsValidInner(type, allowVoid, NULL, 0);
 } // HlslTypeIsValid
 
+static int HlslTypeContainsUint(const HlslType *type, int depth)
+{
+    const HlslDecl *member;
+
+    if (type == NULL)
+        return 0;
+    if (depth > 128)
+        return 1;
+    if (type->base == HLSL_BASE_UINT)
+        return 1;
+    if (type->arraySize > 0)
+        return HlslTypeContainsUint(type->elementType, depth + 1);
+    for (member = type->members; member != NULL; member = member->next) {
+        if (HlslTypeContainsUint(&member->type, depth + 1))
+            return 1;
+    }
+    return 0;
+} // HlslTypeContainsUint
+
+static int HlslProfileAllowsUint(const HlslProfileDesc *profile)
+{
+    return profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN;
+} // HlslProfileAllowsUint
+
 static int HlslTypesEqualInner(const HlslType *left, const HlslType *right,
                                const HlslPointerFrame *leftParent,
                                const HlslPointerFrame *rightParent,
@@ -2228,12 +2252,17 @@ static int HlslValidateTargetDeclarations(HlslModule *module,
     const HlslProfileDesc *profile, const HlslDecl *declaration)
 {
     for (; declaration != NULL; declaration = declaration->next) {
-        if (!HlslValidateTargetExpression(module, profile,
+        if ((!HlslProfileAllowsUint(profile) &&
+             HlslTypeContainsUint(&declaration->type, 0)) ||
+            !HlslValidateTargetExpression(module, profile,
                 declaration->initializer) ||
             !HlslValidateTargetDeclarations(module, profile,
                 declaration->members))
         {
-            return 0;
+            return module->errors != 0 ? 0 :
+                HlslFail(module, HLSL_ERROR_INVALID_IR,
+                         &declaration->loc,
+                         "uint type requires modern HLSL profile");
         }
     }
     return 1;
@@ -2273,6 +2302,13 @@ static int HlslValidateTargetExpression(HlslModule *module,
 
     if (expression == NULL)
         return 1;
+    if (!HlslProfileAllowsUint(profile) &&
+        HlslTypeContainsUint(&expression->type, 0))
+    {
+        return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                        &expression->loc,
+                        "uint type requires modern HLSL profile");
+    }
     switch (expression->kind) {
     case HLSL_EXPR_UNARY:
         if (HlslIsSm3BitwiseOperator(expression->u.unary.op))
@@ -2446,12 +2482,17 @@ static int HlslValidateTargetModule(HlslModule *module,
     for (function = module->functions; function != NULL;
          function = function->next)
     {
-        if (!HlslValidateTargetDeclarations(module, profile,
+        if ((!HlslProfileAllowsUint(profile) &&
+             HlslTypeContainsUint(&function->result, 0)) ||
+            !HlslValidateTargetDeclarations(module, profile,
                 function->parameters) ||
             !HlslValidateTargetDeclarations(module, profile,
                 function->locals))
         {
-            return 0;
+            return module->errors != 0 ? 0 :
+                HlslFail(module, HLSL_ERROR_INVALID_IR,
+                         &function->loc,
+                         "uint type requires modern HLSL profile");
         }
         if (!HlslValidateTargetStatements(module, profile, function->body))
             return 0;
