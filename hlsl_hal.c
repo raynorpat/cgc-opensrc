@@ -57,7 +57,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if !defined(HLSL_CANONICALIZATION_ONLY)
 
 /*
- * RegisterProfiles_hlsl() - Register both HLSL profiles.
+ * RegisterProfiles_hlsl() - Register all HLSL profiles.
  */
 
 int RegisterProfiles_hlsl(void)
@@ -66,6 +66,30 @@ int RegisterProfiles_hlsl(void)
     SetProfileIdentity(PROFILE_HLSLV_NAME, CG_PROFILE_STAGE_VERTEX, "vs", 10);
     RegisterProfile(InitHAL_hlslf, PROFILE_HLSLF_NAME, PROFILE_HLSLF_ID);
     SetProfileIdentity(PROFILE_HLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT, "ps", 10);
+    RegisterProfile(InitHAL_hlslv40, PROFILE_HLSLV40_NAME,
+                    PROFILE_HLSLV40_ID);
+    SetProfileIdentity(PROFILE_HLSLV40_NAME, CG_PROFILE_STAGE_VERTEX,
+                       "vs", 10);
+    RegisterProfile(InitHAL_hlslg40, PROFILE_HLSLG40_NAME,
+                    PROFILE_HLSLG40_ID);
+    SetProfileIdentity(PROFILE_HLSLG40_NAME, CG_PROFILE_STAGE_GEOMETRY,
+                       "gs", 10);
+    RegisterProfile(InitHAL_hlslf40, PROFILE_HLSLF40_NAME,
+                    PROFILE_HLSLF40_ID);
+    SetProfileIdentity(PROFILE_HLSLF40_NAME, CG_PROFILE_STAGE_FRAGMENT,
+                       "ps", 10);
+    RegisterProfile(InitHAL_hlslv50, PROFILE_HLSLV50_NAME,
+                    PROFILE_HLSLV50_ID);
+    SetProfileIdentity(PROFILE_HLSLV50_NAME, CG_PROFILE_STAGE_VERTEX,
+                       "vs", 10);
+    RegisterProfile(InitHAL_hlslg50, PROFILE_HLSLG50_NAME,
+                    PROFILE_HLSLG50_ID);
+    SetProfileIdentity(PROFILE_HLSLG50_NAME, CG_PROFILE_STAGE_GEOMETRY,
+                       "gs", 10);
+    RegisterProfile(InitHAL_hlslf50, PROFILE_HLSLF50_NAME,
+                    PROFILE_HLSLF50_ID);
+    SetProfileIdentity(PROFILE_HLSLF50_NAME, CG_PROFILE_STAGE_FRAGMENT,
+                       "ps", 10);
     return 1;
 } // RegisterProfiles_hlsl
 

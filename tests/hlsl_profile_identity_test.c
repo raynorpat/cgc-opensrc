@@ -68,6 +68,42 @@ int InitHAL_hlslf(slHAL *hal)
     return 1;
 }
 
+int InitHAL_hlslv40(slHAL *hal)
+{
+    (void) hal;
+    return 1;
+}
+
+int InitHAL_hlslg40(slHAL *hal)
+{
+    (void) hal;
+    return 1;
+}
+
+int InitHAL_hlslf40(slHAL *hal)
+{
+    (void) hal;
+    return 1;
+}
+
+int InitHAL_hlslv50(slHAL *hal)
+{
+    (void) hal;
+    return 1;
+}
+
+int InitHAL_hlslg50(slHAL *hal)
+{
+    (void) hal;
+    return 1;
+}
+
+int InitHAL_hlslf50(slHAL *hal)
+{
+    (void) hal;
+    return 1;
+}
+
 static slProfile *FindProfile(const char *name)
 {
     slProfile *profile;
@@ -82,7 +118,7 @@ static slProfile *FindProfile(const char *name)
 
 static int AssertProfileIdentity(const slProfile *profile,
                                  CgProfileStage stage,
-                                 const char *wildcard)
+                                 const char *wildcard, int id)
 {
     int valid;
 
@@ -91,6 +127,11 @@ static int AssertProfileIdentity(const slProfile *profile,
         return 0;
     }
     valid = 1;
+    if (profile->id != id) {
+        fprintf(stderr, "%s id: expected %d, got %d\n", profile->name,
+                id, profile->id);
+        valid = 0;
+    }
     if (profile->profileIdentity.stage != stage) {
         fprintf(stderr, "%s stage: expected %d, got %d\n", profile->name,
                 stage, profile->profileIdentity.stage);
@@ -124,9 +165,24 @@ static int AssertProfileIdentity(const slProfile *profile,
 
 int main(void)
 {
+    static const struct {
+        const char *name;
+        CgProfileStage stage;
+        const char *wildcard;
+        int id;
+    } expected[] = {
+        { "hlslv",   CG_PROFILE_STAGE_VERTEX,   "vs", PROFILE_HLSLV_ID },
+        { "hlslf",   CG_PROFILE_STAGE_FRAGMENT, "ps", PROFILE_HLSLF_ID },
+        { "hlslv40", CG_PROFILE_STAGE_VERTEX,   "vs", PROFILE_HLSLV40_ID },
+        { "hlslg40", CG_PROFILE_STAGE_GEOMETRY, "gs", PROFILE_HLSLG40_ID },
+        { "hlslf40", CG_PROFILE_STAGE_FRAGMENT, "ps", PROFILE_HLSLF40_ID },
+        { "hlslv50", CG_PROFILE_STAGE_VERTEX,   "vs", PROFILE_HLSLV50_ID },
+        { "hlslg50", CG_PROFILE_STAGE_GEOMETRY, "gs", PROFILE_HLSLG50_ID },
+        { "hlslf50", CG_PROFILE_STAGE_FRAGMENT, "ps", PROFILE_HLSLF50_ID }
+    };
     CgStruct cg;
-    slProfile *fragment;
-    slProfile *vertex;
+    slProfile *profile;
+    int index;
     int valid;
 
     memset(&cg, 0, sizeof(cg));
@@ -134,10 +190,15 @@ int main(void)
     if (!InitAtomTable(atable, 0) || !RegisterProfiles_hlsl())
         return 2;
 
-    vertex = FindProfile(PROFILE_HLSLV_NAME);
-    fragment = FindProfile(PROFILE_HLSLF_NAME);
-    valid = AssertProfileIdentity(vertex, CG_PROFILE_STAGE_VERTEX, "vs");
-    valid &= AssertProfileIdentity(fragment, CG_PROFILE_STAGE_FRAGMENT, "ps");
+    valid = 1;
+    for (index = 0; index < (int) (sizeof(expected) / sizeof(expected[0]));
+         index++)
+    {
+        profile = FindProfile(expected[index].name);
+        valid &= AssertProfileIdentity(profile, expected[index].stage,
+                                       expected[index].wildcard,
+                                       expected[index].id);
+    }
 
     FreeAtomTable(atable);
     return valid ? 0 : 1;

@@ -1,0 +1,5 @@
+// profile hlslv40
+// target vs_4_0
+void main()
+{
+}

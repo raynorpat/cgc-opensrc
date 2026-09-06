@@ -52,6 +52,12 @@ add_executable(cgc
     hlsl_hal.c
     hlslv_hal.c
     hlslf_hal.c
+    hlslv40_hal.c
+    hlslg40_hal.c
+    hlslf40_hal.c
+    hlslv50_hal.c
+    hlslg50_hal.c
+    hlslf50_hal.c
     inline.c
     language.c
     memory.c

@@ -159,6 +159,48 @@ static int TestModernProfileIdentities(void)
     return unique;
 }
 
+static void TestModernProfileDescriptors(void)
+{
+    static const struct {
+        const HlslProfileDesc *profile;
+        HlslStage stage;
+        HlslShaderModel model;
+        unsigned int capabilities;
+    } expected[] = {
+        { &HlslProfile_hlslv40, HLSL_STAGE_VERTEX, HLSL_SHADER_MODEL_4,
+          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS },
+        { &HlslProfile_hlslg40, HLSL_STAGE_GEOMETRY, HLSL_SHADER_MODEL_4,
+          HLSL_CAP_GEOMETRY | HLSL_CAP_TEXTURE_METHODS |
+              HLSL_CAP_CBUFFERS },
+        { &HlslProfile_hlslf40, HLSL_STAGE_PIXEL, HLSL_SHADER_MODEL_4,
+          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS |
+              HLSL_CAP_DERIVATIVES | HLSL_CAP_DISCARD },
+        { &HlslProfile_hlslv50, HLSL_STAGE_VERTEX, HLSL_SHADER_MODEL_5,
+          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS },
+        { &HlslProfile_hlslg50, HLSL_STAGE_GEOMETRY, HLSL_SHADER_MODEL_5,
+          HLSL_CAP_GEOMETRY | HLSL_CAP_TEXTURE_METHODS |
+              HLSL_CAP_CBUFFERS },
+        { &HlslProfile_hlslf50, HLSL_STAGE_PIXEL, HLSL_SHADER_MODEL_5,
+          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS |
+              HLSL_CAP_DERIVATIVES | HLSL_CAP_DISCARD }
+    };
+    const HlslProfileDesc *profile;
+    int index;
+
+    for (index = 0; index < (int) (sizeof(expected) / sizeof(expected[0]));
+         index++)
+    {
+        profile = expected[index].profile;
+        assert(HlslProfileIsValid(profile));
+        assert(profile->stage == expected[index].stage);
+        assert(profile->model == expected[index].model);
+        assert(profile->syntax == HLSL_SYNTAX_MODERN);
+        assert(profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN);
+        assert(profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN);
+        assert(profile->capabilities == expected[index].capabilities);
+    }
+}
+
 static void *TestAlloc(void *arg, size_t size)
 {
     (void) arg;
@@ -3432,6 +3474,7 @@ int main(int argc, char **argv)
     TestReservedNames();
     if (!TestModernProfileIdentities())
         return 1;
+    TestModernProfileDescriptors();
     TestTypeRegisterSpans();
     TestDeclarationQualifiers();
     TestModuleWriter();

@@ -1,0 +1,5 @@
+// profile hlslf50
+// target ps_5_0
+void main()
+{
+}

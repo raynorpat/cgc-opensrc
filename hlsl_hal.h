@@ -56,6 +56,12 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VERSION_STRING_HLSL_SM5    "DirectX 11 Shader Model 5"
 #define PROFILE_HLSLV_NAME         "hlslv"
 #define PROFILE_HLSLF_NAME         "hlslf"
+#define PROFILE_HLSLV40_NAME       "hlslv40"
+#define PROFILE_HLSLG40_NAME       "hlslg40"
+#define PROFILE_HLSLF40_NAME       "hlslf40"
+#define PROFILE_HLSLV50_NAME       "hlslv50"
+#define PROFILE_HLSLG50_NAME       "hlslg50"
+#define PROFILE_HLSLF50_NAME       "hlslf50"
 #define PROFILE_HLSLV_ID           15
 #define PROFILE_HLSLF_ID           16
 #define PROFILE_HLSLV40_ID         17
@@ -183,12 +189,24 @@ struct HlslProfileDesc_Rec {
 // Stage descriptors:
 extern const HlslProfileDesc HlslProfile_hlslv;
 extern const HlslProfileDesc HlslProfile_hlslf;
+extern const HlslProfileDesc HlslProfile_hlslv40;
+extern const HlslProfileDesc HlslProfile_hlslg40;
+extern const HlslProfileDesc HlslProfile_hlslf40;
+extern const HlslProfileDesc HlslProfile_hlslv50;
+extern const HlslProfileDesc HlslProfile_hlslg50;
+extern const HlslProfileDesc HlslProfile_hlslf50;
 
 // Profile registration:
 int RegisterProfiles_hlsl(void);
 int InitHAL_hlsl_profile(slHAL *hal, const HlslProfileDesc *profile);
 int InitHAL_hlslv(slHAL *hal);
 int InitHAL_hlslf(slHAL *hal);
+int InitHAL_hlslv40(slHAL *hal);
+int InitHAL_hlslg40(slHAL *hal);
+int InitHAL_hlslf40(slHAL *hal);
+int InitHAL_hlslv50(slHAL *hal);
+int InitHAL_hlslg50(slHAL *hal);
+int InitHAL_hlslf50(slHAL *hal);
 
 // Interface semantic helpers:
 int HlslParseSemantic(const char *semantic, char *root, size_t rootSize,

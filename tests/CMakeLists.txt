@@ -1427,6 +1427,12 @@ add_executable(hlsl_ir_unit
     ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
     ${PROJECT_SOURCE_DIR}/hlslv_hal.c
     ${PROJECT_SOURCE_DIR}/hlslf_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslg40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv50_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslg50_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf50_hal.c
     hlsl_ir_test.c
 )
 
@@ -1932,11 +1938,10 @@ function(add_hlsl_fixture name profile source expected)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
-    # The two registration goldens intentionally exercise the Task 1 void
-    # profile skeleton.  SM3 bytecode requires a POSITION/COLOR write, so
-    # these are the only successful HLSL fixtures that cannot run via FXC.
-    if(NOT name STREQUAL "hlslv_registration" AND
-       NOT name STREQUAL "hlslf_registration")
+    # Registration goldens intentionally exercise a void profile skeleton.
+    # Valid bytecode requires stage outputs, so registration-only fixtures
+    # cannot run via FXC.
+    if(NOT name MATCHES "_registration$")
         add_hlsl_validation(${name} ${profile} ${source})
     endif()
 endfunction()
@@ -1945,6 +1950,36 @@ add_hlsl_fixture(hlslv_registration hlslv
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-vs.expected)
 add_hlsl_fixture(hlslf_registration hlslf
     tests/hlsl/profile/empty.cg tests/hlsl/profile/empty-ps.expected)
+
+add_hlsl_fixture(hlslv40_registration hlslv40
+    tests/hlsl/modern/empty.cg tests/hlsl/modern/empty-v40.expected)
+add_hlsl_fixture(hlslf40_registration hlslf40
+    tests/hlsl/modern/empty.cg tests/hlsl/modern/empty-p40.expected)
+add_hlsl_fixture(hlslv50_registration hlslv50
+    tests/hlsl/modern/empty.cg tests/hlsl/modern/empty-v50.expected)
+add_hlsl_fixture(hlslf50_registration hlslf50
+    tests/hlsl/modern/empty.cg tests/hlsl/modern/empty-p50.expected)
+
+add_test(
+    NAME hlslg40_registration
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslg40
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/empty_geometry.cg
+        -DPROFILE_OPTIONS=Vertices=1
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslg40_registration.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_nocode.cmake
+)
+add_test(
+    NAME hlslg50_registration
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslg50
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/empty_geometry.cg
+        -DPROFILE_OPTIONS=Vertices=1
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslg50_registration.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_nocode.cmake
+)
 
 # Registration metadata must make the SM3 profiles answer to their
 # stage-family wildcard selectors.  The shared overload fixture gives

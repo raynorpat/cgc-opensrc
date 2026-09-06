@@ -1,0 +1,4 @@
+POINT POINT_OUT void main(void)
+{
+    return;
+}
