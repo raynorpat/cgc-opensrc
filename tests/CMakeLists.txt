@@ -1535,6 +1535,12 @@ add_executable(hlsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlslv_hal.c
     ${PROJECT_SOURCE_DIR}/hlslf_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslg40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv50_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslg50_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf50_hal.c
     hlsl_semantics_test.c
 )
 
