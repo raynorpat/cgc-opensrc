@@ -1,0 +1,39 @@
+// profile hlslg50
+// target gs_5_0
+// cgc-bind interface in transforms float4 ATTRIB0 ATTRIB0 user default
+// cgc-bind interface in transforms float4 ATTRIB1 ATTRIB1 user default
+// cgc-bind interface in transforms float4 ATTRIB2 ATTRIB2 user default
+// cgc-bind interface in transforms float4 ATTRIB3 ATTRIB3 user default
+
+struct cg_GeometryIn
+{
+    float4 transforms_0 : ATTRIB0;
+    float4 transforms_1 : ATTRIB1;
+    float4 transforms_2 : ATTRIB2;
+    float4 transforms_3 : ATTRIB3;
+};
+
+void cg_entry(row_major float4x4 transforms[3])
+{
+    float value;
+    value = transforms[0][1][2];
+}
+
+void main(cg_GeometryIn input[3])
+{
+    row_major float4x4 transforms[3];
+    transforms[0][0] = input[0].transforms_0;
+    transforms[1][0] = input[1].transforms_0;
+    transforms[2][0] = input[2].transforms_0;
+    transforms[0][1] = input[0].transforms_1;
+    transforms[1][1] = input[1].transforms_1;
+    transforms[2][1] = input[2].transforms_1;
+    transforms[0][2] = input[0].transforms_2;
+    transforms[1][2] = input[1].transforms_2;
+    transforms[2][2] = input[2].transforms_2;
+    transforms[0][3] = input[0].transforms_3;
+    transforms[1][3] = input[1].transforms_3;
+    transforms[2][3] = input[2].transforms_3;
+    cg_entry(transforms);
+    return;
+}

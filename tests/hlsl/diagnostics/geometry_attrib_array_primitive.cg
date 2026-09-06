@@ -1,0 +1,9 @@
+struct Vertex
+{
+    int primitive : PRIMITIVEID;
+};
+
+TRIANGLE void main(AttribArray<Vertex> vertices)
+{
+    int primitive = vertices[0].primitive;
+}

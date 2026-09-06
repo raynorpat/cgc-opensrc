@@ -2508,6 +2508,7 @@ static int HlslValidateGeometryScalarInputs(HlslModule *module,
 {
     for (; members != NULL; members = members->next) {
         if (members->storage != HLSL_STORAGE_INPUT ||
+            members->parameterQualifier != HLSL_PARAMETER_IN ||
             members->semanticKind != HLSL_SEMANTIC_SV_PRIMITIVE_ID)
         {
             return HlslFail(module, HLSL_ERROR_ENTRY_ABI, &members->loc,
@@ -2680,7 +2681,17 @@ static int HlslValidateInterfaces(HlslModule *module,
     geometryScalars = NULL;
     if (profile->stage == HLSL_STAGE_GEOMETRY) {
         if (input != NULL) {
-            if (wrapperInput == NULL || wrapperInput->type.arraySize !=
+            if (wrapperInput == NULL ||
+                wrapperInput->identity != wrapperInput ||
+                wrapperInput->storage != HLSL_STORAGE_INPUT ||
+                wrapperInput->parameterQualifier != HLSL_PARAMETER_IN ||
+                wrapperInput->semantic != NULL ||
+                wrapperInput->inputSemantic != NULL ||
+                wrapperInput->canonicalSemantic != NULL ||
+                wrapperInput->semanticKind != HLSL_SEMANTIC_USER ||
+                wrapperInput->semanticIndex != 0 ||
+                wrapperInput->interpolation != HLSL_INTERPOLATION_DEFAULT ||
+                wrapperInput->type.arraySize !=
                     module->geometryInputCount ||
                 wrapperInput->type.elementType == NULL ||
                 !HlslTypesEqual(wrapperInput->type.elementType,

@@ -2176,6 +2176,37 @@ add_hlsl_geometry_fixture(vertex_id_decoy_independent
     tests/hlsl/diagnostics/geometry_decoy_vertex_id_producer.cg
     tests/hlsl/geometry/vertex_id_bridge main)
 
+function(add_hlsl_geometry_attrib_fixture name source)
+    set(geometry_options "TRIANGLE;TRIANGLE_OUT;Vertices=4")
+    string(REPLACE ";" "\\;" geometry_options_escaped
+        "${geometry_options}")
+    foreach(profile hlslg40 hlslg50)
+        string(SUBSTRING "${profile}" 4 3 model_suffix)
+        add_test(
+            NAME ${profile}_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DPROFILE=${profile}
+                -DENTRY=main
+                "-DPROFILE_OPTIONS=${geometry_options_escaped}"
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/${name}-${model_suffix}.expected
+                -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+                "-DCONFIG=$<CONFIG>"
+                "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    endforeach()
+endfunction()
+
+add_hlsl_geometry_attrib_fixture(attrib_array_struct
+    tests/hlsl/geometry/attrib_array_struct.cg)
+add_hlsl_geometry_attrib_fixture(attrib_array_matrix
+    tests/hlsl/geometry/attrib_array_matrix.cg)
+add_hlsl_geometry_attrib_fixture(attrib_array_nested
+    tests/hlsl/geometry/attrib_array_nested.cg)
+add_hlsl_geometry_attrib_fixture(attrib_array_inherited
+    tests/hlsl/geometry/attrib_array_inherited.cg)
+
 foreach(profile hlslv40 hlslv50)
     string(SUBSTRING "${profile}" 4 3 model_suffix)
     add_test(
@@ -2269,6 +2300,15 @@ add_hlsl_geometry_failure(geometry_inout_scalar
 add_hlsl_geometry_failure(geometry_inout_primitive
     tests/hlsl/diagnostics/geometry_inout_primitive.cg 6406 3
     "geometry inout parameter" "POINT;POINT_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_unbound_attrib_array_leaf
+    tests/hlsl/diagnostics/geometry_unbound_attrib_array_leaf.cg 6403 3
+    "value" "TRIANGLE;TRIANGLE_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_attrib_array_primitive
+    tests/hlsl/diagnostics/geometry_attrib_array_primitive.cg 6406 3
+    "geometry AttribArray system semantic" "TRIANGLE;TRIANGLE_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_attrib_array_instance
+    tests/hlsl/diagnostics/geometry_attrib_array_instance.cg 6406 3
+    "geometry AttribArray system semantic" "TRIANGLE;TRIANGLE_OUT;Vertices=4")
 
 add_hlsl_fixture(modern_empty_input_p40 hlslf40
     tests/hlsl/modern/empty-input.cg

@@ -1298,6 +1298,13 @@ void SemanticError(SourceLoc *loc, int number, const char *message, ...)
     }
 }
 
+void SemanticNote(SourceLoc *loc, int number, const char *message, ...)
+{
+    (void) loc;
+    (void) number;
+    (void) message;
+}
+
 void InternalError(SourceLoc *loc, int number, const char *message, ...)
 {
     SemanticError(loc, number, message);

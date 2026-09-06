@@ -1,0 +1,11 @@
+struct Vertex
+{
+    float4 position;
+    float2 uv;
+};
+
+TRIANGLE void main(AttribArray<Vertex> vertices : ATTRIB3)
+{
+    float4 position = vertices[0].position;
+    float2 uv = vertices[1].uv;
+}

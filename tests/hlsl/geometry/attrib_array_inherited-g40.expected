@@ -1,0 +1,37 @@
+// profile hlslg40
+// target gs_4_0
+// cgc-bind interface in position float4 ATTRIB3 ATTRIB3 user default
+// cgc-bind interface in uv float2 ATTRIB4 ATTRIB4 user default
+
+struct cg_Vertex
+{
+    float4 position;
+    float2 uv;
+};
+
+struct cg_GeometryIn
+{
+    float4 vertices_position : ATTRIB3;
+    float2 vertices_uv : ATTRIB4;
+};
+
+void cg_entry(cg_Vertex vertices[3])
+{
+    float4 position;
+    float2 uv;
+    position = vertices[0].position;
+    uv = vertices[1].uv;
+}
+
+void main(cg_GeometryIn input[3])
+{
+    cg_Vertex vertices[3];
+    vertices[0].position = input[0].vertices_position;
+    vertices[1].position = input[1].vertices_position;
+    vertices[2].position = input[2].vertices_position;
+    vertices[0].uv = input[0].vertices_uv;
+    vertices[1].uv = input[1].vertices_uv;
+    vertices[2].uv = input[2].vertices_uv;
+    cg_entry(vertices);
+    return;
+}

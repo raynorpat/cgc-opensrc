@@ -4731,39 +4731,6 @@ static HlslDecl *HlslWrapperMemberDecl(HlslModule *module,
     return member;
 } // HlslWrapperMemberDecl
 
-static HlslDecl *HlslWrapperGeometryMemberDecl(HlslModule *module,
-    const HlslProfileDesc *profile, HlslDecl *owner,
-    const HlslDecl *source, const char *semantic)
-{
-    HlslDecl *member;
-    const char *name;
-    const void *identity;
-
-    if (source == NULL || source->type.arraySize <= 0 ||
-        source->type.elementType == NULL)
-    {
-        return NULL;
-    }
-    identity = source->identity != NULL ? source->identity : source;
-    name = HlslAllocateScopedSymbolName(module, owner, identity,
-                                        source->name);
-    member = name != NULL ? HlslNewDecl(module, HLSL_STORAGE_NONE,
-        *source->type.elementType, name) : NULL;
-    if (member != NULL) {
-        member->identity = source->identity;
-        member->publicName = source->publicName;
-        member->inputSemantic = source->inputSemantic;
-        member->loc = source->loc;
-        member->sourceOrdinal = source->sourceOrdinal;
-        if (!HlslWrapperModernSemantic(module, profile, member, semantic,
-                                       HLSL_DIRECTION_INPUT))
-        {
-            return NULL;
-        }
-    }
-    return member;
-} // HlslWrapperGeometryMemberDecl
-
 static HlslBinding *HlslWrapperFindBinding(HlslModule *module,
                                            const void *identity)
 {
@@ -4830,7 +4797,328 @@ typedef struct HlslGeometryArrayCopy_Rec {
     struct HlslGeometryArrayCopy_Rec *next;
     HlslDecl *local;
     HlslDecl *member;
+    struct HlslGeometryAccess_Rec *access;
 } HlslGeometryArrayCopy;
+
+typedef enum HlslGeometryAccessKind_Enum {
+    HLSL_GEOMETRY_ACCESS_MEMBER,
+    HLSL_GEOMETRY_ACCESS_INDEX
+} HlslGeometryAccessKind;
+
+typedef struct HlslGeometryAccess_Rec {
+    struct HlslGeometryAccess_Rec *parent;
+    HlslGeometryAccessKind kind;
+    HlslType type;
+    HlslDecl *member;
+    int index;
+} HlslGeometryAccess;
+
+static int HlslGeometryBindFailure(HlslModule *module,
+    const HlslDecl *source, HlslErrorKind kind, const char *reason)
+{
+    return HlslFail(module, kind, source != NULL ? &source->loc : NULL,
+                    reason);
+} // HlslGeometryBindFailure
+
+static HlslGeometryAccess *HlslNewGeometryAccess(HlslModule *module,
+    HlslGeometryAccess *parent, HlslGeometryAccessKind kind, HlslType type,
+    HlslDecl *member, int index)
+{
+    HlslGeometryAccess *access;
+
+    access = (HlslGeometryAccess *) module->alloc(module->allocArg,
+                                                  sizeof(*access));
+    if (access != NULL) {
+        memset(access, 0, sizeof(*access));
+        access->parent = parent;
+        access->kind = kind;
+        access->type = type;
+        access->member = member;
+        access->index = index;
+    }
+    return access;
+} // HlslNewGeometryAccess
+
+static const char *HlslGeometryLeafName(HlslModule *module,
+    const char *prefix, const char *member, int index, int hasIndex)
+{
+    char suffix[32];
+    char *target;
+    size_t length;
+    size_t suffixLength;
+
+    if (module == NULL || prefix == NULL)
+        return NULL;
+    if (member != NULL) {
+        suffixLength = strlen(member);
+        length = strlen(prefix) + 1 + suffixLength + 1;
+    } else if (hasIndex) {
+        if (snprintf(suffix, sizeof(suffix), "%d", index) < 0)
+            return NULL;
+        suffixLength = strlen(suffix);
+        length = strlen(prefix) + 1 + suffixLength + 1;
+    } else {
+        suffixLength = 0;
+        length = strlen(prefix) + 1;
+    }
+    target = (char *) module->alloc(module->allocArg, length);
+    if (target == NULL)
+        return NULL;
+    if (member != NULL)
+        sprintf(target, "%s_%s", prefix, member);
+    else if (hasIndex)
+        sprintf(target, "%s_%s", prefix, suffix);
+    else
+        strcpy(target, prefix);
+    return target;
+} // HlslGeometryLeafName
+
+static const char *HlslGeometrySemanticAt(HlslModule *module,
+    const char *semantic, int offset)
+{
+    char upper[64];
+    char root[64];
+    char spelling[96];
+    size_t i;
+    int index;
+
+    if (semantic == NULL || offset < 0)
+        return NULL;
+    for (i = 0; semantic[i] != '\0'; i++) {
+        if (i + 1 >= sizeof(upper))
+            return NULL;
+        upper[i] = semantic[i] >= 'a' && semantic[i] <= 'z' ?
+                   (char) (semantic[i] - 'a' + 'A') : semantic[i];
+    }
+    upper[i] = '\0';
+    if (!HlslParseSemantic(upper, root, sizeof(root), &index) ||
+        index > INT_MAX - offset ||
+        snprintf(spelling, sizeof(spelling), "%s%d", root,
+                 index + offset) < 0)
+    {
+        return NULL;
+    }
+    return HlslWrapperCopyText(module, spelling);
+} // HlslGeometrySemanticAt
+
+static int HlslWrapperGeometryLeaf(HlslModule *module,
+    const HlslProfileDesc *profile, HlslDecl *owner, HlslDecl *local,
+    const HlslDecl *source, HlslType type, const char *semantic, int offset,
+    const char *name, HlslGeometryAccess *access,
+    HlslGeometryArrayCopy ***copyTail)
+{
+    HlslGeometryArrayCopy *copy;
+    HlslDecl *member;
+    const char *emittedName;
+    const char *leafSemantic;
+
+    copy = (HlslGeometryArrayCopy *) module->alloc(module->allocArg,
+                                                   sizeof(*copy));
+    if (copy == NULL)
+        return 0;
+    memset(copy, 0, sizeof(*copy));
+    emittedName = HlslAllocateScopedSymbolName(module, owner, copy, name);
+    leafSemantic = HlslGeometrySemanticAt(module, semantic, offset);
+    member = emittedName != NULL ?
+        HlslNewDecl(module, HLSL_STORAGE_NONE, type, emittedName) : NULL;
+    if (member == NULL || leafSemantic == NULL)
+        return HlslGeometryBindFailure(module, source, HLSL_ERROR_SEMANTIC,
+                                       source != NULL ? source->name : name);
+    member->identity = copy;
+    member->publicName = source->publicName;
+    member->loc = source->loc;
+    member->sourceOrdinal = source->sourceOrdinal;
+    if (!HlslWrapperModernSemantic(module, profile, member, leafSemantic,
+                                   HLSL_DIRECTION_INPUT))
+    {
+        if (module->errors != 0)
+            return 0;
+        return HlslGeometryBindFailure(module, source, HLSL_ERROR_SEMANTIC,
+                                       source->name);
+    }
+    if (member->semanticKind == HLSL_SEMANTIC_SV_PRIMITIVE_ID)
+    {
+        return HlslGeometryBindFailure(module, source, HLSL_ERROR_ENTRY_ABI,
+            "geometry AttribArray system semantic");
+    }
+    copy->local = local;
+    copy->member = member;
+    copy->access = access;
+    HlslAppendDecl(&owner->members, member);
+    **copyTail = copy;
+    *copyTail = &copy->next;
+    return 1;
+} // HlslWrapperGeometryLeaf
+
+static int HlslWrapperGeometryFlatten(HlslModule *module,
+    const HlslProfileDesc *profile, HlslDecl *owner, HlslDecl *local,
+    const HlslDecl *source, const HlslType *type, const char *semantic,
+    int repeatOffset, int inheritedOffset, const char *name,
+    HlslGeometryAccess *access,
+    HlslGeometryArrayCopy ***copyTail, int *semanticSlots, int depth)
+{
+    HlslGeometryAccess *childAccess;
+    const HlslDecl *member;
+    HlslType rowType;
+    const char *childName;
+    const char *memberSemantic;
+    int childSlots;
+    int memberInheritedOffset;
+    int leafOffset;
+    int slots;
+    int i;
+
+    if (module == NULL || profile == NULL || owner == NULL || local == NULL ||
+        source == NULL || type == NULL || name == NULL || copyTail == NULL ||
+        semanticSlots == NULL || depth > 128 || repeatOffset < 0 ||
+        inheritedOffset < 0)
+    {
+        return 0;
+    }
+    if (type->arraySize > 0) {
+        if (type->elementType == NULL)
+            return HlslGeometryBindFailure(module, source,
+                HLSL_ERROR_ENTRY_ABI, "geometry AttribArray element");
+        slots = 0;
+        for (i = 0; i < type->arraySize; i++) {
+            if (repeatOffset > INT_MAX - slots)
+                return HlslGeometryBindFailure(module, source,
+                    HLSL_ERROR_ENTRY_ABI, "geometry AttribArray semantic");
+            childName = HlslGeometryLeafName(module, name, NULL, i, 1);
+            if (childName == NULL)
+            {
+                return HlslGeometryBindFailure(module, source,
+                    HLSL_ERROR_NAME_COLLISION, "geometry input leaf name");
+            }
+            childAccess = HlslNewGeometryAccess(module, access,
+                HLSL_GEOMETRY_ACCESS_INDEX, *type->elementType, NULL, i);
+            if (childAccess == NULL ||
+                !HlslWrapperGeometryFlatten(module, profile, owner, local,
+                    source, type->elementType, semantic,
+                    repeatOffset + slots, inheritedOffset, childName,
+                    childAccess,
+                    copyTail, &childSlots, depth + 1) ||
+                childSlots <= 0 || slots > INT_MAX - childSlots)
+            {
+                return 0;
+            }
+            slots += childSlots;
+        }
+        *semanticSlots = slots;
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->members == NULL)
+            return HlslGeometryBindFailure(module, source,
+                HLSL_ERROR_ENTRY_ABI, "geometry AttribArray element");
+        slots = 0;
+        for (member = type->members; member != NULL; member = member->next) {
+            childName = HlslGeometryLeafName(module, name, member->name,
+                                             0, 0);
+            if (childName == NULL)
+            {
+                return HlslGeometryBindFailure(module, member,
+                    HLSL_ERROR_NAME_COLLISION, "geometry input leaf name");
+            }
+            childAccess = HlslNewGeometryAccess(module, access,
+                HLSL_GEOMETRY_ACCESS_MEMBER, member->type,
+                (HlslDecl *) member, 0);
+            memberSemantic = HlslWrapperInputSemantic(profile, member);
+            if (memberSemantic != NULL) {
+                memberInheritedOffset = 0;
+            } else {
+                if (inheritedOffset > INT_MAX - slots)
+                {
+                    return HlslGeometryBindFailure(module, source,
+                        HLSL_ERROR_ENTRY_ABI,
+                        "geometry AttribArray semantic");
+                }
+                memberSemantic = semantic;
+                memberInheritedOffset = inheritedOffset + slots;
+            }
+            if (childAccess == NULL ||
+                !HlslWrapperGeometryFlatten(module, profile, owner, local,
+                    member, &member->type, memberSemantic, repeatOffset,
+                    memberInheritedOffset, childName, childAccess, copyTail,
+                    &childSlots,
+                    depth + 1) ||
+                childSlots <= 0 || slots > INT_MAX - childSlots)
+            {
+                return 0;
+            }
+            slots += childSlots;
+        }
+        *semanticSlots = slots;
+        return 1;
+    }
+    if (type->rows > 0 && type->cols > 0 && type->rows <= 4 &&
+        type->cols <= 4)
+    {
+        rowType = HlslNumericType(type->base, type->cols);
+        for (i = 0; i < type->rows; i++) {
+            if (repeatOffset > INT_MAX - inheritedOffset ||
+                repeatOffset + inheritedOffset > INT_MAX - i)
+                return HlslGeometryBindFailure(module, source,
+                    HLSL_ERROR_ENTRY_ABI, "geometry AttribArray semantic");
+            leafOffset = repeatOffset + inheritedOffset + i;
+            childName = HlslGeometryLeafName(module, name, NULL, i, 1);
+            if (childName == NULL)
+            {
+                return HlslGeometryBindFailure(module, source,
+                    HLSL_ERROR_NAME_COLLISION, "geometry input leaf name");
+            }
+            childAccess = HlslNewGeometryAccess(module, access,
+                HLSL_GEOMETRY_ACCESS_INDEX, rowType, NULL, i);
+            if (childAccess == NULL ||
+                !HlslWrapperGeometryLeaf(module, profile, owner, local,
+                    source, rowType, semantic, leafOffset,
+                    childName, childAccess, copyTail))
+            {
+                return 0;
+            }
+        }
+        *semanticSlots = type->rows;
+        return 1;
+    }
+    if (type->elementType != NULL || type->members != NULL ||
+        type->rows != 0 || type->cols != 0 || type->len < 1 || type->len > 4 ||
+        (type->base != HLSL_BASE_FLOAT && type->base != HLSL_BASE_INT &&
+         type->base != HLSL_BASE_BOOL))
+    {
+        return HlslGeometryBindFailure(module, source, HLSL_ERROR_ENTRY_ABI,
+                                       "geometry AttribArray element");
+    }
+    if (repeatOffset > INT_MAX - inheritedOffset)
+        return HlslGeometryBindFailure(module, source, HLSL_ERROR_ENTRY_ABI,
+                                       "geometry AttribArray semantic");
+    leafOffset = repeatOffset + inheritedOffset;
+    if (!HlslWrapperGeometryLeaf(module, profile, owner, local, source,
+            *type, semantic, leafOffset, name, access, copyTail))
+    {
+        return 0;
+    }
+    *semanticSlots = 1;
+    return 1;
+} // HlslWrapperGeometryFlatten
+
+static HlslExpr *HlslWrapperGeometryAccessExpr(HlslModule *module,
+    HlslExpr *root, const HlslGeometryAccess *access)
+{
+    HlslExpr *object;
+
+    if (root == NULL)
+        return NULL;
+    if (access == NULL)
+        return root;
+    object = HlslWrapperGeometryAccessExpr(module, root, access->parent);
+    if (object == NULL)
+        return NULL;
+    if (access->kind == HLSL_GEOMETRY_ACCESS_MEMBER)
+        return HlslWrapperMemberExpr(module, object, access->member);
+    if (access->kind == HLSL_GEOMETRY_ACCESS_INDEX)
+        return HlslWrapperIndex(module, object, access->index, access->type);
+    return NULL;
+} // HlslWrapperGeometryAccessExpr
 
 int HlslBuildEntryWrapper(HlslModule *module,
                           const HlslProfileDesc *profile)
@@ -4873,6 +5161,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
     int hasInput;
     int hasOutput;
     int geometry;
+    int geometrySemanticSlots;
     int i;
 
     if (module == NULL || profile == NULL || module->entry == NULL ||
@@ -4984,27 +5273,21 @@ int HlslBuildEntryWrapper(HlslModule *module,
                 return HlslBindFailure(module, NULL,
                     HLSL_ERROR_ENTRY_ABI, "geometry AttribArray extent");
             }
-            inputMember = HlslWrapperGeometryMemberDecl(module, profile,
-                inputStruct, parameter, parameter->semantic);
-            if (inputMember == NULL)
-                return 0;
-            HlslAppendDecl(&inputStruct->members, inputMember);
             local = HlslNewDecl(module, HLSL_STORAGE_NONE,
                                 parameter->type, parameter->name);
             if (local == NULL)
                 return 0;
             local->identity = parameter->identity;
             argument = HlslWrapperSymbol(module, local);
-            geometryArrayCopy = (HlslGeometryArrayCopy *)
-                module->alloc(module->allocArg,
-                              sizeof(HlslGeometryArrayCopy));
-            if (argument == NULL || geometryArrayCopy == NULL)
+            if (argument == NULL ||
+                !HlslWrapperGeometryFlatten(module, profile, inputStruct,
+                    local, parameter, parameter->type.elementType,
+                    parameter->semantic, 0, 0, parameter->name, NULL,
+                    &geometryArrayCopyTail, &geometrySemanticSlots, 0) ||
+                geometrySemanticSlots <= 0)
+            {
                 return 0;
-            memset(geometryArrayCopy, 0, sizeof(*geometryArrayCopy));
-            geometryArrayCopy->local = local;
-            geometryArrayCopy->member = inputMember;
-            *geometryArrayCopyTail = geometryArrayCopy;
-            geometryArrayCopyTail = &geometryArrayCopy->next;
+            }
         } else if (geometry &&
                    parameter->parameterQualifier == HLSL_PARAMETER_IN)
         {
@@ -5205,20 +5488,23 @@ int HlslBuildEntryWrapper(HlslModule *module,
     {
         for (i = 0; i < module->geometryInputCount; i++) {
             HlslExpr *leftElement;
+            HlslExpr *leftLeaf;
             HlslExpr *rightElement;
             HlslExpr *rightMember;
 
             leftElement = HlslWrapperIndex(module,
                 HlslWrapperSymbol(module, geometryArrayCopy->local), i,
                 *geometryArrayCopy->local->type.elementType);
+            leftLeaf = HlslWrapperGeometryAccessExpr(module, leftElement,
+                                                     geometryArrayCopy->access);
             rightElement = HlslWrapperIndex(module,
                 HlslWrapperSymbol(module, inputParameter), i, inputType);
             rightMember = HlslWrapperMemberExpr(module, rightElement,
                                                 geometryArrayCopy->member);
             statement = HlslWrapperExprStmt(module,
-                HlslWrapperAssign(module, leftElement,
+                HlslWrapperAssign(module, leftLeaf,
                     HlslWrapperConvert(module, rightMember,
-                        *geometryArrayCopy->local->type.elementType)));
+                        leftLeaf->type)));
             if (statement == NULL)
                 return 0;
             HlslAppendStmt(&initializers, statement);

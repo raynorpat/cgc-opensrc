@@ -1,0 +1,9 @@
+struct Vertex
+{
+    int instance : INSTANCEID;
+};
+
+TRIANGLE void main(AttribArray<Vertex> vertices)
+{
+    int instance = vertices[0].instance;
+}

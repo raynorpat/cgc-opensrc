@@ -1,0 +1,15 @@
+struct Inner
+{
+    float value;
+};
+
+struct Vertex
+{
+    float4 position : POSITION;
+    Inner data;
+};
+
+TRIANGLE void main(AttribArray<Vertex> vertices)
+{
+    float value = vertices[0].data.value;
+}

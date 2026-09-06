@@ -1578,7 +1578,9 @@ static int HlslCollectParameters(HlslLowerContext *context,
                                                      isOutput);
             }
             if (decl->type.base != HLSL_BASE_STRUCT &&
-                decl->semantic == NULL)
+                decl->semantic == NULL &&
+                !(context->profile->stage == HLSL_STAGE_GEOMETRY &&
+                  CgIsAttribArray(formal->type)))
                 return HlslLowerFailure(context, HLSL_ERROR_SEMANTIC,
                     GetAtomString(atable, formal->name), &formal->loc);
             if (decl->parameterQualifier == HLSL_PARAMETER_INOUT) {

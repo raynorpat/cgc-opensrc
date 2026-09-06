@@ -1,0 +1,4 @@
+TRIANGLE void main(AttribArray<float4x4> transforms : ATTRIB0)
+{
+    float value = transforms[0][1][2];
+}

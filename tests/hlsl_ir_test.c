@@ -4336,6 +4336,7 @@ static void ConfigureGeometryFixture(ValidationFixture *fixture)
         HlslNumericType(HLSL_BASE_VOID, 0);
     fixture->wrapper->parameters->type.arraySize = 3;
     fixture->wrapper->parameters->type.elementType = element;
+    fixture->wrapper->parameters->identity = fixture->wrapper->parameters;
     input = fixture->inputStruct->members;
     input->semantic = "SV_Position";
     input->canonicalSemantic = "SV_Position";
@@ -4473,6 +4474,104 @@ static void TestModernGeometryValidation(void)
         HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
         3, 6));
     fixture.wrapper->parameters->type.arraySize = 2;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    fixture.wrapper->parameters->identity = NULL;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    fixture.wrapper->parameters->storage = HLSL_STORAGE_NONE;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    fixture.wrapper->parameters->parameterQualifier = HLSL_PARAMETER_OUT;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    fixture.wrapper->parameters->parameterQualifier = HLSL_PARAMETER_INOUT;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    fixture.wrapper->parameters->semantic = "TEXCOORD0";
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    fixture.wrapper->parameters->semanticKind = HLSL_SEMANTIC_SV_POSITION;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    scalar = HlslNewDecl(&fixture.module, HLSL_STORAGE_INPUT,
+        HlslNumericType(HLSL_BASE_UINT, 1), "primitive");
+    assert(scalar != NULL);
+    scalar->inputSemantic = "PRIMITIVEID";
+    scalar->semantic = "SV_PrimitiveID";
+    scalar->canonicalSemantic = "SV_PrimitiveID";
+    scalar->semanticKind = HLSL_SEMANTIC_SV_PRIMITIVE_ID;
+    scalar->interpolation = HLSL_INTERPOLATION_NOINTERPOLATION;
+    scalar->parameterQualifier = HLSL_PARAMETER_OUT;
+    HlslAppendDecl(&fixture.wrapper->parameters, scalar);
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    scalar = HlslNewDecl(&fixture.module, HLSL_STORAGE_INPUT,
+        HlslNumericType(HLSL_BASE_UINT, 1), "primitive");
+    assert(scalar != NULL);
+    scalar->inputSemantic = "PRIMITIVEID";
+    scalar->semantic = "SV_PrimitiveID";
+    scalar->canonicalSemantic = "SV_PrimitiveID";
+    scalar->semanticKind = HLSL_SEMANTIC_SV_PRIMITIVE_ID;
+    scalar->interpolation = HLSL_INTERPOLATION_NOINTERPOLATION;
+    scalar->parameterQualifier = HLSL_PARAMETER_INOUT;
+    HlslAppendDecl(&fixture.wrapper->parameters, scalar);
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    scalar = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_UINT, 1), "primitive");
+    assert(scalar != NULL);
+    scalar->inputSemantic = "PRIMITIVEID";
+    scalar->semantic = "SV_PrimitiveID";
+    scalar->canonicalSemantic = "SV_PrimitiveID";
+    scalar->semanticKind = HLSL_SEMANTIC_SV_PRIMITIVE_ID;
+    scalar->interpolation = HLSL_INTERPOLATION_NOINTERPOLATION;
+    HlslAppendDecl(&fixture.wrapper->parameters, scalar);
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
                              HLSL_ERROR_ENTRY_ABI);
 

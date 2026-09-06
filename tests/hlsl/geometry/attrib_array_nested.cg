@@ -1,0 +1,17 @@
+struct Nested
+{
+    int code : ATTRIB6;
+};
+
+struct Vertex
+{
+    float4 position : POSITION;
+    float2 weights[2][2] : ATTRIB0;
+    Nested nested;
+};
+
+TRIANGLE void main(AttribArray<Vertex> vertices)
+{
+    float weight = vertices[0].weights[1][0].x;
+    int code = vertices[2].nested.code;
+}
