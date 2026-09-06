@@ -1,0 +1,13 @@
+POINT POINT_OUT void system_values_main(
+    AttribArray<float4> position : POSITION,
+    int primitive : PRIMITIVEID)
+{
+    int copy = primitive;
+}
+
+POINT POINT_OUT void instance_values_main(
+    AttribArray<float4> position : POSITION,
+    int instance : INSTANCEID)
+{
+    int copy = instance;
+}

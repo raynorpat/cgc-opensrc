@@ -49,6 +49,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <stddef.h>
 
+#include "slglobals.h"
 #include "hlsl_ir.h"
 
 typedef enum HlslDirection_Enum {
@@ -96,5 +97,9 @@ int HlslModernSelectTextureMethod(HlslStage stage, HlslBuiltin intrinsic,
     HlslTextureDimension dimension, int coordinateWidth,
     const HlslType *resultType, HlslTextureMethod *method,
     HlslTextureSelectReason *reason);
+int HlslModernGeometryInput(CgGeometryInput input,
+                            HlslGeometryInput *result, int *extent);
+int HlslModernGeometryStream(CgGeometryOutput output,
+                             HlslGeometryStream *result);
 
 #endif // !defined(__HLSL_MODERN_H)

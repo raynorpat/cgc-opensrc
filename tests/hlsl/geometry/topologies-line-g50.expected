@@ -1,0 +1,22 @@
+// profile hlslg50
+// target gs_5_0
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+
+struct cg_GeometryIn
+{
+    float4 position : SV_Position;
+};
+
+void cg_entry(float4 position[2])
+{
+    return;
+}
+
+void main(cg_GeometryIn input[2])
+{
+    float4 position[2];
+    position[0] = input[0].position;
+    position[1] = input[1].position;
+    cg_entry(position);
+    return;
+}

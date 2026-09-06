@@ -950,8 +950,22 @@ static int HlslWriteParameters(FILE *out, const HlslDecl *parameter)
         {
             return 0;
         }
+        if (parameter->canonicalSemantic != NULL &&
+            parameter->interpolation != HLSL_INTERPOLATION_DEFAULT &&
+            (HlslInterpolationName(parameter->interpolation) == NULL ||
+             fprintf(out, "%s ",
+                HlslInterpolationName(parameter->interpolation)) < 0))
+        {
+            return 0;
+        }
         if (!HlslWriteDeclTypeAndName(out, parameter))
             return 0;
+        if (parameter->canonicalSemantic != NULL &&
+            (parameter->semantic == NULL ||
+             fprintf(out, " : %s", parameter->semantic) < 0))
+        {
+            return 0;
+        }
         first = 0;
     }
     return 1;
@@ -1245,6 +1259,38 @@ static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module,
             } else if (fprintf(out,
                     "// cgc-bind interface %s %s %s %s\n",
                     direction, publicName, typeName, member->semantic) < 0)
+            {
+                return -1;
+            }
+            wroteRecord = 1;
+        }
+    }
+    if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN &&
+        module->stage == HLSL_STAGE_GEOMETRY && module->wrapper != NULL)
+    {
+        for (member = module->wrapper->parameters; member != NULL;
+             member = member->next)
+        {
+            const char *canonical;
+            const char *classification;
+            const char *interpolation;
+
+            if (member->canonicalSemantic == NULL)
+                continue;
+            publicName = member->publicName != NULL &&
+                         member->publicName[0] != '\0' ?
+                         member->publicName : member->name;
+            typeName = HlslTypeName(&member->type);
+            canonical = member->canonicalSemantic;
+            classification = member->semanticKind ==
+                             HLSL_SEMANTIC_USER ? "user" : "system";
+            interpolation = HlslInterpolationName(member->interpolation);
+            if (publicName == NULL || typeName == NULL ||
+                member->semantic == NULL || interpolation == NULL ||
+                fprintf(out,
+                    "// cgc-bind interface in %s %s %s %s %s %s\n",
+                    publicName, typeName, member->semantic, canonical,
+                    classification, interpolation) < 0)
             {
                 return -1;
             }

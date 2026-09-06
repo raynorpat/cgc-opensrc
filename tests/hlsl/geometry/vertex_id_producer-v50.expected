@@ -1,0 +1,42 @@
+// profile hlslv50
+// target vs_5_0
+// cgc-bind interface in position float4 POSITION0 POSITION0 user default
+// cgc-bind interface in vertexId uint SV_VertexID SV_VertexID system nointerpolation
+// cgc-bind interface out position float4 SV_Position SV_Position system default
+// cgc-bind interface out vertexId int CG_VERTEXID0 CG_VERTEXID0 user nointerpolation
+
+struct cg_VertexOut
+{
+    float4 position;
+    int vertexId;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+    nointerpolation uint vertexId : SV_VertexID;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : SV_Position;
+    nointerpolation int vertexId : CG_VERTEXID0;
+};
+
+cg_VertexOut cg_entry(float4 position, int vertexId)
+{
+    cg_VertexOut result = (cg_VertexOut) 0;
+    result.position = position;
+    result.vertexId = vertexId;
+    return result;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, (int) input.vertexId);
+    output.position = cg_result.position;
+    output.vertexId = cg_result.vertexId;
+    return output;
+}

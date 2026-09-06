@@ -57,6 +57,67 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define HLSL_MODERN_INPUT    0x10
 #define HLSL_MODERN_OUTPUT   0x20
 
+int HlslModernGeometryInput(CgGeometryInput input,
+                            HlslGeometryInput *result, int *extent)
+{
+    HlslGeometryInput converted;
+    int count;
+
+    if (result == NULL || extent == NULL)
+        return 0;
+    switch (input) {
+    case CG_GEOMETRY_INPUT_POINT:
+        converted = HLSL_GEOMETRY_INPUT_POINT;
+        count = 1;
+        break;
+    case CG_GEOMETRY_INPUT_LINE:
+        converted = HLSL_GEOMETRY_INPUT_LINE;
+        count = 2;
+        break;
+    case CG_GEOMETRY_INPUT_LINE_ADJACENCY:
+        converted = HLSL_GEOMETRY_INPUT_LINE_ADJ;
+        count = 4;
+        break;
+    case CG_GEOMETRY_INPUT_TRIANGLE:
+        converted = HLSL_GEOMETRY_INPUT_TRIANGLE;
+        count = 3;
+        break;
+    case CG_GEOMETRY_INPUT_TRIANGLE_ADJACENCY:
+        converted = HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ;
+        count = 6;
+        break;
+    default:
+        return 0;
+    }
+    *result = converted;
+    *extent = count;
+    return 1;
+} // HlslModernGeometryInput
+
+int HlslModernGeometryStream(CgGeometryOutput output,
+                             HlslGeometryStream *result)
+{
+    HlslGeometryStream converted;
+
+    if (result == NULL)
+        return 0;
+    switch (output) {
+    case CG_GEOMETRY_OUTPUT_POINTS:
+        converted = HLSL_GEOMETRY_STREAM_POINT;
+        break;
+    case CG_GEOMETRY_OUTPUT_LINE_STRIP:
+        converted = HLSL_GEOMETRY_STREAM_LINE;
+        break;
+    case CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP:
+        converted = HLSL_GEOMETRY_STREAM_TRIANGLE;
+        break;
+    default:
+        return 0;
+    }
+    *result = converted;
+    return 1;
+} // HlslModernGeometryStream
+
 typedef struct HlslModernSemanticDesc_Rec {
     const char *root;
     HlslSemanticKind semantic;

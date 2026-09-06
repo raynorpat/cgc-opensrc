@@ -1,0 +1,6 @@
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          int instance : INSTANCEID,
+                          int primitive : PRIMITIVEID)
+{
+    return;
+}

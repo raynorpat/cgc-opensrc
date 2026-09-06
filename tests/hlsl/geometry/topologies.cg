@@ -1,0 +1,27 @@
+POINT POINT_OUT void point_main(AttribArray<float4> position : POSITION)
+{
+    return;
+}
+
+LINE LINE_OUT void line_main(AttribArray<float4> position : POSITION)
+{
+    return;
+}
+
+LINE_ADJ LINE_OUT void lineadj_main(
+    AttribArray<float4> position : POSITION)
+{
+    return;
+}
+
+TRIANGLE TRIANGLE_OUT void triangle_main(
+    AttribArray<float4> position : POSITION)
+{
+    return;
+}
+
+TRIANGLE_ADJ TRIANGLE_OUT void triangleadj_main(
+    AttribArray<float4> position : POSITION)
+{
+    return;
+}

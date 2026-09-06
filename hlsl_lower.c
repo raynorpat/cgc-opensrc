@@ -62,6 +62,8 @@ typedef struct HlslLowerContext_Rec {
     SourceLoc statementLoc;
     int entryFile;
     int loopDepth;
+    int geometryInputExtent;
+    int geometryHasVertexIdProducer;
 } HlslLowerContext;
 
 typedef enum HlslValueMode_Enum {
@@ -357,6 +359,29 @@ static int HlslLowerType(HlslLowerContext *context, Type *source,
 
     if (source == NULL || target == NULL)
         return 0;
+    if (CgIsAttribArray(source)) {
+        if (context->profile == NULL ||
+            context->profile->stage != HLSL_STAGE_GEOMETRY ||
+            context->geometryInputExtent <= 0 ||
+            (CgAttribArrayExtent(source) != 0 &&
+             CgAttribArrayExtent(source) !=
+                (unsigned int) context->geometryInputExtent) ||
+            !HlslEnsureType(context, CgAttribArrayElement(source)) ||
+            !HlslLowerType(context, CgAttribArrayElement(source),
+                           &elementType, loc))
+        {
+            return HlslLowerFailure(context, HLSL_ERROR_ENTRY_ABI,
+                                    "geometry AttribArray extent", loc);
+        }
+        element = (HlslType *) HlslLowerAlloc(context, sizeof(HlslType));
+        if (element == NULL)
+            return 0;
+        *element = elementType;
+        *target = HlslNumericType(HLSL_BASE_VOID, 0);
+        target->arraySize = context->geometryInputExtent;
+        target->elementType = element;
+        return 1;
+    }
     if (IsVoid(source)) {
         *target = HlslNumericType(HLSL_BASE_VOID, 0);
         return 1;
@@ -744,6 +769,19 @@ static int HlslEnsureType(HlslLowerContext *context, Type *type)
     if (type == NULL)
         return 0;
     category = GetCategory(type);
+    if (CgIsAttribArray(type)) {
+        if (context->profile == NULL ||
+            context->profile->stage != HLSL_STAGE_GEOMETRY ||
+            context->geometryInputExtent <= 0 ||
+            (CgAttribArrayExtent(type) != 0 &&
+             CgAttribArrayExtent(type) !=
+                (unsigned int) context->geometryInputExtent))
+        {
+            return HlslLowerFailure(context, HLSL_ERROR_ENTRY_ABI,
+                                    "geometry AttribArray extent", NULL);
+        }
+        return HlslEnsureType(context, CgAttribArrayElement(type));
+    }
     if (IsVoid(type) || IsMatrix(type, NULL, NULL) ||
         IsVector(type, NULL) ||
         category == TYPE_CATEGORY_SCALAR ||
@@ -760,9 +798,6 @@ static int HlslEnsureType(HlslLowerContext *context, Type *type)
     if (category == TYPE_CATEGORY_INTERFACE)
         return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
                                 "interface", &type->iface.loc);
-    if (category == TYPE_CATEGORY_ATTRIB_ARRAY)
-        return HlslLowerFailure(context, HLSL_ERROR_UNSUPPORTED_TYPE,
-                                "attribute array", NULL);
     canonical = HlslCanonicalStructType(type);
     if (canonical == NULL)
         return 0;
@@ -1465,6 +1500,28 @@ static int HlslCollectDefaults(HlslLowerContext *context)
     return 1;
 } // HlslCollectDefaults
 
+static int HlslSemanticAtomIsVertexId(int atom)
+{
+    const char *source;
+    char upper[64];
+    char root[64];
+    size_t i;
+    int index;
+
+    source = atom != 0 ? GetAtomString(atable, atom) : NULL;
+    if (source == NULL)
+        return 0;
+    for (i = 0; source[i] != '\0'; i++) {
+        if (i + 1 >= sizeof(upper))
+            return 0;
+        upper[i] = source[i] >= 'a' && source[i] <= 'z' ?
+                   (char) (source[i] - 'a' + 'A') : source[i];
+    }
+    upper[i] = '\0';
+    return HlslParseSemantic(upper, root, sizeof(root), &index) &&
+           !strcmp(root, "VERTEXID") && index == 0;
+} // HlslSemanticAtomIsVertexId
+
 static int HlslCollectParameters(HlslLowerContext *context,
                                  Symbol *formal, int isEntry)
 {
@@ -1473,6 +1530,14 @@ static int HlslCollectParameters(HlslLowerContext *context,
     int isOutput;
 
     for (; formal != NULL; formal = formal->next) {
+        if (isEntry && context->profile->stage == HLSL_STAGE_GEOMETRY &&
+            CgIsAttribArray(formal->type) &&
+            HlslSemanticAtomIsVertexId(formal->details.var.semantics) &&
+            !context->geometryHasVertexIdProducer)
+        {
+            return HlslLowerFailure(context, HLSL_ERROR_ENTRY_ABI,
+                "CG_VERTEXID0 producer metadata", &formal->loc);
+        }
         decl = HlslNewSourceDecl(context, formal,
                                  context->function->identity);
         if (decl == NULL)
@@ -3657,6 +3722,77 @@ static int HlslIsEmptyEntry(Symbol *program)
              statement->commonst.next == NULL));
 } // HlslIsEmptyEntry
 
+static int HlslVertexIdScalar(const Type *type)
+{
+    return type != NULL && IsScalar(type) &&
+           GetBase(type) == TYPE_BASE_INT;
+} // HlslVertexIdScalar
+
+static int HlslMemberTreeProducesVertexId(const Symbol *member)
+{
+    if (member == NULL)
+        return 0;
+    if (HlslMemberTreeProducesVertexId(member->left))
+        return 1;
+    if (member->kind == VARIABLE_S &&
+        HlslSemanticAtomIsVertexId(member->details.var.semantics) &&
+        HlslVertexIdScalar(member->type))
+    {
+        return 1;
+    }
+    return HlslMemberTreeProducesVertexId(member->right);
+} // HlslMemberTreeProducesVertexId
+
+static int HlslFunctionProducesVertexId(const Symbol *function)
+{
+    const Symbol *formal;
+    Type *result;
+    int hasSystemInput;
+
+    if (function == NULL || function->kind != FUNCTION_S ||
+        function->details.fun.geometry.input != CG_GEOMETRY_INPUT_UNKNOWN ||
+        function->details.fun.geometry.output != CG_GEOMETRY_OUTPUT_UNKNOWN)
+    {
+        return 0;
+    }
+    hasSystemInput = 0;
+    for (formal = function->details.fun.params; formal != NULL;
+         formal = formal->next)
+    {
+        if (HlslSemanticAtomIsVertexId(formal->details.var.semantics) &&
+            HlslVertexIdScalar(formal->type))
+        {
+            hasSystemInput = 1;
+            break;
+        }
+    }
+    if (!hasSystemInput)
+        return 0;
+    result = function->type != NULL ? function->type->fun.rettype : NULL;
+    if (result == NULL)
+        return 0;
+    if (HlslSemanticAtomIsVertexId(function->details.fun.semantics) &&
+        HlslVertexIdScalar(result))
+    {
+        return 1;
+    }
+    return GetCategory(result) == TYPE_CATEGORY_STRUCT &&
+           result->str.members != NULL &&
+           HlslMemberTreeProducesVertexId(result->str.members->symbols);
+} // HlslFunctionProducesVertexId
+
+static int HlslFunctionTreeProducesVertexId(const Symbol *function,
+                                            const Symbol *entry)
+{
+    if (function == NULL)
+        return 0;
+    if (HlslFunctionTreeProducesVertexId(function->left, entry))
+        return 1;
+    if (function != entry && HlslFunctionProducesVertexId(function))
+        return 1;
+    return HlslFunctionTreeProducesVertexId(function->right, entry);
+} // HlslFunctionTreeProducesVertexId
+
 int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
                      SourceLoc *loc, Scope *scope, Symbol *program)
 {
@@ -3667,6 +3803,12 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     Type *sourceResult;
     const char *name;
     int emptyEntry;
+    CgGeometryOptions geometryOptions;
+    CgGeometryConfig geometryConfig;
+    CgGeometryDiagnostic geometryDiagnostic;
+    HlslGeometryInput geometryInput;
+    HlslGeometryStream geometryStream;
+    int geometryExtent;
 
     if (module == NULL || profile == NULL || scope == NULL ||
         program == NULL || program->kind != FUNCTION_S ||
@@ -3683,8 +3825,48 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     context.scope = scope;
     context.statementLoc = program->loc;
     context.entryFile = program->loc.file;
+    context.geometryHasVertexIdProducer =
+        HlslFunctionTreeProducesVertexId(scope->symbols, program);
     if (!HlslRejectStorage(&context, program))
         return 0;
+    if (profile->stage == HLSL_STAGE_GEOMETRY) {
+        CgGeometryInitOptions(&geometryOptions);
+        memset(&geometryDiagnostic, 0, sizeof(geometryDiagnostic));
+        if (!CgGeometryParseOptions(Cg->options.profileOptions,
+                                    &geometryOptions,
+                                    &geometryDiagnostic) ||
+            !CgGeometryResolveConfig(&program->details.fun.geometry,
+                                     &geometryOptions,
+                                     CGIR_STAGE_GEOMETRY,
+                                     &geometryConfig,
+                                     &geometryDiagnostic) ||
+            geometryConfig.stage != CGIR_STAGE_GEOMETRY)
+        {
+            return HlslLowerFailure(&context, HLSL_ERROR_GEOMETRY_LAYOUT,
+                                    "verified geometry layout",
+                                    &program->loc);
+        }
+        if (!geometryConfig.hasMaxOutputVertices ||
+            geometryConfig.maxOutputVertices == 0)
+        {
+            return HlslLowerFailure(&context, HLSL_ERROR_ENTRY_ABI,
+                                    "Vertices=N", &program->loc);
+        }
+        if (geometryConfig.maxOutputVertices > (unsigned int) INT_MAX ||
+            !HlslModernGeometryInput(geometryConfig.inputTopology,
+                                     &geometryInput, &geometryExtent) ||
+            !HlslModernGeometryStream(geometryConfig.outputTopology,
+                                      &geometryStream) ||
+            geometryExtent != (int) geometryConfig.inputVertexCount ||
+            !HlslSetGeometryLayout(module, geometryInput, geometryStream,
+                geometryExtent, (int) geometryConfig.maxOutputVertices))
+        {
+            return HlslLowerFailure(&context, HLSL_ERROR_GEOMETRY_LAYOUT,
+                                    "verified geometry layout",
+                                    &program->loc);
+        }
+        context.geometryInputExtent = geometryExtent;
+    }
     emptyEntry = HlslIsEmptyEntry(program);
     sourceResult = HlslOriginalEntryResult(program);
     if (!HlslEnsureType(&context, sourceResult) ||
@@ -3694,16 +3876,18 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     {
         return 0;
     }
-    if (program->details.fun.geometry.output !=
-        CG_GEOMETRY_OUTPUT_UNKNOWN)
+    if (profile->stage != HLSL_STAGE_GEOMETRY &&
+        program->details.fun.geometry.output !=
+            CG_GEOMETRY_OUTPUT_UNKNOWN)
     {
         return HlslLowerFailure(&context,
                                 HLSL_ERROR_UNSUPPORTED_OPERATION,
                                 "geometry output modifier",
                                 &program->details.fun.geometry.outputLoc);
     }
-    if (program->details.fun.geometry.input !=
-        CG_GEOMETRY_INPUT_UNKNOWN)
+    if (profile->stage != HLSL_STAGE_GEOMETRY &&
+        program->details.fun.geometry.input !=
+            CG_GEOMETRY_INPUT_UNKNOWN)
     {
         return HlslLowerFailure(&context,
                                 HLSL_ERROR_UNSUPPORTED_OPERATION,

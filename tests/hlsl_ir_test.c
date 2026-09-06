@@ -83,6 +83,68 @@ static int AssertUnique(const int *ids, int count)
     return unique;
 }
 
+static void TestModernGeometryTopologyConversion(void)
+{
+    static const CgGeometryInput sourceInputs[] = {
+        CG_GEOMETRY_INPUT_POINT,
+        CG_GEOMETRY_INPUT_LINE,
+        CG_GEOMETRY_INPUT_LINE_ADJACENCY,
+        CG_GEOMETRY_INPUT_TRIANGLE,
+        CG_GEOMETRY_INPUT_TRIANGLE_ADJACENCY
+    };
+    static const HlslGeometryInput targetInputs[] = {
+        HLSL_GEOMETRY_INPUT_POINT,
+        HLSL_GEOMETRY_INPUT_LINE,
+        HLSL_GEOMETRY_INPUT_LINE_ADJ,
+        HLSL_GEOMETRY_INPUT_TRIANGLE,
+        HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ
+    };
+    static const int extents[] = { 1, 2, 4, 3, 6 };
+    static const CgGeometryOutput sourceOutputs[] = {
+        CG_GEOMETRY_OUTPUT_POINTS,
+        CG_GEOMETRY_OUTPUT_LINE_STRIP,
+        CG_GEOMETRY_OUTPUT_TRIANGLE_STRIP
+    };
+    static const HlslGeometryStream targetOutputs[] = {
+        HLSL_GEOMETRY_STREAM_POINT,
+        HLSL_GEOMETRY_STREAM_LINE,
+        HLSL_GEOMETRY_STREAM_TRIANGLE
+    };
+    HlslGeometryInput input;
+    HlslGeometryStream output;
+    int extent;
+    int i;
+
+    for (i = 0; i < 5; i++) {
+        input = (HlslGeometryInput) 99;
+        extent = 0;
+        assert(HlslModernGeometryInput(sourceInputs[i], &input, &extent));
+        assert(input == targetInputs[i]);
+        assert(extent == extents[i]);
+    }
+    for (i = 0; i < 3; i++) {
+        output = (HlslGeometryStream) 99;
+        assert(HlslModernGeometryStream(sourceOutputs[i], &output));
+        assert(output == targetOutputs[i]);
+    }
+    input = HLSL_GEOMETRY_INPUT_POINT;
+    extent = 17;
+    assert(!HlslModernGeometryInput(CG_GEOMETRY_INPUT_UNKNOWN,
+                                    &input, &extent));
+    assert(input == HLSL_GEOMETRY_INPUT_POINT && extent == 17);
+    assert(!HlslModernGeometryInput((CgGeometryInput) 99,
+                                    &input, &extent));
+    assert(!HlslModernGeometryInput(CG_GEOMETRY_INPUT_POINT,
+                                    NULL, &extent));
+    assert(!HlslModernGeometryInput(CG_GEOMETRY_INPUT_POINT,
+                                    &input, NULL));
+    output = HLSL_GEOMETRY_STREAM_POINT;
+    assert(!HlslModernGeometryStream(CG_GEOMETRY_OUTPUT_UNKNOWN, &output));
+    assert(output == HLSL_GEOMETRY_STREAM_POINT);
+    assert(!HlslModernGeometryStream((CgGeometryOutput) 99, &output));
+    assert(!HlslModernGeometryStream(CG_GEOMETRY_OUTPUT_POINTS, NULL));
+}
+
 static int TestModernProfileIdentities(void)
 {
     static const int profileIds[] = {
@@ -4263,9 +4325,17 @@ static void TestModernResourceValidation(void)
 static void ConfigureGeometryFixture(ValidationFixture *fixture)
 {
     HlslDecl *input;
+    HlslType *element;
 
     InitValidationFixture(fixture, HLSL_STAGE_GEOMETRY);
     ConfigureModernValidationFixture(fixture);
+    element = (HlslType *) TestAlloc(NULL, sizeof(HlslType));
+    assert(element != NULL);
+    *element = fixture->inputStruct->type;
+    fixture->wrapper->parameters->type =
+        HlslNumericType(HLSL_BASE_VOID, 0);
+    fixture->wrapper->parameters->type.arraySize = 3;
+    fixture->wrapper->parameters->type.elementType = element;
     input = fixture->inputStruct->members;
     input->semantic = "SV_Position";
     input->canonicalSemantic = "SV_Position";
@@ -4383,6 +4453,7 @@ static void TestModernGeometryValidation(void)
     ConfigureGeometryFixture(&fixture);
     assert(HlslSetGeometryLayout(&fixture.module,
         HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 1));
+    fixture.wrapper->parameters->type.arraySize = 1;
     target = fixture.outputStruct->members;
     target->type = HlslMatrixType(INT_MAX, 2);
     AssertWriteFailureLeavesEmpty(&fixture.module, &HlslProfile_hlslg40);
@@ -4394,6 +4465,14 @@ static void TestModernGeometryValidation(void)
     ConfigureGeometryFixture(&fixture);
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
                              HLSL_ERROR_GEOMETRY_LAYOUT);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    fixture.wrapper->parameters->type.arraySize = 2;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_ENTRY_ABI);
 
     ConfigureGeometryFixture(&fixture);
     fixture.module.geometryInput = HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ;
@@ -4472,12 +4551,14 @@ static void TestModernGeometryValidation(void)
     assert(HlslSetGeometryLayout(&fixture.module,
         HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1,
         HlslProfile_hlslg40.limits->geometryMaxVertices + 1));
+    fixture.wrapper->parameters->type.arraySize = 1;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
                              HLSL_ERROR_GEOMETRY_LIMIT);
 
     ConfigureGeometryFixture(&fixture);
     assert(HlslSetGeometryLayout(&fixture.module,
         HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 300));
+    fixture.wrapper->parameters->type.arraySize = 1;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
                              HLSL_ERROR_GEOMETRY_LIMIT);
 }
@@ -5749,6 +5830,9 @@ int main(int argc, char **argv)
     assert(HlslModernSemantic(HLSL_STAGE_GEOMETRY, HLSL_DIRECTION_OUTPUT,
                               "LAYER", 0) ==
            HLSL_SEMANTIC_SV_RT_ARRAY_INDEX);
+    assert(HlslModernSemantic(HLSL_STAGE_GEOMETRY, HLSL_DIRECTION_OUTPUT,
+                              "PRIMITIVEID", 0) ==
+           HLSL_SEMANTIC_SV_PRIMITIVE_ID);
     assert(HlslModernSemantic(HLSL_STAGE_GEOMETRY, HLSL_DIRECTION_INPUT,
                               "INSTANCEID", 0) ==
            HLSL_SEMANTIC_SV_PRIMITIVE_ID);
@@ -5782,6 +5866,10 @@ int main(int argc, char **argv)
                                        semanticRoot,
                                        sizeof(semanticRoot)));
     assert(HlslModernAbiBase(HLSL_SEMANTIC_SV_VERTEX_ID) ==
+           HLSL_BASE_UINT);
+    assert(HlslModernAbiBase(HLSL_SEMANTIC_SV_PRIMITIVE_ID) ==
+           HLSL_BASE_UINT);
+    assert(HlslModernAbiBase(HLSL_SEMANTIC_SV_RT_ARRAY_INDEX) ==
            HLSL_BASE_UINT);
     scalar = HlslNumericType(HLSL_BASE_UINT, 1);
     assert(!strcmp(HlslTypeName(&scalar), "uint"));
@@ -5839,6 +5927,7 @@ int main(int argc, char **argv)
     TestModernAggregateBindingTopologyValidation();
     TestModernResourceValidation();
     TestModernGeometryValidation();
+    TestModernGeometryTopologyConversion();
     TestModernSemanticIdentityValidation();
     TestTargetValidatorInterfaceLimits();
     TestStructuralValidatorRejectsCyclicSignatureGraphs();

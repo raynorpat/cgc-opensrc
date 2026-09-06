@@ -1,0 +1,23 @@
+// profile hlslg40
+// target gs_4_0
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+// cgc-bind interface in primitive uint SV_PrimitiveID SV_PrimitiveID system nointerpolation
+
+struct cg_GeometryIn
+{
+    float4 position : SV_Position;
+};
+
+void cg_entry(float4 position[1], int primitive)
+{
+    int copy;
+    copy = primitive;
+}
+
+void main(cg_GeometryIn input[1], nointerpolation uint primitive : SV_PrimitiveID)
+{
+    float4 position[1];
+    position[0] = input[0].position;
+    cg_entry(position, (int) primitive);
+    return;
+}

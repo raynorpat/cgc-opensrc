@@ -2109,6 +2109,118 @@ add_hlsl_modern_bitwise(modern_bitwise_v50 hlslv50
 add_hlsl_modern_bitwise(modern_bitwise_p50 hlslf50
     bitwise-p50.expected bitwise_pixel)
 
+function(add_hlsl_geometry_topology name entry input output)
+    set(geometry_options "${input};${output};Vertices=4")
+    string(REPLACE ";" "\\;" geometry_options_escaped
+        "${geometry_options}")
+    foreach(profile hlslg40 hlslg50)
+        string(SUBSTRING "${profile}" 4 3 model_suffix)
+        add_test(
+            NAME ${profile}_${name}_topology
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DPROFILE=${profile}
+                -DENTRY=${entry}
+                "-DPROFILE_OPTIONS=${geometry_options_escaped}"
+                -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/topologies.cg
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/topologies-${name}-${model_suffix}.expected
+                -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+                "-DCONFIG=$<CONFIG>"
+                "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}_topology.hlsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    endforeach()
+endfunction()
+
+add_hlsl_geometry_topology(point point_main POINT POINT_OUT)
+add_hlsl_geometry_topology(line line_main LINE LINE_OUT)
+add_hlsl_geometry_topology(lineadj lineadj_main LINE_ADJ LINE_OUT)
+add_hlsl_geometry_topology(triangle triangle_main TRIANGLE TRIANGLE_OUT)
+add_hlsl_geometry_topology(triangleadj triangleadj_main TRIANGLE_ADJ
+    TRIANGLE_OUT)
+
+function(add_hlsl_geometry_fixture name source expected entry)
+    set(geometry_options "POINT;POINT_OUT;Vertices=4")
+    string(REPLACE ";" "\\;" geometry_options_escaped
+        "${geometry_options}")
+    foreach(profile hlslg40 hlslg50)
+        string(SUBSTRING "${profile}" 4 3 model_suffix)
+        add_test(
+            NAME ${profile}_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DPROFILE=${profile}
+                -DENTRY=${entry}
+                "-DPROFILE_OPTIONS=${geometry_options_escaped}"
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}-${model_suffix}.expected
+                -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+                "-DCONFIG=$<CONFIG>"
+                "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    endforeach()
+endfunction()
+
+add_hlsl_geometry_fixture(system_values
+    tests/hlsl/geometry/system_values.cg
+    tests/hlsl/geometry/system_values system_values_main)
+add_hlsl_geometry_fixture(instance_values
+    tests/hlsl/geometry/system_values.cg
+    tests/hlsl/geometry/instance_values instance_values_main)
+add_hlsl_geometry_fixture(vertex_id_bridge
+    tests/hlsl/geometry/vertex_id_bridge.cg
+    tests/hlsl/geometry/vertex_id_bridge geometry_main)
+
+foreach(profile hlslv40 hlslv50)
+    string(SUBSTRING "${profile}" 4 3 model_suffix)
+    add_test(
+        NAME ${profile}_vertex_id_producer
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DENTRY=vertex_main
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/vertex_id_bridge.cg
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/vertex_id_producer-${model_suffix}.expected
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_vertex_id_producer.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+endforeach()
+
+function(add_hlsl_geometry_failure name source code line reason options)
+    string(REPLACE ";" "\\;" geometry_options_escaped "${options}")
+    foreach(profile hlslg40 hlslg50)
+        add_test(
+            NAME ${profile}_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DPROFILE=${profile}
+                -DENTRY=main
+                "-DPROFILE_OPTIONS=${geometry_options_escaped}"
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DCODE=${code}
+                -DEXPECTED_LINE=${line}
+                -DMESSAGE=${reason}
+                "-DCONFIG=$<CONFIG>"
+                "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+        set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+            "${profile}_${name}|${code}")
+    endforeach()
+endfunction()
+
+add_hlsl_geometry_failure(geometry_missing_vertices
+    tests/hlsl/diagnostics/geometry_missing_vertices.cg 6406 1 "Vertices=N"
+    "POINT;POINT_OUT")
+add_hlsl_geometry_failure(geometry_duplicate_primitive
+    tests/hlsl/diagnostics/geometry_duplicate_primitive.cg 6404 3
+    "SV_PrimitiveID" "POINT;POINT_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_invalid_system_type
+    tests/hlsl/diagnostics/geometry_invalid_system_type.cg 6321 2
+    "invalid.value.type" "POINT;POINT_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_missing_vertex_id_producer
+    tests/hlsl/diagnostics/geometry_missing_vertex_id_producer.cg 6406 2
+    "CG_VERTEXID0" "POINT;POINT_OUT;Vertices=4")
+
 add_hlsl_fixture(modern_empty_input_p40 hlslf40
     tests/hlsl/modern/empty-input.cg
     tests/hlsl/modern/empty-input-p40.expected)

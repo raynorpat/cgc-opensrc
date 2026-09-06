@@ -2433,8 +2433,15 @@ static int HlslModernSemanticIdentityIsValid(
         return 0;
     }
     if (kind == HLSL_SEMANTIC_USER) {
-        if (sprintf(expected, "%s%d", root, index) < 0)
+        if (!strcmp(root, "VERTEXID") && index == 0 &&
+            ((profile->stage == HLSL_STAGE_VERTEX && isOutput) ||
+             (profile->stage == HLSL_STAGE_GEOMETRY && !isOutput)))
+        {
+            if (sprintf(expected, "CG_VERTEXID0") < 0)
+                return 0;
+        } else if (sprintf(expected, "%s%d", root, index) < 0) {
             return 0;
+        }
     } else if (!HlslModernSemanticSpelling(kind, index, expected,
                                            sizeof(expected)))
     {
@@ -2574,6 +2581,7 @@ static int HlslValidateInterfaces(HlslModule *module,
     HlslDecl *input;
     HlslDecl *output;
     HlslDecl *wrapperInput;
+    HlslDecl *geometryScalars;
     const HlslLoc *colorLoc;
     int used;
     int colors;
@@ -2606,10 +2614,33 @@ static int HlslValidateInterfaces(HlslModule *module,
                         "HLSL interface structures");
     }
     wrapperInput = module->wrapper->parameters;
-    if ((input == NULL && wrapperInput != NULL) ||
+    geometryScalars = NULL;
+    if (profile->stage == HLSL_STAGE_GEOMETRY) {
+        if (input != NULL) {
+            if (wrapperInput == NULL || wrapperInput->type.arraySize !=
+                    module->geometryInputCount ||
+                wrapperInput->type.elementType == NULL ||
+                !HlslTypesEqual(wrapperInput->type.elementType,
+                                &input->type))
+            {
+                return HlslFail(module, HLSL_ERROR_ENTRY_ABI,
+                                &module->wrapper->loc,
+                                "HLSL geometry input shape");
+            }
+            geometryScalars = wrapperInput->next;
+        } else {
+            geometryScalars = wrapperInput;
+        }
+    } else if ((input == NULL && wrapperInput != NULL) ||
         (input != NULL &&
          (wrapperInput == NULL || wrapperInput->next != NULL ||
-          !HlslTypesEqual(&wrapperInput->type, &input->type))) ||
+          !HlslTypesEqual(&wrapperInput->type, &input->type))))
+    {
+        return HlslFail(module, HLSL_ERROR_ENTRY_ABI,
+                        &module->wrapper->loc,
+                        "HLSL wrapper interface shape");
+    }
+    if (
         (output == NULL && module->wrapper->result.base != HLSL_BASE_VOID) ||
         (output != NULL &&
          !HlslTypesEqual(&module->wrapper->result, &output->type)))
@@ -2620,6 +2651,9 @@ static int HlslValidateInterfaces(HlslModule *module,
     }
     if (!HlslValidateInterfaceSemantics(module, profile,
             input != NULL ? input->members : NULL, 0) ||
+        (geometryScalars != NULL &&
+         !HlslValidateInterfaceSemantics(module, profile,
+                                         geometryScalars, 0)) ||
         !HlslValidateInterfaceSemantics(module, profile,
             output != NULL ? output->members : NULL, 1))
     {

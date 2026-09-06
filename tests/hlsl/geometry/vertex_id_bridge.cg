@@ -1,0 +1,20 @@
+struct VertexOut {
+    float4 position : POSITION;
+    int vertexId : VERTEXID;
+};
+
+VertexOut vertex_main(float4 position : POSITION,
+                      int vertexId : VERTEXID)
+{
+    VertexOut result;
+    result.position = position;
+    result.vertexId = vertexId;
+    return result;
+}
+
+POINT POINT_OUT void geometry_main(
+    AttribArray<float4> position : POSITION,
+    AttribArray<int> vertexId : VERTEXID)
+{
+    return;
+}

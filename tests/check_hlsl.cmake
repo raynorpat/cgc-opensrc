@@ -13,8 +13,16 @@ set(cgc_entry_args)
 if(DEFINED ENTRY AND NOT "${ENTRY}" STREQUAL "")
     list(APPEND cgc_entry_args -entry "${ENTRY}")
 endif()
+set(cgc_profile_args)
+if(DEFINED PROFILE_OPTIONS)
+    string(REPLACE "\\;" ";" hlsl_profile_options "${PROFILE_OPTIONS}")
+    foreach(hlsl_option IN LISTS hlsl_profile_options)
+        list(APPEND cgc_profile_args -po "${hlsl_option}")
+    endforeach()
+endif()
 execute_process(
     COMMAND "${CGC}" -quiet -profile "${PROFILE}" ${cgc_entry_args}
+        ${cgc_profile_args}
         -o "${ACTUAL}" "${SOURCE}"
     WORKING_DIRECTORY "${source_directory}"
     RESULT_VARIABLE result

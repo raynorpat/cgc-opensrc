@@ -4514,6 +4514,42 @@ static HlslExpr *HlslWrapperMember(HlslModule *module, HlslDecl *object,
     return expression;
 } // HlslWrapperMember
 
+static HlslExpr *HlslWrapperMemberExpr(HlslModule *module,
+                                       HlslExpr *object,
+                                       HlslDecl *member)
+{
+    HlslExpr *expression;
+
+    if (object == NULL || member == NULL)
+        return NULL;
+    expression = HlslNewExpr(module, HLSL_EXPR_MEMBER, member->type);
+    if (expression != NULL) {
+        expression->u.member.object = object;
+        expression->u.member.decl = member;
+        expression->u.member.name = member->name;
+    }
+    return expression;
+} // HlslWrapperMemberExpr
+
+static HlslExpr *HlslWrapperIndex(HlslModule *module, HlslExpr *object,
+                                  int index, HlslType type)
+{
+    HlslExpr *expression;
+    HlslExpr *literal;
+
+    if (object == NULL || index < 0)
+        return NULL;
+    literal = HlslNewExpr(module, HLSL_EXPR_INT,
+                          HlslNumericType(HLSL_BASE_INT, 1));
+    expression = HlslNewExpr(module, HLSL_EXPR_INDEX, type);
+    if (literal == NULL || expression == NULL)
+        return NULL;
+    literal->u.literalInt = index;
+    expression->u.index.object = object;
+    expression->u.index.index = literal;
+    return expression;
+} // HlslWrapperIndex
+
 static HlslExpr *HlslWrapperAssign(HlslModule *module, HlslExpr *left,
                                    HlslExpr *right)
 {
@@ -4614,8 +4650,17 @@ static int HlslWrapperModernSemantic(HlslModule *module,
         return HlslFail(module, HLSL_ERROR_SEMANTIC, &decl->loc, source);
     }
     if (kind == HLSL_SEMANTIC_USER) {
-        if (sprintf(spelling, "%s%d", root, index) < 0)
+        if (!strcmp(root, "VERTEXID") && index == 0 &&
+            ((profile->stage == HLSL_STAGE_VERTEX &&
+              direction == HLSL_DIRECTION_OUTPUT) ||
+             (profile->stage == HLSL_STAGE_GEOMETRY &&
+              direction == HLSL_DIRECTION_INPUT)))
+        {
+            if (sprintf(spelling, "CG_VERTEXID0") < 0)
+                return 0;
+        } else if (sprintf(spelling, "%s%d", root, index) < 0) {
             return 0;
+        }
     } else if (!HlslModernSemanticSpelling(kind, index, spelling,
                                            sizeof(spelling)))
     {
@@ -4686,6 +4731,39 @@ static HlslDecl *HlslWrapperMemberDecl(HlslModule *module,
     return member;
 } // HlslWrapperMemberDecl
 
+static HlslDecl *HlslWrapperGeometryMemberDecl(HlslModule *module,
+    const HlslProfileDesc *profile, HlslDecl *owner,
+    const HlslDecl *source, const char *semantic)
+{
+    HlslDecl *member;
+    const char *name;
+    const void *identity;
+
+    if (source == NULL || source->type.arraySize <= 0 ||
+        source->type.elementType == NULL)
+    {
+        return NULL;
+    }
+    identity = source->identity != NULL ? source->identity : source;
+    name = HlslAllocateScopedSymbolName(module, owner, identity,
+                                        source->name);
+    member = name != NULL ? HlslNewDecl(module, HLSL_STORAGE_NONE,
+        *source->type.elementType, name) : NULL;
+    if (member != NULL) {
+        member->identity = source->identity;
+        member->publicName = source->publicName;
+        member->inputSemantic = source->inputSemantic;
+        member->loc = source->loc;
+        member->sourceOrdinal = source->sourceOrdinal;
+        if (!HlslWrapperModernSemantic(module, profile, member, semantic,
+                                       HLSL_DIRECTION_INPUT))
+        {
+            return NULL;
+        }
+    }
+    return member;
+} // HlslWrapperGeometryMemberDecl
+
 static HlslBinding *HlslWrapperFindBinding(HlslModule *module,
                                            const void *identity)
 {
@@ -4745,6 +4823,14 @@ static int hlslVertexInputIdentity;
 static int hlslVertexOutputIdentity;
 static int hlslPixelInputIdentity;
 static int hlslPixelOutputIdentity;
+static int hlslGeometryInputIdentity;
+static int hlslGeometryOutputIdentity;
+
+typedef struct HlslGeometryArrayCopy_Rec {
+    struct HlslGeometryArrayCopy_Rec *next;
+    HlslDecl *local;
+    HlslDecl *member;
+} HlslGeometryArrayCopy;
 
 int HlslBuildEntryWrapper(HlslModule *module,
                           const HlslProfileDesc *profile)
@@ -4762,6 +4848,10 @@ int HlslBuildEntryWrapper(HlslModule *module,
     HlslDecl *resultMember;
     HlslDecl *wrapperResultMember;
     HlslDecl *local;
+    HlslDecl *geometryScalarInputs;
+    HlslGeometryArrayCopy *geometryArrayCopies;
+    HlslGeometryArrayCopy *geometryArrayCopy;
+    HlslGeometryArrayCopy **geometryArrayCopyTail;
     HlslBinding *binding;
     HlslExpr *arguments;
     HlslExpr *argument;
@@ -4773,12 +4863,16 @@ int HlslBuildEntryWrapper(HlslModule *module,
     HlslType inputType;
     HlslType outputType;
     HlslType wrapperResultType;
+    HlslType geometryInputType;
+    HlslType *geometryInputElement;
     const char *inputName;
     const char *memberName;
     const char *outputName;
     const char *semantic;
     int hasInput;
     int hasOutput;
+    int geometry;
+    int i;
 
     if (module == NULL || profile == NULL || module->entry == NULL ||
         module->stage != profile->stage)
@@ -4789,18 +4883,21 @@ int HlslBuildEntryWrapper(HlslModule *module,
     if (HlslWrapperIsEmptyEntry(module))
         return 1;
     entry = module->entry;
+    geometry = module->stage == HLSL_STAGE_GEOMETRY;
     inputName = HlslAllocateGeneratedName(module,
         module->stage == HLSL_STAGE_VERTEX ?
             (const void *) &hlslVertexInputIdentity :
+        geometry ? (const void *) &hlslGeometryInputIdentity :
             (const void *) &hlslPixelInputIdentity,
         module->stage == HLSL_STAGE_VERTEX ?
-            "cg_VertexIn" : "cg_PixelIn");
+            "cg_VertexIn" : geometry ? "cg_GeometryIn" : "cg_PixelIn");
     outputName = HlslAllocateGeneratedName(module,
         module->stage == HLSL_STAGE_VERTEX ?
             (const void *) &hlslVertexOutputIdentity :
+        geometry ? (const void *) &hlslGeometryOutputIdentity :
             (const void *) &hlslPixelOutputIdentity,
         module->stage == HLSL_STAGE_VERTEX ?
-            "cg_VertexOut" : "cg_PixelOut");
+            "cg_VertexOut" : geometry ? "cg_GeometryOut" : "cg_PixelOut");
     if (inputName == NULL || outputName == NULL)
         return HlslBindFailure(module, NULL, HLSL_ERROR_NAME_COLLISION,
                                "HLSL wrapper interface name");
@@ -4860,6 +4957,9 @@ int HlslBuildEntryWrapper(HlslModule *module,
     arguments = NULL;
     initializers = NULL;
     parameterCopies = NULL;
+    geometryScalarInputs = NULL;
+    geometryArrayCopies = NULL;
+    geometryArrayCopyTail = &geometryArrayCopies;
     for (parameter = entry->parameters; parameter != NULL;
          parameter = parameter->next)
     {
@@ -4872,6 +4972,51 @@ int HlslBuildEntryWrapper(HlslModule *module,
                                        HLSL_ERROR_INVALID_IR,
                                        "entry uniform binding");
             argument = HlslWrapperSymbol(module, binding->declaration);
+        } else if (geometry &&
+                   parameter->parameterQualifier == HLSL_PARAMETER_IN &&
+                   parameter->type.arraySize > 0)
+        {
+            if (parameter->type.arraySize != module->geometryInputCount ||
+                parameter->type.elementType == NULL)
+            {
+                return HlslBindFailure(module, NULL,
+                    HLSL_ERROR_ENTRY_ABI, "geometry AttribArray extent");
+            }
+            inputMember = HlslWrapperGeometryMemberDecl(module, profile,
+                inputStruct, parameter, parameter->semantic);
+            if (inputMember == NULL)
+                return 0;
+            HlslAppendDecl(&inputStruct->members, inputMember);
+            local = HlslNewDecl(module, HLSL_STORAGE_NONE,
+                                parameter->type, parameter->name);
+            if (local == NULL)
+                return 0;
+            local->identity = parameter->identity;
+            argument = HlslWrapperSymbol(module, local);
+            geometryArrayCopy = (HlslGeometryArrayCopy *)
+                module->alloc(module->allocArg,
+                              sizeof(HlslGeometryArrayCopy));
+            if (argument == NULL || geometryArrayCopy == NULL)
+                return 0;
+            memset(geometryArrayCopy, 0, sizeof(*geometryArrayCopy));
+            geometryArrayCopy->local = local;
+            geometryArrayCopy->member = inputMember;
+            *geometryArrayCopyTail = geometryArrayCopy;
+            geometryArrayCopyTail = &geometryArrayCopy->next;
+        } else if (geometry &&
+                   parameter->parameterQualifier == HLSL_PARAMETER_IN)
+        {
+            semantic = HlslWrapperInputSemantic(profile, parameter);
+            inputMember = HlslWrapperMemberDecl(module, profile,
+                inputStruct, parameter, parameter->name, semantic);
+            if (inputMember == NULL || semantic == NULL)
+                return HlslBindFailure(module, NULL,
+                                       HLSL_ERROR_SEMANTIC,
+                                       parameter->name);
+            inputMember->storage = HLSL_STORAGE_INPUT;
+            HlslAppendDecl(&geometryScalarInputs, inputMember);
+            argument = HlslWrapperConvert(module,
+                HlslWrapperSymbol(module, inputMember), parameter->type);
         } else if (parameter->parameterQualifier == HLSL_PARAMETER_IN &&
                    parameter->type.base == HLSL_BASE_STRUCT)
         {
@@ -4968,7 +5113,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
     outputStruct->type.members = outputStruct->members;
     inputType.members = inputStruct->members;
     outputType.members = outputStruct->members;
-    hasInput = inputStruct->members != NULL;
+    hasInput = inputStruct->members != NULL || geometryScalarInputs != NULL;
     hasOutput = outputStruct->members != NULL;
     if (profile->semanticPolicy != HLSL_SEMANTIC_POLICY_MODERN &&
         (!hasInput || !hasOutput))
@@ -4976,7 +5121,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
         return HlslBindFailure(module, NULL, HLSL_ERROR_ENTRY_ABI,
                                "empty HLSL wrapper interface");
     }
-    if (hasInput)
+    if (inputStruct->members != NULL)
         HlslAppendDecl(&module->structs, inputStruct);
     if (hasOutput)
         HlslAppendDecl(&module->structs, outputStruct);
@@ -4984,11 +5129,26 @@ int HlslBuildEntryWrapper(HlslModule *module,
     wrapperResultType = hasOutput ? outputType :
                         HlslNumericType(HLSL_BASE_VOID, 0);
     wrapper = HlslNewFunction(module, wrapperResultType, "main");
-    inputParameter = hasInput ?
-        HlslNewDecl(module, HLSL_STORAGE_INPUT, inputType, "input") : NULL;
+    inputParameter = NULL;
+    if (inputStruct->members != NULL) {
+        geometryInputType = inputType;
+        if (geometry) {
+            geometryInputElement = (HlslType *) module->alloc(
+                module->allocArg, sizeof(HlslType));
+            if (geometryInputElement == NULL)
+                return 0;
+            *geometryInputElement = inputType;
+            geometryInputType = HlslNumericType(HLSL_BASE_VOID, 0);
+            geometryInputType.arraySize = module->geometryInputCount;
+            geometryInputType.elementType = geometryInputElement;
+        }
+        inputParameter = HlslNewDecl(module, HLSL_STORAGE_INPUT,
+            geometry ? geometryInputType : inputType, "input");
+    }
     outputLocal = hasOutput ?
         HlslNewDecl(module, HLSL_STORAGE_NONE, outputType, "output") : NULL;
-    if (wrapper == NULL || (hasInput && inputParameter == NULL) ||
+    if (wrapper == NULL ||
+        (inputStruct->members != NULL && inputParameter == NULL) ||
         (hasOutput && outputLocal == NULL))
         return 0;
     wrapper->identity = wrapper;
@@ -4996,6 +5156,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
         inputParameter->identity = inputParameter;
         HlslAppendDecl(&wrapper->parameters, inputParameter);
     }
+    HlslAppendDecl(&wrapper->parameters, geometryScalarInputs);
     if (outputLocal != NULL)
         outputLocal->identity = outputLocal;
 
@@ -5020,6 +5181,31 @@ int HlslBuildEntryWrapper(HlslModule *module,
         right = statement->u.expression->u.binary.right;
         if (!HlslWrapperRepairInput(module, right, inputParameter))
             return 0;
+    }
+    for (geometryArrayCopy = geometryArrayCopies;
+         geometryArrayCopy != NULL;
+         geometryArrayCopy = geometryArrayCopy->next)
+    {
+        for (i = 0; i < module->geometryInputCount; i++) {
+            HlslExpr *leftElement;
+            HlslExpr *rightElement;
+            HlslExpr *rightMember;
+
+            leftElement = HlslWrapperIndex(module,
+                HlslWrapperSymbol(module, geometryArrayCopy->local), i,
+                *geometryArrayCopy->local->type.elementType);
+            rightElement = HlslWrapperIndex(module,
+                HlslWrapperSymbol(module, inputParameter), i, inputType);
+            rightMember = HlslWrapperMemberExpr(module, rightElement,
+                                                geometryArrayCopy->member);
+            statement = HlslWrapperExprStmt(module,
+                HlslWrapperAssign(module, leftElement,
+                    HlslWrapperConvert(module, rightMember,
+                        *geometryArrayCopy->local->type.elementType)));
+            if (statement == NULL)
+                return 0;
+            HlslAppendStmt(&initializers, statement);
+        }
     }
     if (outputLocal != NULL)
         HlslAppendDecl(&wrapper->locals, outputLocal);
