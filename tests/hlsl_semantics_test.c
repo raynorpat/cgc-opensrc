@@ -168,6 +168,37 @@ static void FreeStage(slHAL *hal)
     assert(hal->FreeHAL(hal));
 }
 
+static void AssertInvalidProfileLeavesHALUnchanged(
+    const HlslProfileDesc *profile)
+{
+    static const char sentinelVersion[] = "sentinel version";
+    slHAL hal;
+
+    memset(&hal, 0, sizeof(hal));
+    hal.version = sentinelVersion;
+    hal.localData = &hal;
+    hal.incid = 101;
+    hal.outcid = 202;
+    assert(!InitHAL_hlsl_profile(&hal, profile));
+    assert(hal.version == sentinelVersion);
+    assert(hal.localData == &hal);
+    assert(hal.incid == 101);
+    assert(hal.outcid == 202);
+}
+
+static void CheckProfileInitializerPreflight(void)
+{
+    HlslProfileDesc profile;
+
+    profile = HlslProfile_hlslv;
+    profile.version = NULL;
+    AssertInvalidProfileLeavesHALUnchanged(&profile);
+
+    profile = HlslProfile_hlslv;
+    profile.semanticPolicy = (HlslSemanticPolicy) 2;
+    AssertInvalidProfileLeavesHALUnchanged(&profile);
+}
+
 static const char *FindCanonicalRegister(const HlslProfileDesc *profile,
                                          const char *root, int index,
                                          int isOutput)
@@ -1109,6 +1140,7 @@ int main(int argc, char **argv)
     else if (argc == 2 && !strcmp(argv[1], "fresh-hal"))
         CheckFreshHALIsolation();
     else {
+        CheckProfileInitializerPreflight();
         CheckParser();
         CheckCanonicalization();
         CheckConnectors();

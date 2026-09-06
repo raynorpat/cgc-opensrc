@@ -198,6 +198,7 @@ const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
     const char *semantic, int IsOutVal);
 int HlslProfileHasCapability(const HlslProfileDesc *profile,
     unsigned int capability);
+int HlslProfileIsValid(const HlslProfileDesc *profile);
 
 // HLSL backend phases:
 int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,

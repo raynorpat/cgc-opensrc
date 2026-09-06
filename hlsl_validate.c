@@ -2347,35 +2347,18 @@ static int HlslIsEmptyModule(const HlslModule *module)
            module->bindings == NULL;
 } // HlslIsEmptyModule
 
-static int HlslValidateProfileDescriptor(HlslModule *module,
-                                         const HlslProfileDesc *profile)
-{
-    if (profile->target == NULL || profile->target[0] == '\0' ||
-        profile->version == NULL || profile->version[0] == '\0' ||
-        (profile->syntax == HLSL_SYNTAX_LEGACY &&
-         (profile->model == HLSL_SHADER_MODEL_4 ||
-          profile->model == HLSL_SHADER_MODEL_5)) ||
-        (profile->syntax == HLSL_SYNTAX_MODERN &&
-         profile->model == HLSL_SHADER_MODEL_3) ||
-        (profile->stage == HLSL_STAGE_GEOMETRY &&
-         !HlslProfileHasCapability(profile, HLSL_CAP_GEOMETRY)))
-    {
-        return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
-                        "invalid HLSL profile descriptor");
-    }
-    return 1;
-} // HlslValidateProfileDescriptor
-
 int HlslValidateModule(HlslModule *module,
                        const HlslProfileDesc *profile)
 {
     if (module == NULL || profile == NULL)
         return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
                         "invalid HLSL module");
-    if (!HlslValidateProfileDescriptor(module, profile))
-        return 0;
+    if (!HlslProfileIsValid(profile))
+        return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
+                        "invalid HLSL profile descriptor");
     if ((module->stage != HLSL_STAGE_VERTEX &&
-         module->stage != HLSL_STAGE_PIXEL) ||
+         module->stage != HLSL_STAGE_PIXEL &&
+         module->stage != HLSL_STAGE_GEOMETRY) ||
         module->stage != profile->stage || module->entry == NULL ||
         module->errors != 0)
     {

@@ -2596,7 +2596,37 @@ static void TestTargetValidatorRejectsImpossibleProfiles(void)
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     profile = HlslProfile_hlslv;
     profile.stage = HLSL_STAGE_GEOMETRY;
+    fixture.module.stage = HLSL_STAGE_GEOMETRY;
     AssertInvalidValidationFixture(&fixture, &profile);
+    assert(!strcmp(fixture.module.errorReason,
+                   "invalid HLSL profile descriptor"));
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.model = (HlslShaderModel) 31;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.syntax = (HlslSyntaxFamily) 2;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.semanticPolicy = (HlslSemanticPolicy) 2;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.resourcePolicy = (HlslResourcePolicy) 2;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    profile = HlslProfile_hlslv;
+    profile.stage = (HlslStage) 3;
+    AssertInvalidValidationFixture(&fixture, &profile);
+    assert(!strcmp(fixture.module.errorReason,
+                   "invalid HLSL profile descriptor"));
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     profile = HlslProfile_hlslv;
@@ -3341,12 +3371,33 @@ int main(int argc, char **argv)
                               &semanticIndex));
     assert(!HlslParseSemantic("TEXCOORD0", semanticRoot, 4,
                               &semanticIndex));
-    assert(sizeof(&InitHAL_hlsl_profile) > 0);
     assert(HlslProfile_hlslv.stage == HLSL_STAGE_VERTEX);
     assert(HlslProfile_hlslv.model == HLSL_SHADER_MODEL_3);
     assert(HlslProfile_hlslv.syntax == HLSL_SYNTAX_LEGACY);
+    assert(HlslProfile_hlslv.semanticPolicy == HLSL_SEMANTIC_POLICY_DX9);
+    assert(HlslProfile_hlslv.resourcePolicy == HLSL_RESOURCE_POLICY_DX9);
     assert(HlslProfile_hlslf.stage == HLSL_STAGE_PIXEL);
     assert(HlslProfile_hlslf.model == HLSL_SHADER_MODEL_3);
+    assert(HlslProfile_hlslf.syntax == HLSL_SYNTAX_LEGACY);
+    assert(HlslProfile_hlslf.semanticPolicy == HLSL_SEMANTIC_POLICY_DX9);
+    assert(HlslProfile_hlslf.resourcePolicy == HLSL_RESOURCE_POLICY_DX9);
+    assert(HlslProfile_hlslv.capabilities == 0u);
+    assert(HlslProfile_hlslf.capabilities ==
+           (HLSL_CAP_DISCARD | HLSL_CAP_DERIVATIVES));
+    assert(HlslProfile_hlslv.limits->depthOutputs == 0);
+    assert(HlslProfile_hlslv.limits->clipDistanceComponents == 0);
+    assert(HlslProfile_hlslv.limits->constantBufferSlots == 0);
+    assert(HlslProfile_hlslv.limits->constantBufferVectors == 0);
+    assert(HlslProfile_hlslv.limits->resources == 0);
+    assert(HlslProfile_hlslv.limits->geometryMaxVertices == 0);
+    assert(HlslProfile_hlslv.limits->geometryTotalOutputComponents == 0);
+    assert(HlslProfile_hlslf.limits->depthOutputs == 1);
+    assert(HlslProfile_hlslf.limits->clipDistanceComponents == 0);
+    assert(HlslProfile_hlslf.limits->constantBufferSlots == 0);
+    assert(HlslProfile_hlslf.limits->constantBufferVectors == 0);
+    assert(HlslProfile_hlslf.limits->resources == 0);
+    assert(HlslProfile_hlslf.limits->geometryMaxVertices == 0);
+    assert(HlslProfile_hlslf.limits->geometryTotalOutputComponents == 0);
     assert(!HlslProfileHasCapability(&HlslProfile_hlslv,
                                      HLSL_CAP_GEOMETRY));
     assert(HlslProfileHasCapability(&HlslProfile_hlslf,

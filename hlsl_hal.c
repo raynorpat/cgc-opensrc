@@ -215,6 +215,39 @@ int HlslProfileHasCapability(const HlslProfileDesc *profile,
            (profile->capabilities & capability) != 0;
 } // HlslProfileHasCapability
 
+int HlslProfileIsValid(const HlslProfileDesc *profile)
+{
+    if (profile == NULL ||
+        (profile->stage != HLSL_STAGE_VERTEX &&
+         profile->stage != HLSL_STAGE_PIXEL &&
+         profile->stage != HLSL_STAGE_GEOMETRY) ||
+        (profile->model != HLSL_SHADER_MODEL_3 &&
+         profile->model != HLSL_SHADER_MODEL_4 &&
+         profile->model != HLSL_SHADER_MODEL_5) ||
+        (profile->syntax != HLSL_SYNTAX_LEGACY &&
+         profile->syntax != HLSL_SYNTAX_MODERN) ||
+        (profile->semanticPolicy != HLSL_SEMANTIC_POLICY_DX9 &&
+         profile->semanticPolicy != HLSL_SEMANTIC_POLICY_MODERN) ||
+        (profile->resourcePolicy != HLSL_RESOURCE_POLICY_DX9 &&
+         profile->resourcePolicy != HLSL_RESOURCE_POLICY_MODERN) ||
+        profile->target == NULL || profile->target[0] == '\0' ||
+        profile->version == NULL || profile->version[0] == '\0')
+    {
+        return 0;
+    }
+    if ((profile->model == HLSL_SHADER_MODEL_3) !=
+        (profile->syntax == HLSL_SYNTAX_LEGACY))
+    {
+        return 0;
+    }
+    if (profile->stage == HLSL_STAGE_GEOMETRY &&
+        !HlslProfileHasCapability(profile, HLSL_CAP_GEOMETRY))
+    {
+        return 0;
+    }
+    return 1;
+} // HlslProfileIsValid
+
 #if !defined(HLSL_CANONICALIZATION_ONLY)
 
 #define HLSL_MAX_INTERFACE_REGISTERS 32
@@ -302,6 +335,8 @@ int InitHAL_hlsl_profile(slHAL *fHAL, const HlslProfileDesc *profile)
 {
     HlslHALData *data;
 
+    if (fHAL == NULL || !HlslProfileIsValid(profile))
+        return 0;
     data = (HlslHALData *) malloc(sizeof(HlslHALData));
     if (data == NULL) {
         FatalError("malloc failed");
