@@ -845,20 +845,52 @@ static int HlslPackOffsetIsValid(const HlslPackOffset *offset,
     return offset->componentCount <= available;
 } // HlslPackOffsetIsValid
 
-static int HlslCbufferMembersHaveNoInitializers(const HlslDecl *members)
+static int HlslCbufferTypeHasNoInitializers(const HlslType *type,
+    const HlslPointerFrame *parent, int depth);
+
+static int HlslCbufferMembersHaveNoInitializersInner(const HlslDecl *members,
+    const HlslPointerFrame *parent, int depth)
 {
     const HlslDecl *member;
 
+    if (depth > 128 || HlslDeclListHasCycle(members))
+        return 0;
     for (member = members; member != NULL; member = member->next) {
         if (member->initializer != NULL ||
-            (member->type.base == HLSL_BASE_STRUCT &&
-             !HlslCbufferMembersHaveNoInitializers(member->type.members)) ||
-            !HlslCbufferMembersHaveNoInitializers(member->members))
+            !HlslCbufferTypeHasNoInitializers(&member->type, parent,
+                                              depth + 1) ||
+            !HlslCbufferMembersHaveNoInitializersInner(member->members,
+                                                       parent, depth + 1))
         {
             return 0;
         }
     }
     return 1;
+} // HlslCbufferMembersHaveNoInitializersInner
+
+static int HlslCbufferTypeHasNoInitializers(const HlslType *type,
+    const HlslPointerFrame *parent, int depth)
+{
+    HlslPointerFrame frame;
+
+    if (type == NULL || depth > 128 || HlslFrameContains(parent, type))
+        return 0;
+    frame.parent = parent;
+    frame.pointer = type;
+    if (type->arraySize > 0) {
+        return HlslCbufferTypeHasNoInitializers(type->elementType, &frame,
+                                                depth + 1);
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        return HlslCbufferMembersHaveNoInitializersInner(type->members, &frame,
+                                                         depth + 1);
+    }
+    return 1;
+} // HlslCbufferTypeHasNoInitializers
+
+static int HlslCbufferMembersHaveNoInitializers(const HlslDecl *members)
+{
+    return HlslCbufferMembersHaveNoInitializersInner(members, NULL, 0);
 } // HlslCbufferMembersHaveNoInitializers
 
 static int HlslPackOffsetsOverlap(const HlslPackOffset *left,

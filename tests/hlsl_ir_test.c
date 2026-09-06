@@ -2831,6 +2831,67 @@ static void TestModernResourceValidation(void)
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
     first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "hiddenInitialized");
+    assert(first != NULL);
+    first->initializer = HlslNewExpr(&fixture.module, HLSL_EXPR_FLOAT,
+                                     first->type);
+    assert(first->initializer != NULL);
+    nestedType = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    nestedType.structName = "ArrayElement";
+    nestedType.members = first;
+    nestedStructure = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                                  nestedType, "ArrayElement");
+    assert(nestedStructure != NULL);
+    nestedStructure->members = first;
+    HlslAppendDecl(&fixture.module.structs, nestedStructure);
+    memset(&arrayType, 0, sizeof(arrayType));
+    arrayType.arraySize = 2;
+    arrayType.elementType = &nestedType;
+    second = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                         arrayType, "initializedElements");
+    assert(second != NULL);
+    AddModernCbuffer(&fixture.module, second, 0);
+    offset.vector = 0;
+    offset.component = 0;
+    offset.componentCount = 8;
+    assert(HlslSetPackOffset(&fixture.module, second, offset));
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "plainValue");
+    assert(first != NULL);
+    nestedType = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    nestedType.structName = "PlainArrayElement";
+    nestedType.members = first;
+    nestedStructure = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                                  nestedType, "PlainArrayElement");
+    assert(nestedStructure != NULL);
+    nestedStructure->members = first;
+    HlslAppendDecl(&fixture.module.structs, nestedStructure);
+    memset(&arrayType, 0, sizeof(arrayType));
+    arrayType.arraySize = 2;
+    arrayType.elementType = &nestedType;
+    second = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                         arrayType, "plainElements");
+    assert(second != NULL);
+    AddModernCbuffer(&fixture.module, second, 0);
+    offset.vector = 0;
+    offset.component = 0;
+    offset.componentCount = 8;
+    assert(HlslSetPackOffset(&fixture.module, second, offset));
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+    stream = tmpfile();
+    assert(stream != NULL);
+    assert(HlslWriteModule(stream, &fixture.module, &HlslProfile_hlslv40));
+    assert(StreamLength(stream) > 0);
+    assert(fclose(stream) == 0);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
         HlslNumericType(HLSL_BASE_FLOAT, 1), "nestedInitialized");
     assert(first != NULL);
     first->initializer = HlslNewExpr(&fixture.module, HLSL_EXPR_FLOAT,
