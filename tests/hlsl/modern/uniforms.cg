@@ -1,0 +1,41 @@
+struct InnerSettings {
+    float2 offset;
+    int count;
+    bool enabled;
+};
+
+struct Settings {
+    InnerSettings inner;
+    float3 tint;
+};
+
+uniform float scale : C0 = 2.0;
+uniform float3 axis = float3(3.0, 4.0, 5.0);
+uniform float2 bias = float2(6.0, 7.0);
+uniform float3x2 transform : C2 =
+    float3x2(8.0, 9.0,
+             10.0, 11.0,
+             12.0, 13.0);
+uniform float4 colors[2] = {
+    float4(14.0, 15.0, 16.0, 17.0),
+    float4(18.0, 19.0, 20.0, 21.0)
+};
+uniform Settings settings;
+
+struct VertexOut {
+    float4 position : POSITION;
+};
+
+VertexOut uniform_vertex(float4 position : POSITION,
+                         uniform float gain = 22.0)
+{
+    VertexOut output;
+    float3 transformed;
+    transformed = mul(transform, position.xy);
+    output.position = position * (scale * gain) +
+        float4(axis.x + bias.x + transformed.x + colors[0].x,
+               settings.inner.offset.y + transformed.y,
+               settings.tint.z + (float) settings.inner.count,
+               settings.inner.enabled ? 1.0 : 0.0);
+    return output;
+}

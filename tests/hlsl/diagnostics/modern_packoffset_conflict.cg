@@ -1,0 +1,11 @@
+uniform float3x2 transform : C2;
+uniform float4 overlap : C3;
+
+struct VertexOut { float4 position : POSITION; };
+
+VertexOut packoffset_conflict(float4 position : POSITION)
+{
+    VertexOut output;
+    output.position = position;
+    return output;
+}

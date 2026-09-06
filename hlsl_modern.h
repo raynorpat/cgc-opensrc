@@ -56,6 +56,14 @@ typedef enum HlslDirection_Enum {
     HLSL_DIRECTION_OUTPUT
 } HlslDirection;
 
+typedef struct HlslModernPackCursor_Rec {
+    int vector;
+    int component;
+} HlslModernPackCursor;
+
+int HlslModernPackType(const HlslType *type, HlslModernPackCursor *cursor,
+                       HlslPackOffset *offset, int *vectorSpan);
+
 HlslSemanticKind HlslModernSemantic(HlslStage stage,
     HlslDirection direction, const char *root, int index);
 int HlslModernSemanticsConflict(HlslStage stage, HlslDirection direction,

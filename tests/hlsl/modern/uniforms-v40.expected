@@ -1,0 +1,75 @@
+// profile hlslv40
+// target vs_4_0
+// cgc-bind interface in position float4 POSITION0 POSITION0 user default
+// cgc-bind interface out position float4 SV_Position SV_Position system default
+
+// var float scale : C0 : c[0] : 1 : 1
+// cgc-default scale 2.0
+// var float3 axis :  : c[0] : 1 : 1
+// cgc-default axis 3.0 4.0 5.0
+// var float2 bias :  : c[1] : 1 : 1
+// cgc-default bias 6.0 7.0
+// var row_major float3x2 transform : C2 : c[2] : 1 : 3
+// cgc-default transform 8.0 9.0 10.0 11.0 12.0 13.0
+// var float4 colors :  : c[5] : 1 : 2
+// cgc-default colors 14.0 15.0 16.0 17.0 18.0 19.0 20.0 21.0
+// var cg_Settings settings :  : c[7] : 1 : 2
+// var float gain :  : c[9] : 1 : 1
+// cgc-default gain 22.0
+
+struct cg_InnerSettings
+{
+    float2 offset;
+    int count;
+    bool enabled;
+};
+
+struct cg_Settings
+{
+    cg_InnerSettings inner;
+    float3 tint;
+};
+
+struct cg_VertexOut
+{
+    float4 position;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut_1
+{
+    float4 position : SV_Position;
+};
+
+cbuffer cgc_Uniforms : register(b0)
+{
+    float cgc_scale : packoffset(c0.x);
+    float3 cgc_axis : packoffset(c0.y);
+    float2 cgc_bias : packoffset(c1.x);
+    row_major float3x2 cgc_transform : packoffset(c2);
+    float4 cgc_colors[2] : packoffset(c5);
+    cg_Settings cgc_settings : packoffset(c7);
+    float cgc_gain : packoffset(c9.x);
+};
+
+cg_VertexOut cg_entry(float4 position, float gain)
+{
+    cg_VertexOut cg_output = (cg_VertexOut) 0;
+    float3 transformed;
+    transformed = mul(cgc_transform, position.xy);
+    cg_output.position = position * (cgc_scale * gain) + float4(cgc_axis.x + cgc_bias.x + transformed.x + cgc_colors[0].x, cgc_settings.inner.offset.y + transformed.y, cgc_settings.tint.z + (float) cgc_settings.inner.count, (float) (cgc_settings.inner.enabled ? 1.0 : 0.0));
+    return cg_output;
+}
+
+cg_VertexOut_1 main(cg_VertexIn input)
+{
+    cg_VertexOut_1 output;
+    cg_VertexOut cg_result;
+    cg_result = cg_entry(input.position, cgc_gain);
+    output.position = cg_result.position;
+    return output;
+}

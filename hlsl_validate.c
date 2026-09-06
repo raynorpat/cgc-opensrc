@@ -815,131 +815,51 @@ static int HlslResourceObjectTypeIsValid(const HlslResource *resource)
            base == HLSL_BASE_SAMPLER_STATE;
 } // HlslResourceObjectTypeIsValid
 
-static int HlslRoundCbufferComponents(int components, int *rounded)
-{
-    if (components < 0 || components > INT_MAX - 3 || rounded == NULL)
-        return 0;
-    *rounded = ((components + 3) / 4) * 4;
-    return 1;
-} // HlslRoundCbufferComponents
-
-static int HlslCbufferTypeFootprint(const HlslType *type, int depth,
-                                    int *componentCount,
-                                    int *vectorAligned)
-{
-    const HlslDecl *member;
-    int memberAligned;
-    int memberCount;
-    int stride;
-    int total;
-
-    if (type == NULL || componentCount == NULL || vectorAligned == NULL ||
-        depth > 128 || type->arraySize < 0)
-    {
-        return 0;
-    }
-    if (type->arraySize > 0) {
-        if (type->base != HLSL_BASE_VOID || type->len != 0 ||
-            type->rows != 0 || type->cols != 0 ||
-            type->structName != NULL || type->members != NULL ||
-            type->elementType == NULL ||
-            !HlslCbufferTypeFootprint(type->elementType, depth + 1,
-                                     &memberCount, &memberAligned) ||
-            !HlslRoundCbufferComponents(memberCount, &stride) ||
-            stride <= 0 || type->arraySize > INT_MAX / stride)
-        {
-            return 0;
-        }
-        *componentCount = type->arraySize * stride;
-        *vectorAligned = 1;
-        return 1;
-    }
-    if (type->elementType != NULL)
-        return 0;
-    if (type->rows != 0 || type->cols != 0) {
-        if (type->base != HLSL_BASE_FLOAT || type->len != 0 ||
-            type->rows < 1 || type->rows > 4 ||
-            type->cols < 1 || type->cols > 4 ||
-            type->structName != NULL || type->members != NULL ||
-            type->rows > INT_MAX / 4)
-        {
-            return 0;
-        }
-        *componentCount = type->rows * 4;
-        *vectorAligned = 1;
-        return 1;
-    }
-    if (type->base == HLSL_BASE_STRUCT) {
-        if (type->len != 0 || type->structName == NULL ||
-            type->structName[0] == '\0' ||
-            HlslDeclListHasCycle(type->members))
-        {
-            return 0;
-        }
-        total = 0;
-        for (member = type->members; member != NULL;
-             member = member->next)
-        {
-            if (!HlslCbufferTypeFootprint(&member->type, depth + 1,
-                                         &memberCount, &memberAligned))
-            {
-                return 0;
-            }
-            if ((memberAligned || memberCount > 4 - total % 4) &&
-                !HlslRoundCbufferComponents(total, &total))
-            {
-                return 0;
-            }
-            if (total > INT_MAX - memberCount)
-                return 0;
-            total += memberCount;
-        }
-        if (!HlslRoundCbufferComponents(total, componentCount) ||
-            *componentCount <= 0)
-        {
-            return 0;
-        }
-        *vectorAligned = 1;
-        return 1;
-    }
-    if ((type->base != HLSL_BASE_FLOAT &&
-         type->base != HLSL_BASE_INT &&
-         type->base != HLSL_BASE_UINT &&
-         type->base != HLSL_BASE_BOOL) ||
-        type->len < 1 || type->len > 4 || type->structName != NULL ||
-        type->members != NULL)
-    {
-        return 0;
-    }
-    *componentCount = type->len;
-    *vectorAligned = 0;
-    return 1;
-} // HlslCbufferTypeFootprint
-
 static int HlslPackOffsetIsValid(const HlslPackOffset *offset,
                                  const HlslType *type, int maximumVectors)
 {
+    HlslModernPackCursor cursor;
+    HlslPackOffset packed;
     int start;
     int available;
-    int componentCount;
-    int vectorAligned;
+    int vectorSpan;
 
     if (offset == NULL || maximumVectors <= 0 || offset->vector < 0 ||
         offset->vector >= maximumVectors || offset->component < 0 ||
         offset->component > 3 || offset->componentCount <= 0 ||
-        maximumVectors > INT_MAX / 4 ||
-        !HlslCbufferTypeFootprint(type, 0, &componentCount,
-                                 &vectorAligned) ||
-        offset->componentCount != componentCount ||
-        (vectorAligned && offset->component != 0) ||
-        (!vectorAligned && offset->component + componentCount > 4))
+        maximumVectors > INT_MAX / 4)
+    {
+        return 0;
+    }
+    cursor.vector = offset->vector;
+    cursor.component = offset->component;
+    if (!HlslModernPackType(type, &cursor, &packed, &vectorSpan) ||
+        packed.vector != offset->vector ||
+        packed.component != offset->component ||
+        packed.componentCount != offset->componentCount)
     {
         return 0;
     }
     start = offset->vector * 4 + offset->component;
     available = maximumVectors * 4 - start;
-    return componentCount <= available;
+    return offset->componentCount <= available;
 } // HlslPackOffsetIsValid
+
+static int HlslCbufferMembersHaveNoInitializers(const HlslDecl *members)
+{
+    const HlslDecl *member;
+
+    for (member = members; member != NULL; member = member->next) {
+        if (member->initializer != NULL ||
+            (member->type.base == HLSL_BASE_STRUCT &&
+             !HlslCbufferMembersHaveNoInitializers(member->type.members)) ||
+            !HlslCbufferMembersHaveNoInitializers(member->members))
+        {
+            return 0;
+        }
+    }
+    return 1;
+} // HlslCbufferMembersHaveNoInitializers
 
 static int HlslPackOffsetsOverlap(const HlslPackOffset *left,
                                   const HlslPackOffset *right)
@@ -971,13 +891,14 @@ static int HlslValidateCbuffer(HlslModule *module,
         resource->binding.slot < 0 ||
         resource->binding.slot >= profile->limits->constantBufferSlots ||
         !HlslDeclListShapeIsValid(resource->members, 0) ||
-        !HlslDeclTypesAreOwned(module, resource->members, 0))
+        !HlslDeclTypesAreOwned(module, resource->members, 0) ||
+        !HlslCbufferMembersHaveNoInitializers(resource->members))
     {
         return HlslFail(module, HLSL_ERROR_CBUFFER, &resource->loc,
                         resource->name);
     }
     for (left = resource->members; left != NULL; left = left->next) {
-        if (left->initializer != NULL || !left->hasPackOffset ||
+        if (!left->hasPackOffset ||
             !HlslPackOffsetIsValid(&left->packOffset, &left->type,
                 profile->limits->constantBufferVectors))
         {
@@ -985,7 +906,7 @@ static int HlslValidateCbuffer(HlslModule *module,
                             left->name);
         }
         for (right = left->next; right != NULL; right = right->next) {
-            if (right->initializer != NULL || !right->hasPackOffset ||
+            if (!right->hasPackOffset ||
                 !HlslPackOffsetIsValid(&right->packOffset, &right->type,
                     profile->limits->constantBufferVectors) ||
                 HlslPackOffsetsOverlap(&left->packOffset,
@@ -2733,6 +2654,108 @@ static int HlslValidateBindingLeaf(HlslModule *module,
     return 1;
 } // HlslValidateBindingLeaf
 
+static int HlslCbufferDirectlyContains(const HlslModule *module,
+                                       const HlslDecl *declaration)
+{
+    const HlslResource *resource;
+    const HlslDecl *member;
+
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->kind != HLSL_RESOURCE_CBUFFER)
+            continue;
+        for (member = resource->members; member != NULL;
+             member = member->next)
+        {
+            if (member == declaration)
+                return 1;
+        }
+    }
+    return 0;
+} // HlslCbufferDirectlyContains
+
+static int HlslValidateModernBindings(HlslModule *module,
+                                      const HlslProfileDesc *profile)
+{
+    HlslModernPackCursor cursor;
+    HlslBinding *binding;
+    HlslBinding *leaf;
+    HlslPackOffset packed;
+    int vectorSpan;
+
+    for (binding = module->bindings; binding != NULL;
+         binding = binding->next)
+    {
+        if (binding->storage != HLSL_STORAGE_UNIFORM)
+            continue;
+        leaf = binding->leafBindings;
+        if (!binding->isAllocated || leaf == NULL || leaf->next != NULL ||
+            binding->declaration == NULL ||
+            binding->declaration != leaf->declaration ||
+            !HlslCbufferDirectlyContains(module, leaf->declaration) ||
+            HlslAllocationOccurrences(module, leaf) != 1 ||
+            HlslRootLeafOccurrences(module, leaf) != 1 ||
+            leaf->leafBindings != NULL || !leaf->isAllocated ||
+            leaf->storage != binding->storage ||
+            !HlslTypesEqual(&leaf->type, &binding->type) ||
+            !HlslTypesEqual(&leaf->type, &leaf->declaration->type) ||
+            !HlslStringsEqual(leaf->semantic, binding->semantic) ||
+            !HlslLocationsEqual(&leaf->loc, &binding->loc) ||
+            leaf->sourceOrdinal != binding->sourceOrdinal ||
+            leaf->recursiveOffset != 0 ||
+            leaf->hasExplicitRegister != binding->hasExplicitRegister ||
+            leaf->declaration->initializer != NULL ||
+            !leaf->declaration->hasPackOffset ||
+            !HlslNameOwnsEmission(module, leaf,
+                                  leaf->declaration->name) ||
+            !HlslDefaultsEqual(binding, leaf, 0) ||
+            !HlslPhysicalBindingsEqual(&binding->physical,
+                                       &leaf->physical) ||
+            !HlslPhysicalBindingsEqual(&leaf->physical,
+                                       &leaf->declaration->physical))
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
+                            "invalid modern HLSL binding graph");
+        }
+        cursor.vector = leaf->declaration->packOffset.vector;
+        cursor.component = leaf->declaration->packOffset.component;
+        if (!HlslModernPackType(&leaf->type, &cursor, &packed,
+                                &vectorSpan) ||
+            packed.vector != leaf->declaration->packOffset.vector ||
+            packed.component != leaf->declaration->packOffset.component ||
+            packed.componentCount !=
+                leaf->declaration->packOffset.componentCount ||
+            leaf->physical.bank != HLSL_REGISTER_C ||
+            leaf->physical.regno != packed.vector ||
+            leaf->physical.component != packed.component ||
+            leaf->physical.span != vectorSpan ||
+            !HlslPackOffsetIsValid(&packed, &leaf->type,
+                profile->limits->constantBufferVectors))
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
+                            "invalid modern HLSL physical binding");
+        }
+    }
+    for (leaf = module->allocatedBindings; leaf != NULL;
+         leaf = leaf->allocationNext)
+    {
+        if (leaf->storage == HLSL_STORAGE_UNIFORM)
+            continue;
+        if (leaf->storage != HLSL_STORAGE_SAMPLER ||
+            leaf->physical.bank != HLSL_REGISTER_S ||
+            leaf->physical.regno < 0 ||
+            leaf->physical.regno >= profile->limits->samplers ||
+            leaf->declaration == NULL ||
+            !HlslDeclTreeContains(module->globals, leaf->declaration, 0))
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &leaf->loc,
+                            "invalid modern HLSL resource binding");
+        }
+    }
+    return 1;
+} // HlslValidateModernBindings
+
 static int HlslValidateBindings(HlslModule *module,
                                 const HlslProfileDesc *profile)
 {
@@ -2751,6 +2774,9 @@ static int HlslValidateBindings(HlslModule *module,
     int defaultOffset;
     int leafOffset;
     int leafSpan;
+
+    if (profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN)
+        return HlslValidateModernBindings(module, profile);
 
     memset(c, 0, sizeof(c));
     memset(i, 0, sizeof(i));

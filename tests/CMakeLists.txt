@@ -1994,6 +1994,26 @@ add_hlsl_modern_semantic(modern_semantic_v50 hlslv50
 add_hlsl_modern_semantic(modern_semantic_p50 hlslf50
     semantics-p50.expected pixel_main)
 
+function(add_hlsl_modern_uniform name profile expected)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DENTRY=uniform_vertex
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/uniforms.cg
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/${expected}
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+endfunction()
+
+add_hlsl_modern_uniform(modern_uniform_v40 hlslv40
+    uniforms-v40.expected)
+add_hlsl_modern_uniform(modern_uniform_v50 hlslv50
+    uniforms-v50.expected)
+
 function(add_hlsl_modern_semantic_failure name profile source entry code line reason)
     add_test(
         NAME ${name}
@@ -2023,6 +2043,9 @@ add_hlsl_modern_semantic_failure(modern_pixel_user_semantic hlslf40
 add_hlsl_modern_semantic_failure(modern_reserved_semantic hlslv40
     tests/hlsl/diagnostics/modern_reserved_semantic.cg bad_reserved
     6403 2 SV_Position)
+add_hlsl_modern_semantic_failure(modern_packoffset_conflict hlslv40
+    tests/hlsl/diagnostics/modern_packoffset_conflict.cg
+    packoffset_conflict 6407 2 "overlap at c3")
 
 add_test(
     NAME hlslg40_registration

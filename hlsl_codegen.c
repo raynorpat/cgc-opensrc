@@ -1202,12 +1202,115 @@ static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module,
     return wroteRecord;
 } // HlslWriteInterfaceMetadata
 
+static int HlslWriteBindingMetadata(FILE *out,
+                                    const HlslBinding *binding)
+{
+    int i;
+
+    if (fprintf(out, "// var %s %s : %s : %s[%d] : 1 : %d\n",
+            HlslTypeName(&binding->type), binding->publicName,
+            binding->semantic != NULL ? binding->semantic : "",
+            HlslBankText(binding->physical.bank),
+            binding->physical.regno, binding->physical.span) < 0)
+    {
+        return 0;
+    }
+    if (binding->defaultCount <= 0)
+        return 1;
+    if (fprintf(out, "// cgc-default %s", binding->publicName) < 0)
+        return 0;
+    for (i = 0; i < binding->defaultCount; i++) {
+        if (fputc(' ', out) == EOF ||
+            (binding->defaultLiterals != NULL ?
+             !HlslWriteDefaultLiteral(out, &binding->defaultLiterals[i]) :
+             !HlslWriteFloat(out, binding->defaultValues[i])))
+        {
+            return 0;
+        }
+    }
+    return fputc('\n', out) != EOF;
+} // HlslWriteBindingMetadata
+
+static int HlslWriteModernBindingMetadata(FILE *out,
+                                          const HlslModule *module)
+{
+    const HlslBinding *binding;
+    const HlslBinding *next;
+    int lastOrdinal;
+    int wrote;
+
+    lastOrdinal = -1;
+    wrote = 0;
+    for (;;) {
+        next = NULL;
+        for (binding = module->bindings; binding != NULL;
+             binding = binding->next)
+        {
+            if (binding->storage != HLSL_STORAGE_UNIFORM ||
+                binding->sourceOrdinal <= lastOrdinal ||
+                (next != NULL &&
+                 binding->sourceOrdinal >= next->sourceOrdinal))
+            {
+                continue;
+            }
+            next = binding;
+        }
+        if (next == NULL)
+            break;
+        if (!HlslWriteBindingMetadata(out, next))
+            return -1;
+        lastOrdinal = next->sourceOrdinal;
+        wrote = 1;
+    }
+    return wrote;
+} // HlslWriteModernBindingMetadata
+
+static int HlslPackOffsetUsesComponent(const HlslType *type)
+{
+    return type != NULL && type->arraySize == 0 &&
+           type->base != HLSL_BASE_STRUCT && type->rows == 0 &&
+           type->cols == 0;
+} // HlslPackOffsetUsesComponent
+
+static int HlslWriteCbuffer(FILE *out, const HlslResource *resource)
+{
+    static const char components[] = "xyzw";
+    const HlslDecl *member;
+
+    if (fprintf(out, "cbuffer %s : register(b%d)\n{\n",
+                resource->name, resource->binding.slot) < 0)
+    {
+        return 0;
+    }
+    for (member = resource->members; member != NULL;
+         member = member->next)
+    {
+        if (!HlslWriteIndent(out, 1) ||
+            !HlslWriteTypeAndName(out, &member->type, member->name) ||
+            fprintf(out, " : packoffset(c%d",
+                    member->packOffset.vector) < 0)
+        {
+            return 0;
+        }
+        if (HlslPackOffsetUsesComponent(&member->type) &&
+            fprintf(out, ".%c", components[member->packOffset.component]) < 0)
+        {
+            return 0;
+        }
+        if (fputs(");\n", out) == EOF)
+            return 0;
+    }
+    return fputs("};\n", out) != EOF;
+} // HlslWriteCbuffer
+
 static int HlslEmitModule(FILE *out, const HlslModule *module,
                           const HlslProfileDesc *profile)
 {
     const HlslBinding *binding;
     const HlslDecl *decl;
     const HlslFunction *function;
+    const HlslResource *resource;
+    int modern;
     int wroteInterface;
     int wroteSection;
 
@@ -1222,48 +1325,49 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
     {
         return 0;
     }
-    for (binding = module->allocatedBindings; binding != NULL;
-         binding = binding->allocationNext)
-    {
-        if (fprintf(out, "// var %s %s : %s : %s[%d] : 1 : %d\n",
-                HlslTypeName(&binding->type), binding->publicName,
-                binding->semantic != NULL ? binding->semantic : "",
-                HlslBankText(binding->physical.bank),
-                binding->physical.regno, binding->physical.span) < 0)
-        {
+    modern = profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN;
+    if (modern) {
+        wroteSection = HlslWriteModernBindingMetadata(out, module);
+        if (wroteSection < 0)
             return 0;
-        }
-        if (binding->defaultCount > 0) {
-            int i;
-
-            if (fprintf(out, "// cgc-default %s", binding->publicName) < 0)
-                return 0;
-            for (i = 0; i < binding->defaultCount; i++) {
-                if (fputc(' ', out) == EOF ||
-                    (binding->defaultLiterals != NULL ?
-                     !HlslWriteDefaultLiteral(
-                         out, &binding->defaultLiterals[i]) :
-                     !HlslWriteFloat(out, binding->defaultValues[i])))
-                {
-                    return 0;
-                }
-            }
-            if (fputc('\n', out) == EOF)
+    } else {
+        for (binding = module->allocatedBindings; binding != NULL;
+             binding = binding->allocationNext)
+        {
+            if (!HlslWriteBindingMetadata(out, binding))
                 return 0;
         }
+        wroteSection = module->allocatedBindings != NULL;
     }
-    wroteSection = module->allocatedBindings != NULL;
     if (wroteSection && fputc('\n', out) == EOF)
         return 0;
+    if (modern) {
+        for (decl = module->structs; decl != NULL; decl = decl->next) {
+            if (!HlslWriteStruct(out, decl) || fputc('\n', out) == EOF)
+                return 0;
+        }
+        for (resource = module->resources; resource != NULL;
+             resource = resource->next)
+        {
+            if (resource->kind == HLSL_RESOURCE_CBUFFER &&
+                (!HlslWriteCbuffer(out, resource) ||
+                 fputc('\n', out) == EOF))
+            {
+                return 0;
+            }
+        }
+    }
     for (decl = module->globals; decl != NULL; decl = decl->next) {
         if (!HlslWriteDecl(out, decl, 0, 0))
             return 0;
     }
     if (module->globals != NULL && fputc('\n', out) == EOF)
         return 0;
-    for (decl = module->structs; decl != NULL; decl = decl->next) {
-        if (!HlslWriteStruct(out, decl) || fputc('\n', out) == EOF)
-            return 0;
+    if (!modern) {
+        for (decl = module->structs; decl != NULL; decl = decl->next) {
+            if (!HlslWriteStruct(out, decl) || fputc('\n', out) == EOF)
+                return 0;
+        }
     }
     for (function = module->functions; function != NULL;
          function = function->next)

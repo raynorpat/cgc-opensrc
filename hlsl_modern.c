@@ -45,6 +45,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
 #include <stdio.h>
+#include <limits.h>
 #include <string.h>
 
 #include "slglobals.h"
@@ -64,6 +65,135 @@ typedef struct HlslModernSemanticDesc_Rec {
     int firstIndex;
     int count;
 } HlslModernSemanticDesc;
+
+static int HlslModernRoundPackCursor(HlslModernPackCursor *cursor)
+{
+    if (cursor->component == 0)
+        return 1;
+    if (cursor->vector == INT_MAX)
+        return 0;
+    cursor->vector++;
+    cursor->component = 0;
+    return 1;
+} // HlslModernRoundPackCursor
+
+static int HlslModernAdvanceVector(HlslModernPackCursor *cursor)
+{
+    if (cursor->vector == INT_MAX)
+        return 0;
+    cursor->vector++;
+    cursor->component = 0;
+    return 1;
+} // HlslModernAdvanceVector
+
+static int HlslModernPackTypeInner(const HlslType *type,
+                                   HlslModernPackCursor *cursor)
+{
+    const HlslDecl *member;
+    int i;
+
+    if (type == NULL || cursor == NULL || cursor->vector < 0 ||
+        cursor->component < 0 || cursor->component > 3)
+    {
+        return 0;
+    }
+    if (type->arraySize > 0) {
+        if (type->elementType == NULL || !HlslModernRoundPackCursor(cursor))
+            return 0;
+        for (i = 0; i < type->arraySize; i++) {
+            if (!HlslModernPackTypeInner(type->elementType, cursor) ||
+                !HlslModernRoundPackCursor(cursor))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->members == NULL || !HlslModernRoundPackCursor(cursor))
+            return 0;
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslModernPackTypeInner(&member->type, cursor))
+                return 0;
+        }
+        return HlslModernRoundPackCursor(cursor);
+    }
+    if (type->rows > 0 || type->cols > 0) {
+        if (type->base != HLSL_BASE_FLOAT || type->rows < 1 ||
+            type->rows > 4 || type->cols < 1 || type->cols > 4 ||
+            type->len != 0 || !HlslModernRoundPackCursor(cursor))
+        {
+            return 0;
+        }
+        for (i = 0; i < type->rows; i++) {
+            if (!HlslModernAdvanceVector(cursor))
+                return 0;
+        }
+        return 1;
+    }
+    if ((type->base != HLSL_BASE_FLOAT && type->base != HLSL_BASE_INT &&
+         type->base != HLSL_BASE_UINT && type->base != HLSL_BASE_BOOL) ||
+        type->len < 1 || type->len > 4 || type->structName != NULL ||
+        type->elementType != NULL || type->members != NULL)
+    {
+        return 0;
+    }
+    if (type->len > 4 - cursor->component &&
+        !HlslModernRoundPackCursor(cursor))
+    {
+        return 0;
+    }
+    cursor->component += type->len;
+    if (cursor->component == 4)
+        return HlslModernAdvanceVector(cursor);
+    return 1;
+} // HlslModernPackTypeInner
+
+int HlslModernPackType(const HlslType *type, HlslModernPackCursor *cursor,
+                       HlslPackOffset *offset, int *vectorSpan)
+{
+    HlslModernPackCursor work;
+    HlslModernPackCursor start;
+    int aggregate;
+    int endComponent;
+    int span;
+
+    if (type == NULL || cursor == NULL || offset == NULL ||
+        vectorSpan == NULL || cursor->vector < 0 ||
+        cursor->component < 0 || cursor->component > 3)
+    {
+        return 0;
+    }
+    work = *cursor;
+    aggregate = type->arraySize > 0 || type->base == HLSL_BASE_STRUCT ||
+                type->rows > 0 || type->cols > 0;
+    if ((aggregate ||
+         (type->len >= 1 && type->len <= 4 &&
+          type->len > 4 - work.component)) &&
+        !HlslModernRoundPackCursor(&work))
+    {
+        return 0;
+    }
+    start = work;
+    if (!HlslModernPackTypeInner(type, &work))
+        return 0;
+    if (work.vector < start.vector)
+        return 0;
+    endComponent = work.component;
+    span = work.vector - start.vector + (endComponent != 0);
+    if (span <= 0 || start.vector > INT_MAX / 4 ||
+        work.vector > INT_MAX / 4 ||
+        (aggregate && work.component != 0))
+    {
+        return 0;
+    }
+    offset->vector = start.vector;
+    offset->component = start.component;
+    offset->componentCount = aggregate ? span * 4 : type->len;
+    *vectorSpan = span;
+    *cursor = work;
+    return 1;
+} // HlslModernPackType
 
 static const HlslModernSemanticDesc modernSemantics[] = {
     { "POSITION", HLSL_SEMANTIC_SV_POSITION,
