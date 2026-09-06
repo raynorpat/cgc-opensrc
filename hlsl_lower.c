@@ -507,15 +507,31 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
     }
     resolved = HlslLookupSourceBuiltin(context->profile->stage, name,
         &sourceResultType, sourceParams, count);
+    if (!HlslProfileAllowsBuiltin(context->profile, resolved))
+        resolved = HLSL_BUILTIN_NONE;
     if (resolved == HLSL_BUILTIN_NONE) {
-        otherStage = HlslLookupSourceBuiltin(
-            context->profile->stage == HLSL_STAGE_VERTEX ?
-            HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
-            name, &sourceResultType, sourceParams, count);
+        otherStage = HLSL_BUILTIN_NONE;
+        if (context->profile->stage != HLSL_STAGE_PIXEL)
+            otherStage = HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, name,
+                &sourceResultType, sourceParams, count);
+        if (otherStage == HLSL_BUILTIN_NONE &&
+            context->profile->stage != HLSL_STAGE_VERTEX)
+        {
+            otherStage = HlslLookupSourceBuiltin(HLSL_STAGE_VERTEX, name,
+                &sourceResultType, sourceParams, count);
+        }
+        if (otherStage == HLSL_BUILTIN_NONE &&
+            context->profile->stage != HLSL_STAGE_GEOMETRY)
+        {
+            otherStage = HlslLookupSourceBuiltin(HLSL_STAGE_GEOMETRY, name,
+                &sourceResultType, sourceParams, count);
+        }
         if (otherStage != HLSL_BUILTIN_NONE) {
             HlslLowerFailure(context,
-                HlslBuiltinIsTexture(otherStage) ? HLSL_ERROR_SAMPLER :
-                                                   HLSL_ERROR_STAGE_OPERATION,
+                HlslBuiltinIsTexture(otherStage) &&
+                !HlslProfileHasCapability(context->profile,
+                                           HLSL_CAP_TEXTURE_METHODS) ?
+                    HLSL_ERROR_SAMPLER : HLSL_ERROR_STAGE_OPERATION,
                              name, callLoc);
         } else {
             HlslLowerFailure(context,
@@ -2345,6 +2361,10 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
     if (builtinStatus < 0)
         return NULL;
     if (builtinStatus > 0) {
+        HlslTextureForm textureForm;
+        HlslExpr *coordinate;
+        HlslExpr *coordinateNext;
+
         target = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
         if (target == NULL)
             return NULL;
@@ -2354,6 +2374,25 @@ static HlslExpr *HlslLowerCall(HlslLowerContext *context, expr *source,
             target->u.call.arguments == NULL)
         {
             return NULL;
+        }
+        textureForm = HlslBuiltinTextureForm(builtin);
+        if (context->profile->resourcePolicy ==
+                HLSL_RESOURCE_POLICY_MODERN &&
+            (textureForm == HLSL_TEXTURE_PROJECTED ||
+             textureForm == HLSL_TEXTURE_BIAS ||
+             textureForm == HLSL_TEXTURE_LOD))
+        {
+            coordinate = target->u.call.arguments != NULL ?
+                target->u.call.arguments->next : NULL;
+            if (coordinate == NULL)
+                return NULL;
+            coordinateNext = coordinate->next;
+            coordinate->next = NULL;
+            coordinate = HlslCaptureValue(context, prefix, coordinate);
+            if (coordinate == NULL)
+                return NULL;
+            coordinate->next = coordinateNext;
+            target->u.call.arguments->next = coordinate;
         }
         lowering = HlslBuiltinLoweringKind(builtin);
         if (lowering == HLSL_BUILTIN_LOWER_NATIVE) {

@@ -200,6 +200,68 @@ int HlslModernLogicalComponentCount(const HlslType *type, int *count)
     return 1;
 } // HlslModernLogicalComponentCount
 
+static int HlslModernTextureBaseMatches(HlslBase base,
+                                        HlslTextureDimension dimension)
+{
+    return (base == HLSL_BASE_SAMPLER1D && dimension == HLSL_TEXTURE_1D) ||
+           (base == HLSL_BASE_SAMPLER2D && dimension == HLSL_TEXTURE_2D) ||
+           (base == HLSL_BASE_SAMPLER3D && dimension == HLSL_TEXTURE_3D) ||
+           (base == HLSL_BASE_SAMPLERCUBE &&
+            dimension == HLSL_TEXTURE_CUBE);
+} // HlslModernTextureBaseMatches
+
+int HlslModernSelectTextureMethod(HlslStage stage, HlslBuiltin intrinsic,
+    HlslTextureDimension dimension, int coordinateWidth,
+    const HlslType *resultType, HlslTextureMethod *method,
+    HlslTextureSelectReason *reason)
+{
+    HlslTextureForm form;
+
+    if (reason != NULL)
+        *reason = HLSL_TEXTURE_SELECT_UNSUPPORTED;
+    if (method == NULL || reason == NULL || resultType == NULL ||
+        !HlslBuiltinIsTexture(intrinsic))
+    {
+        return 0;
+    }
+    if (stage != HLSL_STAGE_VERTEX && stage != HLSL_STAGE_PIXEL &&
+        stage != HLSL_STAGE_GEOMETRY)
+    {
+        return 0;
+    }
+    form = HlslBuiltinTextureForm(intrinsic);
+    if ((form == HLSL_TEXTURE_IMPLICIT ||
+         form == HLSL_TEXTURE_PROJECTED || form == HLSL_TEXTURE_BIAS) &&
+        stage != HLSL_STAGE_PIXEL)
+    {
+        *reason = HLSL_TEXTURE_SELECT_STAGE;
+        return 0;
+    }
+    if (!HlslModernTextureBaseMatches(HlslBuiltinSamplerBase(intrinsic),
+                                      dimension) ||
+        coordinateWidth != HlslBuiltinTextureCoordWidth(intrinsic) ||
+        resultType->arraySize != 0 || resultType->base != HLSL_BASE_FLOAT ||
+        resultType->len != 4 || resultType->rows != 0 ||
+        resultType->cols != 0)
+    {
+        *reason = HLSL_TEXTURE_SELECT_SIGNATURE;
+        return 0;
+    }
+    if (form == HLSL_TEXTURE_LOD)
+        *method = HLSL_TEXTURE_METHOD_SAMPLE_LEVEL;
+    else if (form == HLSL_TEXTURE_BIAS)
+        *method = HLSL_TEXTURE_METHOD_SAMPLE_BIAS;
+    else if (form == HLSL_TEXTURE_GRADIENT)
+        *method = HLSL_TEXTURE_METHOD_SAMPLE_GRAD;
+    else if (form == HLSL_TEXTURE_IMPLICIT ||
+             form == HLSL_TEXTURE_PROJECTED)
+        *method = HLSL_TEXTURE_METHOD_SAMPLE;
+    else
+        return 0;
+    *reason = HLSL_TEXTURE_SELECT_OK;
+    return 1;
+} // HlslModernSelectTextureMethod
+
 static int HlslModernPackTypeInner(const HlslType *type,
     HlslModernPackCursor *cursor, const HlslModernTypeFrame *parent,
     int depth)

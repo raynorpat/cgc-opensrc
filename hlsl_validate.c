@@ -650,7 +650,8 @@ static int HlslOwnsDecl(const HlslModule *module, const HlslDecl *target)
     for (resource = module->resources; resource != NULL;
          resource = resource->next)
     {
-        if (HlslDeclTreeContains(resource->members, target, 0))
+        if (resource->sourceDeclaration == target ||
+            HlslDeclTreeContains(resource->members, target, 0))
             return 1;
     }
     if (HlslFunctionListHasCycle(module->functions))
@@ -666,6 +667,26 @@ static int HlslOwnsDecl(const HlslModule *module, const HlslDecl *target)
     }
     return 0;
 } // HlslOwnsDecl
+
+static const HlslResource *HlslResourceForDeclaration(
+    const HlslModule *module, HlslResourceKind kind,
+    const HlslDecl *declaration)
+{
+    const HlslResource *resource;
+
+    if (module == NULL || declaration == NULL)
+        return NULL;
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->kind == kind &&
+            resource->sourceDeclaration == declaration)
+        {
+            return resource;
+        }
+    }
+    return NULL;
+} // HlslResourceForDeclaration
 
 static int HlslTypeDeclsAreOwnedInner(const HlslModule *module,
     const HlslType *type, const HlslPointerFrame *parent, int depth)
@@ -753,6 +774,17 @@ static int HlslMemberBelongsToType(const HlslType *type,
 
 static int HlslDeclShapeIsValid(const HlslDecl *decl)
 {
+    int objectType;
+
+    objectType = decl != NULL && decl->type.arraySize == 0 &&
+        decl->type.len == 1 && decl->type.rows == 0 &&
+        decl->type.cols == 0 && decl->type.elementType == NULL &&
+        decl->type.structName == NULL && decl->type.members == NULL &&
+        (decl->type.base == HLSL_BASE_TEXTURE1D ||
+         decl->type.base == HLSL_BASE_TEXTURE2D ||
+         decl->type.base == HLSL_BASE_TEXTURE3D ||
+         decl->type.base == HLSL_BASE_TEXTURECUBE ||
+         decl->type.base == HLSL_BASE_SAMPLER_STATE);
     if (decl == NULL || decl->name == NULL || decl->name[0] == '\0' ||
         decl->storage < HLSL_STORAGE_NONE ||
         decl->storage > HLSL_STORAGE_BUILTIN ||
@@ -763,7 +795,8 @@ static int HlslDeclShapeIsValid(const HlslDecl *decl)
         decl->parameterQualifier < HLSL_PARAMETER_IN ||
         decl->parameterQualifier > HLSL_PARAMETER_INOUT ||
         !HlslTypeIsValid(&decl->type, 0) ||
-        HlslTypeContainsObject(&decl->type, 0))
+        (HlslTypeContainsObject(&decl->type, 0) &&
+         (decl->storage != HLSL_STORAGE_SAMPLER || !objectType)))
     {
         return 0;
     }
@@ -957,6 +990,9 @@ static int HlslValidateResources(HlslModule *module,
 {
     const HlslResource *resource;
     const HlslResource *other;
+    const HlslResource *pair;
+    const HlslDecl *declaration;
+    HlslRegisterBank bank;
     int matches;
 
     if (module->resources != NULL && profile->limits == NULL)
@@ -1008,6 +1044,36 @@ static int HlslValidateResources(HlslModule *module,
         {
             return HlslFail(module, HLSL_ERROR_RESOURCE_PAIR,
                             &resource->loc, resource->name);
+        }
+        if (resource->kind != HLSL_RESOURCE_CBUFFER) {
+            declaration = resource->sourceDeclaration;
+            bank = resource->kind == HLSL_RESOURCE_TEXTURE ?
+                   HLSL_REGISTER_T : HLSL_REGISTER_S;
+            pair = declaration != NULL &&
+                   declaration->resourcePair != NULL ?
+                   HlslResourceForDeclaration(module,
+                       resource->kind == HLSL_RESOURCE_TEXTURE ?
+                       HLSL_RESOURCE_SAMPLER : HLSL_RESOURCE_TEXTURE,
+                       declaration->resourcePair) : NULL;
+            if (declaration == NULL ||
+                declaration->storage != HLSL_STORAGE_SAMPLER ||
+                !HlslTypesEqual(&resource->type, &declaration->type) ||
+                !HlslStringsEqual(resource->name, declaration->name) ||
+                declaration->physical.bank != bank ||
+                declaration->physical.regno != resource->binding.slot ||
+                declaration->physical.span != 1 ||
+                declaration->resourcePairId != resource->binding.pairId ||
+                declaration->resourcePair == NULL ||
+                declaration->resourcePair->resourcePair != declaration ||
+                declaration->resourcePair->resourcePairId !=
+                    declaration->resourcePairId ||
+                pair == NULL ||
+                pair->binding.slot != resource->binding.slot ||
+                pair->binding.pairId != resource->binding.pairId)
+            {
+                return HlslFail(module, HLSL_ERROR_RESOURCE_PAIR,
+                                &resource->loc, resource->name);
+            }
         }
         for (other = resource->next; other != NULL; other = other->next) {
             if ((resource->kind == other->kind &&
@@ -1355,7 +1421,8 @@ static int HlslValidateExpression(HlslValidationContext *context,
     if (expression == NULL || depth > 512 ||
         HlslFrameContains(parent, expression) ||
         !HlslTypeIsValid(&expression->type, 1) ||
-        HlslTypeContainsObject(&expression->type, 0) ||
+        (HlslTypeContainsObject(&expression->type, 0) &&
+         expression->kind != HLSL_EXPR_SYMBOL) ||
         !HlslTypeDeclsAreOwned(context->module, &expression->type))
     {
         return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
@@ -1532,6 +1599,110 @@ static int HlslValidateExpression(HlslValidationContext *context,
                          "invalid HLSL swizzle expression");
         }
         return 1;
+    case HLSL_EXPR_TEXTURE_METHOD:
+        {
+            const HlslExpr *texture;
+            const HlslExpr *sampler;
+            const HlslExpr *coordinates;
+            const HlslExpr *argument1;
+            const HlslExpr *argument2;
+            const HlslDecl *textureDecl;
+            const HlslDecl *samplerDecl;
+            const HlslResource *textureResource;
+            const HlslResource *samplerResource;
+            int width;
+
+            texture = expression->u.textureMethod.texture;
+            sampler = expression->u.textureMethod.sampler;
+            coordinates = expression->u.textureMethod.coordinates;
+            argument1 = expression->u.textureMethod.argument1;
+            argument2 = expression->u.textureMethod.argument2;
+            textureDecl = texture != NULL &&
+                texture->kind == HLSL_EXPR_SYMBOL ?
+                texture->u.symbol : NULL;
+            samplerDecl = sampler != NULL &&
+                sampler->kind == HLSL_EXPR_SYMBOL ?
+                sampler->u.symbol : NULL;
+            textureResource = textureDecl != NULL &&
+                textureDecl->resourcePairId >= 0 ?
+                HlslResourceForDeclaration(context->module,
+                    HLSL_RESOURCE_TEXTURE, textureDecl) : NULL;
+            samplerResource = samplerDecl != NULL &&
+                samplerDecl->resourcePairId >= 0 ?
+                HlslResourceForDeclaration(context->module,
+                    HLSL_RESOURCE_SAMPLER, samplerDecl) : NULL;
+            if (textureDecl == NULL || samplerDecl == NULL ||
+                textureDecl->resourcePair != samplerDecl ||
+                samplerDecl->resourcePair != textureDecl ||
+                textureDecl->resourcePairId != samplerDecl->resourcePairId ||
+                (textureDecl->resourcePairId >= 0 &&
+                 (textureResource == NULL || samplerResource == NULL ||
+                  textureResource->binding.pairId !=
+                      textureDecl->resourcePairId ||
+                  samplerResource->binding.pairId !=
+                      textureDecl->resourcePairId ||
+                  textureResource->binding.slot !=
+                      samplerResource->binding.slot)) ||
+                samplerDecl->type.base != HLSL_BASE_SAMPLER_STATE ||
+                expression->type.base != HLSL_BASE_FLOAT ||
+                expression->type.len != 4 ||
+                !HlslValidateExpression(context, texture,
+                    &frame, depth + 1) ||
+                !HlslValidateExpression(context, sampler,
+                    &frame, depth + 1) ||
+                !HlslValidateExpression(context, coordinates,
+                    &frame, depth + 1))
+            {
+                return context->module->errors != 0 ? 0 :
+                    HlslFail(context->module, HLSL_ERROR_RESOURCE_PAIR,
+                        &expression->loc,
+                        "invalid HLSL texture resource pair");
+            }
+            width = textureDecl->type.base == HLSL_BASE_TEXTURE1D ? 1 :
+                    textureDecl->type.base == HLSL_BASE_TEXTURE2D ? 2 :
+                    (textureDecl->type.base == HLSL_BASE_TEXTURE3D ||
+                     textureDecl->type.base == HLSL_BASE_TEXTURECUBE) ? 3 : 0;
+            if (width == 0 || coordinates->type.base != HLSL_BASE_FLOAT ||
+                coordinates->type.len != width ||
+                (expression->u.textureMethod.method ==
+                     HLSL_TEXTURE_METHOD_SAMPLE &&
+                 (argument1 != NULL || argument2 != NULL ||
+                  context->profile->stage != HLSL_STAGE_PIXEL)) ||
+                ((expression->u.textureMethod.method ==
+                      HLSL_TEXTURE_METHOD_SAMPLE_LEVEL ||
+                  expression->u.textureMethod.method ==
+                      HLSL_TEXTURE_METHOD_SAMPLE_BIAS) &&
+                 (argument1 == NULL || argument2 != NULL ||
+                  argument1->type.base != HLSL_BASE_FLOAT ||
+                  argument1->type.len != 1 ||
+                  (expression->u.textureMethod.method ==
+                       HLSL_TEXTURE_METHOD_SAMPLE_BIAS &&
+                   context->profile->stage != HLSL_STAGE_PIXEL))) ||
+                (expression->u.textureMethod.method ==
+                     HLSL_TEXTURE_METHOD_SAMPLE_GRAD &&
+                 (argument1 == NULL || argument2 == NULL ||
+                  !HlslTypesEqual(&argument1->type,
+                                  &coordinates->type) ||
+                  !HlslTypesEqual(&argument2->type,
+                                  &coordinates->type))) ||
+                expression->u.textureMethod.method <
+                    HLSL_TEXTURE_METHOD_SAMPLE ||
+                expression->u.textureMethod.method >
+                    HLSL_TEXTURE_METHOD_SAMPLE_GRAD ||
+                (argument1 != NULL &&
+                 !HlslValidateExpression(context, argument1,
+                    &frame, depth + 1)) ||
+                (argument2 != NULL &&
+                 !HlslValidateExpression(context, argument2,
+                    &frame, depth + 1)))
+            {
+                return context->module->errors != 0 ? 0 :
+                    HlslFail(context->module, HLSL_ERROR_SAMPLER,
+                        &expression->loc,
+                        "invalid HLSL texture method signature");
+            }
+            return 1;
+        }
     }
     return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
                     &expression->loc, "invalid HLSL expression kind");
@@ -1928,6 +2099,8 @@ int HlslValidateSamplerUsage(HlslModule *module,
                              const HlslProfileDesc *profile)
 {
     HlslBinding *binding;
+    HlslBinding *conflict;
+    HlslBinding *unitOwners[HLSL_MAX_SAMPLERS];
     HlslBase units[HLSL_MAX_SAMPLERS];
     HlslBase base;
     int isArray;
@@ -1944,6 +2117,7 @@ int HlslValidateSamplerUsage(HlslModule *module,
         return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
                         "cyclic HLSL binding list");
     memset(units, 0, sizeof(units));
+    memset(unitOwners, 0, sizeof(unitOwners));
     for (binding = module->bindings; binding != NULL;
          binding = binding->next)
     {
@@ -1971,6 +2145,16 @@ int HlslValidateSamplerUsage(HlslModule *module,
                             "missing HLSL sampler limits");
         if (!binding->hasExplicitRegister && !binding->isAllocated)
             continue;
+        if (profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN) {
+            if (binding->physical.bank != HLSL_REGISTER_S ||
+                binding->physical.regno < 0)
+            {
+                return HlslFail(module, HLSL_ERROR_RESOURCE_PAIR,
+                    &binding->loc,
+                    HlslBindingReason(binding, "sampler register"));
+            }
+            continue;
+        }
         if (binding->physical.bank != HLSL_REGISTER_S ||
             binding->physical.regno < 0 ||
             binding->physical.regno >= profile->limits->samplers ||
@@ -1980,10 +2164,22 @@ int HlslValidateSamplerUsage(HlslModule *module,
                 HlslBindingReason(binding, "sampler register"));
         }
         regno = binding->physical.regno;
-        if (units[regno] != HLSL_BASE_VOID && units[regno] != base)
-            return HlslFail(module, HLSL_ERROR_SAMPLER, &binding->loc,
-                HlslBindingReason(binding, "sampler unit"));
+        if (units[regno] != HLSL_BASE_VOID && units[regno] != base) {
+            conflict = binding;
+            if (unitOwners[regno] != NULL &&
+                (unitOwners[regno]->sourceOrdinal >
+                     binding->sourceOrdinal ||
+                 (unitOwners[regno]->sourceOrdinal ==
+                      binding->sourceOrdinal &&
+                  unitOwners[regno]->loc.line > binding->loc.line)))
+            {
+                conflict = unitOwners[regno];
+            }
+            return HlslFail(module, HLSL_ERROR_SAMPLER, &conflict->loc,
+                HlslBindingReason(conflict, "sampler unit"));
+        }
         units[regno] = base;
+        unitOwners[regno] = binding;
     }
     return 1;
 } // HlslValidateSamplerUsage
@@ -2795,8 +2991,8 @@ static int HlslValidateModernBindings(HlslModule *module,
             leaf->physical.bank != HLSL_REGISTER_S ||
             leaf->physical.regno < 0 ||
             leaf->physical.regno >= profile->limits->samplers ||
-            leaf->declaration == NULL ||
-            !HlslDeclTreeContains(module->globals, leaf->declaration, 0))
+            leaf->declaration == NULL || !leaf->isAllocated ||
+            !HlslOwnsDecl(module, leaf->declaration))
         {
             return HlslFail(module, HLSL_ERROR_INVALID_IR, &leaf->loc,
                             "invalid modern HLSL resource binding");
@@ -3061,6 +3257,23 @@ static int HlslValidateTargetExpression(HlslModule *module,
     case HLSL_EXPR_SWIZZLE:
         return HlslValidateTargetExpression(module, profile,
                                              expression->u.swizzle.object);
+    case HLSL_EXPR_TEXTURE_METHOD:
+        if (profile->resourcePolicy != HLSL_RESOURCE_POLICY_MODERN ||
+            !HlslProfileHasCapability(profile, HLSL_CAP_TEXTURE_METHODS))
+        {
+            return HlslFail(module, HLSL_ERROR_SAMPLER, &expression->loc,
+                            "texture methods require modern HLSL");
+        }
+        return HlslValidateTargetExpression(module, profile,
+                    expression->u.textureMethod.texture) &&
+               HlslValidateTargetExpression(module, profile,
+                    expression->u.textureMethod.sampler) &&
+               HlslValidateTargetExpression(module, profile,
+                    expression->u.textureMethod.coordinates) &&
+               HlslValidateTargetExpression(module, profile,
+                    expression->u.textureMethod.argument1) &&
+               HlslValidateTargetExpression(module, profile,
+                    expression->u.textureMethod.argument2);
     default:
         return 1;
     }

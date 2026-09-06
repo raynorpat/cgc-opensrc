@@ -900,7 +900,7 @@ static const HlslBuiltinDesc hlslBuiltinTable[] = {
       HLSL_BUILTIN_SOURCE_FLOAT),
     HLSL_TEXTURE_ROW("tex1D", HLSL_BUILTIN_TEX1DGRAD, 4,
       HLSL_BASE_SAMPLER1D, HLSL_SOURCE_BASE_SAMPLER1D, 1,
-      HLSL_BUILTIN_STAGE_PIXEL, "tex1Dgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_STAGE_BOTH, "tex1Dgrad", HLSL_TEXTURE_GRADIENT,
       HLSL_BUILTIN_SOURCE_FLOAT),
 
     HLSL_TEXTURE_ROW("tex2D", HLSL_BUILTIN_TEX2D, 2,
@@ -937,7 +937,7 @@ static const HlslBuiltinDesc hlslBuiltinTable[] = {
       HLSL_BUILTIN_SOURCE_FLOAT),
     HLSL_TEXTURE_ROW("tex2D", HLSL_BUILTIN_TEX2DGRAD, 4,
       HLSL_BASE_SAMPLER2D, HLSL_SOURCE_BASE_SAMPLER2D, 2,
-      HLSL_BUILTIN_STAGE_PIXEL, "tex2Dgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_STAGE_BOTH, "tex2Dgrad", HLSL_TEXTURE_GRADIENT,
       HLSL_BUILTIN_SOURCE_FLOAT),
 
     HLSL_TEXTURE_ROW("tex3D", HLSL_BUILTIN_TEX3D, 2,
@@ -974,7 +974,7 @@ static const HlslBuiltinDesc hlslBuiltinTable[] = {
       HLSL_BUILTIN_SOURCE_FLOAT),
     HLSL_TEXTURE_ROW("tex3D", HLSL_BUILTIN_TEX3DGRAD, 4,
       HLSL_BASE_SAMPLER3D, HLSL_SOURCE_BASE_SAMPLER3D, 3,
-      HLSL_BUILTIN_STAGE_PIXEL, "tex3Dgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_STAGE_BOTH, "tex3Dgrad", HLSL_TEXTURE_GRADIENT,
       HLSL_BUILTIN_SOURCE_FLOAT),
 
     HLSL_TEXTURE_ROW("texCUBE", HLSL_BUILTIN_TEXCUBE, 2,
@@ -1011,7 +1011,7 @@ static const HlslBuiltinDesc hlslBuiltinTable[] = {
       HLSL_BUILTIN_SOURCE_FLOAT),
     HLSL_TEXTURE_ROW("texCUBE", HLSL_BUILTIN_TEXCUBEGRAD, 4,
       HLSL_BASE_SAMPLERCUBE, HLSL_SOURCE_BASE_SAMPLERCUBE, 3,
-      HLSL_BUILTIN_STAGE_PIXEL, "texCUBEgrad", HLSL_TEXTURE_GRADIENT,
+      HLSL_BUILTIN_STAGE_BOTH, "texCUBEgrad", HLSL_TEXTURE_GRADIENT,
       HLSL_BUILTIN_SOURCE_FLOAT)
 };
 
@@ -1854,6 +1854,12 @@ int HlslExprIsPure(const HlslExpr *expr)
                HlslExprIsPure(expr->u.index.index);
     case HLSL_EXPR_SWIZZLE:
         return HlslExprIsPure(expr->u.swizzle.object);
+    case HLSL_EXPR_TEXTURE_METHOD:
+        return HlslExprIsPure(expr->u.textureMethod.texture) &&
+               HlslExprIsPure(expr->u.textureMethod.sampler) &&
+               HlslExprIsPure(expr->u.textureMethod.coordinates) &&
+               HlslExprIsPure(expr->u.textureMethod.argument1) &&
+               HlslExprIsPure(expr->u.textureMethod.argument2);
     }
     return 0;
 } // HlslExprIsPure
@@ -1896,6 +1902,32 @@ HlslBinding *HlslNewBinding(HlslModule *module, HlslStorage storage,
     }
     return binding;
 }
+
+HlslExpr *HlslNewTextureMethod(HlslModule *module, HlslTextureMethod method,
+    HlslExpr *texture, HlslExpr *sampler, HlslExpr *coordinates,
+    HlslExpr *argument1, HlslExpr *argument2, HlslType result,
+    HlslLoc loc)
+{
+    HlslExpr *expression;
+
+    if (module == NULL || texture == NULL || sampler == NULL ||
+        coordinates == NULL || method < HLSL_TEXTURE_METHOD_SAMPLE ||
+        method > HLSL_TEXTURE_METHOD_SAMPLE_GRAD)
+    {
+        return NULL;
+    }
+    expression = HlslNewLocatedExpr(module, HLSL_EXPR_TEXTURE_METHOD,
+                                    result, &loc);
+    if (expression != NULL) {
+        expression->u.textureMethod.method = method;
+        expression->u.textureMethod.texture = texture;
+        expression->u.textureMethod.sampler = sampler;
+        expression->u.textureMethod.coordinates = coordinates;
+        expression->u.textureMethod.argument1 = argument1;
+        expression->u.textureMethod.argument2 = argument2;
+    }
+    return expression;
+} // HlslNewTextureMethod
 
 HlslResource *HlslNewResource(HlslModule *module, HlslResourceKind kind,
     HlslType type, const char *name, HlslLoc loc)

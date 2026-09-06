@@ -2040,6 +2040,14 @@ static void TestTextureBuiltinSignatures(void)
         sourceParams[3] = sourceCoord;
         assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
             &sf4, sourceParams, 4) == gradIds[i]);
+        assert(HlslLookupSourceBuiltin(HLSL_STAGE_VERTEX, baseNames[i],
+            &sf4, sourceParams, 4) == gradIds[i]);
+        assert(HlslProfileAllowsBuiltin(&HlslProfile_hlslv40,
+                                        gradIds[i]));
+        assert(HlslProfileAllowsBuiltin(&HlslProfile_hlslv50,
+                                        gradIds[i]));
+        assert(!HlslProfileAllowsBuiltin(&HlslProfile_hlslv,
+                                         gradIds[i]));
         sourceParams[3] = sourceWrongCoord;
         assert(HlslLookupSourceBuiltin(HLSL_STAGE_PIXEL, baseNames[i],
             &sf4, sourceParams, 4) == HLSL_BUILTIN_NONE);
@@ -2540,6 +2548,162 @@ static HlslBinding *AddModernUniformBinding(HlslModule *module,
     return binding;
 }
 
+static HlslBinding *AddModernSamplerBinding(HlslModule *module,
+                                            HlslBase base,
+                                            const char *name,
+                                            int ordinal)
+{
+    HlslBinding *binding;
+    HlslDecl *declaration;
+    HlslType type;
+
+    type = HlslNumericType(base, 1);
+    binding = HlslNewBinding(module, HLSL_STORAGE_SAMPLER, type,
+                             name, NULL);
+    declaration = HlslNewDecl(module, HLSL_STORAGE_SAMPLER, type, name);
+    assert(binding != NULL && declaration != NULL);
+    binding->declaration = declaration;
+    binding->logicalTypeName = HlslTypeName(&type);
+    binding->sourceOrdinal = ordinal;
+    declaration->sourceOrdinal = ordinal;
+    declaration->identity = binding;
+    HlslAppendBinding(&module->bindings, binding);
+    HlslAppendDecl(&module->globals, declaration);
+    return binding;
+}
+
+static HlslResource *FindModernResource(const HlslModule *module,
+                                        HlslResourceKind kind,
+                                        const HlslDecl *source)
+{
+    HlslResource *resource;
+
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->kind == kind &&
+            resource->sourceDeclaration == source)
+        {
+            return resource;
+        }
+    }
+    return NULL;
+}
+
+static void AssertModernSamplerPair(const HlslModule *module,
+                                    const HlslBinding *binding, int slot)
+{
+    const HlslResource *texture;
+    const HlslResource *sampler;
+
+    assert(binding->isAllocated && binding->declaration != NULL);
+    texture = FindModernResource(module, HLSL_RESOURCE_TEXTURE,
+                                 binding->declaration);
+    sampler = FindModernResource(module, HLSL_RESOURCE_SAMPLER,
+                                 binding->declaration->resourcePair);
+    assert(texture != NULL && sampler != NULL);
+    assert(texture->binding.slot == slot && sampler->binding.slot == slot);
+    assert(texture->binding.pairId == sampler->binding.pairId);
+}
+
+static void TestModernSamplerPairAllocation(void)
+{
+    HlslModule module;
+    HlslProfileDesc profile;
+    HlslLimits limits;
+    HlslBinding *first;
+    HlslBinding *second;
+    HlslBinding *explicitFive;
+    HlslBinding *skipped;
+    HlslResource *reservedTexture;
+    HlslBinding *exhausted[HLSL_MAX_SAMPLERS + 1];
+    char exhaustedNames[HLSL_MAX_SAMPLERS + 1][24];
+    HlslLoc loc;
+    int i;
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    first = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER2D,
+                                    "first", 0);
+    second = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER1D,
+                                     "second", 1);
+    explicitFive = AddModernSamplerBinding(&module,
+        HLSL_BASE_SAMPLERCUBE, "explicitFive", 2);
+    explicitFive->hasExplicitRegister = 1;
+    explicitFive->physical.bank = HLSL_REGISTER_S;
+    explicitFive->physical.regno = 5;
+    assert(HlslAllocateBindings(&module, &HlslProfile_hlslf40));
+    AssertModernSamplerPair(&module, first, 0);
+    AssertModernSamplerPair(&module, second, 1);
+    AssertModernSamplerPair(&module, explicitFive, 5);
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    loc.file = 1;
+    loc.line = 1;
+    reservedTexture = HlslNewResource(&module, HLSL_RESOURCE_TEXTURE,
+        ModernObjectType(HLSL_BASE_TEXTURE2D), "reservedTexture", loc);
+    assert(reservedTexture != NULL);
+    assert(HlslBindResource(&module, reservedTexture, 2, 99));
+    first = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER2D,
+                                    "zero", 0);
+    second = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER2D,
+                                     "one", 1);
+    skipped = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER2D,
+                                      "three", 2);
+    assert(HlslAllocateBindings(&module, &HlslProfile_hlslf40));
+    AssertModernSamplerPair(&module, first, 0);
+    AssertModernSamplerPair(&module, second, 1);
+    AssertModernSamplerPair(&module, skipped, 3);
+    assert(first->declaration->resourcePairId != 99 &&
+           second->declaration->resourcePairId != 99 &&
+           skipped->declaration->resourcePairId != 99);
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    for (i = 0; i <= HLSL_MAX_SAMPLERS; i++) {
+        sprintf(exhaustedNames[i], "sampler%d", i);
+        exhausted[i] = AddModernSamplerBinding(&module,
+            HLSL_BASE_SAMPLER2D, exhaustedNames[i], i);
+    }
+    profile = HlslProfile_hlslf40;
+    limits = *profile.limits;
+    limits.samplers = HLSL_MAX_SAMPLERS;
+    limits.resources = HLSL_MAX_SAMPLERS;
+    profile.limits = &limits;
+    assert(!HlslAllocateBindings(&module, &profile));
+    assert(module.errors == 1 &&
+           module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(!strcmp(module.resourceName, "sampler pairs"));
+    assert(module.resourceUsed == HLSL_MAX_SAMPLERS + 1 &&
+           module.resourceAvailable == HLSL_MAX_SAMPLERS);
+    assert(module.resources == NULL && module.allocatedBindings == NULL);
+    for (i = 0; i <= HLSL_MAX_SAMPLERS; i++)
+        assert(!exhausted[i]->isAllocated &&
+               exhausted[i]->leafBindings == NULL);
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    first = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER2D,
+                                    "firstExplicit", 0);
+    second = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER2D,
+                                     "secondExplicit", 1);
+    first->hasExplicitRegister = second->hasExplicitRegister = 1;
+    first->physical.bank = second->physical.bank = HLSL_REGISTER_S;
+    first->physical.regno = second->physical.regno = 5;
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslf40));
+    assert(module.errors == 1 &&
+           module.errorKind == HLSL_ERROR_RESOURCE_PAIR);
+    assert(module.resources == NULL && module.allocatedBindings == NULL);
+    assert(!first->isAllocated && first->leafBindings == NULL &&
+           !second->isAllocated && second->leafBindings == NULL);
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    first = AddModernSamplerBinding(&module, HLSL_BASE_SAMPLER2D,
+                                    "allocationRollback", 0);
+    module.alloc = ResourceFaultAlloc;
+    assert(!HlslAllocateBindings(&module, &HlslProfile_hlslf40));
+    assert(module.errors == 1 && module.errorKind == HLSL_ERROR_INVALID_IR);
+    assert(module.resources == NULL && module.allocatedBindings == NULL &&
+           !first->isAllocated && first->leafBindings == NULL);
+}
+
 static void AssertModernBindingOffset(const HlslBinding *binding,
                                       int vector, int component,
                                       int componentCount)
@@ -2987,6 +3151,171 @@ static void TestModernIrBuilders(void)
     assert(failedModule.resources == NULL && failedModule.errors == 0);
 }
 
+static void TestModernTextureMethodSelection(void)
+{
+    HlslModule module;
+    HlslExpr *texture;
+    HlslExpr *sampler;
+    HlslExpr *coordinates;
+    HlslExpr *extra;
+    HlslExpr *call;
+    HlslDecl *textureDecl;
+    HlslDecl *samplerDecl;
+    HlslLoc loc;
+    HlslTextureMethod method;
+    HlslTextureSelectReason reason;
+    HlslType result;
+
+    result = HlslNumericType(HLSL_BASE_FLOAT, 4);
+    assert(HlslModernSelectTextureMethod(HLSL_STAGE_PIXEL,
+        HLSL_BUILTIN_TEX2D, HLSL_TEXTURE_2D, 2, &result,
+        &method, &reason));
+    assert(method == HLSL_TEXTURE_METHOD_SAMPLE);
+    assert(reason == HLSL_TEXTURE_SELECT_OK);
+    assert(HlslModernSelectTextureMethod(HLSL_STAGE_VERTEX,
+        HLSL_BUILTIN_TEX2DLOD, HLSL_TEXTURE_2D, 4, &result,
+        &method, &reason));
+    assert(method == HLSL_TEXTURE_METHOD_SAMPLE_LEVEL);
+    assert(HlslModernSelectTextureMethod(HLSL_STAGE_GEOMETRY,
+        HLSL_BUILTIN_TEX2DGRAD, HLSL_TEXTURE_2D, 2, &result,
+        &method, &reason));
+    assert(method == HLSL_TEXTURE_METHOD_SAMPLE_GRAD);
+    assert(!HlslModernSelectTextureMethod(HLSL_STAGE_VERTEX,
+        HLSL_BUILTIN_TEX2D, HLSL_TEXTURE_2D, 2, &result,
+        &method, &reason));
+    assert(reason == HLSL_TEXTURE_SELECT_STAGE);
+    assert(!HlslModernSelectTextureMethod(HLSL_STAGE_PIXEL,
+        HLSL_BUILTIN_TEX2D, HLSL_TEXTURE_3D, 2, &result,
+        &method, &reason));
+    assert(reason == HLSL_TEXTURE_SELECT_SIGNATURE);
+    assert(!HlslModernSelectTextureMethod(HLSL_STAGE_PIXEL,
+        HLSL_BUILTIN_TEX2D, HLSL_TEXTURE_2D, 3, &result,
+        &method, &reason));
+    assert(reason == HLSL_TEXTURE_SELECT_SIGNATURE);
+    result = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    assert(!HlslModernSelectTextureMethod(HLSL_STAGE_PIXEL,
+        HLSL_BUILTIN_TEX2D, HLSL_TEXTURE_2D, 2, &result,
+        &method, &reason));
+    assert(reason == HLSL_TEXTURE_SELECT_SIGNATURE);
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    textureDecl = HlslNewDecl(&module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_TEXTURE2D), "imageTexture");
+    samplerDecl = HlslNewDecl(&module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_SAMPLER_STATE), "imageSampler");
+    texture = HlslNewExpr(&module, HLSL_EXPR_SYMBOL, textureDecl->type);
+    sampler = HlslNewExpr(&module, HLSL_EXPR_SYMBOL, samplerDecl->type);
+    coordinates = HlslNewExpr(&module, HLSL_EXPR_SYMBOL,
+        HlslNumericType(HLSL_BASE_FLOAT, 2));
+    extra = HlslNewExpr(&module, HLSL_EXPR_FLOAT,
+        HlslNumericType(HLSL_BASE_FLOAT, 1));
+    assert(textureDecl != NULL && samplerDecl != NULL && texture != NULL &&
+           sampler != NULL && coordinates != NULL && extra != NULL);
+    texture->u.symbol = textureDecl;
+    sampler->u.symbol = samplerDecl;
+    loc.file = 4;
+    loc.line = 27;
+    call = HlslNewTextureMethod(&module, HLSL_TEXTURE_METHOD_SAMPLE_LEVEL,
+        texture, sampler, coordinates, extra, NULL,
+        HlslNumericType(HLSL_BASE_FLOAT, 4), loc);
+    assert(call != NULL && call->kind == HLSL_EXPR_TEXTURE_METHOD);
+    assert(call->u.textureMethod.method == HLSL_TEXTURE_METHOD_SAMPLE_LEVEL);
+    assert(call->u.textureMethod.texture == texture);
+    assert(call->u.textureMethod.sampler == sampler);
+    assert(call->u.textureMethod.coordinates == coordinates);
+    assert(call->u.textureMethod.argument1 == extra);
+    assert(call->u.textureMethod.argument2 == NULL);
+    assert(call->loc.file == 4 && call->loc.line == 27);
+}
+
+static void TestModernTextureMethodValidation(void)
+{
+    ValidationFixture fixture;
+    HlslResource *textureResource;
+    HlslResource *samplerResource;
+    HlslDecl *textureDecl;
+    HlslDecl *samplerDecl;
+    HlslDecl *coordinateDecl;
+    HlslExpr *texture;
+    HlslExpr *sampler;
+    HlslExpr *coordinates;
+    HlslExpr *level;
+    HlslExpr *method;
+    HlslStmt *statement;
+    HlslLoc loc;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    textureDecl = HlslNewDecl(&fixture.module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_TEXTURE2D), "imageTexture");
+    samplerDecl = HlslNewDecl(&fixture.module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_SAMPLER_STATE), "imageSampler");
+    coordinateDecl = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 2), "uv");
+    assert(textureDecl != NULL && samplerDecl != NULL &&
+           coordinateDecl != NULL);
+    fixture.entry->locals = coordinateDecl;
+    textureDecl->resourcePair = samplerDecl;
+    samplerDecl->resourcePair = textureDecl;
+    textureDecl->resourcePairId = samplerDecl->resourcePairId = 4;
+    textureDecl->physical.bank = HLSL_REGISTER_T;
+    samplerDecl->physical.bank = HLSL_REGISTER_S;
+    textureDecl->physical.regno = samplerDecl->physical.regno = 3;
+    textureDecl->physical.span = samplerDecl->physical.span = 1;
+    loc.file = 8;
+    loc.line = 14;
+    textureResource = AddModernResource(&fixture.module,
+        HLSL_RESOURCE_TEXTURE, HLSL_BASE_TEXTURE2D, "imageTexture", 3, 4);
+    samplerResource = AddModernResource(&fixture.module,
+        HLSL_RESOURCE_SAMPLER, HLSL_BASE_SAMPLER_STATE,
+        "imageSampler", 3, 4);
+    textureResource->sourceDeclaration = textureDecl;
+    samplerResource->sourceDeclaration = samplerDecl;
+    texture = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL,
+                          textureDecl->type);
+    sampler = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL,
+                          samplerDecl->type);
+    coordinates = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL,
+                              coordinateDecl->type);
+    level = HlslNewExpr(&fixture.module, HLSL_EXPR_FLOAT,
+        HlslNumericType(HLSL_BASE_FLOAT, 1));
+    assert(texture != NULL && sampler != NULL && coordinates != NULL &&
+           level != NULL);
+    texture->u.symbol = textureDecl;
+    sampler->u.symbol = samplerDecl;
+    coordinates->u.symbol = coordinateDecl;
+    method = HlslNewTextureMethod(&fixture.module,
+        HLSL_TEXTURE_METHOD_SAMPLE_LEVEL, texture, sampler, coordinates,
+        level, NULL, HlslNumericType(HLSL_BASE_FLOAT, 4), loc);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(method != NULL && statement != NULL);
+    statement->u.expression = method;
+    fixture.entry->body = statement;
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+
+    method->type = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_RESOURCE_PAIR);
+    fixture.module.errors = 0;
+    fixture.module.errorKind = HLSL_ERROR_NONE;
+    fixture.module.errorReason = NULL;
+    method->type = HlslNumericType(HLSL_BASE_FLOAT, 4);
+
+    coordinateDecl->type = HlslNumericType(HLSL_BASE_FLOAT, 3);
+    coordinates->type = coordinateDecl->type;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_SAMPLER);
+    fixture.module.errors = 0;
+    fixture.module.errorKind = HLSL_ERROR_NONE;
+    fixture.module.errorReason = NULL;
+    coordinateDecl->type = HlslNumericType(HLSL_BASE_FLOAT, 2);
+    coordinates->type = coordinateDecl->type;
+
+    samplerDecl->resourcePairId = 5;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_RESOURCE_PAIR);
+}
+
 static void TestModernResourceValidation(void)
 {
     ValidationFixture fixture;
@@ -3299,7 +3628,35 @@ static void TestModernResourceValidation(void)
     sampler = AddModernResource(&fixture.module, HLSL_RESOURCE_SAMPLER,
         HLSL_BASE_SAMPLER_STATE, "imageSampler", 3, 8);
     assert(resource != NULL && sampler != NULL);
-    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_RESOURCE_PAIR);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_TEXTURE2D), "imageTexture");
+    second = HlslNewDecl(&fixture.module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_SAMPLER_STATE), "imageSampler");
+    assert(first != NULL && second != NULL);
+    first->next = second;
+    fixture.module.globals = first;
+    first->resourcePair = second;
+    first->resourcePairId = 8;
+    first->physical.bank = HLSL_REGISTER_T;
+    first->physical.regno = 3;
+    first->physical.span = 1;
+    second->resourcePairId = 8;
+    second->physical.bank = HLSL_REGISTER_S;
+    second->physical.regno = 3;
+    second->physical.span = 1;
+    resource = AddModernResource(&fixture.module, HLSL_RESOURCE_TEXTURE,
+        HLSL_BASE_TEXTURE2D, "imageTexture", 3, 8);
+    sampler = AddModernResource(&fixture.module, HLSL_RESOURCE_SAMPLER,
+        HLSL_BASE_SAMPLER_STATE, "imageSampler", 3, 8);
+    resource->sourceDeclaration = first;
+    sampler->sourceDeclaration = second;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_RESOURCE_PAIR);
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
@@ -4914,7 +5271,10 @@ int main(int argc, char **argv)
     TestTargetValidatorRejectsImpossibleProfiles();
     TestUintValidationPolicy();
     TestModernIrBuilders();
+    TestModernTextureMethodSelection();
+    TestModernTextureMethodValidation();
     TestModernConstantBufferPacking();
+    TestModernSamplerPairAllocation();
     TestModernConstantBufferBinding();
     TestModernResourceValidation();
     TestModernGeometryValidation();

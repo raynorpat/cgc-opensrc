@@ -199,6 +199,8 @@ extern const HlslProfileDesc HlslProfile_hlslf50;
 
 // Profile registration:
 int RegisterProfiles_hlsl(void);
+int HlslProfileAllowsBuiltin(const HlslProfileDesc *profile,
+                             HlslBuiltin builtin);
 int InitHAL_hlsl_profile(slHAL *hal, const HlslProfileDesc *profile);
 int InitHAL_hlslv(slHAL *hal);
 int InitHAL_hlslf(slHAL *hal);
@@ -225,7 +227,9 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
 int HlslBuildEntryWrapper(HlslModule *module,
     const HlslProfileDesc *profile);
 int HlslLegalizeModule(HlslModule *module,
-    const HlslProfileDesc *profile);
+                       const HlslProfileDesc *profile);
+int HlslLegalizeModernTextureAbi(HlslModule *module,
+                                 const HlslProfileDesc *profile);
 int HlslAllocateBindings(HlslModule *module,
     const HlslProfileDesc *profile);
 int HlslValidateSamplerUsage(HlslModule *module,

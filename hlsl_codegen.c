@@ -226,6 +226,16 @@ static int HlslWriteDeclTypeAndName(FILE *out, const HlslDecl *decl)
 {
     const HlslType *element;
 
+    if (decl->type.arraySize == 0 && decl->type.len == 1 &&
+        (decl->type.base == HLSL_BASE_TEXTURE1D ||
+         decl->type.base == HLSL_BASE_TEXTURE2D ||
+         decl->type.base == HLSL_BASE_TEXTURE3D ||
+         decl->type.base == HLSL_BASE_TEXTURECUBE))
+    {
+        return fprintf(out, "%s<float4> %s",
+                       HlslTypeName(&decl->type), decl->name) >= 0;
+    }
+
     if (decl->storage == HLSL_STORAGE_UNIFORM &&
         decl->physical.bank == HLSL_REGISTER_I)
     {
@@ -805,6 +815,35 @@ static int HlslWriteExprImpl(FILE *out, const HlslExpr *expression,
             return 0;
         }
         break;
+    case HLSL_EXPR_TEXTURE_METHOD:
+        text = expression->u.textureMethod.method ==
+                   HLSL_TEXTURE_METHOD_SAMPLE ? "Sample" :
+               expression->u.textureMethod.method ==
+                   HLSL_TEXTURE_METHOD_SAMPLE_LEVEL ? "SampleLevel" :
+               expression->u.textureMethod.method ==
+                   HLSL_TEXTURE_METHOD_SAMPLE_BIAS ? "SampleBias" :
+               expression->u.textureMethod.method ==
+                   HLSL_TEXTURE_METHOD_SAMPLE_GRAD ? "SampleGrad" : NULL;
+        if (text == NULL ||
+            !HlslWriteExpr(out, expression->u.textureMethod.texture, 14) ||
+            fprintf(out, ".%s(", text) < 0 ||
+            !HlslWriteExpr(out, expression->u.textureMethod.sampler, 0) ||
+            fputs(", ", out) == EOF ||
+            !HlslWriteExpr(out,
+                expression->u.textureMethod.coordinates, 0) ||
+            (expression->u.textureMethod.argument1 != NULL &&
+             (fputs(", ", out) == EOF ||
+              !HlslWriteExpr(out,
+                  expression->u.textureMethod.argument1, 0))) ||
+            (expression->u.textureMethod.argument2 != NULL &&
+             (fputs(", ", out) == EOF ||
+              !HlslWriteExpr(out,
+                  expression->u.textureMethod.argument2, 0))) ||
+            fputc(')', out) == EOF)
+        {
+            return 0;
+        }
+        break;
     default:
         return 0;
     }
@@ -1320,6 +1359,42 @@ static int HlslWriteModernBindingRecord(FILE *out,
     return HlslWriteBindingDefault(out, binding);
 } // HlslWriteModernBindingRecord
 
+static int HlslWriteModernSamplerRecord(FILE *out,
+                                        const HlslModule *module,
+                                        const HlslBinding *binding)
+{
+    const HlslResource *resource;
+    int textureSlot;
+    int samplerSlot;
+
+    textureSlot = -1;
+    samplerSlot = -1;
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->sourceDeclaration == binding->declaration &&
+            resource->kind == HLSL_RESOURCE_TEXTURE)
+        {
+            textureSlot = resource->binding.slot;
+        }
+        if (binding->declaration != NULL &&
+            resource->sourceDeclaration ==
+                binding->declaration->resourcePair &&
+            resource->kind == HLSL_RESOURCE_SAMPLER)
+        {
+            samplerSlot = resource->binding.slot;
+        }
+    }
+    if (binding->publicName == NULL || binding->logicalTypeName == NULL ||
+        textureSlot < 0 || samplerSlot < 0 || textureSlot != samplerSlot)
+    {
+        return 0;
+    }
+    return fprintf(out, "// cgc-bind sampler %s %s t%d s%d\n",
+                   binding->publicName, binding->logicalTypeName,
+                   textureSlot, samplerSlot) >= 0;
+} // HlslWriteModernSamplerRecord
+
 static int HlslWriteModernBindingMetadata(FILE *out,
                                           const HlslModule *module)
 {
@@ -1335,7 +1410,8 @@ static int HlslWriteModernBindingMetadata(FILE *out,
         for (binding = module->bindings; binding != NULL;
              binding = binding->next)
         {
-            if (binding->storage != HLSL_STORAGE_UNIFORM ||
+            if ((binding->storage != HLSL_STORAGE_UNIFORM &&
+                 binding->storage != HLSL_STORAGE_SAMPLER) ||
                 binding->sourceOrdinal <= lastOrdinal ||
                 (next != NULL &&
                  binding->sourceOrdinal >= next->sourceOrdinal))
@@ -1346,7 +1422,9 @@ static int HlslWriteModernBindingMetadata(FILE *out,
         }
         if (next == NULL)
             break;
-        if (!HlslWriteModernBindingRecord(out, module, next))
+        if (!(next->storage == HLSL_STORAGE_SAMPLER ?
+              HlslWriteModernSamplerRecord(out, module, next) :
+              HlslWriteModernBindingRecord(out, module, next)))
             return -1;
         lastOrdinal = next->sourceOrdinal;
         wrote = 1;
@@ -1391,6 +1469,27 @@ static int HlslWriteCbuffer(FILE *out, const HlslResource *resource)
     }
     return fputs("};\n", out) != EOF;
 } // HlslWriteCbuffer
+
+static int HlslWriteModernResource(FILE *out,
+                                   const HlslResource *resource)
+{
+    const char *typeName;
+
+    typeName = HlslTypeName(&resource->type);
+    if (typeName == NULL)
+        return 0;
+    if (resource->kind == HLSL_RESOURCE_TEXTURE) {
+        return fprintf(out, "%s<float4> %s : register(t%d);\n",
+                       typeName, resource->name,
+                       resource->binding.slot) >= 0;
+    }
+    if (resource->kind == HLSL_RESOURCE_SAMPLER) {
+        return fprintf(out, "%s %s : register(s%d);\n",
+                       typeName, resource->name,
+                       resource->binding.slot) >= 0;
+    }
+    return 0;
+} // HlslWriteModernResource
 
 static int HlslEmitModule(FILE *out, const HlslModule *module,
                           const HlslProfileDesc *profile)
@@ -1445,6 +1544,23 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
                 return 0;
             }
         }
+        for (resource = module->resources; resource != NULL;
+             resource = resource->next)
+        {
+            if (resource->kind != HLSL_RESOURCE_CBUFFER &&
+                !HlslWriteModernResource(out, resource))
+            {
+                return 0;
+            }
+        }
+        for (resource = module->resources; resource != NULL;
+             resource = resource->next)
+        {
+            if (resource->kind != HLSL_RESOURCE_CBUFFER)
+                break;
+        }
+        if (resource != NULL && fputc('\n', out) == EOF)
+            return 0;
     }
     for (decl = module->globals; decl != NULL; decl = decl->next) {
         if (!HlslWriteDecl(out, decl, 0, 0))

@@ -374,6 +374,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_S_HLSL_SAMPLER                6409, "HLSL Shader Model 3 does not support sampler feature \"%s\""
 #define ERROR_S_HLSL_INTRINSIC              6410, "HLSL Shader Model 3 has no exact intrinsic for \"%s\""
 #define ERROR_S_HLSL_NAME_COLLISION         6411, "HLSL name cannot be resolved for \"%s\""
+#define ERROR_S_HLSL_RESOURCE_PAIR          6415, "HLSL texture/sampler resource pair cannot bind \"%s\""
 #define ERROR___HLSL_INVALID_IR              9013, "invalid HLSL intermediate representation"
 
 // Warnings:

@@ -211,6 +211,13 @@ typedef enum HlslTextureForm_Enum {
     HLSL_TEXTURE_GRADIENT
 } HlslTextureForm;
 
+typedef enum HlslTextureMethod_Enum {
+    HLSL_TEXTURE_METHOD_SAMPLE,
+    HLSL_TEXTURE_METHOD_SAMPLE_LEVEL,
+    HLSL_TEXTURE_METHOD_SAMPLE_BIAS,
+    HLSL_TEXTURE_METHOD_SAMPLE_GRAD
+} HlslTextureMethod;
+
 typedef enum HlslSourceShape_Enum {
     HLSL_SOURCE_SHAPE_VOID,
     HLSL_SOURCE_SHAPE_SCALAR,
@@ -319,7 +326,8 @@ typedef enum HlslExprKind_Enum {
     HLSL_EXPR_CAST,
     HLSL_EXPR_MEMBER,
     HLSL_EXPR_INDEX,
-    HLSL_EXPR_SWIZZLE
+    HLSL_EXPR_SWIZZLE,
+    HLSL_EXPR_TEXTURE_METHOD
 } HlslExprKind;
 
 typedef enum HlslOperator_Enum {
@@ -502,6 +510,14 @@ struct HlslExpr_Rec {
             HlslExpr *object;
             const char *mask;
         } swizzle;
+        struct {
+            HlslTextureMethod method;
+            HlslExpr *texture;
+            HlslExpr *sampler;
+            HlslExpr *coordinates;
+            HlslExpr *argument1;
+            HlslExpr *argument2;
+        } textureMethod;
     } u;
 };
 
@@ -538,6 +554,8 @@ struct HlslStmt_Rec {
 
 struct HlslDecl_Rec {
     HlslDecl *next;
+    HlslDecl *resourcePair;
+    int resourcePairId;
     HlslStorage storage;
     HlslStorageClass storageClass;
     HlslTypeQualifier typeQualifier;
@@ -687,6 +705,10 @@ HlslExpr *HlslNewExpr(HlslModule *module, HlslExprKind kind,
     HlslType type);
 HlslExpr *HlslNewLocatedExpr(HlslModule *module, HlslExprKind kind,
     HlslType type, const HlslLoc *loc);
+HlslExpr *HlslNewTextureMethod(HlslModule *module, HlslTextureMethod method,
+    HlslExpr *texture, HlslExpr *sampler, HlslExpr *coordinates,
+    HlslExpr *argument1, HlslExpr *argument2, HlslType result,
+    HlslLoc loc);
 int HlslExprIsPure(const HlslExpr *expr);
 HlslStmt *HlslNewStmt(HlslModule *module, HlslStmtKind kind);
 HlslFunction *HlslNewFunction(HlslModule *module, HlslType result,

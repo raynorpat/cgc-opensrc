@@ -1,0 +1,8 @@
+uniform sampler2D planeImage : TEXUNIT2;
+uniform samplerCUBE cubeImage : TEXUNIT2;
+
+float4 main(float2 uv : TEXCOORD0) : COLOR0
+{
+    return tex2D(planeImage, uv) +
+           texCUBE(cubeImage, float3(uv.x, uv.y, 1.0));
+}

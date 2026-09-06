@@ -56,6 +56,20 @@ typedef enum HlslDirection_Enum {
     HLSL_DIRECTION_OUTPUT
 } HlslDirection;
 
+typedef enum HlslTextureDimension_Enum {
+    HLSL_TEXTURE_1D,
+    HLSL_TEXTURE_2D,
+    HLSL_TEXTURE_3D,
+    HLSL_TEXTURE_CUBE
+} HlslTextureDimension;
+
+typedef enum HlslTextureSelectReason_Enum {
+    HLSL_TEXTURE_SELECT_OK,
+    HLSL_TEXTURE_SELECT_UNSUPPORTED,
+    HLSL_TEXTURE_SELECT_STAGE,
+    HLSL_TEXTURE_SELECT_SIGNATURE
+} HlslTextureSelectReason;
+
 typedef struct HlslModernPackCursor_Rec {
     int vector;
     int component;
@@ -78,5 +92,9 @@ int HlslModernSemanticSpelling(HlslSemanticKind semantic, int index,
 HlslInterpolation HlslModernRequiredInterpolation(int sourceBase);
 HlslInterpolation HlslModernRequiredTargetInterpolation(HlslBase base);
 const char *HlslInterpolationName(HlslInterpolation interpolation);
+int HlslModernSelectTextureMethod(HlslStage stage, HlslBuiltin intrinsic,
+    HlslTextureDimension dimension, int coordinateWidth,
+    const HlslType *resultType, HlslTextureMethod *method,
+    HlslTextureSelectReason *reason);
 
 #endif // !defined(__HLSL_MODERN_H)

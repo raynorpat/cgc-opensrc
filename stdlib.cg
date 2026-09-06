@@ -25,6 +25,18 @@
 #ifdef PROFILE_HLSLF
 #define PROFILE_HLSL 1
 #endif
+#ifdef PROFILE_HLSLV40
+#define PROFILE_HLSL 1
+#endif
+#ifdef PROFILE_HLSLF40
+#define PROFILE_HLSL 1
+#endif
+#ifdef PROFILE_HLSLV50
+#define PROFILE_HLSL 1
+#endif
+#ifdef PROFILE_HLSLF50
+#define PROFILE_HLSL 1
+#endif
 
 #ifdef PROFILE_HLSL
 
@@ -48,6 +60,20 @@ __internal float4 tex3Dlod(sampler3D image, float4 coord);
 __internal float4 texCUBElod(samplerCUBE image, float4 coord);
 
 #ifdef PROFILE_HLSLF
+__internal float4 tex1Dbias(sampler1D image, float4 coord);
+__internal float4 tex2Dbias(sampler2D image, float4 coord);
+__internal float4 tex3Dbias(sampler3D image, float4 coord);
+__internal float4 texCUBEbias(samplerCUBE image, float4 coord);
+#endif
+
+#ifdef PROFILE_HLSLF40
+__internal float4 tex1Dbias(sampler1D image, float4 coord);
+__internal float4 tex2Dbias(sampler2D image, float4 coord);
+__internal float4 tex3Dbias(sampler3D image, float4 coord);
+__internal float4 texCUBEbias(samplerCUBE image, float4 coord);
+#endif
+
+#ifdef PROFILE_HLSLF50
 __internal float4 tex1Dbias(sampler1D image, float4 coord);
 __internal float4 tex2Dbias(sampler2D image, float4 coord);
 __internal float4 tex3Dbias(sampler3D image, float4 coord);

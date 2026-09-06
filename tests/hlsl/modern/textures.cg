@@ -1,0 +1,81 @@
+#ifdef PROFILE_HLSLV40
+#define MODERN_TEXTURE_VERTEX 1
+#endif
+#ifdef PROFILE_HLSLV50
+#define MODERN_TEXTURE_VERTEX 1
+#endif
+#ifdef PROFILE_HLSLF40
+#define MODERN_TEXTURE_PIXEL 1
+#endif
+#ifdef PROFILE_HLSLF50
+#define MODERN_TEXTURE_PIXEL 1
+#endif
+
+#ifdef MODERN_TEXTURE_PIXEL
+float4 sample_plane(sampler2D image, float2 uv)
+{
+    return tex2D(image, uv);
+}
+#endif
+
+#ifdef MODERN_TEXTURE_VERTEX
+float4 sample_plane_grad(sampler2D image, float2 uv,
+                         float2 dx, float2 dy)
+{
+    return tex2D(image, uv, dx, dy);
+}
+#endif
+
+#ifdef MODERN_TEXTURE_VERTEX
+float4 texture_vertex(float4 position : POSITION,
+                      float4 coord : TEXCOORD0,
+                      uniform sampler1D lineImage : TEXUNIT0,
+                      uniform sampler2D planeImage : TEXUNIT1,
+                      uniform sampler3D volumeImage : TEXUNIT2,
+                      uniform samplerCUBE cubeImage : TEXUNIT3) : POSITION
+{
+    float4 result = tex1Dlod(lineImage, coord);
+    result += tex2Dlod(planeImage, coord);
+    result += tex3Dlod(volumeImage, coord);
+    result += texCUBElod(cubeImage, coord);
+    result += tex1D(lineImage, coord.x, coord.x, coord.x);
+    result += sample_plane_grad(planeImage, coord.xy,
+                                coord.xy, coord.xy);
+    result += tex3D(volumeImage, coord.xyz, coord.xyz, coord.xyz);
+    result += texCUBE(cubeImage, coord.xyz, coord.xyz, coord.xyz);
+    return position + result;
+}
+#endif
+
+#ifdef MODERN_TEXTURE_PIXEL
+float4 texture_pixel(float4 coord : TEXCOORD0,
+                     uniform sampler1D lineImage : TEXUNIT0,
+                     uniform sampler2D planeImage : TEXUNIT1,
+                     uniform sampler3D volumeImage : TEXUNIT2,
+                     uniform samplerCUBE cubeImage : TEXUNIT3) : COLOR0
+{
+    float4 result = tex1D(lineImage, coord.x);
+    result += tex1Dproj(lineImage, coord);
+    result += tex1Dbias(lineImage, coord);
+    result += tex1Dlod(lineImage, coord);
+    result += tex1D(lineImage, coord.x, ddx(coord.x), ddy(coord.x));
+    result += sample_plane(planeImage, coord.xy);
+    result += tex2Dproj(planeImage, coord);
+    result += tex2Dbias(planeImage, coord);
+    result += tex2Dlod(planeImage, coord);
+    result += tex2D(planeImage, coord.xy, ddx(coord.xy), ddy(coord.xy));
+    result += tex3D(volumeImage, coord.xyz);
+    result += tex3Dproj(volumeImage, coord);
+    result += tex3Dbias(volumeImage, coord);
+    result += tex3Dlod(volumeImage, coord);
+    result += tex3D(volumeImage, coord.xyz,
+                    ddx(coord.xyz), ddy(coord.xyz));
+    result += texCUBE(cubeImage, coord.xyz);
+    result += texCUBEproj(cubeImage, coord);
+    result += texCUBEbias(cubeImage, coord);
+    result += texCUBElod(cubeImage, coord);
+    result += texCUBE(cubeImage, coord.xyz,
+                      ddx(coord.xyz), ddy(coord.xyz));
+    return result;
+}
+#endif

@@ -299,6 +299,21 @@ int HlslProfileIsValid(const HlslProfileDesc *profile)
     return 1;
 } // HlslProfileIsValid
 
+int HlslProfileAllowsBuiltin(const HlslProfileDesc *profile,
+                             HlslBuiltin builtin)
+{
+    if (profile == NULL || builtin == HLSL_BUILTIN_NONE)
+        return 0;
+    if (profile->model == HLSL_SHADER_MODEL_3 &&
+        profile->stage != HLSL_STAGE_PIXEL &&
+        HlslBuiltinIsTexture(builtin) &&
+        HlslBuiltinTextureForm(builtin) == HLSL_TEXTURE_GRADIENT)
+    {
+        return 0;
+    }
+    return 1;
+} // HlslProfileAllowsBuiltin
+
 #if !defined(HLSL_CANONICALIZATION_ONLY)
 
 #define HLSL_MAX_INTERFACE_REGISTERS 32
@@ -323,6 +338,7 @@ static const HlslDiagnosticMap hlslDiagnosticMap[] = {
     { HLSL_ERROR_SAMPLER,               ERROR_S_HLSL_SAMPLER },
     { HLSL_ERROR_INTRINSIC,             ERROR_S_HLSL_INTRINSIC },
     { HLSL_ERROR_NAME_COLLISION,        ERROR_S_HLSL_NAME_COLLISION },
+    { HLSL_ERROR_RESOURCE_PAIR,         ERROR_S_HLSL_RESOURCE_PAIR },
     { HLSL_ERROR_INVALID_IR,            ERROR___HLSL_INVALID_IR }
 };
 
@@ -756,6 +772,8 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
         HlslLookupSourceBuiltin(profile->stage, name,
                                 &result, params, count) :
         HLSL_BUILTIN_NONE;
+    if (!HlslProfileAllowsBuiltin(profile, builtin))
+        builtin = HLSL_BUILTIN_NONE;
     if (builtin != HLSL_BUILTIN_NONE) {
         *group = HLSL_BUILTIN_GROUP;
         return (int) builtin;
@@ -1399,6 +1417,9 @@ static int ReportHlslFailure(const HlslModule *module,
     case HLSL_ERROR_NAME_COLLISION:
         SemanticError(&failureLoc, ERROR_S_HLSL_NAME_COLLISION, reason);
         break;
+    case HLSL_ERROR_RESOURCE_PAIR:
+        SemanticError(&failureLoc, ERROR_S_HLSL_RESOURCE_PAIR, reason);
+        break;
     case HLSL_ERROR_INVALID_IR:
         InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
         break;
@@ -1408,6 +1429,11 @@ static int ReportHlslFailure(const HlslModule *module,
         break;
     case HLSL_ERROR_NONE:
     case HLSL_ERROR_RESOURCE_LIMIT:
+    case HLSL_ERROR_SYSTEM_SEMANTIC:
+    case HLSL_ERROR_INTERPOLATION:
+    case HLSL_ERROR_CBUFFER:
+    case HLSL_ERROR_GEOMETRY_LAYOUT:
+    case HLSL_ERROR_GEOMETRY_LIMIT:
     default:
         InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
         break;
@@ -1440,6 +1466,7 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
         !HlslLegalizeModule(&module, profile) ||
         !HlslValidateSamplerUsage(&module, profile) ||
         !HlslAllocateBindings(&module, profile) ||
+        !HlslLegalizeModernTextureAbi(&module, profile) ||
         !HlslValidateModule(&module, profile))
     {
         return ReportHlslFailure(&module, profile, program);

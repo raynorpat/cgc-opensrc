@@ -1,0 +1,114 @@
+// profile hlslf50
+// target ps_5_0
+// cgc-bind interface in coord float4 TEXCOORD0 TEXCOORD0 user default
+// cgc-bind interface out result float4 SV_Target0 SV_Target0 system default
+
+// cgc-bind sampler lineImage sampler1D t0 s0
+// cgc-bind sampler planeImage sampler2D t1 s1
+// cgc-bind sampler volumeImage sampler3D t2 s2
+// cgc-bind sampler cubeImage samplerCUBE t3 s3
+
+struct cg_PixelIn
+{
+    float4 coord : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : SV_Target0;
+};
+
+Texture1D<float4> cgc_texture_lineImage : register(t0);
+SamplerState cgc_sampler_lineImage : register(s0);
+Texture2D<float4> cgc_texture_planeImage : register(t1);
+SamplerState cgc_sampler_planeImage : register(s1);
+Texture3D<float4> cgc_texture_volumeImage : register(t2);
+SamplerState cgc_sampler_volumeImage : register(s2);
+TextureCube<float4> cgc_texture_cubeImage : register(t3);
+SamplerState cgc_sampler_cubeImage : register(s3);
+
+float4 cg_sample_plane(Texture2D<float4> cgc_texture_image, SamplerState cgc_sampler_image, float2 uv)
+{
+    return cgc_texture_image.Sample(cgc_sampler_image, uv);
+}
+
+float4 cg_entry(float4 coord, Texture1D<float4> cgc_texture_lineImage, SamplerState cgc_sampler_lineImage, Texture2D<float4> cgc_texture_planeImage, SamplerState cgc_sampler_planeImage, Texture3D<float4> cgc_texture_volumeImage, SamplerState cgc_sampler_volumeImage, TextureCube<float4> cgc_texture_cubeImage, SamplerState cgc_sampler_cubeImage)
+{
+    float4 result;
+    float4 temp1;
+    float4 temp2;
+    float4 temp3;
+    float4 temp4;
+    float4 temp5;
+    float4 temp6;
+    float4 temp7;
+    float4 temp8;
+    float4 temp9;
+    float4 temp10;
+    float4 temp11;
+    float4 temp12;
+    float4 temp13;
+    float4 temp14;
+    float4 temp15;
+    float4 temp16;
+    float4 temp17;
+    float4 temp18;
+    float4 temp19;
+    float4 temp20;
+    float4 temp21;
+    float4 temp22;
+    float4 temp23;
+    float4 temp24;
+    result = cgc_texture_lineImage.Sample(cgc_sampler_lineImage, coord.x);
+    temp2 = result;
+    temp1 = coord;
+    result = temp2 + cgc_texture_lineImage.Sample(cgc_sampler_lineImage, temp1.x / temp1.w);
+    temp4 = result;
+    temp3 = coord;
+    result = temp4 + cgc_texture_lineImage.SampleBias(cgc_sampler_lineImage, temp3.x, temp3.w);
+    temp6 = result;
+    temp5 = coord;
+    result = temp6 + cgc_texture_lineImage.SampleLevel(cgc_sampler_lineImage, temp5.x, temp5.w);
+    result = result + cgc_texture_lineImage.SampleGrad(cgc_sampler_lineImage, coord.x, ddx(coord.x), ddy(coord.x));
+    result = result + cg_sample_plane(cgc_texture_planeImage, cgc_sampler_planeImage, coord.xy);
+    temp8 = result;
+    temp7 = coord;
+    result = temp8 + cgc_texture_planeImage.Sample(cgc_sampler_planeImage, temp7.xy / temp7.w);
+    temp10 = result;
+    temp9 = coord;
+    result = temp10 + cgc_texture_planeImage.SampleBias(cgc_sampler_planeImage, temp9.xy, temp9.w);
+    temp12 = result;
+    temp11 = coord;
+    result = temp12 + cgc_texture_planeImage.SampleLevel(cgc_sampler_planeImage, temp11.xy, temp11.w);
+    result = result + cgc_texture_planeImage.SampleGrad(cgc_sampler_planeImage, coord.xy, ddx(coord.xy), ddy(coord.xy));
+    result = result + cgc_texture_volumeImage.Sample(cgc_sampler_volumeImage, coord.xyz);
+    temp14 = result;
+    temp13 = coord;
+    result = temp14 + cgc_texture_volumeImage.Sample(cgc_sampler_volumeImage, temp13.xyz / temp13.w);
+    temp16 = result;
+    temp15 = coord;
+    result = temp16 + cgc_texture_volumeImage.SampleBias(cgc_sampler_volumeImage, temp15.xyz, temp15.w);
+    temp18 = result;
+    temp17 = coord;
+    result = temp18 + cgc_texture_volumeImage.SampleLevel(cgc_sampler_volumeImage, temp17.xyz, temp17.w);
+    result = result + cgc_texture_volumeImage.SampleGrad(cgc_sampler_volumeImage, coord.xyz, ddx(coord.xyz), ddy(coord.xyz));
+    result = result + cgc_texture_cubeImage.Sample(cgc_sampler_cubeImage, coord.xyz);
+    temp20 = result;
+    temp19 = coord;
+    result = temp20 + cgc_texture_cubeImage.Sample(cgc_sampler_cubeImage, temp19.xyz / temp19.w);
+    temp22 = result;
+    temp21 = coord;
+    result = temp22 + cgc_texture_cubeImage.SampleBias(cgc_sampler_cubeImage, temp21.xyz, temp21.w);
+    temp24 = result;
+    temp23 = coord;
+    result = temp24 + cgc_texture_cubeImage.SampleLevel(cgc_sampler_cubeImage, temp23.xyz, temp23.w);
+    result = result + cgc_texture_cubeImage.SampleGrad(cgc_sampler_cubeImage, coord.xyz, ddx(coord.xyz), ddy(coord.xyz));
+    return result;
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.coord, cgc_texture_lineImage, cgc_sampler_lineImage, cgc_texture_planeImage, cgc_sampler_planeImage, cgc_texture_volumeImage, cgc_sampler_volumeImage, cgc_texture_cubeImage, cgc_sampler_cubeImage);
+    return output;
+}

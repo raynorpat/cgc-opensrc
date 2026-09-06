@@ -898,3 +898,447 @@ int HlslLegalizeModule(HlslModule *module,
     }
     return module->errors == 0;
 } // HlslLegalizeModule
+
+static HlslBase HlslModernTextureObjectBase(HlslBase samplerBase)
+{
+    switch (samplerBase) {
+    case HLSL_BASE_SAMPLER1D: return HLSL_BASE_TEXTURE1D;
+    case HLSL_BASE_SAMPLER2D: return HLSL_BASE_TEXTURE2D;
+    case HLSL_BASE_SAMPLER3D: return HLSL_BASE_TEXTURE3D;
+    case HLSL_BASE_SAMPLERCUBE: return HLSL_BASE_TEXTURECUBE;
+    default: return HLSL_BASE_VOID;
+    }
+} // HlslModernTextureObjectBase
+
+static HlslTextureDimension HlslModernTextureDimension(HlslBase base)
+{
+    switch (base) {
+    case HLSL_BASE_TEXTURE1D: return HLSL_TEXTURE_1D;
+    case HLSL_BASE_TEXTURE2D: return HLSL_TEXTURE_2D;
+    case HLSL_BASE_TEXTURE3D: return HLSL_TEXTURE_3D;
+    default: return HLSL_TEXTURE_CUBE;
+    }
+} // HlslModernTextureDimension
+
+static const char *HlslModernAbiName(HlslModule *module,
+    const HlslFunction *function, const HlslDecl *decl,
+    const char *prefix)
+{
+    const char *publicName;
+    char *source;
+    size_t prefixLength;
+    size_t nameLength;
+
+    publicName = decl->publicName != NULL ? decl->publicName : decl->name;
+    if (publicName == NULL)
+        return NULL;
+    prefixLength = strlen(prefix);
+    nameLength = strlen(publicName);
+    source = (char *) module->alloc(module->allocArg,
+        prefixLength + nameLength + 1);
+    if (source == NULL)
+        return NULL;
+    memcpy(source, prefix, prefixLength);
+    memcpy(source + prefixLength, publicName, nameLength + 1);
+    return HlslAllocateScopedSymbolName(module,
+        function->identity != NULL ? function->identity : function,
+        decl, source);
+} // HlslModernAbiName
+
+static int HlslModernSplitParameters(HlslModule *module,
+                                     HlslFunction *function)
+{
+    HlslDecl *decl;
+    HlslDecl *pair;
+    HlslDecl *next;
+    HlslBase textureBase;
+    const char *textureName;
+    const char *samplerName;
+
+    for (decl = function->parameters; decl != NULL; decl = next) {
+        next = decl->next;
+        textureBase = HlslModernTextureObjectBase(decl->type.base);
+        if (textureBase == HLSL_BASE_VOID)
+            continue;
+        textureName = HlslModernAbiName(module, function, decl,
+                                        "cgc_texture_");
+        pair = HlslNewDecl(module, HLSL_STORAGE_SAMPLER,
+            HlslNumericType(HLSL_BASE_SAMPLER_STATE, 1), "pending");
+        if (pair != NULL)
+            pair->publicName = decl->publicName != NULL ?
+                               decl->publicName : decl->name;
+        samplerName = pair != NULL ? HlslModernAbiName(module, function,
+            pair, "cgc_sampler_") : NULL;
+        if (textureName == NULL || pair == NULL || samplerName == NULL)
+            return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                &decl->loc, "modern HLSL sampler parameter");
+        decl->type = HlslNumericType(textureBase, 1);
+        decl->name = textureName;
+        decl->resourcePair = pair;
+        decl->resourcePairId = -1;
+        pair->name = samplerName;
+        pair->publicName = decl->publicName;
+        pair->loc = decl->loc;
+        pair->sourceOrdinal = decl->sourceOrdinal;
+        pair->identity = pair;
+        pair->parameterQualifier = decl->parameterQualifier;
+        pair->resourcePair = decl;
+        pair->resourcePairId = -1;
+        pair->next = next;
+        decl->next = pair;
+    }
+    return 1;
+} // HlslModernSplitParameters
+
+static HlslExpr *HlslModernSymbol(HlslModule *module, HlslDecl *decl,
+                                  const HlslLoc *loc)
+{
+    HlslExpr *expression;
+
+    expression = HlslNewLocatedExpr(module, HLSL_EXPR_SYMBOL,
+                                    decl->type, loc);
+    if (expression != NULL)
+        expression->u.symbol = decl;
+    return expression;
+} // HlslModernSymbol
+
+static HlslExpr *HlslModernSwizzle(HlslModule *module, HlslExpr *object,
+                                   const char *mask, int width,
+                                   const HlslLoc *loc)
+{
+    HlslExpr *expression;
+
+    expression = HlslNewLocatedExpr(module, HLSL_EXPR_SWIZZLE,
+        HlslNumericType(HLSL_BASE_FLOAT, width), loc);
+    if (expression != NULL) {
+        expression->u.swizzle.object = object;
+        expression->u.swizzle.mask = mask;
+    }
+    return expression;
+} // HlslModernSwizzle
+
+static HlslDecl *HlslModernExpressionDecl(HlslExpr *expression)
+{
+    return expression != NULL && expression->kind == HLSL_EXPR_SYMBOL ?
+           expression->u.symbol : NULL;
+} // HlslModernExpressionDecl
+
+static int HlslModernRewriteExpression(HlslModule *module,
+    const HlslProfileDesc *profile, HlslExpr *expression);
+
+static int HlslModernRewriteExpressionList(HlslModule *module,
+    const HlslProfileDesc *profile, HlslExpr *expression)
+{
+    for (; expression != NULL; expression = expression->next) {
+        if (!HlslModernRewriteExpression(module, profile, expression))
+            return 0;
+    }
+    return 1;
+} // HlslModernRewriteExpressionList
+
+static int HlslModernRewriteTextureCall(HlslModule *module,
+    const HlslProfileDesc *profile, HlslExpr *expression)
+{
+    HlslExpr *texture;
+    HlslExpr *sampler;
+    HlslExpr *coordinates;
+    HlslExpr *argument1;
+    HlslExpr *argument2;
+    HlslExpr *spatial;
+    HlslExpr *projection;
+    HlslExpr *division;
+    HlslExpr *built;
+    HlslExpr *savedNext;
+    HlslDecl *textureDecl;
+    HlslTextureDimension dimension;
+    HlslTextureMethod method;
+    HlslTextureSelectReason reason;
+    HlslTextureForm form;
+    HlslType coordinateType;
+    int spatialWidth;
+    int coordinateWidth;
+    const char *spatialMask;
+
+    texture = expression->u.call.arguments;
+    coordinates = texture != NULL ? texture->next : NULL;
+    textureDecl = HlslModernExpressionDecl(texture);
+    if (textureDecl == NULL || textureDecl->resourcePair == NULL ||
+        coordinates == NULL)
+    {
+        return HlslLegalizeFailure(module, HLSL_ERROR_RESOURCE_PAIR,
+                                   &expression->loc,
+                                   expression->u.call.name);
+    }
+    texture->type = textureDecl->type;
+    dimension = HlslModernTextureDimension(textureDecl->type.base);
+    coordinateWidth = coordinates->type.len;
+    if (!HlslModernSelectTextureMethod(profile->stage,
+            expression->u.call.builtin, dimension, coordinateWidth,
+            &expression->type, &method, &reason))
+    {
+        return HlslLegalizeFailure(module,
+            reason == HLSL_TEXTURE_SELECT_STAGE ?
+                HLSL_ERROR_STAGE_OPERATION : HLSL_ERROR_SAMPLER,
+            &expression->loc, expression->u.call.name);
+    }
+    sampler = HlslModernSymbol(module, textureDecl->resourcePair,
+                               &expression->loc);
+    if (sampler == NULL)
+        return 0;
+    texture->next = NULL;
+    argument1 = NULL;
+    argument2 = NULL;
+    form = HlslBuiltinTextureForm(expression->u.call.builtin);
+    if (dimension == HLSL_TEXTURE_1D) {
+        spatialWidth = 1;
+        spatialMask = "x";
+    } else if (dimension == HLSL_TEXTURE_2D) {
+        spatialWidth = 2;
+        spatialMask = "xy";
+    } else {
+        spatialWidth = 3;
+        spatialMask = "xyz";
+    }
+    if (form == HLSL_TEXTURE_LOD || form == HLSL_TEXTURE_BIAS ||
+        form == HLSL_TEXTURE_PROJECTED)
+    {
+        coordinates->next = NULL;
+        spatial = HlslModernSwizzle(module, coordinates, spatialMask,
+                                    spatialWidth, &expression->loc);
+        projection = HlslModernSwizzle(module, coordinates, "w", 1,
+                                       &expression->loc);
+        if (spatial == NULL || projection == NULL)
+            return 0;
+        if (form == HLSL_TEXTURE_PROJECTED) {
+            coordinateType = HlslNumericType(HLSL_BASE_FLOAT,
+                                             spatialWidth);
+            division = HlslNewLocatedExpr(module, HLSL_EXPR_BINARY,
+                                          coordinateType,
+                                          &expression->loc);
+            if (division == NULL)
+                return 0;
+            division->u.binary.op = HLSL_OP_DIVIDE;
+            division->u.binary.left = spatial;
+            division->u.binary.right = projection;
+            coordinates = division;
+        } else {
+            coordinates = spatial;
+            argument1 = projection;
+        }
+    } else if (form == HLSL_TEXTURE_GRADIENT) {
+        argument1 = coordinates->next;
+        argument2 = argument1 != NULL ? argument1->next : NULL;
+        coordinates->next = NULL;
+        if (argument1 != NULL)
+            argument1->next = NULL;
+        if (argument2 != NULL)
+            argument2->next = NULL;
+    } else {
+        coordinates->next = NULL;
+    }
+    built = HlslNewTextureMethod(module, method, texture, sampler,
+        coordinates, argument1, argument2, expression->type,
+        expression->loc);
+    if (built == NULL)
+        return 0;
+    savedNext = expression->next;
+    *expression = *built;
+    expression->next = savedNext;
+    return 1;
+} // HlslModernRewriteTextureCall
+
+static int HlslModernRewriteUserCall(HlslModule *module,
+    const HlslProfileDesc *profile, HlslExpr *expression)
+{
+    HlslExpr **argumentPlace;
+    HlslExpr *argument;
+    HlslExpr *pairArgument;
+    HlslDecl *argumentDecl;
+    HlslDecl *parameter;
+
+    argumentPlace = &expression->u.call.arguments;
+    parameter = expression->u.call.function->parameters;
+    while (*argumentPlace != NULL && parameter != NULL) {
+        argument = *argumentPlace;
+        if (!HlslModernRewriteExpression(module, profile, argument))
+            return 0;
+        if (parameter->resourcePair != NULL) {
+            argumentDecl = HlslModernExpressionDecl(argument);
+            if (argumentDecl == NULL || argumentDecl->resourcePair == NULL ||
+                parameter->next != parameter->resourcePair)
+            {
+                return HlslLegalizeFailure(module, HLSL_ERROR_RESOURCE_PAIR,
+                    &argument->loc, expression->u.call.name);
+            }
+            argument->type = argumentDecl->type;
+            pairArgument = HlslModernSymbol(module,
+                argumentDecl->resourcePair, &argument->loc);
+            if (pairArgument == NULL)
+                return 0;
+            pairArgument->next = argument->next;
+            argument->next = pairArgument;
+            argumentPlace = &pairArgument->next;
+            parameter = parameter->resourcePair->next;
+        } else {
+            argumentPlace = &argument->next;
+            parameter = parameter->next;
+        }
+    }
+    if (*argumentPlace != NULL || parameter != NULL)
+        return HlslLegalizeFailure(module, HLSL_ERROR_INVALID_IR,
+                                   &expression->loc,
+                                   "modern HLSL call arguments");
+    return 1;
+} // HlslModernRewriteUserCall
+
+static int HlslModernRewriteExpression(HlslModule *module,
+    const HlslProfileDesc *profile, HlslExpr *expression)
+{
+    if (expression == NULL)
+        return 1;
+    switch (expression->kind) {
+    case HLSL_EXPR_SYMBOL:
+        if (expression->u.symbol != NULL &&
+            expression->u.symbol->resourcePair != NULL)
+        {
+            expression->type = expression->u.symbol->type;
+        }
+        return 1;
+    case HLSL_EXPR_UNARY:
+        return HlslModernRewriteExpression(module, profile,
+                                            expression->u.unary.operand);
+    case HLSL_EXPR_BINARY:
+        return HlslModernRewriteExpression(module, profile,
+                    expression->u.binary.left) &&
+               HlslModernRewriteExpression(module, profile,
+                    expression->u.binary.right);
+    case HLSL_EXPR_CONDITIONAL:
+        return HlslModernRewriteExpression(module, profile,
+                    expression->u.conditional.condition) &&
+               HlslModernRewriteExpression(module, profile,
+                    expression->u.conditional.trueExpr) &&
+               HlslModernRewriteExpression(module, profile,
+                    expression->u.conditional.falseExpr);
+    case HLSL_EXPR_CALL:
+        if (HlslBuiltinIsTexture(expression->u.call.builtin))
+            return HlslModernRewriteTextureCall(module, profile, expression);
+        if (expression->u.call.function != NULL)
+            return HlslModernRewriteUserCall(module, profile, expression);
+        return HlslModernRewriteExpressionList(module, profile,
+                                                expression->u.call.arguments);
+    case HLSL_EXPR_CONSTRUCT:
+        return HlslModernRewriteExpressionList(module, profile,
+            expression->u.construct.arguments);
+    case HLSL_EXPR_CAST:
+        return HlslModernRewriteExpression(module, profile,
+                                            expression->u.cast.expression);
+    case HLSL_EXPR_MEMBER:
+        return HlslModernRewriteExpression(module, profile,
+                                            expression->u.member.object);
+    case HLSL_EXPR_INDEX:
+        return HlslModernRewriteExpression(module, profile,
+                    expression->u.index.object) &&
+               HlslModernRewriteExpression(module, profile,
+                    expression->u.index.index);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslModernRewriteExpression(module, profile,
+                                            expression->u.swizzle.object);
+    case HLSL_EXPR_TEXTURE_METHOD:
+    case HLSL_EXPR_INT:
+    case HLSL_EXPR_FLOAT:
+    case HLSL_EXPR_BOOL:
+        return 1;
+    }
+    return 0;
+} // HlslModernRewriteExpression
+
+static int HlslModernRewriteStatements(HlslModule *module,
+    const HlslProfileDesc *profile, HlslStmt *statement)
+{
+    for (; statement != NULL; statement = statement->next) {
+        switch (statement->kind) {
+        case HLSL_STMT_DECLARATION:
+            if (!HlslModernRewriteExpression(module, profile,
+                    statement->u.declaration != NULL ?
+                    statement->u.declaration->initializer : NULL))
+                return 0;
+            break;
+        case HLSL_STMT_EXPRESSION:
+            if (!HlslModernRewriteExpression(module, profile,
+                                              statement->u.expression))
+                return 0;
+            break;
+        case HLSL_STMT_IF:
+            if (!HlslModernRewriteExpression(module, profile,
+                    statement->u.ifStmt.condition) ||
+                !HlslModernRewriteStatements(module, profile,
+                    statement->u.ifStmt.trueBranch) ||
+                !HlslModernRewriteStatements(module, profile,
+                    statement->u.ifStmt.falseBranch))
+                return 0;
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslModernRewriteExpression(module, profile,
+                    statement->u.loop.condition) ||
+                !HlslModernRewriteStatements(module, profile,
+                    statement->u.loop.body))
+                return 0;
+            break;
+        case HLSL_STMT_FOR:
+            if (!HlslModernRewriteStatements(module, profile,
+                    statement->u.forStmt.init) ||
+                !HlslModernRewriteExpression(module, profile,
+                    statement->u.forStmt.condition) ||
+                !HlslModernRewriteStatements(module, profile,
+                    statement->u.forStmt.step) ||
+                !HlslModernRewriteStatements(module, profile,
+                    statement->u.forStmt.body))
+                return 0;
+            break;
+        case HLSL_STMT_BLOCK:
+            if (!HlslModernRewriteStatements(module, profile,
+                                              statement->u.block))
+                return 0;
+            break;
+        case HLSL_STMT_RETURN:
+            if (!HlslModernRewriteExpression(module, profile,
+                                              statement->u.returnExpr))
+                return 0;
+            break;
+        case HLSL_STMT_APPEND:
+            if (!HlslModernRewriteExpression(module, profile,
+                                              statement->u.append.record))
+                return 0;
+            break;
+        default:
+            break;
+        }
+    }
+    return 1;
+} // HlslModernRewriteStatements
+
+int HlslLegalizeModernTextureAbi(HlslModule *module,
+                                 const HlslProfileDesc *profile)
+{
+    HlslFunction *function;
+
+    if (module == NULL || profile == NULL ||
+        profile->resourcePolicy != HLSL_RESOURCE_POLICY_MODERN)
+    {
+        return 1;
+    }
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (!HlslModernSplitParameters(module, function))
+            return 0;
+    }
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (!HlslModernRewriteStatements(module, profile, function->body))
+            return 0;
+    }
+    return 1;
+} // HlslLegalizeModernTextureAbi

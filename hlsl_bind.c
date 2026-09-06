@@ -3556,6 +3556,296 @@ static int HlslAllocateModernBindings(HlslModule *module,
     return 1;
 } // HlslAllocateModernBindings
 
+typedef struct HlslModernSamplerPlan_Rec {
+    HlslBinding *binding;
+    HlslBinding *record;
+    HlslDecl *textureDecl;
+    HlslDecl *samplerDecl;
+    HlslResource *texture;
+    HlslResource *sampler;
+    const char *textureName;
+    const char *samplerName;
+    HlslBase textureBase;
+    int slot;
+    int pairId;
+} HlslModernSamplerPlan;
+
+static HlslBase HlslModernTextureBase(HlslBase samplerBase)
+{
+    switch (samplerBase) {
+    case HLSL_BASE_SAMPLER1D: return HLSL_BASE_TEXTURE1D;
+    case HLSL_BASE_SAMPLER2D: return HLSL_BASE_TEXTURE2D;
+    case HLSL_BASE_SAMPLER3D: return HLSL_BASE_TEXTURE3D;
+    case HLSL_BASE_SAMPLERCUBE: return HLSL_BASE_TEXTURECUBE;
+    default: return HLSL_BASE_VOID;
+    }
+} // HlslModernTextureBase
+
+static const char *HlslModernSamplerName(HlslModule *module,
+    HlslBinding *binding, const char *prefix, const void *identity)
+{
+    const char *publicName;
+    char *source;
+    size_t prefixLength;
+    size_t nameLength;
+
+    publicName = HlslPublicBindingName(binding);
+    if (publicName == NULL)
+        return NULL;
+    prefixLength = strlen(prefix);
+    nameLength = strlen(publicName);
+    source = (char *) HlslBindAlloc(module,
+        prefixLength + nameLength + 1);
+    if (source == NULL)
+        return NULL;
+    memcpy(source, prefix, prefixLength);
+    memcpy(source + prefixLength, publicName, nameLength + 1);
+    return HlslAllocateGeneratedName(module, identity, source);
+} // HlslModernSamplerName
+
+static HlslResource *HlslModernPrepareResource(HlslModule *module,
+    HlslResourceKind kind, HlslBase base, const char *name,
+    HlslDecl *declaration, const HlslLoc *loc)
+{
+    HlslResource *resource;
+
+    resource = (HlslResource *) HlslBindAlloc(module, sizeof(HlslResource));
+    if (resource == NULL)
+        return NULL;
+    resource->owner = module;
+    resource->kind = kind;
+    resource->type = HlslNumericType(base, 1);
+    resource->name = name;
+    if (loc != NULL)
+        resource->loc = *loc;
+    resource->binding.kind = kind;
+    resource->binding.slot = -1;
+    resource->binding.pairId = -1;
+    resource->sourceDeclaration = declaration;
+    return resource;
+} // HlslModernPrepareResource
+
+static int HlslModernResourceSlotUsed(const HlslModule *module,
+                                      HlslResourceKind kind, int slot)
+{
+    const HlslResource *resource;
+
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->kind == kind && resource->binding.slot == slot)
+            return 1;
+    }
+    return 0;
+} // HlslModernResourceSlotUsed
+
+static int HlslAllocateModernSamplerBindings(HlslModule *module,
+    const HlslProfileDesc *profile, HlslBinding **ordered, int count)
+{
+    HlslModernSamplerPlan *plans;
+    HlslName *savedNames;
+    HlslDecl *pair;
+    HlslBinding *record;
+    unsigned char textureUsed[HLSL_MAX_SAMPLERS];
+    unsigned char samplerUsed[HLSL_MAX_SAMPLERS];
+    int limit;
+    int samplerCount;
+    int nextPairId;
+    int slot;
+    int i;
+    int j;
+
+    if (profile->limits->samplers < 0 || profile->limits->resources < 0)
+        return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
+                               "invalid modern HLSL resource limits");
+    limit = profile->limits->samplers < profile->limits->resources ?
+            profile->limits->samplers : profile->limits->resources;
+    if (limit > HLSL_MAX_SAMPLERS)
+        limit = HLSL_MAX_SAMPLERS;
+    memset(textureUsed, 0, sizeof(textureUsed));
+    memset(samplerUsed, 0, sizeof(samplerUsed));
+    nextPairId = 0;
+    for (slot = 0; slot < limit; slot++) {
+        textureUsed[slot] = (unsigned char)
+            HlslModernResourceSlotUsed(module, HLSL_RESOURCE_TEXTURE, slot);
+        samplerUsed[slot] = (unsigned char)
+            HlslModernResourceSlotUsed(module, HLSL_RESOURCE_SAMPLER, slot);
+    }
+    {
+        const HlslResource *resource;
+
+        for (resource = module->resources; resource != NULL;
+             resource = resource->next)
+        {
+            if (resource->binding.pairId >= nextPairId)
+                nextPairId = resource->binding.pairId + 1;
+        }
+    }
+    samplerCount = 0;
+    for (i = 0; i < count; i++) {
+        if (ordered[i]->storage == HLSL_STORAGE_SAMPLER)
+            samplerCount++;
+    }
+    if (samplerCount == 0)
+        return 1;
+    plans = (HlslModernSamplerPlan *) HlslBindAlloc(module,
+        (size_t) samplerCount * sizeof(HlslModernSamplerPlan));
+    if (plans == NULL)
+        return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
+                               "modern HLSL sampler allocation");
+    j = 0;
+    for (i = 0; i < count; i++) {
+        HlslBinding *binding;
+
+        binding = ordered[i];
+        if (binding->storage != HLSL_STORAGE_SAMPLER)
+            continue;
+        plans[j].binding = binding;
+        plans[j].textureBase = HlslModernTextureBase(binding->type.base);
+        plans[j].slot = -1;
+        plans[j].pairId = nextPairId + j;
+        if (plans[j].textureBase == HLSL_BASE_VOID ||
+            binding->type.arraySize != 0 || binding->type.len != 1 ||
+            binding->isAllocated || binding->declaration == NULL)
+        {
+            return HlslBindFailure(module, binding, HLSL_ERROR_SAMPLER,
+                                   binding->name);
+        }
+        j++;
+    }
+    for (i = 0; i < samplerCount; i++) {
+        if (!plans[i].binding->hasExplicitRegister)
+            continue;
+        slot = plans[i].binding->physical.regno;
+        if (plans[i].binding->physical.bank != HLSL_REGISTER_S ||
+            slot < 0 || slot >= limit)
+        {
+            return HlslBindFailure(module, plans[i].binding,
+                HLSL_ERROR_RESOURCE_PAIR, plans[i].binding->name);
+        }
+        if (textureUsed[slot] || samplerUsed[slot])
+            return HlslBindFailure(module, plans[i].binding,
+                HLSL_ERROR_RESOURCE_PAIR, plans[i].binding->name);
+        plans[i].slot = slot;
+        textureUsed[slot] = 1;
+        samplerUsed[slot] = 1;
+    }
+    for (i = 0; i < samplerCount; i++) {
+        if (plans[i].slot >= 0)
+            continue;
+        for (slot = 0; slot < limit; slot++) {
+            if (!textureUsed[slot] && !samplerUsed[slot])
+                break;
+        }
+        if (slot == limit) {
+            if (module->errors == 0) {
+                module->resourceName = "sampler pairs";
+                module->resourceUsed = samplerCount;
+                module->resourceAvailable = limit;
+            }
+            return HlslBindFailure(module, plans[i].binding,
+                HLSL_ERROR_RESOURCE_LIMIT, plans[i].binding->name);
+        }
+        plans[i].slot = slot;
+        textureUsed[slot] = 1;
+        samplerUsed[slot] = 1;
+    }
+    savedNames = module->names;
+    for (i = 0; i < samplerCount; i++) {
+        plans[i].textureDecl = plans[i].binding->declaration;
+        pair = (HlslDecl *) HlslBindAlloc(module, sizeof(HlslDecl));
+        if (pair == NULL) {
+            module->names = savedNames;
+            return HlslBindFailure(module, plans[i].binding,
+                HLSL_ERROR_INVALID_IR, "modern HLSL sampler allocation");
+        }
+        plans[i].samplerDecl = pair;
+        plans[i].textureName = HlslModernSamplerName(module,
+            plans[i].binding, "cgc_texture_", plans[i].textureDecl);
+        plans[i].samplerName = HlslModernSamplerName(module,
+            plans[i].binding, "cgc_sampler_", pair);
+        if (plans[i].textureName == NULL || plans[i].samplerName == NULL) {
+            module->names = savedNames;
+            return HlslBindFailure(module, plans[i].binding,
+                HLSL_ERROR_NAME_COLLISION, plans[i].binding->name);
+        }
+        plans[i].texture = HlslModernPrepareResource(module,
+            HLSL_RESOURCE_TEXTURE, plans[i].textureBase,
+            plans[i].textureName, plans[i].textureDecl,
+            &plans[i].binding->loc);
+        plans[i].sampler = HlslModernPrepareResource(module,
+            HLSL_RESOURCE_SAMPLER, HLSL_BASE_SAMPLER_STATE,
+            plans[i].samplerName, plans[i].samplerDecl,
+            &plans[i].binding->loc);
+        record = (HlslBinding *) HlslBindAlloc(module, sizeof(HlslBinding));
+        if (plans[i].texture == NULL || plans[i].sampler == NULL ||
+            record == NULL)
+        {
+            module->names = savedNames;
+            return HlslBindFailure(module, plans[i].binding,
+                HLSL_ERROR_INVALID_IR, "modern HLSL sampler allocation");
+        }
+        record->storage = HLSL_STORAGE_SAMPLER;
+        record->type = plans[i].binding->type;
+        record->name = plans[i].binding->name;
+        record->publicName = HlslPublicBindingName(plans[i].binding);
+        record->logicalTypeName = plans[i].binding->logicalTypeName;
+        record->loc = plans[i].binding->loc;
+        record->sourceOrdinal = plans[i].binding->sourceOrdinal;
+        record->isAllocated = 1;
+        record->declaration = plans[i].textureDecl;
+        record->physical.bank = HLSL_REGISTER_S;
+        record->physical.regno = plans[i].slot;
+        record->physical.span = 1;
+        plans[i].record = record;
+    }
+    for (i = 0; i < samplerCount; i++) {
+        HlslBinding *binding;
+        HlslDecl *declaration;
+        HlslDecl *next;
+
+        binding = plans[i].binding;
+        declaration = plans[i].textureDecl;
+        pair = plans[i].samplerDecl;
+        next = declaration->next;
+        declaration->type = HlslNumericType(plans[i].textureBase, 1);
+        declaration->name = plans[i].textureName;
+        declaration->resourcePair = pair;
+        declaration->resourcePairId = plans[i].pairId;
+        declaration->physical.bank = HLSL_REGISTER_T;
+        declaration->physical.regno = plans[i].slot;
+        declaration->physical.span = 1;
+        pair->type = HlslNumericType(HLSL_BASE_SAMPLER_STATE, 1);
+        pair->storage = HLSL_STORAGE_SAMPLER;
+        pair->name = plans[i].samplerName;
+        pair->publicName = declaration->publicName;
+        pair->loc = declaration->loc;
+        pair->sourceOrdinal = declaration->sourceOrdinal;
+        pair->identity = pair;
+        pair->resourcePair = declaration;
+        pair->resourcePairId = plans[i].pairId;
+        pair->physical.bank = HLSL_REGISTER_S;
+        pair->physical.regno = plans[i].slot;
+        pair->physical.span = 1;
+        pair->next = next;
+        declaration->next = pair;
+        plans[i].texture->binding.slot = plans[i].slot;
+        plans[i].texture->binding.pairId = plans[i].pairId;
+        plans[i].sampler->binding.slot = plans[i].slot;
+        plans[i].sampler->binding.pairId = plans[i].pairId;
+        HlslModernAppendResource(module, plans[i].texture);
+        HlslModernAppendResource(module, plans[i].sampler);
+        binding->isAllocated = 1;
+        binding->physical.bank = HLSL_REGISTER_S;
+        binding->physical.regno = plans[i].slot;
+        binding->physical.span = 1;
+        binding->leafBindings = plans[i].record;
+        HlslAppendAllocatedBinding(&module->allocatedBindings,
+                                   binding->leafBindings);
+    }
+    return 1;
+} // HlslAllocateModernSamplerBindings
+
 int HlslAllocateBindings(HlslModule *module,
                          const HlslProfileDesc *profile)
 {
@@ -3599,13 +3889,9 @@ int HlslAllocateBindings(HlslModule *module,
         ordered[j] = swap;
     }
     if (profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN) {
-        for (i = 0; i < count; i++) {
-            if (ordered[i]->storage == HLSL_STORAGE_SAMPLER &&
-                !HlslAllocateOneBinding(module, profile, ordered[i]))
-            {
-                return 0;
-            }
-        }
+        if (!HlslAllocateModernSamplerBindings(module, profile,
+                                               ordered, count))
+            return 0;
         return HlslAllocateModernBindings(module, profile, ordered, count);
     }
     for (explicitPass = 1; explicitPass >= 0; explicitPass--) {
