@@ -1,0 +1,40 @@
+// profile hlslv40
+// target vs_4_0
+// cgc-bind interface in position float4 POSITION0 POSITION0 user default
+// cgc-bind interface out result float4 SV_Position SV_Position system default
+
+// cgc-bind uniform settings Only b0 c0.x byte=0 size=16 span=1 semantic=-
+
+cbuffer cgc_Uniforms : register(b0)
+{
+    float cgc_settings_factor : packoffset(c0.x);
+};
+
+struct cg_Only
+{
+    float factor;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+};
+
+struct cg_VertexOut
+{
+    float4 result : SV_Position;
+};
+
+float4 cg_entry(float4 position)
+{
+    cg_Only settings;
+    settings.factor = cgc_settings_factor;
+    return position * settings.factor;
+}
+
+cg_VertexOut main(cg_VertexIn input)
+{
+    cg_VertexOut output;
+    output.result = cg_entry(input.position);
+    return output;
+}

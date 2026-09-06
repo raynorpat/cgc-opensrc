@@ -2071,6 +2071,22 @@ add_hlsl_modern_language(modern_language_v50 hlslv50
 add_hlsl_modern_language(modern_language_p50 hlslf50
     language-p50.expected language_pixel)
 
+add_hlsl_fixture(modern_empty_input_p40 hlslf40
+    tests/hlsl/modern/empty-input.cg
+    tests/hlsl/modern/empty-input-p40.expected)
+add_hlsl_fixture(modern_empty_output_p50 hlslf50
+    tests/hlsl/modern/empty-output.cg
+    tests/hlsl/modern/empty-output-p50.expected)
+add_hlsl_fixture(modern_empty_both_p40 hlslf40
+    tests/hlsl/modern/empty-both.cg
+    tests/hlsl/modern/empty-both-p40.expected)
+add_hlsl_fixture(modern_single_leaf_v40 hlslv40
+    tests/hlsl/modern/single-leaf.cg
+    tests/hlsl/modern/single-leaf-v40.expected)
+add_hlsl_fixture(modern_single_leaf_v50 hlslv50
+    tests/hlsl/modern/single-leaf.cg
+    tests/hlsl/modern/single-leaf-v50.expected)
+
 add_hlsl_fixture(modern_position_v40 hlslv40
     position.cg tests/hlsl/modern/position-v40.expected)
 add_hlsl_fixture(modern_position_v50 hlslv50

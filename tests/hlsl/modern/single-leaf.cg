@@ -1,0 +1,11 @@
+struct Only
+{
+    float factor;
+};
+
+uniform Only settings;
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position * settings.factor;
+}

@@ -1,0 +1,20 @@
+// profile hlslf40
+// target ps_4_0
+// cgc-bind interface out result float4 SV_Target0 SV_Target0 system default
+
+struct cg_PixelOut
+{
+    float4 result : SV_Target0;
+};
+
+float4 cg_entry()
+{
+    return float4(1.0, 0.0, 0.0, 1.0);
+}
+
+cg_PixelOut main()
+{
+    cg_PixelOut output;
+    output.result = cg_entry();
+    return output;
+}

@@ -260,6 +260,25 @@ static void *NthResourceFaultAlloc(void *arg, size_t size)
     return calloc(1, size);
 }
 
+typedef struct PostCommitDeclFaultState_Rec {
+    HlslModule *module;
+    int declarationCalls;
+    int failDeclarationCall;
+} PostCommitDeclFaultState;
+
+static void *PostCommitDeclFaultAlloc(void *arg, size_t size)
+{
+    PostCommitDeclFaultState *state;
+
+    state = (PostCommitDeclFaultState *) arg;
+    if (state->module->resources != NULL && size == sizeof(HlslDecl) &&
+        ++state->declarationCalls == state->failDeclarationCall)
+    {
+        return NULL;
+    }
+    return calloc(1, size);
+}
+
 typedef struct LimitedAllocState_Rec {
     int calls;
     int limit;
@@ -671,6 +690,7 @@ static void TestModuleValidationRejectsUnownedEntry(void)
     HlslDecl *outputStruct;
     HlslDecl *inputMember;
     HlslDecl *outputMember;
+    HlslDecl *wrapperInput;
     HlslFunction *entry;
     HlslFunction *wrapper;
     HlslFunction *unowned;
@@ -713,15 +733,19 @@ static void TestModuleValidationRejectsUnownedEntry(void)
 
     entry = HlslNewFunction(&module, voidType, "cg_entry");
     wrapper = HlslNewFunction(&module, outputStruct->type, "main");
+    wrapperInput = HlslNewDecl(&module, HLSL_STORAGE_INPUT,
+                               inputStruct->type, "input");
     call = HlslNewExpr(&module, HLSL_EXPR_CALL, voidType);
     statement = HlslNewStmt(&module, HLSL_STMT_EXPRESSION);
-    assert(entry != NULL && wrapper != NULL && call != NULL &&
+    assert(entry != NULL && wrapper != NULL && wrapperInput != NULL &&
+           call != NULL &&
            statement != NULL);
     entry->isEntry = 1;
     call->u.call.function = entry;
     call->u.call.name = entry->name;
     statement->u.expression = call;
     HlslAppendStmt(&wrapper->body, statement);
+    wrapper->parameters = wrapperInput;
     module.entry = entry;
     module.wrapper = wrapper;
     module.functions = wrapper;
@@ -2317,6 +2341,7 @@ static void InitValidationFixture(ValidationFixture *fixture,
     HlslType outputType;
     HlslDecl *inputMember;
     HlslDecl *outputMember;
+    HlslDecl *inputValue;
     HlslDecl *outputValue;
     HlslStmt *returnStatement;
     HlslExpr *returnValue;
@@ -2357,6 +2382,8 @@ static void InitValidationFixture(ValidationFixture *fixture,
     fixture->wrapper = HlslNewFunction(&fixture->module,
                                        fixture->outputStruct->type,
                                        "main");
+    inputValue = HlslNewDecl(&fixture->module, HLSL_STORAGE_INPUT,
+                             fixture->inputStruct->type, "inputValue");
     outputValue = HlslNewDecl(&fixture->module, HLSL_STORAGE_NONE,
                               fixture->outputStruct->type, "outputValue");
     fixture->entryCall = HlslNewExpr(&fixture->module, HLSL_EXPR_CALL,
@@ -2367,7 +2394,8 @@ static void InitValidationFixture(ValidationFixture *fixture,
     returnValue = HlslNewExpr(&fixture->module, HLSL_EXPR_SYMBOL,
                               fixture->outputStruct->type);
     assert(fixture->entry != NULL && fixture->wrapper != NULL &&
-           outputValue != NULL && fixture->entryCall != NULL &&
+           inputValue != NULL && outputValue != NULL &&
+           fixture->entryCall != NULL &&
            fixture->callStatement != NULL && returnStatement != NULL &&
            returnValue != NULL);
     fixture->entry->isEntry = 1;
@@ -2377,6 +2405,7 @@ static void InitValidationFixture(ValidationFixture *fixture,
     returnValue->u.symbol = outputValue;
     returnStatement->u.returnExpr = returnValue;
     fixture->callStatement->next = returnStatement;
+    fixture->wrapper->parameters = inputValue;
     fixture->wrapper->locals = outputValue;
     fixture->wrapper->body = fixture->callStatement;
     fixture->entry->next = fixture->wrapper;
@@ -2398,6 +2427,43 @@ static void ConfigureModernValidationFixture(ValidationFixture *fixture)
     output->semantic = "SV_Position";
     output->canonicalSemantic = "SV_Position";
     output->semanticKind = HLSL_SEMANTIC_SV_POSITION;
+}
+
+static HlslBinding *AddModernUniformBinding(HlslModule *module,
+                                            HlslType type,
+                                            const char *name,
+                                            int ordinal);
+
+static void TestLegacyInterfaceShapeValidation(void)
+{
+    ValidationFixture fixture;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_PIXEL);
+    fixture.module.structs = fixture.outputStruct;
+    fixture.wrapper->parameters = NULL;
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslf));
+    assert(fixture.module.errorKind == HLSL_ERROR_ENTRY_ABI);
+}
+
+static void TestModernPublicBindingNameValidation(void)
+{
+    ValidationFixture fixture;
+    HlslBinding *binding;
+    HlslType type;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    binding = AddModernUniformBinding(&fixture.module, type,
+                                      "internalScale", 0);
+    binding->publicName = "publicScale";
+    assert(HlslAllocateBindings(&fixture.module,
+                                &HlslProfile_hlslv40));
+    assert(binding->leafBindings != NULL &&
+           !strcmp(binding->leafBindings->name, "publicScale") &&
+           !strcmp(binding->leafBindings->publicName, "publicScale"));
+    assert(HlslValidateModule(&fixture.module,
+                              &HlslProfile_hlslv40));
 }
 
 static HlslType ModernObjectType(HlslBase base)
@@ -3035,6 +3101,230 @@ static void TestModernConstantBufferBinding(void)
     assert(strstr(output, "register(c") == NULL);
     free(output);
     assert(fclose(stream) == 0);
+}
+
+static void AssertModernInvalidWrite(ValidationFixture *fixture,
+                                     const HlslProfileDesc *profile,
+                                     HlslErrorKind kind);
+
+static HlslBinding *AddModernAggregateConsumerFixture(
+    ValidationFixture *fixture, HlslDecl *firstMember,
+    HlslDecl *secondMember, HlslFunction **helperOut)
+{
+    HlslBinding *binding;
+    HlslDecl *declaration;
+    HlslDecl *parameter;
+    HlslDecl *structDefinition;
+    HlslExpr *argument;
+    HlslExpr *reference;
+    HlslStmt *statement;
+    HlslFunction *helper;
+    HlslType structType;
+    HlslType voidType;
+
+    memset(firstMember, 0, sizeof(*firstMember));
+    memset(secondMember, 0, sizeof(*secondMember));
+    firstMember->name = "first";
+    firstMember->publicName = "first";
+    firstMember->type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    firstMember->next = secondMember;
+    secondMember->name = "second";
+    secondMember->publicName = "second";
+    secondMember->type = HlslNumericType(HLSL_BASE_FLOAT, 1);
+    memset(&structType, 0, sizeof(structType));
+    structType.base = HLSL_BASE_STRUCT;
+    structType.structName = "AggregateParameters";
+    structType.members = firstMember;
+    structDefinition = HlslNewDecl(&fixture->module, HLSL_STORAGE_NONE,
+                                   structType, "AggregateParameters");
+    assert(structDefinition != NULL);
+    structDefinition->members = firstMember;
+    HlslAppendDecl(&fixture->module.structs, structDefinition);
+    binding = AddModernUniformBinding(&fixture->module, structType,
+                                      "parameters", 0);
+    declaration = binding->declaration;
+    parameter = HlslNewDecl(&fixture->module, HLSL_STORAGE_UNIFORM,
+                            structType, "parameters");
+    argument = HlslNewExpr(&fixture->module, HLSL_EXPR_SYMBOL,
+                           structType);
+    reference = HlslNewExpr(&fixture->module, HLSL_EXPR_SYMBOL,
+                            structType);
+    statement = HlslNewStmt(&fixture->module, HLSL_STMT_EXPRESSION);
+    assert(parameter != NULL && argument != NULL && reference != NULL &&
+           statement != NULL);
+    parameter->identity = declaration->identity;
+    parameter->sourceOrdinal = declaration->sourceOrdinal;
+    argument->u.symbol = declaration;
+    fixture->entryCall->u.call.arguments = argument;
+    fixture->entry->parameters = parameter;
+    reference->u.symbol = parameter;
+    statement->u.expression = reference;
+    fixture->entry->body = statement;
+    if (helperOut == NULL)
+        return binding;
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    helper = HlslNewFunction(&fixture->module, voidType,
+                             "cg_aggregate_helper");
+    reference = HlslNewExpr(&fixture->module, HLSL_EXPR_SYMBOL,
+                            structType);
+    statement = HlslNewStmt(&fixture->module, HLSL_STMT_EXPRESSION);
+    assert(helper != NULL && reference != NULL && statement != NULL);
+    reference->u.symbol = parameter;
+    statement->u.expression = reference;
+    helper->body = statement;
+    helper->next = fixture->wrapper;
+    fixture->entry->next = helper;
+    *helperOut = helper;
+    return binding;
+}
+
+static void TestModernAggregateReconstructionIsTransactional(void)
+{
+    ValidationFixture fixture;
+    HlslBinding *binding;
+    HlslFunction *helper;
+    HlslDecl firstMember;
+    HlslDecl secondMember;
+    HlslBinding bindingBefore;
+    HlslDecl declarationBefore;
+    HlslDecl parameterBefore;
+    HlslExpr argumentBefore;
+    HlslModule moduleBefore;
+    HlslDecl *entryLocalsBefore;
+    HlslDecl *helperLocalsBefore;
+    HlslStmt *entryBodyBefore;
+    HlslStmt *helperBodyBefore;
+    HlslName *namesBefore;
+    PostCommitDeclFaultState faultState;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    binding = AddModernAggregateConsumerFixture(&fixture, &firstMember,
+                                                 &secondMember, &helper);
+    bindingBefore = *binding;
+    declarationBefore = *binding->declaration;
+    parameterBefore = *fixture.entry->parameters;
+    argumentBefore = *fixture.entryCall->u.call.arguments;
+    entryLocalsBefore = fixture.entry->locals;
+    helperLocalsBefore = helper->locals;
+    entryBodyBefore = fixture.entry->body;
+    helperBodyBefore = helper->body;
+    namesBefore = fixture.module.names;
+    memset(&faultState, 0, sizeof(faultState));
+    faultState.module = &fixture.module;
+    faultState.failDeclarationCall = 2;
+    fixture.module.alloc = PostCommitDeclFaultAlloc;
+    fixture.module.allocArg = &faultState;
+    moduleBefore = fixture.module;
+    assert(!HlslAllocateBindings(&fixture.module,
+                                 &HlslProfile_hlslv40));
+    assert(faultState.declarationCalls == 2);
+    assert(!memcmp(binding, &bindingBefore, sizeof(bindingBefore)));
+    assert(!memcmp(binding->declaration, &declarationBefore,
+                   sizeof(declarationBefore)));
+    assert(fixture.entry->parameters != NULL &&
+           !memcmp(fixture.entry->parameters, &parameterBefore,
+                   sizeof(parameterBefore)));
+    assert(fixture.entryCall->u.call.arguments != NULL &&
+           !memcmp(fixture.entryCall->u.call.arguments, &argumentBefore,
+                   sizeof(argumentBefore)));
+    assert(fixture.module.names == namesBefore &&
+           fixture.module.resources == NULL &&
+           fixture.module.allocatedBindings == NULL);
+    assert(fixture.entry->locals == entryLocalsBefore &&
+           helper->locals == helperLocalsBefore &&
+           fixture.entry->body == entryBodyBefore &&
+           helper->body == helperBodyBefore);
+    assert(entryBodyBefore->u.expression->u.symbol ==
+           fixture.entry->parameters);
+    assert(helperBodyBefore->u.expression->u.symbol ==
+           fixture.entry->parameters);
+    fixture.module.errorLoc = moduleBefore.errorLoc;
+    fixture.module.errorKind = moduleBefore.errorKind;
+    fixture.module.errorReason = moduleBefore.errorReason;
+    fixture.module.resourceName = moduleBefore.resourceName;
+    fixture.module.resourceUsed = moduleBefore.resourceUsed;
+    fixture.module.resourceAvailable = moduleBefore.resourceAvailable;
+    fixture.module.errors = moduleBefore.errors;
+    assert(!memcmp(&fixture.module, &moduleBefore, sizeof(moduleBefore)));
+    fixture.module.alloc = TestAlloc;
+    fixture.module.allocArg = NULL;
+    fixture.module.errors = 0;
+    fixture.module.errorKind = HLSL_ERROR_NONE;
+    fixture.module.errorReason = NULL;
+    assert(HlslAllocateBindings(&fixture.module,
+                                &HlslProfile_hlslv40));
+    assert(fixture.entry->parameters == NULL &&
+           fixture.entryCall->u.call.arguments == NULL &&
+           binding->declaration == NULL);
+    assert(HlslValidateModule(&fixture.module,
+                              &HlslProfile_hlslv40));
+}
+
+static void TestModernAggregateBindingTopologyValidation(void)
+{
+    ValidationFixture fixture;
+    ValidationFixture splitFixture;
+    HlslBinding *binding;
+    HlslBinding *splitBinding;
+    HlslBinding *firstLeaf;
+    HlslBinding *secondLeaf;
+    HlslBinding *splitFirstLeaf;
+    HlslBinding *splitSecondLeaf;
+    HlslDecl firstMember;
+    HlslDecl secondMember;
+    HlslDecl splitFirstMember;
+    HlslDecl splitSecondMember;
+    HlslPackOffset firstOffset;
+    HlslPhysicalBinding firstPhysical;
+    HlslResource *firstCbuffer;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    binding = AddModernAggregateConsumerFixture(&fixture, &firstMember,
+                                                 &secondMember, NULL);
+    assert(HlslAllocateBindings(&fixture.module,
+                                &HlslProfile_hlslv40));
+    assert(HlslValidateModule(&fixture.module,
+                              &HlslProfile_hlslv40));
+    firstLeaf = binding->leafBindings;
+    secondLeaf = firstLeaf != NULL ? firstLeaf->next : NULL;
+    assert(firstLeaf != NULL && secondLeaf != NULL &&
+           secondLeaf->next == NULL);
+    firstOffset = firstLeaf->declaration->packOffset;
+    firstPhysical = firstLeaf->physical;
+    firstLeaf->declaration->packOffset =
+        secondLeaf->declaration->packOffset;
+    firstLeaf->physical = secondLeaf->physical;
+    firstLeaf->declaration->physical = secondLeaf->physical;
+    secondLeaf->declaration->packOffset = firstOffset;
+    secondLeaf->physical = firstPhysical;
+    secondLeaf->declaration->physical = firstPhysical;
+    fixture.module.errors = 0;
+    fixture.module.errorKind = HLSL_ERROR_NONE;
+    fixture.module.errorReason = NULL;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_INVALID_IR);
+
+    InitValidationFixture(&splitFixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&splitFixture);
+    splitBinding = AddModernAggregateConsumerFixture(&splitFixture,
+        &splitFirstMember, &splitSecondMember, NULL);
+    assert(HlslAllocateBindings(&splitFixture.module,
+                                &HlslProfile_hlslv40));
+    splitFirstLeaf = splitBinding->leafBindings;
+    splitSecondLeaf = splitFirstLeaf != NULL ? splitFirstLeaf->next : NULL;
+    firstCbuffer = splitFixture.module.resources;
+    assert(splitFirstLeaf != NULL && splitSecondLeaf != NULL &&
+           firstCbuffer != NULL &&
+           firstCbuffer->kind == HLSL_RESOURCE_CBUFFER);
+    splitFirstLeaf->declaration->next = NULL;
+    firstCbuffer->members = splitFirstLeaf->declaration;
+    firstCbuffer->type.members = splitFirstLeaf->declaration;
+    assert(AddModernCbuffer(&splitFixture.module,
+                            splitSecondLeaf->declaration, 1) != NULL);
+    AssertModernInvalidWrite(&splitFixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_INVALID_IR);
 }
 
 static void AssertModernInvalidWrite(ValidationFixture *fixture,
@@ -5493,9 +5783,13 @@ int main(int argc, char **argv)
     TestModernTextureMethodValidation();
     TestModernSamplerBindingValidation();
     TestProfileBuiltinCapabilityValidation();
+    TestLegacyInterfaceShapeValidation();
+    TestModernPublicBindingNameValidation();
     TestModernConstantBufferPacking();
     TestModernSamplerPairAllocation();
     TestModernConstantBufferBinding();
+    TestModernAggregateReconstructionIsTransactional();
+    TestModernAggregateBindingTopologyValidation();
     TestModernResourceValidation();
     TestModernGeometryValidation();
     TestModernSemanticIdentityValidation();

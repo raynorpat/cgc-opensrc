@@ -1,0 +1,12 @@
+// profile hlslf40
+// target ps_4_0
+void cg_entry()
+{
+    discard;
+}
+
+void main()
+{
+    cg_entry();
+    return;
+}

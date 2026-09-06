@@ -1,0 +1,22 @@
+// profile hlslf50
+// target ps_5_0
+// cgc-bind interface in uv float2 TEXCOORD0 TEXCOORD0 user default
+
+struct cg_PixelIn
+{
+    float2 uv : TEXCOORD0;
+};
+
+void cg_entry(float2 uv)
+{
+    if (uv.x < 0.0)
+    {
+        discard;
+    }
+}
+
+void main(cg_PixelIn input)
+{
+    cg_entry(input.uv);
+    return;
+}

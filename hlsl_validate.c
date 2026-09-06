@@ -2557,6 +2557,7 @@ static int HlslValidateInterfaces(HlslModule *module,
     HlslDecl *structure;
     HlslDecl *input;
     HlslDecl *output;
+    HlslDecl *wrapperInput;
     const HlslLoc *colorLoc;
     int used;
     int colors;
@@ -2580,39 +2581,58 @@ static int HlslValidateInterfaces(HlslModule *module,
             output = structure;
         }
     }
-    if (input == NULL || output == NULL || input->members == NULL ||
-        output->members == NULL)
+    if ((profile->semanticPolicy != HLSL_SEMANTIC_POLICY_MODERN &&
+         (input == NULL || output == NULL)) ||
+        (input != NULL && input->members == NULL) ||
+        (output != NULL && output->members == NULL))
     {
         return HlslFail(module, HLSL_ERROR_ENTRY_ABI, NULL,
                         "HLSL interface structures");
     }
+    wrapperInput = module->wrapper->parameters;
+    if ((input == NULL && wrapperInput != NULL) ||
+        (input != NULL &&
+         (wrapperInput == NULL || wrapperInput->next != NULL ||
+          !HlslTypesEqual(&wrapperInput->type, &input->type))) ||
+        (output == NULL && module->wrapper->result.base != HLSL_BASE_VOID) ||
+        (output != NULL &&
+         !HlslTypesEqual(&module->wrapper->result, &output->type)))
+    {
+        return HlslFail(module, HLSL_ERROR_ENTRY_ABI,
+                        &module->wrapper->loc,
+                        "HLSL wrapper interface shape");
+    }
     if (!HlslValidateInterfaceSemantics(module, profile,
-                                        input->members, 0) ||
+            input != NULL ? input->members : NULL, 0) ||
         !HlslValidateInterfaceSemantics(module, profile,
-                                        output->members, 1))
+            output != NULL ? output->members : NULL, 1))
     {
         return 0;
     }
-    used = HlslCountDeclarations(input->members);
+    used = HlslCountDeclarations(input != NULL ? input->members : NULL);
     if (used > profile->limits->inputs)
         return HlslSetResourceFailure(module, "inputs", used,
             profile->limits->inputs, HlslLastDeclLoc(input->members));
-    used = HlslCountDeclarations(output->members);
+    used = HlslCountDeclarations(output != NULL ? output->members : NULL);
     if (used > profile->limits->outputs)
         return HlslSetResourceFailure(module, "outputs", used,
             profile->limits->outputs, HlslLastDeclLoc(output->members));
     if (profile->stage == HLSL_STAGE_PIXEL) {
         colorLoc = NULL;
-        colors = HlslColorOutputUsage(profile, output->members, &colorLoc);
+        colors = HlslColorOutputUsage(profile,
+            output != NULL ? output->members : NULL, &colorLoc);
         if (colors > profile->limits->colorOutputs)
             return HlslSetResourceFailure(module, "color outputs", colors,
                 profile->limits->colorOutputs, colorLoc);
     }
     if (module->stage == HLSL_STAGE_VERTEX &&
-        !HlslHasPosition(profile, output->members))
+        !HlslHasPosition(profile,
+                         output != NULL ? output->members : NULL))
     {
         return HlslFail(module, HLSL_ERROR_REQUIRED_POSITION,
-                        &output->loc, "POSITION0");
+                        output != NULL ? &output->loc :
+                                         &module->wrapper->loc,
+                        "POSITION0");
     }
     return 1;
 } // HlslValidateInterfaces
@@ -2920,8 +2940,8 @@ static int HlslValidateBindingLeaf(HlslModule *module,
     return 1;
 } // HlslValidateBindingLeaf
 
-static int HlslCbufferDirectlyContains(const HlslModule *module,
-                                       const HlslDecl *declaration)
+static const HlslResource *HlslContainingCbuffer(
+    const HlslModule *module, const HlslDecl *declaration)
 {
     const HlslResource *resource;
     const HlslDecl *member;
@@ -2935,11 +2955,206 @@ static int HlslCbufferDirectlyContains(const HlslModule *module,
              member = member->next)
         {
             if (member == declaration)
-                return 1;
+                return resource;
         }
     }
-    return 0;
+    return NULL;
+} // HlslContainingCbuffer
+
+static int HlslCbufferDirectlyContains(const HlslModule *module,
+                                       const HlslDecl *declaration)
+{
+    return HlslContainingCbuffer(module, declaration) != NULL;
 } // HlslCbufferDirectlyContains
+
+static int HlslModernValidationRoundCursor(HlslModernPackCursor *cursor)
+{
+    if (cursor == NULL || cursor->vector < 0 || cursor->component < 0 ||
+        cursor->component > 3)
+    {
+        return 0;
+    }
+    if (cursor->component == 0)
+        return 1;
+    if (cursor->vector == INT_MAX)
+        return 0;
+    cursor->vector++;
+    cursor->component = 0;
+    return 1;
+} // HlslModernValidationRoundCursor
+
+static const char *HlslModernValidationMemberPath(HlslModule *module,
+    const char *parent, const char *member)
+{
+    char *path;
+    size_t parentLength;
+    size_t memberLength;
+
+    if (module == NULL || module->alloc == NULL || parent == NULL ||
+        member == NULL || member[0] == '\0')
+    {
+        return NULL;
+    }
+    parentLength = strlen(parent);
+    memberLength = strlen(member);
+    if (parentLength > (size_t) -1 - memberLength - 2)
+        return NULL;
+    path = (char *) module->alloc(module->allocArg,
+        parentLength + memberLength + 2);
+    if (path == NULL)
+        return NULL;
+    memcpy(path, parent, parentLength);
+    path[parentLength] = '.';
+    memcpy(path + parentLength + 1, member, memberLength + 1);
+    return path;
+} // HlslModernValidationMemberPath
+
+static const char *HlslModernValidationElementPath(HlslModule *module,
+    const char *parent, int index)
+{
+    char number[32];
+    char *path;
+    size_t parentLength;
+    size_t numberLength;
+
+    if (module == NULL || module->alloc == NULL || parent == NULL ||
+        index < 0)
+    {
+        return NULL;
+    }
+    sprintf(number, "%d", index);
+    parentLength = strlen(parent);
+    numberLength = strlen(number);
+    if (parentLength > (size_t) -1 - numberLength - 3)
+        return NULL;
+    path = (char *) module->alloc(module->allocArg,
+        parentLength + numberLength + 3);
+    if (path == NULL)
+        return NULL;
+    memcpy(path, parent, parentLength);
+    path[parentLength] = '[';
+    memcpy(path + parentLength + 1, number, numberLength);
+    path[parentLength + numberLength + 1] = ']';
+    path[parentLength + numberLength + 2] = '\0';
+    return path;
+} // HlslModernValidationElementPath
+
+static int HlslModernValidationTypeNeedsFlattening(const HlslType *type)
+{
+    if (type == NULL)
+        return 0;
+    if (type->arraySize > 0)
+        return HlslModernValidationTypeNeedsFlattening(type->elementType);
+    return type->base == HLSL_BASE_STRUCT;
+} // HlslModernValidationTypeNeedsFlattening
+
+static int HlslValidateModernBindingTopologyInner(HlslModule *module,
+    const HlslBinding *root, const HlslType *type, const char *path,
+    HlslModernPackCursor *cursor, int *logicalOffset,
+    const HlslResource *cbuffer, HlslBinding **leaf, int depth)
+{
+    const HlslDecl *member;
+    const char *childPath;
+    HlslPackOffset packed;
+    int componentCount;
+    int vectorSpan;
+    int i;
+
+    if (type == NULL || path == NULL || cursor == NULL ||
+        logicalOffset == NULL || leaf == NULL || depth > 128)
+    {
+        return 0;
+    }
+    if (type->arraySize > 0 &&
+        HlslModernValidationTypeNeedsFlattening(type->elementType))
+    {
+        if (type->elementType == NULL ||
+            !HlslModernValidationRoundCursor(cursor))
+        {
+            return 0;
+        }
+        for (i = 0; i < type->arraySize; i++) {
+            childPath = HlslModernValidationElementPath(module, path, i);
+            if (childPath == NULL ||
+                !HlslValidateModernBindingTopologyInner(module, root,
+                    type->elementType, childPath, cursor, logicalOffset,
+                    cbuffer, leaf, depth + 1) ||
+                !HlslModernValidationRoundCursor(cursor))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->members == NULL ||
+            !HlslModernValidationRoundCursor(cursor))
+        {
+            return 0;
+        }
+        for (member = type->members; member != NULL;
+             member = member->next)
+        {
+            childPath = HlslModernValidationMemberPath(module, path,
+                member->publicName != NULL ? member->publicName :
+                                             member->name);
+            if (childPath == NULL ||
+                !HlslValidateModernBindingTopologyInner(module, root,
+                    &member->type, childPath, cursor, logicalOffset,
+                    cbuffer, leaf, depth + 1))
+            {
+                return 0;
+            }
+        }
+        return HlslModernValidationRoundCursor(cursor);
+    }
+    if (*leaf == NULL || (*leaf)->declaration == NULL ||
+        !HlslTypesEqual(&(*leaf)->type, type) ||
+        !HlslStringsEqual((*leaf)->name, path) ||
+        !HlslStringsEqual((*leaf)->publicName, path) ||
+        ((*leaf)->declaration->publicName != NULL &&
+         !HlslStringsEqual((*leaf)->declaration->publicName, path)) ||
+        (*leaf)->sourceBase != root->sourceBase ||
+        (*leaf)->recursiveOffset != *logicalOffset ||
+        HlslContainingCbuffer(module, (*leaf)->declaration) != cbuffer ||
+        !HlslModernPackType(type, cursor, &packed, &vectorSpan) ||
+        (*leaf)->declaration->packOffset.vector != packed.vector ||
+        (*leaf)->declaration->packOffset.component != packed.component ||
+        (*leaf)->declaration->packOffset.componentCount !=
+            packed.componentCount ||
+        (*leaf)->physical.regno != packed.vector ||
+        (*leaf)->physical.component != packed.component ||
+        (*leaf)->physical.span != vectorSpan ||
+        !HlslModernLogicalComponentCount(type, &componentCount) ||
+        componentCount <= 0 || *logicalOffset > INT_MAX - componentCount)
+    {
+        return 0;
+    }
+    *logicalOffset += componentCount;
+    *leaf = (*leaf)->next;
+    return 1;
+} // HlslValidateModernBindingTopologyInner
+
+static int HlslValidateModernBindingTopology(HlslModule *module,
+    HlslBinding *binding, const HlslResource *cbuffer,
+    const HlslModernPackCursor *endCursor)
+{
+    HlslBinding *leaf;
+    HlslModernPackCursor cursor;
+    int logicalOffset;
+
+    if (binding == NULL || cbuffer == NULL || endCursor == NULL)
+        return 0;
+    cursor.vector = binding->physical.regno;
+    cursor.component = binding->physical.component;
+    logicalOffset = 0;
+    leaf = binding->leafBindings;
+    return HlslValidateModernBindingTopologyInner(module, binding,
+               &binding->type, HlslPublicBindingName(binding), &cursor,
+               &logicalOffset, cbuffer, &leaf, 0) &&
+           leaf == NULL && cursor.vector == endCursor->vector &&
+           cursor.component == endCursor->component;
+} // HlslValidateModernBindingTopology
 
 static int HlslValidateModernBindings(HlslModule *module,
                                       const HlslProfileDesc *profile)
@@ -2952,6 +3167,7 @@ static int HlslValidateModernBindings(HlslModule *module,
     const HlslDecl *samplerDecl;
     const HlslResource *textureResource;
     const HlslResource *samplerResource;
+    const HlslResource *cbufferResource;
     HlslPackOffset packed;
     HlslBase samplerBase;
     HlslBase textureBase;
@@ -3087,16 +3303,24 @@ static int HlslValidateModernBindings(HlslModule *module,
             binding->physical.span != vectorSpan ||
             binding->logicalTypeName == NULL ||
             binding->logicalTypeName[0] == '\0' ||
-            ((leaf->next == NULL) ?
-             (binding->declaration == NULL ||
+            (HlslModernValidationTypeNeedsFlattening(&binding->type) ?
+             binding->declaration != NULL :
+             (leaf->next != NULL || binding->declaration == NULL ||
               binding->declaration != leaf->declaration ||
               !HlslTypesEqual(&leaf->type, &binding->type) ||
               !HlslPhysicalBindingsEqual(&binding->physical,
-                                         &leaf->physical)) :
-             binding->declaration != NULL))
+                                         &leaf->physical))))
         {
             return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
                             "invalid modern HLSL binding graph");
+        }
+        cbufferResource = HlslContainingCbuffer(module,
+                                                leaf->declaration);
+        if (!HlslValidateModernBindingTopology(module, binding,
+                                               cbufferResource, &cursor))
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
+                            "invalid modern HLSL binding topology");
         }
         expectedDefaultOffset = 0;
         expectedLogicalOffset = 0;

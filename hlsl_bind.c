@@ -1872,6 +1872,203 @@ static int HlslInstallMixedBindingConsumer(HlslModule *module,
     return HlslInsertBeforeFirstUse(function, local, initializers);
 } // HlslInstallMixedBindingConsumer
 
+typedef struct HlslModernConsumerPlan_Rec {
+    HlslFunction *function;
+    HlslDecl *source;
+    HlslDecl *local;
+    HlslStmt *initializers;
+    HlslStmt *firstUse;
+    struct HlslModernConsumerPlan_Rec *next;
+} HlslModernConsumerPlan;
+
+typedef struct HlslModernReconstructionPlan_Rec {
+    HlslBinding *binding;
+    HlslDecl *parameter;
+    HlslDecl *valueDecl;
+    HlslModernConsumerPlan *consumers;
+    struct HlslModernReconstructionPlan_Rec *next;
+} HlslModernReconstructionPlan;
+
+static HlslExpr **HlslFindEntryArgument(HlslModule *module,
+                                        const HlslDecl *declaration)
+{
+    HlslExpr *call;
+    HlslExpr **place;
+
+    if (module == NULL || module->wrapper == NULL ||
+        declaration == NULL)
+    {
+        return NULL;
+    }
+    call = HlslFindFunctionCallStatements(module->wrapper->body,
+                                           module->entry);
+    if (call == NULL)
+        return NULL;
+    for (place = &call->u.call.arguments; *place != NULL;
+         place = &(*place)->next)
+    {
+        if ((*place)->kind == HLSL_EXPR_SYMBOL &&
+            (*place)->u.symbol == declaration)
+        {
+            return place;
+        }
+    }
+    return NULL;
+} // HlslFindEntryArgument
+
+static int HlslPrepareModernBindingConsumer(HlslModule *module,
+    HlslFunction *function, HlslBinding *binding, HlslDecl *source,
+    HlslModernConsumerPlan **plans)
+{
+    HlslModernConsumerPlan *plan;
+    HlslBinding *leaf;
+    HlslStmt *statement;
+
+    if (!HlslStatementsUseDecl(function->body, source))
+        return 1;
+    plan = (HlslModernConsumerPlan *) HlslBindAlloc(module,
+        sizeof(HlslModernConsumerPlan));
+    if (plan == NULL)
+        return 0;
+    plan->function = function;
+    plan->source = source;
+    plan->local = HlslNewMixedBindingLocal(module, function, binding,
+                                            source);
+    plan->firstUse = NULL;
+    for (statement = function->body; statement != NULL;
+         statement = statement->next)
+    {
+        if (HlslStatementUsesDecl(statement, source)) {
+            plan->firstUse = statement;
+            break;
+        }
+    }
+    plan->initializers = NULL;
+    leaf = binding->leafBindings;
+    if (plan->local == NULL || plan->firstUse == NULL ||
+        !HlslAppendModernBindingCopy(module, &binding->type,
+            HlslBindingSymbol(module, plan->local), &leaf,
+            &plan->initializers) ||
+        leaf != NULL || plan->initializers == NULL)
+    {
+        return 0;
+    }
+    plan->next = NULL;
+    if (*plans == NULL) {
+        *plans = plan;
+    } else {
+        HlslModernConsumerPlan *tail;
+
+        for (tail = *plans; tail->next != NULL; tail = tail->next) {
+        }
+        tail->next = plan;
+    }
+    return 1;
+} // HlslPrepareModernBindingConsumer
+
+static int HlslPrepareModernReconstruction(HlslModule *module,
+    HlslBinding *binding, HlslModernReconstructionPlan **plans)
+{
+    HlslModernReconstructionPlan *plan;
+    HlslDecl **parameterPlace;
+    HlslFunction *function;
+
+    if (module == NULL || module->entry == NULL || binding == NULL ||
+        binding->declaration == NULL || binding->leafBindings == NULL)
+    {
+        return 0;
+    }
+    plan = (HlslModernReconstructionPlan *) HlslBindAlloc(module,
+        sizeof(HlslModernReconstructionPlan));
+    if (plan == NULL)
+        return 0;
+    plan->binding = binding;
+    parameterPlace = HlslFindEntryParameter(module, binding, NULL);
+    plan->parameter = parameterPlace != NULL ? *parameterPlace : NULL;
+    plan->valueDecl = plan->parameter != NULL ? plan->parameter :
+                                                binding->declaration;
+    if (plan->valueDecl == NULL ||
+        (plan->parameter != NULL &&
+         HlslFindEntryArgument(module, binding->declaration) == NULL) ||
+        (module->wrapper != NULL &&
+         HlslStatementsUseDecl(module->wrapper->body, plan->valueDecl)))
+    {
+        return 0;
+    }
+    plan->consumers = NULL;
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (function != module->wrapper &&
+            !HlslPrepareModernBindingConsumer(module, function, binding,
+                                               plan->valueDecl,
+                                               &plan->consumers))
+        {
+            return 0;
+        }
+    }
+    plan->next = NULL;
+    if (*plans == NULL) {
+        *plans = plan;
+    } else {
+        HlslModernReconstructionPlan *tail;
+
+        for (tail = *plans; tail->next != NULL; tail = tail->next) {
+        }
+        tail->next = plan;
+    }
+    return 1;
+} // HlslPrepareModernReconstruction
+
+static void HlslCommitModernReconstruction(
+    HlslModule *module, HlslModernReconstructionPlan *plans)
+{
+    HlslModernReconstructionPlan *plan;
+
+    for (plan = plans; plan != NULL; plan = plan->next) {
+        HlslModernConsumerPlan *consumer;
+
+        if (plan->parameter != NULL) {
+            HlslDecl **parameterPlace;
+            HlslExpr **argumentPlace;
+            HlslExpr *argument;
+
+            parameterPlace = &module->entry->parameters;
+            while (*parameterPlace != plan->parameter)
+                parameterPlace = &(*parameterPlace)->next;
+            argumentPlace = HlslFindEntryArgument(module,
+                                                   plan->binding->declaration);
+            argument = *argumentPlace;
+            *argumentPlace = argument->next;
+            argument->next = NULL;
+            *parameterPlace = plan->parameter->next;
+            plan->parameter->next = NULL;
+        }
+        for (consumer = plan->consumers; consumer != NULL;
+             consumer = consumer->next)
+        {
+            HlslStmt **place;
+            HlslStmt *tail;
+
+            HlslReplaceStatementDecl(consumer->function->body,
+                                     consumer->source, consumer->local);
+            HlslAppendDecl(&consumer->function->locals, consumer->local);
+            for (place = &consumer->function->body;
+                 *place != consumer->firstUse; place = &(*place)->next)
+            {
+            }
+            for (tail = consumer->initializers; tail->next != NULL;
+                 tail = tail->next)
+            {
+            }
+            tail->next = *place;
+            *place = consumer->initializers;
+        }
+        if (HlslModernTypeNeedsFlattening(&plan->binding->type))
+            plan->binding->declaration = NULL;
+    }
+} // HlslCommitModernReconstruction
+
 static int HlslTypeIsPhysicalIntegerStorage(const HlslType *type)
 {
     return type != NULL && type->arraySize == 0 &&
@@ -1896,10 +2093,13 @@ static int HlslBindingTypeIsSampler(const HlslType *type)
            type->base <= HLSL_BASE_SAMPLERCUBE;
 } // HlslBindingTypeIsSampler
 
-static int HlslBindingNeedsReconstruction(const HlslBinding *binding)
+static int HlslBindingNeedsReconstruction(const HlslBinding *binding,
+                                          int modern)
 {
     return binding != NULL && binding->leafBindings != NULL &&
-           (binding->leafBindings->next != NULL ||
+           ((modern &&
+             HlslModernTypeNeedsFlattening(&binding->type)) ||
+            binding->leafBindings->next != NULL ||
             (binding->leafBindings->physical.bank == HLSL_REGISTER_I &&
              !HlslTypeIsPhysicalIntegerStorage(&binding->type)) ||
             (binding->leafBindings->physical.bank == HLSL_REGISTER_B &&
@@ -3577,7 +3777,7 @@ static int HlslModernPrepareBinding(HlslModule *module,
         if (!HlslModernBuildPhysicalLeaves(module, binding,
                 &binding->type, HlslPublicBindingName(binding), &cursor,
                 &logicalOffset, &plan->records, &plan->members, 0) ||
-            plan->records == NULL || plan->records->next == NULL ||
+            plan->records == NULL ||
             cursor.vector != plan->offset.vector + plan->vectorSpan ||
             cursor.component != 0 ||
             logicalOffset != HlslTypeComponentCount(&binding->type))
@@ -3590,7 +3790,8 @@ static int HlslModernPrepareBinding(HlslModule *module,
         return 1;
     }
     record = HlslNewBinding(module, binding->storage, binding->type,
-                            binding->name, binding->semantic);
+                            HlslPublicBindingName(binding),
+                            binding->semantic);
     name = record != NULL ? HlslModernFieldName(module, binding, record) :
                             NULL;
     if (name == NULL || record == NULL)
@@ -3834,13 +4035,13 @@ typedef struct HlslModernSamplerPlan_Rec {
     int pairId;
 } HlslModernSamplerPlan;
 
-typedef struct HlslModernSamplerSnapshot_Rec {
+typedef struct HlslModernBindingSnapshot_Rec {
     HlslBinding *binding;
     HlslBinding bindingValue;
     HlslDecl *declaration;
     HlslDecl declarationValue;
     int hasDeclaration;
-} HlslModernSamplerSnapshot;
+} HlslModernBindingSnapshot;
 
 static HlslBase HlslModernTextureBase(HlslBase samplerBase)
 {
@@ -4132,13 +4333,13 @@ int HlslAllocateBindings(HlslModule *module,
     HlslBinding *savedAllocations;
     HlslBinding *allocationTail;
     HlslBinding *savedAllocationNext;
-    HlslModernSamplerSnapshot *samplerSnapshots;
+    HlslModernBindingSnapshot *bindingSnapshots;
+    HlslModernReconstructionPlan *reconstructionPlans;
     HlslName *savedNames;
     HlslResource *savedResources;
     HlslResource *resourceTail;
     HlslResource *savedResourceNext;
     int count;
-    int samplerCount;
     int i;
     int j;
     int explicitPass;
@@ -4188,32 +4389,22 @@ int HlslAllocateBindings(HlslModule *module,
                     "duplicate modern HLSL source ordinal");
             }
         }
-        samplerCount = 0;
-        for (i = 0; i < count; i++) {
-            if (ordered[i]->storage == HLSL_STORAGE_SAMPLER)
-                samplerCount++;
-        }
-        samplerSnapshots = samplerCount > 0 ?
-            (HlslModernSamplerSnapshot *) HlslBindAlloc(module,
-                (size_t) samplerCount *
-                    sizeof(HlslModernSamplerSnapshot)) : NULL;
-        if (samplerCount > 0 && samplerSnapshots == NULL)
+        bindingSnapshots = (HlslModernBindingSnapshot *)
+            HlslBindAlloc(module, (size_t) count *
+                                  sizeof(HlslModernBindingSnapshot));
+        if (bindingSnapshots == NULL)
             return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
                                    "modern HLSL allocation snapshot");
-        j = 0;
         for (i = 0; i < count; i++) {
-            if (ordered[i]->storage != HLSL_STORAGE_SAMPLER)
-                continue;
-            samplerSnapshots[j].binding = ordered[i];
-            samplerSnapshots[j].bindingValue = *ordered[i];
-            samplerSnapshots[j].declaration = ordered[i]->declaration;
-            samplerSnapshots[j].hasDeclaration =
+            bindingSnapshots[i].binding = ordered[i];
+            bindingSnapshots[i].bindingValue = *ordered[i];
+            bindingSnapshots[i].declaration = ordered[i]->declaration;
+            bindingSnapshots[i].hasDeclaration =
                 ordered[i]->declaration != NULL;
-            if (samplerSnapshots[j].hasDeclaration) {
-                samplerSnapshots[j].declarationValue =
+            if (bindingSnapshots[i].hasDeclaration) {
+                bindingSnapshots[i].declarationValue =
                     *ordered[i]->declaration;
             }
-            j++;
         }
         savedNames = module->names;
         savedResources = module->resources;
@@ -4235,18 +4426,24 @@ int HlslAllocateBindings(HlslModule *module,
                                                ordered, count))
             return 0;
         if (HlslAllocateModernBindings(module, profile, ordered, count)) {
+            reconstructionPlans = NULL;
             for (i = 0; i < count; i++) {
                 if (ordered[i]->storage == HLSL_STORAGE_UNIFORM &&
-                    HlslBindingNeedsReconstruction(ordered[i]) &&
-                    !HlslInstallReconstructedBindingValue(module,
-                                                           ordered[i], 1))
+                    HlslBindingNeedsReconstruction(ordered[i], 1) &&
+                    !HlslPrepareModernReconstruction(module, ordered[i],
+                                                     &reconstructionPlans))
                 {
-                    return HlslBindFailure(module, ordered[i],
+                    HlslBindFailure(module, ordered[i],
                         HLSL_ERROR_INVALID_IR,
                         "modern HLSL aggregate binding value");
+                    break;
                 }
             }
-            return 1;
+            if (i == count) {
+                HlslCommitModernReconstruction(module,
+                                               reconstructionPlans);
+                return 1;
+            }
         }
         module->names = savedNames;
         module->resources = savedResources;
@@ -4255,12 +4452,12 @@ int HlslAllocateBindings(HlslModule *module,
         module->allocatedBindings = savedAllocations;
         if (allocationTail != NULL)
             allocationTail->allocationNext = savedAllocationNext;
-        for (i = 0; i < samplerCount; i++) {
-            *samplerSnapshots[i].binding =
-                samplerSnapshots[i].bindingValue;
-            if (samplerSnapshots[i].hasDeclaration) {
-                *samplerSnapshots[i].declaration =
-                    samplerSnapshots[i].declarationValue;
+        for (i = 0; i < count; i++) {
+            *bindingSnapshots[i].binding =
+                bindingSnapshots[i].bindingValue;
+            if (bindingSnapshots[i].hasDeclaration) {
+                *bindingSnapshots[i].declaration =
+                    bindingSnapshots[i].declarationValue;
             }
         }
         return 0;
@@ -4277,7 +4474,7 @@ int HlslAllocateBindings(HlslModule *module,
     for (i = 0; i < count; i++) {
         HlslMarkPhysicalIntegerParameter(module, ordered[i]);
         if (module->entry != NULL &&
-            HlslBindingNeedsReconstruction(ordered[i]) &&
+            HlslBindingNeedsReconstruction(ordered[i], 0) &&
             !HlslInstallReconstructedBindingValue(module, ordered[i],
                 profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN))
         {
@@ -4541,7 +4738,7 @@ static int HlslWrapperIsEmptyEntry(const HlslModule *module)
     entry = module != NULL ? module->entry : NULL;
     return entry != NULL && !strcmp(entry->name, "main") &&
            entry->result.base == HLSL_BASE_VOID &&
-           entry->parameters == NULL;
+           entry->parameters == NULL && entry->body == NULL;
 } // HlslWrapperIsEmptyEntry
 
 static int hlslVertexInputIdentity;
@@ -4575,10 +4772,13 @@ int HlslBuildEntryWrapper(HlslModule *module,
     HlslStmt *parameterCopies;
     HlslType inputType;
     HlslType outputType;
+    HlslType wrapperResultType;
     const char *inputName;
     const char *memberName;
     const char *outputName;
     const char *semantic;
+    int hasInput;
+    int hasOutput;
 
     if (module == NULL || profile == NULL || module->entry == NULL ||
         module->stage != profile->stage)
@@ -4768,23 +4968,36 @@ int HlslBuildEntryWrapper(HlslModule *module,
     outputStruct->type.members = outputStruct->members;
     inputType.members = inputStruct->members;
     outputType.members = outputStruct->members;
-    if (inputStruct->members == NULL || outputStruct->members == NULL)
+    hasInput = inputStruct->members != NULL;
+    hasOutput = outputStruct->members != NULL;
+    if (profile->semanticPolicy != HLSL_SEMANTIC_POLICY_MODERN &&
+        (!hasInput || !hasOutput))
+    {
         return HlslBindFailure(module, NULL, HLSL_ERROR_ENTRY_ABI,
                                "empty HLSL wrapper interface");
-    HlslAppendDecl(&module->structs, inputStruct);
-    HlslAppendDecl(&module->structs, outputStruct);
+    }
+    if (hasInput)
+        HlslAppendDecl(&module->structs, inputStruct);
+    if (hasOutput)
+        HlslAppendDecl(&module->structs, outputStruct);
 
-    wrapper = HlslNewFunction(module, outputType, "main");
-    inputParameter = HlslNewDecl(module, HLSL_STORAGE_INPUT,
-                                 inputType, "input");
-    outputLocal = HlslNewDecl(module, HLSL_STORAGE_NONE,
-                              outputType, "output");
-    if (wrapper == NULL || inputParameter == NULL || outputLocal == NULL)
+    wrapperResultType = hasOutput ? outputType :
+                        HlslNumericType(HLSL_BASE_VOID, 0);
+    wrapper = HlslNewFunction(module, wrapperResultType, "main");
+    inputParameter = hasInput ?
+        HlslNewDecl(module, HLSL_STORAGE_INPUT, inputType, "input") : NULL;
+    outputLocal = hasOutput ?
+        HlslNewDecl(module, HLSL_STORAGE_NONE, outputType, "output") : NULL;
+    if (wrapper == NULL || (hasInput && inputParameter == NULL) ||
+        (hasOutput && outputLocal == NULL))
         return 0;
     wrapper->identity = wrapper;
-    inputParameter->identity = inputParameter;
-    outputLocal->identity = outputLocal;
-    HlslAppendDecl(&wrapper->parameters, inputParameter);
+    if (inputParameter != NULL) {
+        inputParameter->identity = inputParameter;
+        HlslAppendDecl(&wrapper->parameters, inputParameter);
+    }
+    if (outputLocal != NULL)
+        outputLocal->identity = outputLocal;
 
     /* Repair the deferred input/output member object expressions and move
      * out/inout temporaries into the wrapper's local list. */
@@ -4808,7 +5021,8 @@ int HlslBuildEntryWrapper(HlslModule *module,
         if (!HlslWrapperRepairInput(module, right, inputParameter))
             return 0;
     }
-    HlslAppendDecl(&wrapper->locals, outputLocal);
+    if (outputLocal != NULL)
+        HlslAppendDecl(&wrapper->locals, outputLocal);
     HlslAppendStmt(&wrapper->body, initializers);
 
     call = HlslNewExpr(module, HLSL_EXPR_CALL, entry->result);
@@ -4878,9 +5092,11 @@ int HlslBuildEntryWrapper(HlslModule *module,
     statement = HlslNewStmt(module, HLSL_STMT_RETURN);
     if (statement == NULL)
         return 0;
-    statement->u.returnExpr = HlslWrapperSymbol(module, outputLocal);
-    if (statement->u.returnExpr == NULL)
-        return 0;
+    if (outputLocal != NULL) {
+        statement->u.returnExpr = HlslWrapperSymbol(module, outputLocal);
+        if (statement->u.returnExpr == NULL)
+            return 0;
+    }
     HlslAppendStmt(&wrapper->body, statement);
     module->wrapper = wrapper;
     HlslAppendFunction(&module->functions, wrapper);
