@@ -1,0 +1,12 @@
+struct VertexResult {
+    float4 position : POSITION;
+    float4 aliasPosition : HPOS;
+};
+
+VertexResult bad_systems(float4 position : POSITION)
+{
+    VertexResult result;
+    result.position = position;
+    result.aliasPosition = position;
+    return result;
+}

@@ -45,6 +45,7 @@ add_executable(cgc
     hal.c
     hlsl_bind.c
     hlsl_ir.c
+    hlsl_modern.c
     hlsl_lower.c
     hlsl_legalize.c
     hlsl_validate.c

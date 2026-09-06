@@ -8,8 +8,13 @@ include("${CMAKE_CURRENT_LIST_DIR}/check_config_output.cmake")
 prepare_config_output("${ACTUAL}")
 
 file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
+set(cgc_entry_args)
+if(DEFINED ENTRY AND NOT "${ENTRY}" STREQUAL "")
+    list(APPEND cgc_entry_args -entry "${ENTRY}")
+endif()
 execute_process(
-    COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
+    COMMAND "${CGC}" -quiet -profile "${PROFILE}" ${cgc_entry_args}
+        -o "${ACTUAL}" "${SOURCE}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr

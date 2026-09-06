@@ -111,7 +111,8 @@ static int HlslIsScalar(const HlslType *type, HlslBase base)
 static int HlslIsNumericScalarOrVector(const HlslType *type)
 {
     return type != NULL && type->arraySize == 0 &&
-           (type->base == HLSL_BASE_FLOAT || type->base == HLSL_BASE_INT) &&
+           (type->base == HLSL_BASE_FLOAT || type->base == HLSL_BASE_INT ||
+            type->base == HLSL_BASE_UINT) &&
            type->len >= 1 && type->len <= 4 &&
            type->rows == 0 && type->cols == 0;
 } // HlslIsNumericScalarOrVector
@@ -127,7 +128,7 @@ static int HlslIsBooleanScalarOrVector(const HlslType *type)
 static int HlslIsIntegerScalarOrVector(const HlslType *type)
 {
     return type != NULL && type->arraySize == 0 &&
-           type->base == HLSL_BASE_INT &&
+           (type->base == HLSL_BASE_INT || type->base == HLSL_BASE_UINT) &&
            type->len >= 1 && type->len <= 4 &&
            type->rows == 0 && type->cols == 0;
 } // HlslIsIntegerScalarOrVector

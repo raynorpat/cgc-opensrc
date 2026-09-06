@@ -1,0 +1,12 @@
+struct VertexResult {
+    float4 position : POSITION;
+    float size : PSIZE;
+};
+
+VertexResult bad_psize(float4 position : POSITION)
+{
+    VertexResult result;
+    result.position = position;
+    result.size = 1.0;
+    return result;
+}

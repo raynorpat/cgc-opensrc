@@ -53,6 +53,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "slglobals.h"
 #include "cg_stdlib.h"
 #include "hlsl_hal.h"
+#include "hlsl_modern.h"
 
 #if !defined(HLSL_CANONICALIZATION_ONLY)
 
@@ -180,6 +181,21 @@ const char *HlslCanonicalSemantic(const HlslProfileDesc *profile,
     int numSemantics, numAliases, numRegisters;
     int semanticIndex, registerIndex, i, j;
 
+    if (profile != NULL &&
+        profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN)
+    {
+        HlslSemanticKind kind;
+
+        if (!HlslUpperSemantic(semantic, upper, sizeof(upper)) ||
+            !HlslParseSemantic(upper, root, sizeof(root), &semanticIndex))
+        {
+            return NULL;
+        }
+        kind = HlslModernSemantic(profile->stage,
+            IsOutVal ? HLSL_DIRECTION_OUTPUT : HLSL_DIRECTION_INPUT,
+            root, semanticIndex);
+        return kind != HLSL_SEMANTIC_UNSUPPORTED ? semantic : NULL;
+    }
     if (profile == NULL ||
         (profile->stage != HLSL_STAGE_VERTEX &&
          profile->stage != HLSL_STAGE_PIXEL) ||
@@ -1105,6 +1121,83 @@ static int ClaimHlslSemantic(HlslHALData *data, Symbol *owner, int slot,
     return 1;
 } // ClaimHlslSemantic
 
+static int HlslModernSemanticSlot(HlslSemanticKind kind, int index)
+{
+    switch (kind) {
+    case HLSL_SEMANTIC_SV_POSITION: return 0;
+    case HLSL_SEMANTIC_SV_TARGET: return index >= 0 && index < 8 ? 1 + index : -1;
+    case HLSL_SEMANTIC_SV_DEPTH: return 9;
+    case HLSL_SEMANTIC_SV_VERTEX_ID: return 10;
+    case HLSL_SEMANTIC_SV_INSTANCE_ID: return 11;
+    case HLSL_SEMANTIC_SV_PRIMITIVE_ID: return 12;
+    case HLSL_SEMANTIC_SV_RT_ARRAY_INDEX: return 13;
+    case HLSL_SEMANTIC_SV_IS_FRONT_FACE: return 14;
+    case HLSL_SEMANTIC_SV_CLIP_DISTANCE:
+        return index >= 0 && index < 8 ? 15 + index : -1;
+    default:
+        return -1;
+    }
+} // HlslModernSemanticSlot
+
+static const char *HlslModernSemanticReason(HlslSemanticKind kind)
+{
+    switch (kind) {
+    case HLSL_SEMANTIC_SV_POSITION: return "SV_Position";
+    case HLSL_SEMANTIC_SV_TARGET: return "SV_Target";
+    case HLSL_SEMANTIC_SV_DEPTH: return "SV_Depth";
+    case HLSL_SEMANTIC_SV_VERTEX_ID: return "SV_VertexID";
+    case HLSL_SEMANTIC_SV_INSTANCE_ID: return "SV_InstanceID";
+    case HLSL_SEMANTIC_SV_PRIMITIVE_ID: return "SV_PrimitiveID";
+    case HLSL_SEMANTIC_SV_RT_ARRAY_INDEX:
+        return "SV_RenderTargetArrayIndex";
+    case HLSL_SEMANTIC_SV_IS_FRONT_FACE: return "SV_IsFrontFace";
+    case HLSL_SEMANTIC_SV_CLIP_DISTANCE: return "SV_ClipDistance";
+    default: return "modern semantic";
+    }
+} // HlslModernSemanticReason
+
+static int BindModernVaryingSemantic(HlslHALData *data, SourceLoc *loc,
+                                     Symbol *symbol, int semantic,
+                                     Binding *binding, int isOutput)
+{
+    char upper[HLSL_SEMANTIC_NAME_MAX];
+    char root[HLSL_SEMANTIC_NAME_MAX];
+    const char *source;
+    HlslSemanticKind kind;
+    int index;
+    int slot;
+
+    source = GetAtomString(atable, semantic);
+    if (data == NULL || symbol == NULL || binding == NULL || source == NULL ||
+        !HlslUpperSemantic(source, upper, sizeof(upper)) ||
+        !HlslParseSemantic(upper, root, sizeof(root), &index))
+    {
+        return ReportHlslInterfaceError(loc, HLSL_ERROR_SEMANTIC,
+                                        source != NULL ? source :
+                                                         "unknown semantic");
+    }
+    kind = HlslModernSemantic(data->profile->stage,
+        isOutput ? HLSL_DIRECTION_OUTPUT : HLSL_DIRECTION_INPUT,
+        root, index);
+    if (kind == HLSL_SEMANTIC_UNSUPPORTED)
+        return ReportHlslInterfaceError(loc, HLSL_ERROR_SEMANTIC, source);
+    slot = HlslModernSemanticSlot(kind, index);
+    if (slot >= 0 && !ClaimHlslSemantic(data, symbol, slot, isOutput)) {
+        return ReportHlslInterfaceError(loc, HLSL_ERROR_INTERFACE_CONFLICT,
+                                        HlslModernSemanticReason(kind));
+    }
+    binding->conn.kind = BK_CONNECTOR;
+    binding->conn.rname = semantic;
+    binding->conn.regno = slot >= 0 ? slot : 0;
+    binding->conn.size = 4;
+    binding->conn.properties |= BIND_IS_BOUND | BIND_VARYING |
+        (isOutput ? BIND_OUTPUT : BIND_INPUT);
+    symbol->properties |= SYMB_IS_CONNECTOR_REGISTER |
+                          SYMB_CONNECTOR_CAN_READ |
+                          SYMB_CONNECTOR_CAN_WRITE;
+    return 1;
+} // BindModernVaryingSemantic
+
 /*
  * BindVaryingSemantic_hlsl() - Canonicalize and claim one stage interface
  *         location transactionally.  Every failure is reported here so the
@@ -1124,6 +1217,12 @@ static int BindVaryingSemantic_hlsl(SourceLoc *loc, Symbol *fSymb,
 
     data = GetHlslData();
     profile = data != NULL ? data->profile : NULL;
+    if (profile != NULL &&
+        profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN)
+    {
+        return BindModernVaryingSemantic(data, loc, fSymb, semantic,
+                                         fBind, IsOutVal);
+    }
     source = GetAtomString(atable, semantic);
     if (source == NULL)
         source = "unknown semantic";

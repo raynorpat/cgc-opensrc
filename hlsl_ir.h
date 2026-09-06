@@ -71,8 +71,31 @@ typedef enum HlslBase_Enum {
     HLSL_BASE_SAMPLER2D,
     HLSL_BASE_SAMPLER3D,
     HLSL_BASE_SAMPLERCUBE,
-    HLSL_BASE_STRUCT
+    HLSL_BASE_STRUCT,
+    HLSL_BASE_UINT
 } HlslBase;
+
+typedef enum HlslSemanticKind_Enum {
+    HLSL_SEMANTIC_USER,
+    HLSL_SEMANTIC_SV_POSITION,
+    HLSL_SEMANTIC_SV_TARGET,
+    HLSL_SEMANTIC_SV_DEPTH,
+    HLSL_SEMANTIC_SV_VERTEX_ID,
+    HLSL_SEMANTIC_SV_INSTANCE_ID,
+    HLSL_SEMANTIC_SV_PRIMITIVE_ID,
+    HLSL_SEMANTIC_SV_RT_ARRAY_INDEX,
+    HLSL_SEMANTIC_SV_IS_FRONT_FACE,
+    HLSL_SEMANTIC_SV_CLIP_DISTANCE,
+    HLSL_SEMANTIC_UNSUPPORTED
+} HlslSemanticKind;
+
+typedef enum HlslInterpolation_Enum {
+    HLSL_INTERPOLATION_DEFAULT,
+    HLSL_INTERPOLATION_LINEAR,
+    HLSL_INTERPOLATION_CENTROID,
+    HLSL_INTERPOLATION_NOPERSPECTIVE,
+    HLSL_INTERPOLATION_NOINTERPOLATION
+} HlslInterpolation;
 
 typedef enum HlslRegisterBank_Enum {
     HLSL_REGISTER_NONE,
@@ -450,6 +473,10 @@ struct HlslDecl_Rec {
     const char *publicName;
     const char *semantic;
     const char *inputSemantic;
+    HlslSemanticKind semanticKind;
+    int semanticIndex;
+    const char *canonicalSemantic;
+    HlslInterpolation interpolation;
     HlslLoc loc;
     int sourceOrdinal;
     HlslExpr *initializer;

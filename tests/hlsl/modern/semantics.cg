@@ -1,0 +1,35 @@
+struct VertexResult {
+    float4 position : POSITION;
+    float4 color : COLOR3;
+    int value : TEXCOORD7;
+    float clip : CLP0;
+};
+
+VertexResult vertex_main(float4 position : POSITION,
+                         float4 color : COLOR3,
+                         int value : TEXCOORD7,
+                         int vertexId : VERTEXID)
+{
+    VertexResult result;
+    result.position = position;
+    result.color = color;
+    result.value = value;
+    result.clip = position.x;
+    return result;
+}
+
+struct PixelResult {
+    float4 color : COLOR3;
+    float depth : DEPTH;
+};
+
+PixelResult pixel_main(float4 position : WPOS,
+                       float4 color : COLOR3,
+                       int value : TEXCOORD7,
+                       float face : FACE)
+{
+    PixelResult result;
+    result.color = color;
+    result.depth = position.z;
+    return result;
+}

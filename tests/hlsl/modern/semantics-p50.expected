@@ -1,0 +1,46 @@
+// profile hlslf50
+// target ps_5_0
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+// cgc-bind interface in color float4 COLOR3 COLOR3 user default
+// cgc-bind interface in value int TEXCOORD7 TEXCOORD7 user nointerpolation
+// cgc-bind interface in face bool SV_IsFrontFace SV_IsFrontFace system default
+// cgc-bind interface out color float4 SV_Target3 SV_Target3 system default
+// cgc-bind interface out depth float SV_Depth SV_Depth system default
+
+struct cg_PixelResult
+{
+    float4 color;
+    float depth;
+};
+
+struct cg_PixelIn
+{
+    float4 position : SV_Position;
+    float4 color : COLOR3;
+    nointerpolation int value : TEXCOORD7;
+    bool face : SV_IsFrontFace;
+};
+
+struct cg_PixelOut
+{
+    float4 color : SV_Target3;
+    float depth : SV_Depth;
+};
+
+cg_PixelResult cg_entry(float4 position, float4 color, int value, float face)
+{
+    cg_PixelResult result = (cg_PixelResult) 0;
+    result.color = color;
+    result.depth = position.z;
+    return result;
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    cg_PixelResult cg_result;
+    cg_result = cg_entry(input.position, input.color, input.value, (float) input.face);
+    output.color = cg_result.color;
+    output.depth = cg_result.depth;
+    return output;
+}

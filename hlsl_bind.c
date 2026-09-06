@@ -51,6 +51,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "hlsl_hal.h"
+#include "hlsl_modern.h"
 
 typedef struct HlslBankState_Rec {
     unsigned char c[HLSL_MAX_FLOAT_CONSTANTS];
@@ -148,6 +149,7 @@ static HlslRegisterBank HlslTypeBank(const HlslType *type)
         return HlslTypeBank(type->elementType);
     switch (type->base) {
     case HLSL_BASE_INT:
+    case HLSL_BASE_UINT:
         return HLSL_REGISTER_I;
     case HLSL_BASE_BOOL:
         return HLSL_REGISTER_B;
@@ -225,6 +227,7 @@ static int HlslTypeComponentCount(const HlslType *type)
     switch (type->base) {
     case HLSL_BASE_FLOAT:
     case HLSL_BASE_INT:
+    case HLSL_BASE_UINT:
     case HLSL_BASE_BOOL:
         return type->len;
     case HLSL_BASE_SAMPLER1D:
@@ -3265,6 +3268,112 @@ static HlslExpr *HlslWrapperAssign(HlslModule *module, HlslExpr *left,
     return expression;
 } // HlslWrapperAssign
 
+static HlslExpr *HlslWrapperConvert(HlslModule *module, HlslExpr *source,
+                                    HlslType targetType)
+{
+    HlslExpr *cast;
+
+    if (source == NULL)
+        return NULL;
+    if (source->type.base == targetType.base &&
+        source->type.len == targetType.len &&
+        source->type.rows == targetType.rows &&
+        source->type.cols == targetType.cols)
+    {
+        return source;
+    }
+    cast = HlslNewExpr(module, HLSL_EXPR_CAST, targetType);
+    if (cast != NULL)
+        cast->u.cast.expression = source;
+    return cast;
+} // HlslWrapperConvert
+
+static int HlslWrapperRepairInput(HlslModule *module, HlslExpr *expression,
+                                  HlslDecl *input)
+{
+    if (expression == NULL)
+        return 0;
+    if (expression->kind == HLSL_EXPR_CAST)
+        return HlslWrapperRepairInput(module,
+                                      expression->u.cast.expression, input);
+    if (expression->kind == HLSL_EXPR_MEMBER &&
+        expression->u.member.object == NULL)
+    {
+        expression->u.member.object = HlslWrapperSymbol(module, input);
+        return expression->u.member.object != NULL;
+    }
+    return 1;
+} // HlslWrapperRepairInput
+
+static const char *HlslWrapperCopyText(HlslModule *module,
+                                       const char *source)
+{
+    char *copy;
+    size_t length;
+
+    if (module == NULL || module->alloc == NULL || source == NULL)
+        return NULL;
+    length = strlen(source) + 1;
+    copy = (char *) module->alloc(module->allocArg, length);
+    if (copy != NULL)
+        memcpy(copy, source, length);
+    return copy;
+} // HlslWrapperCopyText
+
+static int HlslWrapperModernSemantic(HlslModule *module,
+    const HlslProfileDesc *profile, HlslDecl *decl, const char *source,
+    HlslDirection direction)
+{
+    char upper[64];
+    char root[64];
+    char spelling[96];
+    size_t i;
+    HlslSemanticKind kind;
+    HlslBase abiBase;
+    int index;
+
+    if (profile->semanticPolicy != HLSL_SEMANTIC_POLICY_MODERN)
+        return 1;
+    if (source == NULL)
+        return 0;
+    for (i = 0; source[i] != '\0'; i++) {
+        if (i + 1 >= sizeof(upper))
+            return 0;
+        upper[i] = source[i] >= 'a' && source[i] <= 'z' ?
+                   (char) (source[i] - 'a' + 'A') : source[i];
+    }
+    upper[i] = '\0';
+    if (!HlslParseSemantic(upper, root, sizeof(root), &index))
+        return 0;
+    kind = HlslModernSemantic(profile->stage, direction, root, index);
+    if (kind == HLSL_SEMANTIC_UNSUPPORTED)
+        return 0;
+    if (kind == HLSL_SEMANTIC_USER) {
+        if (sprintf(spelling, "%s%d", root, index) < 0)
+            return 0;
+    } else if (!HlslModernSemanticSpelling(kind, index, spelling,
+                                           sizeof(spelling)))
+    {
+        return 0;
+    }
+    decl->semantic = HlslWrapperCopyText(module, spelling);
+    decl->canonicalSemantic = HlslWrapperCopyText(module, spelling);
+    if (decl->semantic == NULL || decl->canonicalSemantic == NULL)
+        return 0;
+    decl->semanticKind = kind;
+    decl->semanticIndex = index;
+    decl->interpolation = decl->type.base == HLSL_BASE_INT ||
+                          decl->type.base == HLSL_BASE_UINT ?
+                          HLSL_INTERPOLATION_NOINTERPOLATION :
+                          HLSL_INTERPOLATION_DEFAULT;
+    if (kind != HLSL_SEMANTIC_USER) {
+        abiBase = HlslModernAbiBase(kind);
+        if (abiBase == HLSL_BASE_UINT || abiBase == HLSL_BASE_BOOL)
+            decl->type.base = abiBase;
+    }
+    return 1;
+} // HlslWrapperModernSemantic
+
 static HlslStmt *HlslWrapperExprStmt(HlslModule *module,
                                      HlslExpr *expression)
 {
@@ -3279,6 +3388,7 @@ static HlslStmt *HlslWrapperExprStmt(HlslModule *module,
 } // HlslWrapperExprStmt
 
 static HlslDecl *HlslWrapperMemberDecl(HlslModule *module,
+                                       const HlslProfileDesc *profile,
                                        HlslDecl *owner,
                                        const HlslDecl *source,
                                        const char *name,
@@ -3301,6 +3411,12 @@ static HlslDecl *HlslWrapperMemberDecl(HlslModule *module,
         member->inputSemantic = source->inputSemantic;
         member->loc = source->loc;
         member->sourceOrdinal = source->sourceOrdinal;
+        if (!HlslWrapperModernSemantic(module, profile, member, semantic,
+            owner->storage == HLSL_STORAGE_OUTPUT ?
+                HLSL_DIRECTION_OUTPUT : HLSL_DIRECTION_INPUT))
+        {
+            return NULL;
+        }
     }
     return member;
 } // HlslWrapperMemberDecl
@@ -3440,7 +3556,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
             if (semantic == NULL)
                 return HlslBindFailure(module, NULL, HLSL_ERROR_SEMANTIC,
                                        resultMember->name);
-            wrapperResultMember = HlslWrapperMemberDecl(module,
+            wrapperResultMember = HlslWrapperMemberDecl(module, profile,
                 outputStruct, resultMember, resultMember->name,
                 semantic);
             if (wrapperResultMember == NULL)
@@ -3460,6 +3576,13 @@ int HlslBuildEntryWrapper(HlslModule *module,
         if (wrapperResultMember == NULL)
             return 0;
         wrapperResultMember->semantic = semantic;
+        if (!HlslWrapperModernSemantic(module, profile,
+                                       wrapperResultMember, semantic,
+                                       HLSL_DIRECTION_OUTPUT))
+        {
+            return HlslBindFailure(module, NULL, HLSL_ERROR_SEMANTIC,
+                                   semantic);
+        }
         HlslAppendDecl(&outputStruct->members, wrapperResultMember);
     }
 
@@ -3494,7 +3617,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
             {
                 semantic = HlslWrapperDeclSemantic(profile, sourceMember,
                                                    0);
-                inputMember = HlslWrapperMemberDecl(module, inputStruct,
+                inputMember = HlslWrapperMemberDecl(module, profile, inputStruct,
                     sourceMember, sourceMember->name, semantic);
                 if (inputMember == NULL || semantic == NULL)
                     return HlslBindFailure(module, NULL,
@@ -3504,21 +3627,23 @@ int HlslBuildEntryWrapper(HlslModule *module,
                 statement = HlslWrapperExprStmt(module,
                     HlslWrapperAssign(module,
                         HlslWrapperMember(module, local, sourceMember),
-                        HlslWrapperMember(module, NULL, inputMember)));
+                        HlslWrapperConvert(module,
+                            HlslWrapperMember(module, NULL, inputMember),
+                            sourceMember->type)));
                 if (statement == NULL)
                     return 0;
                 HlslAppendStmt(&initializers, statement);
             }
         } else if (parameter->parameterQualifier == HLSL_PARAMETER_IN) {
-            inputMember = HlslWrapperMemberDecl(module, inputStruct,
+            inputMember = HlslWrapperMemberDecl(module, profile, inputStruct,
                 parameter, parameter->name, parameter->semantic);
             if (inputMember == NULL)
                 return 0;
             HlslAppendDecl(&inputStruct->members, inputMember);
-            argument = HlslWrapperMember(module, NULL, inputMember);
+            argument = HlslWrapperConvert(module,
+                HlslWrapperMember(module, NULL, inputMember),
+                parameter->type);
             /* Fill the object once inputParameter exists below. */
-            if (argument != NULL)
-                argument->u.member.object = NULL;
         } else {
             local = HlslNewDecl(module, HLSL_STORAGE_NONE,
                                 parameter->type, parameter->name);
@@ -3529,7 +3654,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
             argument = HlslWrapperSymbol(module, local);
             if (parameter->parameterQualifier == HLSL_PARAMETER_INOUT) {
                 semantic = HlslWrapperInputSemantic(profile, parameter);
-                inputMember = HlslWrapperMemberDecl(module, inputStruct,
+                inputMember = HlslWrapperMemberDecl(module, profile, inputStruct,
                     parameter, parameter->name, semantic);
                 if (inputMember == NULL || semantic == NULL)
                     return HlslBindFailure(module, NULL,
@@ -3539,12 +3664,14 @@ int HlslBuildEntryWrapper(HlslModule *module,
                 statement = HlslWrapperExprStmt(module,
                     HlslWrapperAssign(module,
                         HlslWrapperSymbol(module, local),
-                        HlslWrapperMember(module, NULL, inputMember)));
+                        HlslWrapperConvert(module,
+                            HlslWrapperMember(module, NULL, inputMember),
+                            local->type)));
                 if (statement == NULL)
                     return 0;
                 HlslAppendStmt(&initializers, statement);
             }
-            outputMember = HlslWrapperMemberDecl(module, outputStruct,
+            outputMember = HlslWrapperMemberDecl(module, profile, outputStruct,
                 parameter, parameter->name, parameter->semantic);
             if (outputMember == NULL)
                 return 0;
@@ -3552,7 +3679,9 @@ int HlslBuildEntryWrapper(HlslModule *module,
             statement = HlslWrapperExprStmt(module,
                 HlslWrapperAssign(module,
                     HlslWrapperMember(module, NULL, outputMember),
-                    HlslWrapperSymbol(module, local)));
+                    HlslWrapperConvert(module,
+                        HlslWrapperSymbol(module, local),
+                        outputMember->type)));
             if (statement == NULL)
                 return 0;
             /* Stash the local temporarily on the argument expression. */
@@ -3589,12 +3718,9 @@ int HlslBuildEntryWrapper(HlslModule *module,
     /* Repair the deferred input/output member object expressions and move
      * out/inout temporaries into the wrapper's local list. */
     for (argument = arguments; argument != NULL; argument = argument->next) {
-        if (argument->kind == HLSL_EXPR_MEMBER &&
-            argument->u.member.object == NULL)
-        {
-            argument->u.member.object = HlslWrapperSymbol(module,
-                                                           inputParameter);
-        } else if (argument->kind == HLSL_EXPR_SYMBOL &&
+        if (!HlslWrapperRepairInput(module, argument, inputParameter))
+            return 0;
+        if (argument->kind == HLSL_EXPR_SYMBOL &&
                    argument->u.symbol != NULL &&
                    argument->u.symbol->storage == HLSL_STORAGE_NONE &&
                    argument->u.symbol != outputLocal)
@@ -3608,12 +3734,8 @@ int HlslBuildEntryWrapper(HlslModule *module,
         HlslExpr *right;
 
         right = statement->u.expression->u.binary.right;
-        if (right != NULL && right->kind == HLSL_EXPR_MEMBER &&
-            right->u.member.object == NULL)
-        {
-            right->u.member.object = HlslWrapperSymbol(module,
-                                                        inputParameter);
-        }
+        if (!HlslWrapperRepairInput(module, right, inputParameter))
+            return 0;
     }
     HlslAppendDecl(&wrapper->locals, outputLocal);
     HlslAppendStmt(&wrapper->body, initializers);
@@ -3642,7 +3764,9 @@ int HlslBuildEntryWrapper(HlslModule *module,
             assignment = HlslWrapperAssign(module,
                 HlslWrapperMember(module, outputLocal,
                                   wrapperResultMember),
-                HlslWrapperMember(module, resultLocal, resultMember));
+                HlslWrapperConvert(module,
+                    HlslWrapperMember(module, resultLocal, resultMember),
+                    wrapperResultMember->type));
             statement = HlslWrapperExprStmt(module, assignment);
             if (statement == NULL)
                 return 0;
@@ -3654,7 +3778,9 @@ int HlslBuildEntryWrapper(HlslModule *module,
         statement = HlslWrapperExprStmt(module,
             HlslWrapperAssign(module,
                 HlslWrapperMember(module, outputLocal,
-                                  outputStruct->members), call));
+                                  outputStruct->members),
+                HlslWrapperConvert(module, call,
+                    outputStruct->members->type)));
         if (statement == NULL)
             return 0;
         HlslAppendStmt(&wrapper->body, statement);

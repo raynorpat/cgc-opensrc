@@ -1422,6 +1422,7 @@ add_executable(hlsl_ir_unit
     ${PROJECT_SOURCE_DIR}/hlsl_bind.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
     ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
     ${PROJECT_SOURCE_DIR}/hlsl_validate.c
     ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
@@ -1459,6 +1460,7 @@ add_executable(hlsl_profile_identity_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
     ${PROJECT_SOURCE_DIR}/memory.c
     hlsl_profile_identity_test.c
 )
@@ -1493,6 +1495,7 @@ add_test(
 add_executable(hlsl_invariants_unit
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
     ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
     ${PROJECT_SOURCE_DIR}/hlsl_validate.c
     hlsl_invariants_test.c
@@ -1533,6 +1536,7 @@ add_executable(hlsl_semantics_unit
     ${PROJECT_SOURCE_DIR}/hlsl_bind.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
     ${PROJECT_SOURCE_DIR}/hlslv_hal.c
     ${PROJECT_SOURCE_DIR}/hlslf_hal.c
     ${PROJECT_SOURCE_DIR}/hlslv40_hal.c
@@ -1965,6 +1969,54 @@ add_hlsl_fixture(hlslv50_registration hlslv50
     tests/hlsl/modern/empty.cg tests/hlsl/modern/empty-v50.expected)
 add_hlsl_fixture(hlslf50_registration hlslf50
     tests/hlsl/modern/empty.cg tests/hlsl/modern/empty-p50.expected)
+
+function(add_hlsl_modern_semantic name profile expected entry)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DENTRY=${entry}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/semantics.cg
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/${expected}
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+endfunction()
+
+add_hlsl_modern_semantic(modern_semantic_v40 hlslv40
+    semantics-v40.expected vertex_main)
+add_hlsl_modern_semantic(modern_semantic_p40 hlslf40
+    semantics-p40.expected pixel_main)
+add_hlsl_modern_semantic(modern_semantic_v50 hlslv50
+    semantics-v50.expected vertex_main)
+add_hlsl_modern_semantic(modern_semantic_p50 hlslf50
+    semantics-p50.expected pixel_main)
+
+function(add_hlsl_modern_semantic_failure name profile source entry code line reason)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DENTRY=${entry}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -DCODE=${code}
+            -DEXPECTED_LINE=${line}
+            -DMESSAGE=${reason}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+    set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+        "${name}|${code}")
+endfunction()
+
+add_hlsl_modern_semantic_failure(modern_psize hlslv40
+    tests/hlsl/diagnostics/modern_psize.cg bad_psize 6403 3 PSIZE)
+add_hlsl_modern_semantic_failure(modern_system_conflict hlslv40
+    tests/hlsl/diagnostics/modern_system_conflict.cg bad_systems 6404 3
+    SV_Position)
 
 add_test(
     NAME hlslg40_registration

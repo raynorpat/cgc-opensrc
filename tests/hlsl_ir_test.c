@@ -55,6 +55,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "hlsl_ir.h"
+#include "hlsl_modern.h"
 #include "slglobals.h"
 #include "hlsl_hal.h"
 #include "glsl_hal.h"
@@ -3460,6 +3461,31 @@ int main(int argc, char **argv)
         "COLOR5", 1) == NULL);
     assert(HlslCanonicalSemantic(&HlslProfile_hlslf,
         "NORMAL0", 0) == NULL);
+    assert(HlslModernSemantic(HLSL_STAGE_VERTEX, HLSL_DIRECTION_OUTPUT,
+                              "POSITION", 0) ==
+           HLSL_SEMANTIC_SV_POSITION);
+    assert(HlslModernSemantic(HLSL_STAGE_PIXEL, HLSL_DIRECTION_OUTPUT,
+                              "COLOR", 3) == HLSL_SEMANTIC_SV_TARGET);
+    assert(HlslModernSemantic(HLSL_STAGE_PIXEL, HLSL_DIRECTION_OUTPUT,
+                              "DEPTH", 0) == HLSL_SEMANTIC_SV_DEPTH);
+    assert(HlslModernSemantic(HLSL_STAGE_GEOMETRY, HLSL_DIRECTION_OUTPUT,
+                              "LAYER", 0) ==
+           HLSL_SEMANTIC_SV_RT_ARRAY_INDEX);
+    assert(HlslModernSemantic(HLSL_STAGE_GEOMETRY, HLSL_DIRECTION_INPUT,
+                              "INSTANCEID", 0) ==
+           HLSL_SEMANTIC_SV_PRIMITIVE_ID);
+    assert(HlslModernSemantic(HLSL_STAGE_GEOMETRY, HLSL_DIRECTION_INPUT,
+                              "PRIMITIVEID", 0) ==
+           HLSL_SEMANTIC_SV_PRIMITIVE_ID);
+    assert(HlslModernSemanticsConflict(HLSL_STAGE_GEOMETRY,
+               HLSL_DIRECTION_INPUT, "INSTANCEID", 0,
+               "PRIMITIVEID", 0));
+    assert(HlslModernRequiredInterpolation(TYPE_BASE_INT) ==
+           HLSL_INTERPOLATION_NOINTERPOLATION);
+    assert(HlslModernAbiBase(HLSL_SEMANTIC_SV_VERTEX_ID) ==
+           HLSL_BASE_UINT);
+    scalar = HlslNumericType(HLSL_BASE_UINT, 1);
+    assert(!strcmp(HlslTypeName(&scalar), "uint"));
     assert(!strcmp(HlslAllocateSymbolName(&module, &cfloatIdentity,
                                           "cfloat"), "cg_cfloat"));
     assert(!strcmp(HlslAllocateSymbolName(&module, &cintIdentity,

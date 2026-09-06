@@ -51,6 +51,7 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "hlsl_hal.h"
+#include "hlsl_modern.h"
 
 typedef struct HlslPointerFrame_Rec {
     const struct HlslPointerFrame_Rec *parent;
@@ -230,6 +231,7 @@ static int HlslTypeIsValidInner(const HlslType *type, int allowVoid,
         return allowVoid && type->len == 0;
     case HLSL_BASE_FLOAT:
     case HLSL_BASE_INT:
+    case HLSL_BASE_UINT:
     case HLSL_BASE_BOOL:
         return type->len >= 1 && type->len <= 4;
     case HLSL_BASE_SAMPLER1D:
@@ -311,7 +313,8 @@ static int HlslIsScalar(const HlslType *type, HlslBase base)
 static int HlslIsNumericScalarOrVector(const HlslType *type)
 {
     return type != NULL && type->arraySize == 0 &&
-           (type->base == HLSL_BASE_FLOAT || type->base == HLSL_BASE_INT) &&
+           (type->base == HLSL_BASE_FLOAT || type->base == HLSL_BASE_INT ||
+            type->base == HLSL_BASE_UINT) &&
            type->len >= 1 && type->len <= 4 &&
            type->rows == 0 && type->cols == 0;
 } // HlslIsNumericScalarOrVector
@@ -327,7 +330,7 @@ static int HlslIsBooleanScalarOrVector(const HlslType *type)
 static int HlslIsIntegerScalarOrVector(const HlslType *type)
 {
     return type != NULL && type->arraySize == 0 &&
-           type->base == HLSL_BASE_INT &&
+           (type->base == HLSL_BASE_INT || type->base == HLSL_BASE_UINT) &&
            type->len >= 1 && type->len <= 4 &&
            type->rows == 0 && type->cols == 0;
 } // HlslIsIntegerScalarOrVector
@@ -1532,6 +1535,109 @@ static int HlslInterfaceTypeIsValid(const HlslType *type,
     return 0;
 } // HlslInterfaceTypeIsValid
 
+static int HlslModernInterfaceTypeIsValid(const HlslDecl *decl)
+{
+    HlslBase base;
+    int firstWidth;
+    int lastWidth;
+
+    if (decl == NULL || decl->type.arraySize != 0 ||
+        decl->type.rows != 0 || decl->type.cols != 0)
+    {
+        return 0;
+    }
+    base = HLSL_BASE_FLOAT;
+    firstWidth = 1;
+    lastWidth = 4;
+    switch (decl->semanticKind) {
+    case HLSL_SEMANTIC_USER:
+        if (decl->type.base != HLSL_BASE_FLOAT &&
+            decl->type.base != HLSL_BASE_INT &&
+            decl->type.base != HLSL_BASE_BOOL)
+        {
+            return 0;
+        }
+        break;
+    case HLSL_SEMANTIC_SV_POSITION:
+    case HLSL_SEMANTIC_SV_TARGET:
+        firstWidth = lastWidth = 4;
+        break;
+    case HLSL_SEMANTIC_SV_DEPTH:
+        firstWidth = lastWidth = 1;
+        break;
+    case HLSL_SEMANTIC_SV_VERTEX_ID:
+    case HLSL_SEMANTIC_SV_INSTANCE_ID:
+    case HLSL_SEMANTIC_SV_PRIMITIVE_ID:
+    case HLSL_SEMANTIC_SV_RT_ARRAY_INDEX:
+        base = HLSL_BASE_UINT;
+        firstWidth = lastWidth = 1;
+        break;
+    case HLSL_SEMANTIC_SV_IS_FRONT_FACE:
+        base = HLSL_BASE_BOOL;
+        firstWidth = lastWidth = 1;
+        break;
+    case HLSL_SEMANTIC_SV_CLIP_DISTANCE:
+        break;
+    case HLSL_SEMANTIC_UNSUPPORTED:
+        return 0;
+    }
+    if (decl->semanticKind != HLSL_SEMANTIC_USER &&
+        decl->type.base != base)
+    {
+        return 0;
+    }
+    return decl->type.len >= firstWidth && decl->type.len <= lastWidth;
+} // HlslModernInterfaceTypeIsValid
+
+static int HlslModernDeclarationsConflict(const HlslDecl *left,
+                                          const HlslDecl *right)
+{
+    if (left->semanticKind != right->semanticKind)
+        return 0;
+    if (left->semanticKind == HLSL_SEMANTIC_USER) {
+        return left->canonicalSemantic != NULL &&
+               right->canonicalSemantic != NULL &&
+               !strcmp(left->canonicalSemantic, right->canonicalSemantic);
+    }
+    return left->semanticIndex == right->semanticIndex;
+} // HlslModernDeclarationsConflict
+
+static int HlslValidateModernInterfaceSemantics(HlslModule *module,
+    const HlslProfileDesc *profile, const HlslDecl *members, int isOutput)
+{
+    const HlslDecl *left;
+    const HlslDecl *right;
+    HlslInterpolation required;
+    HlslDirection direction;
+
+    direction = isOutput ? HLSL_DIRECTION_OUTPUT : HLSL_DIRECTION_INPUT;
+    for (left = members; left != NULL; left = left->next) {
+        required = left->type.base == HLSL_BASE_INT ||
+                   left->type.base == HLSL_BASE_UINT ?
+                   HLSL_INTERPOLATION_NOINTERPOLATION :
+                   HLSL_INTERPOLATION_DEFAULT;
+        if (left->semantic == NULL || left->canonicalSemantic == NULL ||
+            !HlslModernSemanticIsLegal(profile->stage, direction,
+                                       left->semanticKind) ||
+            !HlslModernInterfaceTypeIsValid(left) ||
+            left->interpolation != required)
+        {
+            return HlslFail(module, HLSL_ERROR_SEMANTIC, &left->loc,
+                            HlslBindingReason(NULL, left->semantic));
+        }
+        for (right = left->next; right != NULL; right = right->next) {
+            if ((left->name != NULL && right->name != NULL &&
+                 !strcmp(left->name, right->name)) ||
+                HlslModernDeclarationsConflict(left, right))
+            {
+                return HlslFail(module, HLSL_ERROR_INTERFACE_CONFLICT,
+                                &right->loc, left->canonicalSemantic);
+            }
+        }
+    }
+    return 1;
+} // HlslValidateModernInterfaceSemantics
+
 static int HlslValidateInterfaceSemantics(HlslModule *module,
     const HlslProfileDesc *profile, const HlslDecl *members, int isOutput)
 {
@@ -1541,6 +1647,9 @@ static int HlslValidateInterfaceSemantics(HlslModule *module,
     const char *leftCanonical;
     const char *rightCanonical;
 
+    if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN)
+        return HlslValidateModernInterfaceSemantics(module, profile,
+                                                     members, isOutput);
     for (left = members; left != NULL; left = left->next) {
         leftCanonical = HlslCanonicalSemantic(profile, left->semantic,
                                               isOutput);
@@ -1580,6 +1689,17 @@ static int HlslColorOutputUsage(const HlslProfileDesc *profile,
 
     used = 0;
     for (; members != NULL; members = members->next) {
+        if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN &&
+            members->semanticKind == HLSL_SEMANTIC_SV_TARGET)
+        {
+            index = members->semanticIndex;
+            if (index < INT_MAX && index + 1 > used) {
+                used = index + 1;
+                if (failureLoc != NULL)
+                    *failureLoc = &members->loc;
+            }
+            continue;
+        }
         canonical = HlslCanonicalSemantic(profile, members->semantic, 1);
         if (canonical != NULL &&
             HlslParseSemantic(canonical, root, sizeof(root), &index) &&
@@ -1599,6 +1719,11 @@ static int HlslHasPosition(const HlslProfileDesc *profile,
     const char *canonical;
 
     for (; members != NULL; members = members->next) {
+        if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN &&
+            members->semanticKind == HLSL_SEMANTIC_SV_POSITION)
+        {
+            return 1;
+        }
         canonical = HlslCanonicalSemantic(profile, members->semantic, 1);
         if (canonical != NULL && !strcmp(canonical, "POSITION0"))
             return 1;
@@ -1702,6 +1827,7 @@ static HlslRegisterBank HlslTypeBankInner(const HlslType *type,
     switch (type->base) {
     case HLSL_BASE_FLOAT: return HLSL_REGISTER_C;
     case HLSL_BASE_INT: return HLSL_REGISTER_I;
+    case HLSL_BASE_UINT: return HLSL_REGISTER_I;
     case HLSL_BASE_BOOL: return HLSL_REGISTER_B;
     case HLSL_BASE_SAMPLER1D:
     case HLSL_BASE_SAMPLER2D:

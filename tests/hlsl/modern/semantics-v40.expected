@@ -1,0 +1,56 @@
+// profile hlslv40
+// target vs_4_0
+// cgc-bind interface in position float4 POSITION0 POSITION0 user default
+// cgc-bind interface in color float4 COLOR3 COLOR3 user default
+// cgc-bind interface in value int TEXCOORD7 TEXCOORD7 user nointerpolation
+// cgc-bind interface in vertexId uint SV_VertexID SV_VertexID system nointerpolation
+// cgc-bind interface out position float4 SV_Position SV_Position system default
+// cgc-bind interface out color float4 COLOR3 COLOR3 user default
+// cgc-bind interface out value int TEXCOORD7 TEXCOORD7 user nointerpolation
+// cgc-bind interface out clip float SV_ClipDistance0 SV_ClipDistance0 system default
+
+struct cg_VertexResult
+{
+    float4 position;
+    float4 color;
+    int value;
+    float clip;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+    float4 color : COLOR3;
+    nointerpolation int value : TEXCOORD7;
+    nointerpolation uint vertexId : SV_VertexID;
+};
+
+struct cg_VertexOut
+{
+    float4 position : SV_Position;
+    float4 color : COLOR3;
+    nointerpolation int value : TEXCOORD7;
+    float clip : SV_ClipDistance0;
+};
+
+cg_VertexResult cg_entry(float4 position, float4 color, int value, int vertexId)
+{
+    cg_VertexResult result = (cg_VertexResult) 0;
+    result.position = position;
+    result.color = color;
+    result.value = value;
+    result.clip = position.x;
+    return result;
+}
+
+cg_VertexOut main(cg_VertexIn input)
+{
+    cg_VertexOut output;
+    cg_VertexResult cg_result;
+    cg_result = cg_entry(input.position, input.color, input.value, (int) input.vertexId);
+    output.position = cg_result.position;
+    output.color = cg_result.color;
+    output.value = cg_result.value;
+    output.clip = cg_result.clip;
+    return output;
+}

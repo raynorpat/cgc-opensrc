@@ -49,6 +49,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "hal.h"
 #include "hlsl_ir.h"
+#include "hlsl_modern.h"
 
 #define VENDOR_STRING_HLSL         "Microsoft"
 #define VERSION_STRING_HLSL_SM3    "DirectX 9.0c Shader Model 3"

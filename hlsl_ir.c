@@ -541,6 +541,11 @@ static const char *HlslTypeNameInner(const HlslType *type,
     case HLSL_BASE_INT:
         return type->len >= 1 && type->len <= 4 ?
                intNames[type->len - 1] : NULL;
+    case HLSL_BASE_UINT:
+        return type->len == 1 ? "uint" :
+               type->len == 2 ? "uint2" :
+               type->len == 3 ? "uint3" :
+               type->len == 4 ? "uint4" : NULL;
     case HLSL_BASE_BOOL:
         return type->len >= 1 && type->len <= 4 ?
                boolNames[type->len - 1] : NULL;
@@ -1658,6 +1663,7 @@ static int HlslTypeRegisterSpanInner(const HlslType *type,
     switch (type->base) {
     case HLSL_BASE_FLOAT:
     case HLSL_BASE_INT:
+    case HLSL_BASE_UINT:
         return type->len >= 1 && type->len <= 4 ? 1 : 0;
     case HLSL_BASE_BOOL:
         /* Shader Model 3 exposes b# as scalar boolean registers. */
@@ -1735,6 +1741,10 @@ HlslDecl *HlslNewDecl(HlslModule *module, HlslStorage storage,
         decl->storage = storage;
         decl->type = type;
         decl->name = name;
+        decl->semanticKind = HLSL_SEMANTIC_USER;
+        decl->semanticIndex = 0;
+        decl->canonicalSemantic = NULL;
+        decl->interpolation = HLSL_INTERPOLATION_DEFAULT;
     }
     return decl;
 }

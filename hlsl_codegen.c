@@ -49,6 +49,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "hlsl_hal.h"
+#include "hlsl_modern.h"
 
 static int HlslIsIdentifier(const char *name)
 {
@@ -827,6 +828,13 @@ static int HlslWriteDecl(FILE *out, const HlslDecl *decl, int indent,
     {
         return 0;
     }
+    if (decl->interpolation != HLSL_INTERPOLATION_DEFAULT &&
+        (HlslInterpolationName(decl->interpolation) == NULL ||
+         fprintf(out, "%s ",
+                 HlslInterpolationName(decl->interpolation)) < 0))
+    {
+        return 0;
+    }
     if (!HlslWriteDeclTypeAndName(out, decl))
         return 0;
     if (withSemantic && decl->semantic != NULL &&
@@ -1129,7 +1137,8 @@ static const char *HlslBankText(HlslRegisterBank bank)
     return "?";
 } // HlslBankText
 
-static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module)
+static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module,
+                                      const HlslProfileDesc *profile)
 {
     const HlslDecl *structure;
     const HlslDecl *member;
@@ -1160,7 +1169,26 @@ static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module)
             {
                 return -1;
             }
-            if (fprintf(out, "// cgc-bind interface %s %s %s %s\n",
+            if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN) {
+                const char *canonical;
+                const char *classification;
+                const char *interpolation;
+
+                canonical = member->canonicalSemantic;
+                classification = member->semanticKind ==
+                                 HLSL_SEMANTIC_USER ? "user" : "system";
+                interpolation = HlslInterpolationName(
+                                    member->interpolation);
+                if (canonical == NULL || interpolation == NULL ||
+                    fprintf(out,
+                        "// cgc-bind interface %s %s %s %s %s %s %s\n",
+                        direction, publicName, typeName, member->semantic,
+                        canonical, classification, interpolation) < 0)
+                {
+                    return -1;
+                }
+            } else if (fprintf(out,
+                    "// cgc-bind interface %s %s %s %s\n",
                     direction, publicName, typeName, member->semantic) < 0)
             {
                 return -1;
@@ -1185,7 +1213,7 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
     {
         return 0;
     }
-    wroteInterface = HlslWriteInterfaceMetadata(out, module);
+    wroteInterface = HlslWriteInterfaceMetadata(out, module, profile);
     if (wroteInterface < 0 ||
         (wroteInterface && fputc('\n', out) == EOF))
     {

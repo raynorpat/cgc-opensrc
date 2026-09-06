@@ -9,8 +9,13 @@ prepare_config_output("${ACTUAL}")
 get_filename_component(source_directory "${SOURCE}" DIRECTORY)
 
 file(REMOVE "${ACTUAL}" "${ACTUAL}.normalized")
+set(cgc_entry_args)
+if(DEFINED ENTRY AND NOT "${ENTRY}" STREQUAL "")
+    list(APPEND cgc_entry_args -entry "${ENTRY}")
+endif()
 execute_process(
-    COMMAND "${CGC}" -quiet -profile "${PROFILE}" -o "${ACTUAL}" "${SOURCE}"
+    COMMAND "${CGC}" -quiet -profile "${PROFILE}" ${cgc_entry_args}
+        -o "${ACTUAL}" "${SOURCE}"
     WORKING_DIRECTORY "${source_directory}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout
