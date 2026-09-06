@@ -1961,7 +1961,9 @@ int HlslBindResource(HlslModule *module, HlslResource *resource,
         !HlslModuleOwnsResource(module, resource) ||
         resource->kind < HLSL_RESOURCE_CBUFFER ||
         resource->kind > HLSL_RESOURCE_SAMPLER ||
-        resource->binding.kind != resource->kind || slot < 0)
+        resource->binding.kind != resource->kind || slot < 0 ||
+        (resource->kind == HLSL_RESOURCE_CBUFFER && pairId != -1) ||
+        (resource->kind != HLSL_RESOURCE_CBUFFER && pairId < 0))
     {
         return 0;
     }

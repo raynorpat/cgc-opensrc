@@ -197,6 +197,20 @@ static void CheckProfileInitializerPreflight(void)
     profile = HlslProfile_hlslv;
     profile.semanticPolicy = (HlslSemanticPolicy) 2;
     AssertInvalidProfileLeavesHALUnchanged(&profile);
+
+    profile = HlslProfile_hlslv;
+    profile.semanticPolicy = HLSL_SEMANTIC_POLICY_MODERN;
+    profile.resourcePolicy = HLSL_RESOURCE_POLICY_MODERN;
+    profile.capabilities = HLSL_CAP_CBUFFERS | HLSL_CAP_TEXTURE_METHODS;
+    AssertInvalidProfileLeavesHALUnchanged(&profile);
+
+    profile = HlslProfile_hlslv40;
+    profile.semanticPolicy = HLSL_SEMANTIC_POLICY_DX9;
+    AssertInvalidProfileLeavesHALUnchanged(&profile);
+
+    profile = HlslProfile_hlslv40;
+    profile.resourcePolicy = HLSL_RESOURCE_POLICY_DX9;
+    AssertInvalidProfileLeavesHALUnchanged(&profile);
 }
 
 static const char *FindCanonicalRegister(const HlslProfileDesc *profile,

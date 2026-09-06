@@ -280,6 +280,17 @@ int HlslProfileIsValid(const HlslProfileDesc *profile)
     {
         return 0;
     }
+    if (profile->model == HLSL_SHADER_MODEL_3) {
+        if (profile->semanticPolicy != HLSL_SEMANTIC_POLICY_DX9 ||
+            profile->resourcePolicy != HLSL_RESOURCE_POLICY_DX9)
+        {
+            return 0;
+        }
+    } else if (profile->semanticPolicy != HLSL_SEMANTIC_POLICY_MODERN ||
+               profile->resourcePolicy != HLSL_RESOURCE_POLICY_MODERN)
+    {
+        return 0;
+    }
     if (profile->stage == HLSL_STAGE_GEOMETRY &&
         !HlslProfileHasCapability(profile, HLSL_CAP_GEOMETRY))
     {

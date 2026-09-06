@@ -1678,13 +1678,12 @@ static int HlslValidateStatements(HlslValidationContext *context,
             }
             break;
         case HLSL_STMT_APPEND:
-            if (context->module->stage != HLSL_STAGE_GEOMETRY ||
-                context->function != context->module->entry)
+            if (context->module->stage != HLSL_STAGE_GEOMETRY)
             {
                 return HlslFail(context->module,
                                 HLSL_ERROR_GEOMETRY_LAYOUT,
                                 &statement->loc,
-                                "append outside geometry entry");
+                                "append outside geometry module");
             }
             if (statement->u.append.record == NULL ||
                 !HlslValidateExpression(context,
@@ -1701,13 +1700,12 @@ static int HlslValidateStatements(HlslValidationContext *context,
             }
             break;
         case HLSL_STMT_RESTART_STRIP:
-            if (context->module->stage != HLSL_STAGE_GEOMETRY ||
-                context->function != context->module->entry)
+            if (context->module->stage != HLSL_STAGE_GEOMETRY)
             {
                 return HlslFail(context->module,
                                 HLSL_ERROR_GEOMETRY_LAYOUT,
                                 &statement->loc,
-                                "restart outside geometry entry");
+                                "restart outside geometry module");
             }
             if (statement->u.expression != NULL)
                 return HlslFail(context->module, HLSL_ERROR_INVALID_IR,

@@ -2421,6 +2421,7 @@ static void TestModernIrBuilders(void)
 {
     HlslModule module;
     HlslModule failedModule;
+    HlslResource *cbuffer;
     HlslResource *texture;
     HlslResource *sampler;
     HlslResource foreign;
@@ -2485,9 +2486,29 @@ static void TestModernIrBuilders(void)
     assert(module.errors == 0);
     assert(HlslBindResource(&module, texture, 4, 2));
     assert(texture->binding.slot == 4 && texture->binding.pairId == 2);
+    assert(!HlslBindResource(&module, texture, 5, -1));
+    assert(texture->binding.slot == 4 && texture->binding.pairId == 2);
     sampler = HlslNewResource(&module, HLSL_RESOURCE_SAMPLER,
         ModernObjectType(HLSL_BASE_SAMPLER_STATE), "imageSampler", loc);
     assert(sampler != NULL && texture->next == sampler);
+    assert(!HlslBindResource(&module, sampler, 4, -1));
+    assert(sampler->binding.slot == -1 && sampler->binding.pairId == -1);
+    assert(HlslBindResource(&module, sampler, 4, 2));
+    assert(sampler->binding.slot == 4 && sampler->binding.pairId == 2);
+    type = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    type.structName = "Constants";
+    cbuffer = HlslNewResource(&module, HLSL_RESOURCE_CBUFFER, type,
+                              "Constants", loc);
+    assert(cbuffer != NULL && sampler->next == cbuffer);
+    assert(HlslBindResource(&module, cbuffer, 1, -1));
+    assert(cbuffer->binding.slot == 1 && cbuffer->binding.pairId == -1);
+    assert(!HlslBindResource(&module, cbuffer, 2, 0));
+    assert(cbuffer->binding.slot == 1 && cbuffer->binding.pairId == -1);
+    cbuffer->kind = (HlslResourceKind) 3;
+    assert(!HlslBindResource(&module, cbuffer, 2, -1));
+    assert(cbuffer->binding.slot == 1 && cbuffer->binding.pairId == -1);
+    cbuffer->kind = HLSL_RESOURCE_CBUFFER;
+    assert(module.errors == 0);
 
     type = HlslNumericType(HLSL_BASE_FLOAT, 4);
     target = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT, type, "color");
@@ -2676,16 +2697,26 @@ static void TestModernResourceValidation(void)
 
 static void ConfigureGeometryFixture(ValidationFixture *fixture)
 {
+    HlslDecl *input;
+
     InitValidationFixture(fixture, HLSL_STAGE_GEOMETRY);
     ConfigureModernValidationFixture(fixture);
+    input = fixture->inputStruct->members;
+    input->semantic = "SV_Position";
+    input->canonicalSemantic = "SV_Position";
+    input->semanticKind = HLSL_SEMANTIC_SV_POSITION;
+    input->semanticIndex = 0;
 }
 
 static void TestModernGeometryValidation(void)
 {
     ValidationFixture fixture;
+    HlslFunction *helper;
     HlslStmt *statement;
     HlslStmt *block;
+    HlslStmt *callStatement;
     HlslExpr *operand;
+    HlslExpr *helperCall;
     HlslDecl *target;
     HlslDecl *shadow;
     HlslDecl *defined;
@@ -2693,9 +2724,11 @@ static void TestModernGeometryValidation(void)
     HlslExpr *record;
     HlslExpr *badRecord;
     HlslLoc loc;
+    HlslType voidType;
 
     loc.file = 9;
     loc.line = 21;
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
@@ -2705,6 +2738,53 @@ static void TestModernGeometryValidation(void)
     fixture.module.geometryMaxVertices = 6;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
                              HLSL_ERROR_GEOMETRY_LAYOUT);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    helper = HlslNewFunction(&fixture.module, voidType,
+                             "cg_vertexHelper");
+    statement = HlslNewRestartStrip(&fixture.module, loc);
+    assert(helper != NULL && statement != NULL);
+    helper->body = statement;
+    helper->next = fixture.wrapper;
+    fixture.entry->next = helper;
+    helperCall = HlslNewExpr(&fixture.module, HLSL_EXPR_CALL, voidType);
+    callStatement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(helperCall != NULL && callStatement != NULL);
+    helperCall->u.call.function = helper;
+    helperCall->u.call.name = helper->name;
+    callStatement->u.expression = helperCall;
+    fixture.entry->body = callStatement;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_GEOMETRY_LAYOUT);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_LINE, 3, 6));
+    helper = HlslNewFunction(&fixture.module, voidType,
+                             "cg_geometryHelper");
+    target = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                         fixture.outputStruct->type, "helperOutput");
+    record = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL,
+                         fixture.outputStruct->type);
+    statement = HlslNewAppend(&fixture.module, record, NULL, loc);
+    block = HlslNewRestartStrip(&fixture.module, loc);
+    assert(helper != NULL && target != NULL && record != NULL &&
+           statement != NULL && block != NULL);
+    helper->locals = target;
+    record->u.symbol = target;
+    statement->next = block;
+    helper->body = statement;
+    helper->next = fixture.wrapper;
+    fixture.entry->next = helper;
+    helperCall = HlslNewExpr(&fixture.module, HLSL_EXPR_CALL, voidType);
+    callStatement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
+    assert(helperCall != NULL && callStatement != NULL);
+    helperCall->u.call.function = helper;
+    helperCall->u.call.name = helper->name;
+    callStatement->u.expression = helperCall;
+    fixture.entry->body = callStatement;
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
 
     ConfigureGeometryFixture(&fixture);
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
@@ -3180,6 +3260,7 @@ static void AssertInvalidValidationFixture(ValidationFixture *fixture,
     assert(!HlslValidateModule(&fixture->module, profile));
     assert(fixture->module.errorKind == HLSL_ERROR_INVALID_IR);
     assert(fixture->module.errors == 1);
+    AssertWriteFailureLeavesEmpty(&fixture->module, profile);
 }
 
 static void TestTargetValidatorRejectsImpossibleProfiles(void)
@@ -3228,6 +3309,31 @@ static void TestTargetValidatorRejectsImpossibleProfiles(void)
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     profile = HlslProfile_hlslv;
     profile.resourcePolicy = (HlslResourcePolicy) 2;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    AddModernResource(&fixture.module, HLSL_RESOURCE_TEXTURE,
+        HLSL_BASE_TEXTURE2D, "legacyImage", 3, 8);
+    AddModernResource(&fixture.module, HLSL_RESOURCE_SAMPLER,
+        HLSL_BASE_SAMPLER_STATE, "legacySampler", 3, 8);
+    profile = HlslProfile_hlslv;
+    profile.semanticPolicy = HLSL_SEMANTIC_POLICY_MODERN;
+    profile.resourcePolicy = HLSL_RESOURCE_POLICY_MODERN;
+    profile.capabilities = HLSL_CAP_CBUFFERS | HLSL_CAP_TEXTURE_METHODS;
+    profile.limits = HlslProfile_hlslv40.limits;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    profile = HlslProfile_hlslv40;
+    profile.semanticPolicy = HLSL_SEMANTIC_POLICY_DX9;
+    AssertInvalidValidationFixture(&fixture, &profile);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    profile = HlslProfile_hlslv40;
+    profile.resourcePolicy = HLSL_RESOURCE_POLICY_DX9;
     AssertInvalidValidationFixture(&fixture, &profile);
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
