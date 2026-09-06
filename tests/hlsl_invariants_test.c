@@ -545,8 +545,13 @@ int main(void)
 {
     memset(&profile, 0, sizeof(profile));
     profile.stage = HLSL_STAGE_VERTEX;
+    profile.model = HLSL_SHADER_MODEL_3;
+    profile.syntax = HLSL_SYNTAX_LEGACY;
+    profile.semanticPolicy = HLSL_SEMANTIC_POLICY_DX9;
+    profile.resourcePolicy = HLSL_RESOURCE_POLICY_DX9;
     profile.name = "hlslv";
     profile.target = "vs_3_0";
+    profile.version = VERSION_STRING_HLSL_SM3;
     return TestAssignmentTypes() &&
            TestMultiplyShapes() &&
            TestMultiplyResult() &&
