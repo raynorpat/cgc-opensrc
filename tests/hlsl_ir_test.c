@@ -2429,6 +2429,7 @@ static void TestModernIrBuilders(void)
     HlslDecl *target;
     HlslDecl *shadow;
     HlslDecl *defined;
+    HlslDecl *matrixField;
     HlslExpr *record;
     HlslStmt *append;
     HlslStmt *restart;
@@ -2558,6 +2559,12 @@ static void TestModernIrBuilders(void)
     offset.componentCount = 8;
     assert(!HlslSetPackOffset(&module, shadow, offset));
     assert(!shadow->hasPackOffset && module.errors == 0);
+    matrixField = HlslNewDecl(&module, HLSL_STORAGE_NONE,
+                              HlslMatrixType(2, 3), "matrixField");
+    assert(matrixField != NULL);
+    assert(HlslSetPackOffset(&module, matrixField, offset));
+    assert(matrixField->hasPackOffset &&
+           matrixField->packOffset.componentCount == 8);
 
     HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
     assert(!HlslSetGeometryLayout(&module, HLSL_GEOMETRY_INPUT_POINT,
@@ -2584,7 +2591,132 @@ static void TestModernResourceValidation(void)
     HlslResource *secondSampler;
     HlslDecl *first;
     HlslDecl *second;
+    HlslType arrayType;
+    HlslType elementType;
     HlslPackOffset offset;
+    FILE *stream;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 4), "lyingFloat4");
+    second = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 3), "followingFloat3");
+    assert(first != NULL && second != NULL);
+    first->next = second;
+    AddModernCbuffer(&fixture.module, first, 0);
+    first->hasPackOffset = 1;
+    first->packOffset.vector = 0;
+    first->packOffset.component = 0;
+    first->packOffset.componentCount = 1;
+    offset.vector = 0;
+    offset.component = 1;
+    offset.componentCount = 3;
+    assert(HlslSetPackOffset(&fixture.module, second, offset));
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                        HlslMatrixType(2, 3), "misalignedMatrix");
+    assert(first != NULL);
+    AddModernCbuffer(&fixture.module, first, 0);
+    first->hasPackOffset = 1;
+    first->packOffset.vector = 0;
+    first->packOffset.component = 1;
+    first->packOffset.componentCount = 8;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    elementType = HlslNumericType(HLSL_BASE_FLOAT, 2);
+    memset(&arrayType, 0, sizeof(arrayType));
+    arrayType.arraySize = 2;
+    arrayType.elementType = &elementType;
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                        arrayType, "misalignedArray");
+    assert(first != NULL);
+    AddModernCbuffer(&fixture.module, first, 0);
+    first->hasPackOffset = 1;
+    first->packOffset.vector = 0;
+    first->packOffset.component = 2;
+    first->packOffset.componentCount = 8;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                        HlslMatrixType(2, 3), "partialMatrix");
+    assert(first != NULL);
+    AddModernCbuffer(&fixture.module, first, 0);
+    first->hasPackOffset = 1;
+    first->packOffset.vector = 0;
+    first->packOffset.component = 0;
+    first->packOffset.componentCount = 4;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                        HlslMatrixType(2, 3), "overlapMatrix");
+    second = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 4), "overlapVector");
+    assert(first != NULL && second != NULL);
+    first->next = second;
+    AddModernCbuffer(&fixture.module, first, 0);
+    first->hasPackOffset = 1;
+    first->packOffset.vector = 0;
+    first->packOffset.component = 0;
+    first->packOffset.componentCount = 8;
+    offset.vector = 1;
+    offset.component = 0;
+    offset.componentCount = 4;
+    assert(HlslSetPackOffset(&fixture.module, second, offset));
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "scalar");
+    second = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 3), "vector");
+    assert(first != NULL && second != NULL);
+    first->next = second;
+    AddModernCbuffer(&fixture.module, first, 0);
+    offset.vector = 0;
+    offset.component = 0;
+    offset.componentCount = 1;
+    assert(HlslSetPackOffset(&fixture.module, first, offset));
+    offset.component = 1;
+    offset.componentCount = 3;
+    assert(HlslSetPackOffset(&fixture.module, second, offset));
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+    stream = tmpfile();
+    assert(stream != NULL);
+    assert(HlslWriteModule(stream, &fixture.module, &HlslProfile_hlslv40));
+    assert(StreamLength(stream) > 0);
+    assert(fclose(stream) == 0);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "initialized");
+    assert(first != NULL);
+    first->initializer = HlslNewExpr(&fixture.module, HLSL_EXPR_FLOAT,
+                                     first->type);
+    assert(first->initializer != NULL);
+    AddModernCbuffer(&fixture.module, first, 0);
+    offset.vector = 0;
+    offset.component = 0;
+    offset.componentCount = 1;
+    assert(HlslSetPackOffset(&fixture.module, first, offset));
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
@@ -2723,6 +2855,10 @@ static void TestModernGeometryValidation(void)
     HlslFlatReplay *replay;
     HlslExpr *record;
     HlslExpr *badRecord;
+    HlslExpr *construct;
+    HlslExpr *derivative;
+    HlslExpr *sourceValue;
+    HlslDecl *source;
     HlslLoc loc;
     HlslType voidType;
 
@@ -2785,6 +2921,42 @@ static void TestModernGeometryValidation(void)
     callStatement->u.expression = helperCall;
     fixture.entry->body = callStatement;
     assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_LINE, 3, 6));
+    source = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 4), "derivativeSource");
+    assert(source != NULL);
+    sourceValue = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL,
+                              source->type);
+    derivative = HlslNewExpr(&fixture.module, HLSL_EXPR_CALL,
+                              source->type);
+    construct = HlslNewExpr(&fixture.module, HLSL_EXPR_CONSTRUCT,
+                             fixture.outputStruct->type);
+    assert(sourceValue != NULL && derivative != NULL && construct != NULL);
+    fixture.entry->locals = source;
+    sourceValue->u.symbol = source;
+    derivative->u.call.name = "ddx";
+    derivative->u.call.builtin = HLSL_BUILTIN_DDX;
+    derivative->u.call.arguments = sourceValue;
+    construct->u.construct.arguments = derivative;
+    statement = HlslNewAppend(&fixture.module, construct, NULL, loc);
+    assert(statement != NULL);
+    fixture.entry->body = statement;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_STAGE_OPERATION);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 1));
+    target = fixture.outputStruct->members;
+    target->type = HlslMatrixType(INT_MAX, 2);
+    AssertWriteFailureLeavesEmpty(&fixture.module, &HlslProfile_hlslg40);
+    assert(fixture.module.errors == 1);
+    assert(fixture.module.errorKind == HLSL_ERROR_INVALID_IR);
+    assert(!strcmp(fixture.module.errorReason,
+                   "malformed HLSL module lists"));
 
     ConfigureGeometryFixture(&fixture);
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,

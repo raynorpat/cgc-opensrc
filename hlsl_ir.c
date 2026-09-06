@@ -1975,10 +1975,21 @@ int HlslBindResource(HlslModule *module, HlslResource *resource,
 int HlslSetPackOffset(HlslModule *module, HlslDecl *field,
     HlslPackOffset offset)
 {
+    int aggregate;
+
     if (module == NULL || field == NULL || offset.vector < 0 ||
         offset.component < 0 || offset.component > 3 ||
-        offset.componentCount <= 0 || offset.componentCount > 4 ||
-        offset.component + offset.componentCount > 4)
+        offset.componentCount <= 0)
+    {
+        return 0;
+    }
+    aggregate = field->type.arraySize > 0 || field->type.rows > 0 ||
+                field->type.cols > 0 ||
+                field->type.base == HLSL_BASE_STRUCT;
+    if ((aggregate && offset.component != 0) ||
+        (!aggregate &&
+         (offset.componentCount > 4 ||
+          offset.component + offset.componentCount > 4)))
     {
         return 0;
     }
