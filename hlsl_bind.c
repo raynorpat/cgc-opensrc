@@ -4849,6 +4849,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
     HlslDecl *wrapperResultMember;
     HlslDecl *local;
     HlslDecl *geometryScalarInputs;
+    HlslDecl *vertexIdInputMember;
     HlslGeometryArrayCopy *geometryArrayCopies;
     HlslGeometryArrayCopy *geometryArrayCopy;
     HlslGeometryArrayCopy **geometryArrayCopyTail;
@@ -4959,6 +4960,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
     parameterCopies = NULL;
     geometryScalarInputs = NULL;
     geometryArrayCopies = NULL;
+    vertexIdInputMember = NULL;
     geometryArrayCopyTail = &geometryArrayCopies;
     for (parameter = entry->parameters; parameter != NULL;
          parameter = parameter->next)
@@ -5056,6 +5058,11 @@ int HlslBuildEntryWrapper(HlslModule *module,
             if (inputMember == NULL)
                 return 0;
             HlslAppendDecl(&inputStruct->members, inputMember);
+            if (module->stage == HLSL_STAGE_VERTEX &&
+                inputMember->semanticKind == HLSL_SEMANTIC_SV_VERTEX_ID)
+            {
+                vertexIdInputMember = inputMember;
+            }
             argument = HlslWrapperConvert(module,
                 HlslWrapperMember(module, NULL, inputMember),
                 parameter->type);
@@ -5115,6 +5122,16 @@ int HlslBuildEntryWrapper(HlslModule *module,
     outputType.members = outputStruct->members;
     hasInput = inputStruct->members != NULL || geometryScalarInputs != NULL;
     hasOutput = outputStruct->members != NULL;
+    if (module->stage == HLSL_STAGE_VERTEX && vertexIdInputMember == NULL) {
+        for (inputMember = inputStruct->members; inputMember != NULL;
+             inputMember = inputMember->next)
+        {
+            if (inputMember->semanticKind == HLSL_SEMANTIC_SV_VERTEX_ID) {
+                vertexIdInputMember = inputMember;
+                break;
+            }
+        }
+    }
     if (profile->semanticPolicy != HLSL_SEMANTIC_POLICY_MODERN &&
         (!hasInput || !hasOutput))
     {
@@ -5232,12 +5249,28 @@ int HlslBuildEntryWrapper(HlslModule *module,
         resultMember = entry->result.members;
         wrapperResultMember = outputStruct->members;
         while (resultMember != NULL && wrapperResultMember != NULL) {
+            HlslExpr *resultValue;
+
+            if (module->stage == HLSL_STAGE_VERTEX &&
+                wrapperResultMember->canonicalSemantic != NULL &&
+                !strcmp(wrapperResultMember->canonicalSemantic,
+                        "CG_VERTEXID0"))
+            {
+                if (vertexIdInputMember == NULL || inputParameter == NULL)
+                    return HlslFail(module, HLSL_ERROR_ENTRY_ABI,
+                        &wrapperResultMember->loc,
+                        "CG_VERTEXID0 producer metadata");
+                resultValue = HlslWrapperMember(module, inputParameter,
+                                                vertexIdInputMember);
+            } else {
+                resultValue = HlslWrapperMember(module, resultLocal,
+                                                resultMember);
+            }
             assignment = HlslWrapperAssign(module,
                 HlslWrapperMember(module, outputLocal,
                                   wrapperResultMember),
                 HlslWrapperConvert(module,
-                    HlslWrapperMember(module, resultLocal, resultMember),
-                    wrapperResultMember->type));
+                    resultValue, wrapperResultMember->type));
             statement = HlslWrapperExprStmt(module, assignment);
             if (statement == NULL)
                 return 0;
@@ -5272,6 +5305,24 @@ int HlslBuildEntryWrapper(HlslModule *module,
             left->u.member.object == NULL)
         {
             left->u.member.object = HlslWrapperSymbol(module, outputLocal);
+        }
+        if (module->stage == HLSL_STAGE_VERTEX && left != NULL &&
+            left->kind == HLSL_EXPR_MEMBER && left->u.member.decl != NULL &&
+            left->u.member.decl->canonicalSemantic != NULL &&
+            !strcmp(left->u.member.decl->canonicalSemantic,
+                    "CG_VERTEXID0"))
+        {
+            if (vertexIdInputMember == NULL || inputParameter == NULL)
+                return HlslFail(module, HLSL_ERROR_ENTRY_ABI,
+                    &left->u.member.decl->loc,
+                    "CG_VERTEXID0 producer metadata");
+            statement->u.expression->u.binary.right =
+                HlslWrapperConvert(module,
+                    HlslWrapperMember(module, inputParameter,
+                                      vertexIdInputMember),
+                    left->u.member.decl->type);
+            if (statement->u.expression->u.binary.right == NULL)
+                return 0;
         }
     }
     HlslAppendStmt(&wrapper->body, parameterCopies);

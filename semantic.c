@@ -758,10 +758,18 @@ void BuildSemanticStructs(SourceLoc *loc, Scope *fScope, Symbol *program)
                 continue;
             }
         }
-        if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT &&
-            !Cg->theHAL->GetCapsBit(CAPS_ENTRY_INOUT_PARAMETERS))
-            SemanticError(&formal->loc, ERROR_S_MAIN_PARAMS_CANT_BE_INOUT,
-                          GetAtomString(atable, formal->name));
+        if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT) {
+            if (Cg->theHAL->GetCapsBit(CAPS_HLSL_GEOMETRY_ENTRY_ABI)) {
+                SemanticError(&formal->loc, ERROR_S_HLSL_ENTRY_ABI,
+                              "geometry inout parameter");
+            } else if (!Cg->theHAL->GetCapsBit(
+                           CAPS_ENTRY_INOUT_PARAMETERS))
+            {
+                SemanticError(&formal->loc,
+                              ERROR_S_MAIN_PARAMS_CANT_BE_INOUT,
+                              GetAtomString(atable, formal->name));
+            }
+        }
         entryDomain = EffectiveProgramDomain(formal, 1);
         if (isGeometryProgram && entryDomain != TYPE_DOMAIN_UNIFORM &&
             (category == TYPE_CATEGORY_ATTRIB_ARRAY ||

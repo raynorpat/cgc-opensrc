@@ -639,6 +639,7 @@ struct HlslModule_Rec {
     unsigned char bRegisterUsed[HLSL_MAX_BOOL_CONSTANTS];
     unsigned char sRegisterUsed[HLSL_MAX_SAMPLERS];
     HlslLoc errorLoc;
+    HlslLoc relatedErrorLoc;
     HlslErrorKind errorKind;
     const char *errorReason;
     const char *resourceName;
@@ -656,6 +657,8 @@ struct HlslModule_Rec {
 int HlslErrorCode(HlslErrorKind kind);
 int HlslFail(HlslModule *module, HlslErrorKind kind,
     const HlslLoc *loc, const char *reason);
+int HlslFailRelated(HlslModule *module, HlslErrorKind kind,
+    const HlslLoc *loc, const HlslLoc *relatedLoc, const char *reason);
 
 void HlslInitModule(HlslModule *module, HlslStage stage,
     HlslAllocFn alloc, void *allocArg);

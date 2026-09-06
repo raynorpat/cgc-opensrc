@@ -1,0 +1,6 @@
+POINT POINT_OUT void main(
+    AttribArray<float4> position : POSITION,
+    float value : TEXCOORD0)
+{
+    return;
+}

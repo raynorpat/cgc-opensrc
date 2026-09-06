@@ -2473,13 +2473,76 @@ static int HlslValidateModernInterfaceSemantics(HlslModule *module,
                  !strcmp(left->name, right->name)) ||
                 HlslModernDeclarationsConflict(left, right))
             {
-                return HlslFail(module, HLSL_ERROR_INTERFACE_CONFLICT,
-                                &right->loc, left->canonicalSemantic);
+                return HlslFailRelated(module,
+                    HLSL_ERROR_INTERFACE_CONFLICT, &right->loc,
+                    &left->loc, left->canonicalSemantic);
             }
         }
     }
     return 1;
 } // HlslValidateModernInterfaceSemantics
+
+static int HlslValidateModernInterfaceListsDistinct(HlslModule *module,
+    const HlslDecl *members, const HlslDecl *otherMembers)
+{
+    const HlslDecl *left;
+    const HlslDecl *right;
+
+    for (left = members; left != NULL; left = left->next) {
+        for (right = otherMembers; right != NULL; right = right->next) {
+            if ((left->name != NULL && right->name != NULL &&
+                 !strcmp(left->name, right->name)) ||
+                HlslModernDeclarationsConflict(left, right))
+            {
+                return HlslFailRelated(module,
+                    HLSL_ERROR_INTERFACE_CONFLICT, &right->loc,
+                    &left->loc, left->canonicalSemantic);
+            }
+        }
+    }
+    return 1;
+} // HlslValidateModernInterfaceListsDistinct
+
+static int HlslValidateGeometryScalarInputs(HlslModule *module,
+                                             const HlslDecl *members)
+{
+    for (; members != NULL; members = members->next) {
+        if (members->storage != HLSL_STORAGE_INPUT ||
+            members->semanticKind != HLSL_SEMANTIC_SV_PRIMITIVE_ID)
+        {
+            return HlslFail(module, HLSL_ERROR_ENTRY_ABI, &members->loc,
+                            "geometry scalar input");
+        }
+    }
+    return 1;
+} // HlslValidateGeometryScalarInputs
+
+static int HlslValidateVertexIdBridge(HlslModule *module,
+    const HlslDecl *inputs, const HlslDecl *outputs)
+{
+    const HlslDecl *input;
+    const HlslDecl *output;
+
+    for (output = outputs; output != NULL; output = output->next) {
+        if (output->canonicalSemantic == NULL ||
+            strcmp(output->canonicalSemantic, "CG_VERTEXID0"))
+        {
+            continue;
+        }
+        for (input = inputs; input != NULL; input = input->next) {
+            if (input->semanticKind == HLSL_SEMANTIC_SV_VERTEX_ID &&
+                input->canonicalSemantic != NULL &&
+                !strcmp(input->canonicalSemantic, "SV_VertexID"))
+            {
+                break;
+            }
+        }
+        if (input == NULL)
+            return HlslFail(module, HLSL_ERROR_ENTRY_ABI, &output->loc,
+                            "CG_VERTEXID0 producer metadata");
+    }
+    return 1;
+} // HlslValidateVertexIdBridge
 
 static int HlslValidateInterfaceSemantics(HlslModule *module,
     const HlslProfileDesc *profile, const HlslDecl *members, int isOutput)
@@ -2659,7 +2722,24 @@ static int HlslValidateInterfaces(HlslModule *module,
     {
         return 0;
     }
-    used = HlslCountDeclarations(input != NULL ? input->members : NULL);
+    if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN &&
+        profile->stage == HLSL_STAGE_GEOMETRY &&
+        (!HlslValidateModernInterfaceListsDistinct(module,
+            input != NULL ? input->members : NULL, geometryScalars) ||
+         !HlslValidateGeometryScalarInputs(module, geometryScalars)))
+    {
+        return 0;
+    }
+    if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN &&
+        profile->stage == HLSL_STAGE_VERTEX &&
+        !HlslValidateVertexIdBridge(module,
+            input != NULL ? input->members : NULL,
+            output != NULL ? output->members : NULL))
+    {
+        return 0;
+    }
+    used = HlslCountDeclarations(input != NULL ? input->members : NULL) +
+           HlslCountDeclarations(geometryScalars);
     if (used > profile->limits->inputs)
         return HlslSetResourceFailure(module, "inputs", used,
             profile->limits->inputs, HlslLastDeclLoc(input->members));

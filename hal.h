@@ -96,6 +96,7 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_PRESERVE_INLINE_HELPERS   19
 #define CAPS_AGGREGATE_DEFAULT_INITIALIZERS 20
 #define CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS 21
+#define CAPS_HLSL_GEOMETRY_ENTRY_ABI 22
 
 struct slProfile_Rec {
     slProfile *next;

@@ -63,7 +63,6 @@ typedef struct HlslLowerContext_Rec {
     int entryFile;
     int loopDepth;
     int geometryInputExtent;
-    int geometryHasVertexIdProducer;
 } HlslLowerContext;
 
 typedef enum HlslValueMode_Enum {
@@ -1500,7 +1499,8 @@ static int HlslCollectDefaults(HlslLowerContext *context)
     return 1;
 } // HlslCollectDefaults
 
-static int HlslSemanticAtomIsVertexId(int atom)
+static int HlslSemanticAtomMatches(int atom, const char *expectedRoot,
+                                   int expectedIndex)
 {
     const char *source;
     char upper[64];
@@ -1519,8 +1519,14 @@ static int HlslSemanticAtomIsVertexId(int atom)
     }
     upper[i] = '\0';
     return HlslParseSemantic(upper, root, sizeof(root), &index) &&
-           !strcmp(root, "VERTEXID") && index == 0;
-} // HlslSemanticAtomIsVertexId
+           !strcmp(root, expectedRoot) && index == expectedIndex;
+} // HlslSemanticAtomMatches
+
+static int HlslSemanticAtomIsPrimitiveIdentity(int atom)
+{
+    return HlslSemanticAtomMatches(atom, "INSTANCEID", 0) ||
+           HlslSemanticAtomMatches(atom, "PRIMITIVEID", 0);
+} // HlslSemanticAtomIsPrimitiveIdentity
 
 static int HlslCollectParameters(HlslLowerContext *context,
                                  Symbol *formal, int isEntry)
@@ -1530,19 +1536,21 @@ static int HlslCollectParameters(HlslLowerContext *context,
     int isOutput;
 
     for (; formal != NULL; formal = formal->next) {
+        qualifiers = GetQualifiers(formal->type);
         if (isEntry && context->profile->stage == HLSL_STAGE_GEOMETRY &&
-            CgIsAttribArray(formal->type) &&
-            HlslSemanticAtomIsVertexId(formal->details.var.semantics) &&
-            !context->geometryHasVertexIdProducer)
+            !CgIsAttribArray(formal->type) &&
+            GetDomain(formal->type) != TYPE_DOMAIN_UNIFORM &&
+            !(qualifiers & TYPE_QUALIFIER_OUT) &&
+            !HlslSemanticAtomIsPrimitiveIdentity(
+                formal->details.var.semantics))
         {
             return HlslLowerFailure(context, HLSL_ERROR_ENTRY_ABI,
-                "CG_VERTEXID0 producer metadata", &formal->loc);
+                "geometry scalar input", &formal->loc);
         }
         decl = HlslNewSourceDecl(context, formal,
                                  context->function->identity);
         if (decl == NULL)
             return 0;
-        qualifiers = GetQualifiers(formal->type);
         if ((qualifiers & TYPE_QUALIFIER_INOUT) == TYPE_QUALIFIER_INOUT)
             decl->parameterQualifier = HLSL_PARAMETER_INOUT;
         else if (qualifiers & TYPE_QUALIFIER_OUT)
@@ -3722,77 +3730,6 @@ static int HlslIsEmptyEntry(Symbol *program)
              statement->commonst.next == NULL));
 } // HlslIsEmptyEntry
 
-static int HlslVertexIdScalar(const Type *type)
-{
-    return type != NULL && IsScalar(type) &&
-           GetBase(type) == TYPE_BASE_INT;
-} // HlslVertexIdScalar
-
-static int HlslMemberTreeProducesVertexId(const Symbol *member)
-{
-    if (member == NULL)
-        return 0;
-    if (HlslMemberTreeProducesVertexId(member->left))
-        return 1;
-    if (member->kind == VARIABLE_S &&
-        HlslSemanticAtomIsVertexId(member->details.var.semantics) &&
-        HlslVertexIdScalar(member->type))
-    {
-        return 1;
-    }
-    return HlslMemberTreeProducesVertexId(member->right);
-} // HlslMemberTreeProducesVertexId
-
-static int HlslFunctionProducesVertexId(const Symbol *function)
-{
-    const Symbol *formal;
-    Type *result;
-    int hasSystemInput;
-
-    if (function == NULL || function->kind != FUNCTION_S ||
-        function->details.fun.geometry.input != CG_GEOMETRY_INPUT_UNKNOWN ||
-        function->details.fun.geometry.output != CG_GEOMETRY_OUTPUT_UNKNOWN)
-    {
-        return 0;
-    }
-    hasSystemInput = 0;
-    for (formal = function->details.fun.params; formal != NULL;
-         formal = formal->next)
-    {
-        if (HlslSemanticAtomIsVertexId(formal->details.var.semantics) &&
-            HlslVertexIdScalar(formal->type))
-        {
-            hasSystemInput = 1;
-            break;
-        }
-    }
-    if (!hasSystemInput)
-        return 0;
-    result = function->type != NULL ? function->type->fun.rettype : NULL;
-    if (result == NULL)
-        return 0;
-    if (HlslSemanticAtomIsVertexId(function->details.fun.semantics) &&
-        HlslVertexIdScalar(result))
-    {
-        return 1;
-    }
-    return GetCategory(result) == TYPE_CATEGORY_STRUCT &&
-           result->str.members != NULL &&
-           HlslMemberTreeProducesVertexId(result->str.members->symbols);
-} // HlslFunctionProducesVertexId
-
-static int HlslFunctionTreeProducesVertexId(const Symbol *function,
-                                            const Symbol *entry)
-{
-    if (function == NULL)
-        return 0;
-    if (HlslFunctionTreeProducesVertexId(function->left, entry))
-        return 1;
-    if (function != entry && HlslFunctionProducesVertexId(function))
-        return 1;
-    return HlslFunctionTreeProducesVertexId(function->right, entry);
-} // HlslFunctionTreeProducesVertexId
-
 int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
                      SourceLoc *loc, Scope *scope, Symbol *program)
 {
@@ -3825,8 +3762,6 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     context.scope = scope;
     context.statementLoc = program->loc;
     context.entryFile = program->loc.file;
-    context.geometryHasVertexIdProducer =
-        HlslFunctionTreeProducesVertexId(scope->symbols, program);
     if (!HlslRejectStorage(&context, program))
         return 0;
     if (profile->stage == HLSL_STAGE_GEOMETRY) {

@@ -1,18 +1,18 @@
-struct VertexOut {
+struct DecoyOut {
     float4 position : POSITION;
     int vertexId : VERTEXID;
 };
 
-VertexOut vertex_main(float4 position : POSITION,
+DecoyOut decoy_vertex(float4 position : POSITION,
                       int vertexId : VERTEXID)
 {
-    VertexOut result;
+    DecoyOut result;
     result.position = position;
-    result.vertexId = 99;
+    result.vertexId = vertexId;
     return result;
 }
 
-POINT POINT_OUT void geometry_main(
+POINT POINT_OUT void main(
     AttribArray<float4> position : POSITION,
     AttribArray<int> vertexId : VERTEXID)
 {

@@ -439,5 +439,6 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NOTICE_S_CG_PROFILE_FAILURE_IN  9503, "profile failure in function \"%s\""
 #define NOTICE_S_CG_CALL_PATH           9504, "called from function \"%s\""
 #define NOTICE_S_CG_ENTRY_PATH          9505, "reached from entry function \"%s\""
+#define NOTICE_S_HLSL_INTERFACE_FIRST   9506, "first declaration of interface semantic \"%s\""
 
 #endif // !defined(__ERRORS_H)

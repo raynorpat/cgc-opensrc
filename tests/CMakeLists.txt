@@ -2169,6 +2169,12 @@ add_hlsl_geometry_fixture(instance_values
 add_hlsl_geometry_fixture(vertex_id_bridge
     tests/hlsl/geometry/vertex_id_bridge.cg
     tests/hlsl/geometry/vertex_id_bridge geometry_main)
+add_hlsl_geometry_fixture(vertex_id_consumer
+    tests/hlsl/diagnostics/geometry_missing_vertex_id_producer.cg
+    tests/hlsl/geometry/vertex_id_bridge main)
+add_hlsl_geometry_fixture(vertex_id_decoy_independent
+    tests/hlsl/diagnostics/geometry_decoy_vertex_id_producer.cg
+    tests/hlsl/geometry/vertex_id_bridge main)
 
 foreach(profile hlslv40 hlslv50)
     string(SUBSTRING "${profile}" 4 3 model_suffix)
@@ -2188,6 +2194,11 @@ endforeach()
 
 function(add_hlsl_geometry_failure name source code line reason options)
     string(REPLACE ";" "\\;" geometry_options_escaped "${options}")
+    set(expected_location_arg)
+    if(ARGC GREATER 6)
+        list(APPEND expected_location_arg
+            "-DEXPECTED_LOCATION=${ARGV6}")
+    endif()
     foreach(profile hlslg40 hlslg50)
         add_test(
             NAME ${profile}_${name}
@@ -2200,6 +2211,33 @@ function(add_hlsl_geometry_failure name source code line reason options)
                 -DCODE=${code}
                 -DEXPECTED_LINE=${line}
                 -DMESSAGE=${reason}
+                ${expected_location_arg}
+                "-DCONFIG=$<CONFIG>"
+                "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+        set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+            "${profile}_${name}|${code}")
+    endforeach()
+endfunction()
+
+function(add_hlsl_geometry_failure_with_note name source code line reason
+        options note_code note_line note_message)
+    string(REPLACE ";" "\\;" geometry_options_escaped "${options}")
+    foreach(profile hlslg40 hlslg50)
+        add_test(
+            NAME ${profile}_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DPROFILE=${profile}
+                -DENTRY=main
+                "-DPROFILE_OPTIONS=${geometry_options_escaped}"
+                -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+                -DCODE=${code}
+                -DEXPECTED_LINE=${line}
+                -DMESSAGE=${reason}
+                -DNOTE_CODE=${note_code}
+                -DNOTE_LINE=${note_line}
+                -DNOTE_MESSAGE=${note_message}
                 "-DCONFIG=$<CONFIG>"
                 "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
@@ -2211,15 +2249,26 @@ endfunction()
 add_hlsl_geometry_failure(geometry_missing_vertices
     tests/hlsl/diagnostics/geometry_missing_vertices.cg 6406 1 "Vertices=N"
     "POINT;POINT_OUT")
-add_hlsl_geometry_failure(geometry_duplicate_primitive
+add_hlsl_geometry_failure(geometry_zero_vertices
+    tests/hlsl/diagnostics/geometry_missing_vertices.cg 6300 3
+    "invalid geometry profile option" "POINT;POINT_OUT;Vertices=0"
+    "<command-line>(3)")
+add_hlsl_geometry_failure_with_note(geometry_duplicate_primitive
     tests/hlsl/diagnostics/geometry_duplicate_primitive.cg 6404 3
-    "SV_PrimitiveID" "POINT;POINT_OUT;Vertices=4")
+    "SV_PrimitiveID" "POINT;POINT_OUT;Vertices=4" 9506 2
+    "first declaration of interface semantic")
 add_hlsl_geometry_failure(geometry_invalid_system_type
     tests/hlsl/diagnostics/geometry_invalid_system_type.cg 6321 2
     "invalid.value.type" "POINT;POINT_OUT;Vertices=4")
-add_hlsl_geometry_failure(geometry_missing_vertex_id_producer
-    tests/hlsl/diagnostics/geometry_missing_vertex_id_producer.cg 6406 2
-    "CG_VERTEXID0" "POINT;POINT_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_scalar_user_input
+    tests/hlsl/diagnostics/geometry_scalar_user_input.cg 6406 3
+    "geometry scalar input" "POINT;POINT_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_inout_scalar
+    tests/hlsl/diagnostics/geometry_inout_scalar.cg 6406 3
+    "geometry inout parameter" "POINT;POINT_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_inout_primitive
+    tests/hlsl/diagnostics/geometry_inout_primitive.cg 6406 3
+    "geometry inout parameter" "POINT;POINT_OUT;Vertices=4")
 
 add_hlsl_fixture(modern_empty_input_p40 hlslf40
     tests/hlsl/modern/empty-input.cg

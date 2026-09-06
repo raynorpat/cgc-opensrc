@@ -4362,6 +4362,8 @@ static void TestModernGeometryValidation(void)
     HlslExpr *derivative;
     HlslExpr *sourceValue;
     HlslDecl *source;
+    HlslDecl *member;
+    HlslDecl *scalar;
     HlslLoc loc;
     HlslType voidType;
 
@@ -4561,6 +4563,172 @@ static void TestModernGeometryValidation(void)
     fixture.wrapper->parameters->type.arraySize = 1;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
                              HLSL_ERROR_GEOMETRY_LIMIT);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    member = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "vertexValue");
+    scalar = HlslNewDecl(&fixture.module, HLSL_STORAGE_INPUT,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "primitiveValue");
+    assert(member != NULL && scalar != NULL);
+    member->inputSemantic = "TEXCOORD0";
+    member->semantic = "TEXCOORD0";
+    member->canonicalSemantic = "TEXCOORD0";
+    member->loc.file = 9;
+    member->loc.line = 31;
+    scalar->inputSemantic = "TEXCOORD0";
+    scalar->semantic = "TEXCOORD0";
+    scalar->canonicalSemantic = "TEXCOORD0";
+    scalar->loc.file = 9;
+    scalar->loc.line = 32;
+    HlslAppendDecl(&fixture.inputStruct->members, member);
+    HlslAppendDecl(&fixture.wrapper->parameters, scalar);
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
+    assert(fixture.module.errors == 1);
+    assert(fixture.module.errorKind == HLSL_ERROR_INTERFACE_CONFLICT);
+    assert(fixture.module.errorLoc.file == 9 &&
+           fixture.module.errorLoc.line == 32);
+    assert(fixture.module.relatedErrorLoc.file == 9 &&
+           fixture.module.relatedErrorLoc.line == 31);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_TRIANGLE, HLSL_GEOMETRY_STREAM_TRIANGLE,
+        3, 6));
+    scalar = HlslNewDecl(&fixture.module, HLSL_STORAGE_INPUT,
+        HlslNumericType(HLSL_BASE_FLOAT, 1), "primitiveValue");
+    assert(scalar != NULL);
+    scalar->inputSemantic = "TEXCOORD0";
+    scalar->semantic = "TEXCOORD0";
+    scalar->canonicalSemantic = "TEXCOORD0";
+    HlslAppendDecl(&fixture.wrapper->parameters, scalar);
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
+    assert(fixture.module.errors == 1);
+    assert(fixture.module.errorKind == HLSL_ERROR_ENTRY_ABI);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 1));
+    fixture.wrapper->parameters->type.arraySize = 1;
+    member = fixture.inputStruct->members;
+    member->type = HlslNumericType(HLSL_BASE_INT, 1);
+    member->inputSemantic = "VERTEXID";
+    member->semantic = "CG_VERTEXID0";
+    member->canonicalSemantic = "VERTEXID0";
+    member->semanticKind = HLSL_SEMANTIC_USER;
+    member->interpolation = HLSL_INTERPOLATION_NOINTERPOLATION;
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
+    assert(fixture.module.errors == 1);
+    assert(fixture.module.errorKind == HLSL_ERROR_SEMANTIC);
+}
+
+static void TestModernVertexIdBridgeValidation(void)
+{
+    ValidationFixture fixture;
+    HlslDecl *bridge;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    bridge = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_INT, 1), "vertexId");
+    assert(bridge != NULL);
+    bridge->inputSemantic = "VERTEXID";
+    bridge->semantic = "CG_VERTEXID0";
+    bridge->canonicalSemantic = "CG_VERTEXID0";
+    bridge->semanticKind = HLSL_SEMANTIC_USER;
+    bridge->interpolation = HLSL_INTERPOLATION_NOINTERPOLATION;
+    HlslAppendDecl(&fixture.outputStruct->members, bridge);
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+    assert(fixture.module.errors == 1);
+    assert(fixture.module.errorKind == HLSL_ERROR_ENTRY_ABI);
+}
+
+static void AssertModernGeometrySystemOutputWrapper(
+    const HlslProfileDesc *profile)
+{
+    HlslModule module;
+    HlslFunction *entry;
+    HlslDecl *primitive;
+    HlslDecl *layer;
+    HlslDecl *output;
+    HlslDecl *member;
+    HlslStmt *statement;
+    HlslExpr *assignment;
+    HlslType voidType;
+    HlslType intType;
+
+    HlslInitModule(&module, HLSL_STAGE_GEOMETRY, TestAlloc, NULL);
+    assert(HlslSetGeometryLayout(&module, HLSL_GEOMETRY_INPUT_POINT,
+        HLSL_GEOMETRY_STREAM_POINT, 1, 1));
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    intType = HlslNumericType(HLSL_BASE_INT, 1);
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    primitive = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT,
+                            intType, "primitive");
+    layer = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT, intType, "layer");
+    assert(entry != NULL && primitive != NULL && layer != NULL);
+    primitive->semantic = "PRIMITIVEID";
+    primitive->parameterQualifier = HLSL_PARAMETER_OUT;
+    layer->semantic = "LAYER";
+    layer->parameterQualifier = HLSL_PARAMETER_OUT;
+    HlslAppendDecl(&entry->parameters, primitive);
+    HlslAppendDecl(&entry->parameters, layer);
+    entry->isEntry = 1;
+    module.entry = entry;
+    module.functions = entry;
+
+    assert(HlslBuildEntryWrapper(&module, profile));
+    output = module.structs;
+    assert(output != NULL && output->storage == HLSL_STORAGE_OUTPUT);
+    member = output->members;
+    assert(member != NULL && member->type.base == HLSL_BASE_UINT);
+    assert(member->semanticKind == HLSL_SEMANTIC_SV_PRIMITIVE_ID);
+    assert(!strcmp(member->semantic, "SV_PrimitiveID"));
+    assert(member->interpolation == HLSL_INTERPOLATION_NOINTERPOLATION);
+    member = member->next;
+    assert(member != NULL && member->next == NULL);
+    assert(member->type.base == HLSL_BASE_UINT);
+    assert(member->semanticKind == HLSL_SEMANTIC_SV_RT_ARRAY_INDEX);
+    assert(!strcmp(member->semantic, "SV_RenderTargetArrayIndex"));
+    assert(member->interpolation == HLSL_INTERPOLATION_NOINTERPOLATION);
+
+    statement = module.wrapper->body;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.op == HLSL_OP_ASSIGN);
+    assert(assignment->u.binary.left != NULL &&
+           assignment->u.binary.left->kind == HLSL_EXPR_MEMBER &&
+           assignment->u.binary.left->u.member.decl == output->members);
+    assert(assignment->u.binary.right != NULL &&
+           assignment->u.binary.right->kind == HLSL_EXPR_CAST &&
+           assignment->u.binary.right->type.base == HLSL_BASE_UINT &&
+           assignment->u.binary.right->u.cast.expression->type.base ==
+               HLSL_BASE_INT);
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.op == HLSL_OP_ASSIGN);
+    assert(assignment->u.binary.left != NULL &&
+           assignment->u.binary.left->kind == HLSL_EXPR_MEMBER &&
+           assignment->u.binary.left->u.member.decl ==
+               output->members->next);
+    assert(assignment->u.binary.right != NULL &&
+           assignment->u.binary.right->kind == HLSL_EXPR_CAST &&
+           assignment->u.binary.right->type.base == HLSL_BASE_UINT &&
+           assignment->u.binary.right->u.cast.expression->type.base ==
+               HLSL_BASE_INT);
+}
+
+static void TestModernGeometrySystemOutputWrappers(void)
+{
+    AssertModernGeometrySystemOutputWrapper(&HlslProfile_hlslg40);
+    AssertModernGeometrySystemOutputWrapper(&HlslProfile_hlslg50);
 }
 
 static void AssertModernSemanticIdentityRejected(ValidationFixture *fixture)
@@ -5927,6 +6095,8 @@ int main(int argc, char **argv)
     TestModernAggregateBindingTopologyValidation();
     TestModernResourceValidation();
     TestModernGeometryValidation();
+    TestModernVertexIdBridgeValidation();
+    TestModernGeometrySystemOutputWrappers();
     TestModernGeometryTopologyConversion();
     TestModernSemanticIdentityValidation();
     TestTargetValidatorInterfaceLimits();

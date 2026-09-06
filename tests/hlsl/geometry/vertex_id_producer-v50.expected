@@ -27,7 +27,7 @@ cg_VertexOut cg_entry(float4 position, int vertexId)
 {
     cg_VertexOut result = (cg_VertexOut) 0;
     result.position = position;
-    result.vertexId = vertexId;
+    result.vertexId = 99;
     return result;
 }
 
@@ -37,6 +37,6 @@ cg_VertexOut_1 main(cg_VertexIn input)
     cg_VertexOut cg_result;
     cg_result = cg_entry(input.position, (int) input.vertexId);
     output.position = cg_result.position;
-    output.vertexId = cg_result.vertexId;
+    output.vertexId = (int) input.vertexId;
     return output;
 }

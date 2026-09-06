@@ -46,8 +46,13 @@ if(NOT diagnostics MATCHES "error C${CODE}:")
     message(FATAL_ERROR
         "${PROFILE} did not report C${CODE}:\n${diagnostics}")
 endif()
-get_filename_component(source_name "${SOURCE}" NAME)
-string(FIND "${diagnostics}" "${source_name}(${EXPECTED_LINE})"
+if(DEFINED EXPECTED_LOCATION)
+    set(expected_location "${EXPECTED_LOCATION}")
+else()
+    get_filename_component(source_name "${SOURCE}" NAME)
+    set(expected_location "${source_name}(${EXPECTED_LINE})")
+endif()
+string(FIND "${diagnostics}" "${expected_location}"
     location_index)
 if(location_index EQUAL -1)
     message(FATAL_ERROR
@@ -64,6 +69,26 @@ endif()
 if(DEFINED SECONDARY_MESSAGE AND NOT diagnostics MATCHES "${SECONDARY_MESSAGE}")
     message(FATAL_ERROR
         "${PROFILE} did not match secondary message ${SECONDARY_MESSAGE}:\n${diagnostics}")
+endif()
+if(DEFINED NOTE_CODE)
+    string(REGEX MATCHALL "notice C${NOTE_CODE}:" note_matches "${diagnostics}")
+    list(LENGTH note_matches note_count)
+    if(NOT note_count EQUAL 1)
+        message(FATAL_ERROR
+            "${PROFILE} did not report note C${NOTE_CODE} exactly once:\n${diagnostics}")
+    endif()
+endif()
+if(DEFINED NOTE_LINE)
+    get_filename_component(source_name "${SOURCE}" NAME)
+    string(FIND "${diagnostics}" "${source_name}(${NOTE_LINE})" note_location)
+    if(note_location EQUAL -1)
+        message(FATAL_ERROR
+            "${PROFILE} reported the note at the wrong source line:\n${diagnostics}")
+    endif()
+endif()
+if(DEFINED NOTE_MESSAGE AND NOT diagnostics MATCHES "${NOTE_MESSAGE}")
+    message(FATAL_ERROR
+        "${PROFILE} did not match note message ${NOTE_MESSAGE}:\n${diagnostics}")
 endif()
 # Transactional output: HLSL validation happens before publication, so a
 # failed compile may leave no content at all.  Comments can carry binding or

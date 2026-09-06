@@ -386,6 +386,15 @@ int HlslFail(HlslModule *module, HlslErrorKind kind,
     return 0;
 } // HlslFail
 
+int HlslFailRelated(HlslModule *module, HlslErrorKind kind,
+                    const HlslLoc *loc, const HlslLoc *relatedLoc,
+                    const char *reason)
+{
+    if (module != NULL && module->errors == 0 && relatedLoc != NULL)
+        module->relatedErrorLoc = *relatedLoc;
+    return HlslFail(module, kind, loc, reason);
+} // HlslFailRelated
+
 const char *HlslAllocateName(HlslModule *module, const char *source)
 {
     HlslName *name;

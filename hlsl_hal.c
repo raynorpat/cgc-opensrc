@@ -607,6 +607,8 @@ static int GetCapsBit_hlsl(int bitNumber)
     case CAPS_AGGREGATE_DEFAULT_INITIALIZERS:
     case CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS:
         return 1;
+    case CAPS_HLSL_GEOMETRY_ENTRY_ABI:
+        return GetHlslProfile()->stage == HLSL_STAGE_GEOMETRY;
     default:
         return 0;
     }
@@ -1400,6 +1402,7 @@ static int ReportHlslFailure(const HlslModule *module,
 {
     const HlslDiagnosticMap *mapping;
     SourceLoc failureLoc;
+    SourceLoc relatedLoc;
     const char *reason;
     int i;
 
@@ -1449,6 +1452,14 @@ static int ReportHlslFailure(const HlslModule *module,
         break;
     case HLSL_ERROR_INTERFACE_CONFLICT:
         SemanticError(&failureLoc, ERROR_S_HLSL_INTERFACE_CONFLICT, reason);
+        if (module->relatedErrorLoc.file != 0 ||
+            module->relatedErrorLoc.line != 0)
+        {
+            relatedLoc.file = (unsigned short) module->relatedErrorLoc.file;
+            relatedLoc.line = (unsigned short) module->relatedErrorLoc.line;
+            SemanticNote(&relatedLoc, NOTICE_S_HLSL_INTERFACE_FIRST,
+                         reason);
+        }
         break;
     case HLSL_ERROR_REQUIRED_POSITION:
         SemanticError(&failureLoc, ERROR___HLSL_REQUIRED_POSITION);
