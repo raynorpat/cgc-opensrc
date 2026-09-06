@@ -3346,8 +3346,11 @@ static int HlslWrapperModernSemantic(HlslModule *module,
     if (!HlslParseSemantic(upper, root, sizeof(root), &index))
         return 0;
     kind = HlslModernSemantic(profile->stage, direction, root, index);
-    if (kind == HLSL_SEMANTIC_UNSUPPORTED)
-        return 0;
+    if (kind == HLSL_SEMANTIC_UNSUPPORTED ||
+        !HlslModernSemanticIsLegal(profile->stage, direction, kind))
+    {
+        return HlslFail(module, HLSL_ERROR_SEMANTIC, &decl->loc, source);
+    }
     if (kind == HLSL_SEMANTIC_USER) {
         if (sprintf(spelling, "%s%d", root, index) < 0)
             return 0;
@@ -3358,14 +3361,14 @@ static int HlslWrapperModernSemantic(HlslModule *module,
     }
     decl->semantic = HlslWrapperCopyText(module, spelling);
     decl->canonicalSemantic = HlslWrapperCopyText(module, spelling);
-    if (decl->semantic == NULL || decl->canonicalSemantic == NULL)
+    decl->inputSemantic = HlslWrapperCopyText(module, source);
+    if (decl->semantic == NULL || decl->canonicalSemantic == NULL ||
+        decl->inputSemantic == NULL)
         return 0;
     decl->semanticKind = kind;
     decl->semanticIndex = index;
-    decl->interpolation = decl->type.base == HLSL_BASE_INT ||
-                          decl->type.base == HLSL_BASE_UINT ?
-                          HLSL_INTERPOLATION_NOINTERPOLATION :
-                          HLSL_INTERPOLATION_DEFAULT;
+    decl->interpolation =
+        HlslModernRequiredTargetInterpolation(decl->type.base);
     if (kind != HLSL_SEMANTIC_USER) {
         abiBase = HlslModernAbiBase(kind);
         if (abiBase == HLSL_BASE_UINT || abiBase == HLSL_BASE_BOOL)
@@ -3575,11 +3578,14 @@ int HlslBuildEntryWrapper(HlslModule *module,
                         memberName) : NULL;
         if (wrapperResultMember == NULL)
             return 0;
+        wrapperResultMember->loc = entry->loc;
         wrapperResultMember->semantic = semantic;
         if (!HlslWrapperModernSemantic(module, profile,
                                        wrapperResultMember, semantic,
                                        HLSL_DIRECTION_OUTPUT))
         {
+            if (module->errors != 0)
+                return 0;
             return HlslBindFailure(module, NULL, HLSL_ERROR_SEMANTIC,
                                    semantic);
         }

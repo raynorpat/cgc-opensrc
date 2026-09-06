@@ -1626,23 +1626,58 @@ static int HlslModernDeclarationsConflict(const HlslDecl *left,
     return left->semanticIndex == right->semanticIndex;
 } // HlslModernDeclarationsConflict
 
+static int HlslModernSemanticIdentityIsValid(
+    const HlslProfileDesc *profile, const HlslDecl *decl, int isOutput)
+{
+    char root[64];
+    char expected[96];
+    HlslDirection direction;
+    HlslSemanticKind kind;
+    size_t i;
+    int index;
+
+    if (decl->inputSemantic == NULL || decl->semantic == NULL ||
+        decl->canonicalSemantic == NULL ||
+        !HlslParseSemantic(decl->inputSemantic, root, sizeof(root),
+                           &index))
+    {
+        return 0;
+    }
+    for (i = 0; root[i] != '\0'; i++) {
+        if (root[i] >= 'a' && root[i] <= 'z')
+            root[i] = (char) (root[i] - 'a' + 'A');
+    }
+    direction = isOutput ? HLSL_DIRECTION_OUTPUT : HLSL_DIRECTION_INPUT;
+    kind = HlslModernSemantic(profile->stage, direction, root, index);
+    if (kind == HLSL_SEMANTIC_UNSUPPORTED ||
+        !HlslModernSemanticIsLegal(profile->stage, direction, kind) ||
+        decl->semanticKind != kind || decl->semanticIndex != index)
+    {
+        return 0;
+    }
+    if (kind == HLSL_SEMANTIC_USER) {
+        if (sprintf(expected, "%s%d", root, index) < 0)
+            return 0;
+    } else if (!HlslModernSemanticSpelling(kind, index, expected,
+                                           sizeof(expected)))
+    {
+        return 0;
+    }
+    return !strcmp(decl->semantic, expected) &&
+           !strcmp(decl->canonicalSemantic, expected);
+} // HlslModernSemanticIdentityIsValid
+
 static int HlslValidateModernInterfaceSemantics(HlslModule *module,
     const HlslProfileDesc *profile, const HlslDecl *members, int isOutput)
 {
     const HlslDecl *left;
     const HlslDecl *right;
     HlslInterpolation required;
-    HlslDirection direction;
 
-    direction = isOutput ? HLSL_DIRECTION_OUTPUT : HLSL_DIRECTION_INPUT;
     for (left = members; left != NULL; left = left->next) {
-        required = left->type.base == HLSL_BASE_INT ||
-                   left->type.base == HLSL_BASE_UINT ?
-                   HLSL_INTERPOLATION_NOINTERPOLATION :
-                   HLSL_INTERPOLATION_DEFAULT;
-        if (left->semantic == NULL || left->canonicalSemantic == NULL ||
-            !HlslModernSemanticIsLegal(profile->stage, direction,
-                                       left->semanticKind) ||
+        required =
+            HlslModernRequiredTargetInterpolation(left->type.base);
+        if (!HlslModernSemanticIdentityIsValid(profile, left, isOutput) ||
             !HlslModernInterfaceTypeIsValid(left) ||
             left->interpolation != required)
         {

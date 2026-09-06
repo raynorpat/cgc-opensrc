@@ -1,0 +1,10 @@
+struct ReservedOutput {
+    float4 position : SV_Position;
+};
+
+ReservedOutput bad_reserved(float4 position : POSITION)
+{
+    ReservedOutput output;
+    output.position = position;
+    return output;
+}

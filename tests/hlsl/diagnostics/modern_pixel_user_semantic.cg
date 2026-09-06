@@ -1,0 +1,4 @@
+float4 bad_pixel_user(float4 position : WPOS) : FOO0
+{
+    return position;
+}

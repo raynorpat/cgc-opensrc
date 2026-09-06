@@ -2354,10 +2354,68 @@ static void ConfigureModernValidationFixture(ValidationFixture *fixture)
 
     input = fixture->inputStruct->members;
     output = fixture->outputStruct->members;
+    input->inputSemantic = "position";
     input->canonicalSemantic = "POSITION0";
+    output->inputSemantic = "POSITION0";
     output->semantic = "SV_Position";
     output->canonicalSemantic = "SV_Position";
     output->semanticKind = HLSL_SEMANTIC_SV_POSITION;
+}
+
+static void AssertModernSemanticIdentityRejected(ValidationFixture *fixture)
+{
+    assert(!HlslValidateModule(&fixture->module,
+                               &HlslProfile_hlslv40));
+    assert(fixture->module.errorKind == HLSL_ERROR_SEMANTIC);
+    assert(fixture->module.errors == 1);
+    AssertWriteFailureLeavesEmpty(&fixture->module,
+                                  &HlslProfile_hlslv40);
+}
+
+static void TestModernSemanticIdentityValidation(void)
+{
+    ValidationFixture fixture;
+    HlslDecl *output;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    output = fixture.outputStruct->members;
+    output->semanticKind = HLSL_SEMANTIC_USER;
+    AssertModernSemanticIdentityRejected(&fixture);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    output = fixture.outputStruct->members;
+    output->canonicalSemantic = "POSITION0";
+    AssertModernSemanticIdentityRejected(&fixture);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    output = fixture.outputStruct->members;
+    output->semantic = "POSITION0";
+    AssertModernSemanticIdentityRejected(&fixture);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    output = fixture.outputStruct->members;
+    output->semanticIndex = 1;
+    AssertModernSemanticIdentityRejected(&fixture);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    output = fixture.outputStruct->members;
+    output->semanticIndex = -1;
+    AssertModernSemanticIdentityRejected(&fixture);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    output = fixture.outputStruct->members;
+    output->inputSemantic = "COLOR0";
+    AssertModernSemanticIdentityRejected(&fixture);
 }
 
 static void AssertUintValidationPolicy(HlslExprKind kind,
@@ -3555,6 +3613,27 @@ int main(int argc, char **argv)
                "PRIMITIVEID", 0));
     assert(HlslModernRequiredInterpolation(TYPE_BASE_INT) ==
            HLSL_INTERPOLATION_NOINTERPOLATION);
+    assert(HlslModernRequiredTargetInterpolation(HLSL_BASE_INT) ==
+           HLSL_INTERPOLATION_NOINTERPOLATION);
+    assert(HlslModernRequiredTargetInterpolation(HLSL_BASE_UINT) ==
+           HLSL_INTERPOLATION_NOINTERPOLATION);
+    assert(HlslModernRequiredTargetInterpolation(HLSL_BASE_FLOAT) ==
+           HLSL_INTERPOLATION_DEFAULT);
+    assert(!HlslModernSemanticIsLegal(HLSL_STAGE_PIXEL,
+               HLSL_DIRECTION_OUTPUT, HLSL_SEMANTIC_USER));
+    assert(HlslModernSemanticIsLegal(HLSL_STAGE_VERTEX,
+               HLSL_DIRECTION_OUTPUT, HLSL_SEMANTIC_USER));
+    assert(HlslModernSemanticIsLegal(HLSL_STAGE_GEOMETRY,
+               HLSL_DIRECTION_INPUT, HLSL_SEMANTIC_USER));
+    assert(HlslModernSemanticIsLegal(HLSL_STAGE_PIXEL,
+               HLSL_DIRECTION_INPUT, HLSL_SEMANTIC_USER));
+    assert(HlslModernSemantic(HLSL_STAGE_VERTEX, HLSL_DIRECTION_OUTPUT,
+               "SV_POSITION", 0) == HLSL_SEMANTIC_UNSUPPORTED);
+    assert(HlslModernSemantic(HLSL_STAGE_VERTEX, HLSL_DIRECTION_OUTPUT,
+               "position", 1) == HLSL_SEMANTIC_UNSUPPORTED);
+    assert(!HlslModernSemanticSpelling(HLSL_SEMANTIC_SV_POSITION, 1,
+                                       semanticRoot,
+                                       sizeof(semanticRoot)));
     assert(HlslModernAbiBase(HLSL_SEMANTIC_SV_VERTEX_ID) ==
            HLSL_BASE_UINT);
     scalar = HlslNumericType(HLSL_BASE_UINT, 1);
@@ -3598,6 +3677,7 @@ int main(int argc, char **argv)
     TestStructuralValidatorRejectsMalformedGraphs();
     TestTargetValidatorRejectsImpossibleProfiles();
     TestUintValidationPolicy();
+    TestModernSemanticIdentityValidation();
     TestTargetValidatorInterfaceLimits();
     TestStructuralValidatorRejectsCyclicSignatureGraphs();
     TestStructuralValidatorPreflightsBeforeInitializers();

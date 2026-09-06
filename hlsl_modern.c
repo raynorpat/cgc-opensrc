@@ -133,31 +133,52 @@ static int HlslModernStringsEqual(const char *left, const char *right)
     return *left == *right;
 } // HlslModernStringsEqual
 
+static int HlslModernHasReservedPrefix(const char *root)
+{
+    if (root == NULL)
+        return 0;
+    return (root[0] == 'S' || root[0] == 's') &&
+           (root[1] == 'V' || root[1] == 'v') && root[2] == '_';
+} // HlslModernHasReservedPrefix
+
 HlslSemanticKind HlslModernSemantic(HlslStage stage,
     HlslDirection direction, const char *root, int index)
 {
     int stageFlag;
     int directionFlag;
+    int matched;
     int i;
 
-    if (root == NULL || index < 0)
+    if (root == NULL || index < 0 ||
+        (direction != HLSL_DIRECTION_INPUT &&
+         direction != HLSL_DIRECTION_OUTPUT) ||
+        HlslModernHasReservedPrefix(root))
+    {
         return HLSL_SEMANTIC_UNSUPPORTED;
+    }
     stageFlag = HlslModernStageFlag(stage);
     directionFlag = direction == HLSL_DIRECTION_OUTPUT ?
                     HLSL_MODERN_OUTPUT : HLSL_MODERN_INPUT;
+    if (stageFlag == 0)
+        return HLSL_SEMANTIC_UNSUPPORTED;
+    matched = 0;
     for (i = 0; i < (int) (sizeof(modernSemantics) /
                             sizeof(modernSemantics[0])); i++)
     {
         if (HlslModernStringsEqual(root, modernSemantics[i].root) &&
             (modernSemantics[i].stages & stageFlag) != 0 &&
-            (modernSemantics[i].directions & directionFlag) != 0 &&
-            index >= modernSemantics[i].firstIndex &&
-            index < modernSemantics[i].firstIndex + modernSemantics[i].count)
+            (modernSemantics[i].directions & directionFlag) != 0)
         {
-            return modernSemantics[i].semantic;
+            matched = 1;
+            if (index >= modernSemantics[i].firstIndex &&
+                index < modernSemantics[i].firstIndex +
+                        modernSemantics[i].count)
+            {
+                return modernSemantics[i].semantic;
+            }
         }
     }
-    return HLSL_SEMANTIC_USER;
+    return matched ? HLSL_SEMANTIC_UNSUPPORTED : HLSL_SEMANTIC_USER;
 } // HlslModernSemantic
 
 int HlslModernSemanticsConflict(HlslStage stage, HlslDirection direction,
@@ -199,13 +220,21 @@ int HlslModernSemanticIsLegal(HlslStage stage, HlslDirection direction,
     int directionFlag;
     int i;
 
-    if (semantic == HLSL_SEMANTIC_USER)
-        return 1;
-    if (semantic == HLSL_SEMANTIC_UNSUPPORTED)
+    if ((direction != HLSL_DIRECTION_INPUT &&
+         direction != HLSL_DIRECTION_OUTPUT) ||
+        semantic == HLSL_SEMANTIC_UNSUPPORTED)
+    {
         return 0;
+    }
     stageFlag = HlslModernStageFlag(stage);
     directionFlag = direction == HLSL_DIRECTION_OUTPUT ?
                     HLSL_MODERN_OUTPUT : HLSL_MODERN_INPUT;
+    if (stageFlag == 0)
+        return 0;
+    if (semantic == HLSL_SEMANTIC_USER) {
+        return !(stage == HLSL_STAGE_PIXEL &&
+                 direction == HLSL_DIRECTION_OUTPUT);
+    }
     for (i = 0; i < (int) (sizeof(modernSemantics) /
                             sizeof(modernSemantics[0])); i++)
     {
@@ -224,15 +253,20 @@ int HlslModernSemanticSpelling(HlslSemanticKind semantic, int index,
 {
     char spelling[96];
     const char *root;
+    int firstIndex;
+    int count;
     int usesIndex;
     int written;
 
     root = NULL;
+    firstIndex = 0;
+    count = 1;
     usesIndex = 0;
     switch (semantic) {
     case HLSL_SEMANTIC_SV_POSITION: root = "SV_Position"; break;
     case HLSL_SEMANTIC_SV_TARGET:
         root = "SV_Target";
+        count = 8;
         usesIndex = 1;
         break;
     case HLSL_SEMANTIC_SV_DEPTH: root = "SV_Depth"; break;
@@ -245,12 +279,14 @@ int HlslModernSemanticSpelling(HlslSemanticKind semantic, int index,
     case HLSL_SEMANTIC_SV_IS_FRONT_FACE: root = "SV_IsFrontFace"; break;
     case HLSL_SEMANTIC_SV_CLIP_DISTANCE:
         root = "SV_ClipDistance";
+        count = 2;
         usesIndex = 1;
         break;
     default:
         return 0;
     }
-    if (text == NULL || size == 0 || index < 0)
+    if (text == NULL || size == 0 || index < firstIndex ||
+        index >= firstIndex + count)
         return 0;
     written = usesIndex ? sprintf(spelling, "%s%d", root, index) :
                           sprintf(spelling, "%s", root);
@@ -266,6 +302,13 @@ HlslInterpolation HlslModernRequiredInterpolation(int sourceBase)
            HLSL_INTERPOLATION_NOINTERPOLATION :
            HLSL_INTERPOLATION_DEFAULT;
 } // HlslModernRequiredInterpolation
+
+HlslInterpolation HlslModernRequiredTargetInterpolation(HlslBase base)
+{
+    return base == HLSL_BASE_INT || base == HLSL_BASE_UINT ?
+           HLSL_INTERPOLATION_NOINTERPOLATION :
+           HLSL_INTERPOLATION_DEFAULT;
+} // HlslModernRequiredTargetInterpolation
 
 const char *HlslInterpolationName(HlslInterpolation interpolation)
 {

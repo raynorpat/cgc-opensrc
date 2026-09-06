@@ -2017,6 +2017,12 @@ add_hlsl_modern_semantic_failure(modern_psize hlslv40
 add_hlsl_modern_semantic_failure(modern_system_conflict hlslv40
     tests/hlsl/diagnostics/modern_system_conflict.cg bad_systems 6404 3
     SV_Position)
+add_hlsl_modern_semantic_failure(modern_pixel_user_semantic hlslf40
+    tests/hlsl/diagnostics/modern_pixel_user_semantic.cg bad_pixel_user
+    6403 1 FOO0)
+add_hlsl_modern_semantic_failure(modern_reserved_semantic hlslv40
+    tests/hlsl/diagnostics/modern_reserved_semantic.cg bad_reserved
+    6403 2 SV_Position)
 
 add_test(
     NAME hlslg40_registration

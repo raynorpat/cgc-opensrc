@@ -67,6 +67,7 @@ int HlslModernSemanticIsLegal(HlslStage stage, HlslDirection direction,
 int HlslModernSemanticSpelling(HlslSemanticKind semantic, int index,
     char *text, size_t size);
 HlslInterpolation HlslModernRequiredInterpolation(int sourceBase);
+HlslInterpolation HlslModernRequiredTargetInterpolation(HlslBase base);
 const char *HlslInterpolationName(HlslInterpolation interpolation);
 
 #endif // !defined(__HLSL_MODERN_H)
