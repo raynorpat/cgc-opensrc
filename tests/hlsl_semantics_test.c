@@ -1295,7 +1295,7 @@ void FatalError(const char *message, ...)
     abort();
 }
 
-int HlslWriteModule(FILE *out, const HlslModule *module,
+int HlslWriteModule(FILE *out, HlslModule *module,
                     const HlslProfileDesc *profile)
 {
     (void) out;

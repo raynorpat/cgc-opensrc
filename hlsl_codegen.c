@@ -82,7 +82,8 @@ static int HlslCanWriteModule(const HlslModule *module,
 
     if (module == NULL || profile == NULL ||
         (module->stage != HLSL_STAGE_VERTEX &&
-         module->stage != HLSL_STAGE_PIXEL) ||
+         module->stage != HLSL_STAGE_PIXEL &&
+         module->stage != HLSL_STAGE_GEOMETRY) ||
         module->stage != profile->stage || profile->name == NULL ||
         profile->name[0] == '\0' || profile->target == NULL ||
         profile->target[0] == '\0' || module->entry == NULL ||
@@ -1132,6 +1133,8 @@ static const char *HlslBankText(HlslRegisterBank bank)
     case HLSL_REGISTER_I: return "i";
     case HLSL_REGISTER_B: return "b";
     case HLSL_REGISTER_S: return "s";
+    case HLSL_REGISTER_T: return "t";
+    case HLSL_REGISTER_CB: return "b";
     case HLSL_REGISTER_NONE: break;
     }
     return "?";
@@ -1283,14 +1286,15 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
     return 1;
 } // HlslEmitModule
 
-int HlslWriteModule(FILE *out, const HlslModule *module,
+int HlslWriteModule(FILE *out, HlslModule *module,
                     const HlslProfileDesc *profile)
 {
     FILE *temporary;
     char buffer[4096];
     size_t count;
 
-    if (out == NULL || !HlslCanWriteModule(module, profile))
+    if (out == NULL || !HlslValidateModule(module, profile) ||
+        !HlslCanWriteModule(module, profile))
         return 0;
     temporary = tmpfile();
     if (temporary == NULL)

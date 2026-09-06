@@ -164,6 +164,38 @@ static int HlslBindingListHasCycle(const HlslBinding *list)
     return 0;
 } // HlslBindingListHasCycle
 
+static int HlslResourceListHasCycle(const HlslResource *list)
+{
+    const HlslResource *slow;
+    const HlslResource *fast;
+
+    slow = list;
+    fast = list;
+    while (fast != NULL && fast->next != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast)
+            return 1;
+    }
+    return 0;
+} // HlslResourceListHasCycle
+
+static int HlslFlatReplayListHasCycle(const HlslFlatReplay *list)
+{
+    const HlslFlatReplay *slow;
+    const HlslFlatReplay *fast;
+
+    slow = list;
+    fast = list;
+    while (fast != NULL && fast->next != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast)
+            return 1;
+    }
+    return 0;
+} // HlslFlatReplayListHasCycle
+
 static int HlslAllocationListHasCycle(const HlslBinding *list)
 {
     const HlslBinding *slow;
@@ -239,6 +271,12 @@ static int HlslTypeIsValidInner(const HlslType *type, int allowVoid,
     case HLSL_BASE_SAMPLER3D:
     case HLSL_BASE_SAMPLERCUBE:
         return type->len == 1;
+    case HLSL_BASE_TEXTURE1D:
+    case HLSL_BASE_TEXTURE2D:
+    case HLSL_BASE_TEXTURE3D:
+    case HLSL_BASE_TEXTURECUBE:
+    case HLSL_BASE_SAMPLER_STATE:
+        return type->len == 1;
     case HLSL_BASE_STRUCT:
         break;
     }
@@ -249,6 +287,26 @@ static int HlslTypeIsValid(const HlslType *type, int allowVoid)
 {
     return HlslTypeIsValidInner(type, allowVoid, NULL, 0);
 } // HlslTypeIsValid
+
+static int HlslTypeContainsObject(const HlslType *type, int depth)
+{
+    const HlslDecl *member;
+
+    if (type == NULL || depth > 128)
+        return 1;
+    if (type->base >= HLSL_BASE_TEXTURE1D &&
+        type->base <= HLSL_BASE_SAMPLER_STATE)
+    {
+        return 1;
+    }
+    if (type->arraySize > 0)
+        return HlslTypeContainsObject(type->elementType, depth + 1);
+    for (member = type->members; member != NULL; member = member->next) {
+        if (HlslTypeContainsObject(&member->type, depth + 1))
+            return 1;
+    }
+    return 0;
+} // HlslTypeContainsObject
 
 static int HlslTypeContainsUint(const HlslType *type, int depth)
 {
@@ -575,6 +633,7 @@ static int HlslDeclTreeContains(const HlslDecl *list,
 static int HlslOwnsDecl(const HlslModule *module, const HlslDecl *target)
 {
     const HlslFunction *function;
+    const HlslResource *resource;
 
     if (module == NULL || target == NULL)
         return 0;
@@ -582,6 +641,14 @@ static int HlslOwnsDecl(const HlslModule *module, const HlslDecl *target)
         HlslDeclTreeContains(module->structs, target, 0))
     {
         return 1;
+    }
+    if (HlslResourceListHasCycle(module->resources))
+        return 0;
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (HlslDeclTreeContains(resource->members, target, 0))
+            return 1;
     }
     if (HlslFunctionListHasCycle(module->functions))
         return 0;
@@ -692,7 +759,8 @@ static int HlslDeclShapeIsValid(const HlslDecl *decl)
         decl->typeQualifier > HLSL_TYPE_QUALIFIER_CONST ||
         decl->parameterQualifier < HLSL_PARAMETER_IN ||
         decl->parameterQualifier > HLSL_PARAMETER_INOUT ||
-        !HlslTypeIsValid(&decl->type, 0))
+        !HlslTypeIsValid(&decl->type, 0) ||
+        HlslTypeContainsObject(&decl->type, 0))
     {
         return 0;
     }
@@ -720,6 +788,326 @@ static int HlslDeclListShapeIsValid(const HlslDecl *list, int depth)
     }
     return 1;
 } // HlslDeclListShapeIsValid
+
+static int HlslResourceObjectTypeIsValid(const HlslResource *resource)
+{
+    HlslBase base;
+
+    if (resource == NULL || resource->type.arraySize != 0 ||
+        resource->type.rows != 0 || resource->type.cols != 0 ||
+        resource->type.elementType != NULL ||
+        resource->type.structName != NULL || resource->type.members != NULL ||
+        resource->type.len != 1)
+    {
+        return 0;
+    }
+    base = resource->type.base;
+    if (resource->kind == HLSL_RESOURCE_TEXTURE) {
+        return base == HLSL_BASE_TEXTURE1D ||
+               base == HLSL_BASE_TEXTURE2D ||
+               base == HLSL_BASE_TEXTURE3D ||
+               base == HLSL_BASE_TEXTURECUBE;
+    }
+    return resource->kind == HLSL_RESOURCE_SAMPLER &&
+           base == HLSL_BASE_SAMPLER_STATE;
+} // HlslResourceObjectTypeIsValid
+
+static int HlslPackOffsetIsValid(const HlslPackOffset *offset,
+                                 int maximumVectors)
+{
+    int start;
+    int available;
+
+    if (offset == NULL || maximumVectors <= 0 || offset->vector < 0 ||
+        offset->vector >= maximumVectors || offset->component < 0 ||
+        offset->component > 3 || offset->componentCount <= 0 ||
+        offset->vector > INT_MAX / 4)
+    {
+        return 0;
+    }
+    if (offset->componentCount > 4 ||
+        offset->component + offset->componentCount > 4)
+    {
+        return 0;
+    }
+    start = offset->vector * 4 + offset->component;
+    if (maximumVectors > INT_MAX / 4)
+        return 0;
+    available = maximumVectors * 4 - start;
+    return offset->componentCount <= available;
+} // HlslPackOffsetIsValid
+
+static int HlslPackOffsetsOverlap(const HlslPackOffset *left,
+                                  const HlslPackOffset *right)
+{
+    int leftStart;
+    int rightStart;
+
+    leftStart = left->vector * 4 + left->component;
+    rightStart = right->vector * 4 + right->component;
+    return leftStart < rightStart + right->componentCount &&
+           rightStart < leftStart + left->componentCount;
+} // HlslPackOffsetsOverlap
+
+static int HlslValidateCbuffer(HlslModule *module,
+                               const HlslProfileDesc *profile,
+                               const HlslResource *resource)
+{
+    const HlslDecl *left;
+    const HlslDecl *right;
+
+    if (resource->type.base != HLSL_BASE_STRUCT ||
+        resource->type.arraySize != 0 || resource->type.len != 0 ||
+        resource->type.rows != 0 || resource->type.cols != 0 ||
+        resource->type.elementType != NULL ||
+        resource->type.structName == NULL ||
+        resource->type.structName[0] == '\0' ||
+        resource->type.members != resource->members ||
+        resource->binding.pairId != -1 ||
+        resource->binding.slot < 0 ||
+        resource->binding.slot >= profile->limits->constantBufferSlots ||
+        !HlslDeclListShapeIsValid(resource->members, 0) ||
+        !HlslDeclTypesAreOwned(module, resource->members, 0))
+    {
+        return HlslFail(module, HLSL_ERROR_CBUFFER, &resource->loc,
+                        resource->name);
+    }
+    for (left = resource->members; left != NULL; left = left->next) {
+        if (!left->hasPackOffset ||
+            !HlslPackOffsetIsValid(&left->packOffset,
+                profile->limits->constantBufferVectors))
+        {
+            return HlslFail(module, HLSL_ERROR_CBUFFER, &left->loc,
+                            left->name);
+        }
+        for (right = left->next; right != NULL; right = right->next) {
+            if (!right->hasPackOffset ||
+                !HlslPackOffsetIsValid(&right->packOffset,
+                    profile->limits->constantBufferVectors) ||
+                HlslPackOffsetsOverlap(&left->packOffset,
+                                       &right->packOffset))
+            {
+                return HlslFail(module, HLSL_ERROR_CBUFFER, &right->loc,
+                                right->name);
+            }
+        }
+    }
+    return 1;
+} // HlslValidateCbuffer
+
+static int HlslValidateResources(HlslModule *module,
+                                 const HlslProfileDesc *profile)
+{
+    const HlslResource *resource;
+    const HlslResource *other;
+    int matches;
+
+    if (module->resources != NULL && profile->limits == NULL)
+        return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
+                        "missing HLSL resource limits");
+    if (HlslResourceListHasCycle(module->resources))
+        return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
+                        "cyclic HLSL resource list");
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->owner != module ||
+            resource->kind < HLSL_RESOURCE_CBUFFER ||
+            resource->kind > HLSL_RESOURCE_SAMPLER ||
+            resource->binding.kind != resource->kind ||
+            resource->name == NULL || resource->name[0] == '\0' ||
+            (resource->sourceDeclaration != NULL &&
+             !HlslOwnsDecl(module, resource->sourceDeclaration)))
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                            &resource->loc,
+                            "invalid HLSL resource ownership");
+        }
+        if (profile->resourcePolicy != HLSL_RESOURCE_POLICY_MODERN) {
+            return HlslFail(module,
+                resource->kind == HLSL_RESOURCE_CBUFFER ?
+                HLSL_ERROR_CBUFFER : HLSL_ERROR_RESOURCE_PAIR,
+                &resource->loc,
+                "modern resource in legacy HLSL module");
+        }
+        if (resource->kind == HLSL_RESOURCE_CBUFFER) {
+            if (!HlslProfileHasCapability(profile, HLSL_CAP_CBUFFERS) ||
+                !HlslValidateCbuffer(module, profile, resource))
+            {
+                return module->errors != 0 ? 0 :
+                    HlslFail(module, HLSL_ERROR_CBUFFER, &resource->loc,
+                             resource->name);
+            }
+        } else if (!HlslProfileHasCapability(profile,
+                       HLSL_CAP_TEXTURE_METHODS) ||
+                   !HlslResourceObjectTypeIsValid(resource) ||
+                   resource->members != NULL ||
+                   resource->binding.slot < 0 ||
+                   (resource->kind == HLSL_RESOURCE_TEXTURE &&
+                    resource->binding.slot >= profile->limits->resources) ||
+                   (resource->kind == HLSL_RESOURCE_SAMPLER &&
+                    resource->binding.slot >= profile->limits->samplers) ||
+                   resource->binding.pairId < 0)
+        {
+            return HlslFail(module, HLSL_ERROR_RESOURCE_PAIR,
+                            &resource->loc, resource->name);
+        }
+        for (other = resource->next; other != NULL; other = other->next) {
+            if ((resource->kind == other->kind &&
+                 resource->binding.slot == other->binding.slot) ||
+                (resource->kind != HLSL_RESOURCE_CBUFFER &&
+                 resource->kind == other->kind &&
+                 resource->binding.pairId == other->binding.pairId))
+            {
+                return HlslFail(module,
+                    resource->kind == HLSL_RESOURCE_CBUFFER ?
+                    HLSL_ERROR_CBUFFER : HLSL_ERROR_RESOURCE_PAIR,
+                    &other->loc, other->name);
+            }
+        }
+    }
+    for (resource = module->resources; resource != NULL;
+         resource = resource->next)
+    {
+        if (resource->kind == HLSL_RESOURCE_CBUFFER)
+            continue;
+        matches = 0;
+        for (other = module->resources; other != NULL;
+             other = other->next)
+        {
+            if (resource->kind != other->kind &&
+                other->kind != HLSL_RESOURCE_CBUFFER &&
+                resource->binding.pairId == other->binding.pairId &&
+                resource->binding.slot == other->binding.slot)
+            {
+                matches++;
+            }
+        }
+        if (matches != 1)
+            return HlslFail(module, HLSL_ERROR_RESOURCE_PAIR,
+                            &resource->loc, resource->name);
+    }
+    return 1;
+} // HlslValidateResources
+
+static int HlslGeometryInputExtent(HlslGeometryInput input)
+{
+    switch (input) {
+    case HLSL_GEOMETRY_INPUT_POINT: return 1;
+    case HLSL_GEOMETRY_INPUT_LINE: return 2;
+    case HLSL_GEOMETRY_INPUT_LINE_ADJ: return 4;
+    case HLSL_GEOMETRY_INPUT_TRIANGLE: return 3;
+    case HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ: return 6;
+    }
+    return 0;
+} // HlslGeometryInputExtent
+
+static int HlslGeometryOutputComponentsInner(const HlslType *type,
+    const HlslPointerFrame *parent, int depth)
+{
+    HlslPointerFrame frame;
+    const HlslDecl *member;
+    int components;
+    int count;
+
+    if (type == NULL || depth > 128 || HlslFrameContains(parent, type))
+        return -1;
+    frame.parent = parent;
+    frame.pointer = type;
+    if (type->arraySize > 0) {
+        components = HlslGeometryOutputComponentsInner(type->elementType,
+                                                        &frame, depth + 1);
+        if (components < 0 || (components != 0 &&
+            type->arraySize > INT_MAX / components))
+        {
+            return -1;
+        }
+        return components * type->arraySize;
+    }
+    if (type->base != HLSL_BASE_STRUCT)
+        return HlslTypeComponentCount(type);
+    if (HlslDeclListHasCycle(type->members))
+        return -1;
+    components = 0;
+    for (member = type->members; member != NULL; member = member->next) {
+        count = HlslGeometryOutputComponentsInner(&member->type, &frame,
+                                                   depth + 1);
+        if (count < 0 || components > INT_MAX - count)
+            return -1;
+        components += count;
+    }
+    return components;
+} // HlslGeometryOutputComponentsInner
+
+static int HlslGeometryOutputComponents(const HlslModule *module)
+{
+    const HlslDecl *structure;
+
+    if (HlslDeclListHasCycle(module->structs))
+        return -1;
+    for (structure = module->structs; structure != NULL;
+         structure = structure->next)
+    {
+        if (structure->storage == HLSL_STORAGE_OUTPUT) {
+            return HlslGeometryOutputComponentsInner(&structure->type,
+                                                       NULL, 0);
+        }
+    }
+    return 0;
+} // HlslGeometryOutputComponents
+
+static int HlslValidateGeometryLayout(HlslModule *module,
+                                      const HlslProfileDesc *profile)
+{
+    int hasLayout;
+    int outputComponents;
+
+    hasLayout = module->geometryInput != HLSL_GEOMETRY_INPUT_POINT ||
+                module->geometryStream != HLSL_GEOMETRY_STREAM_POINT ||
+                module->geometryInputCount != 0 ||
+                module->geometryMaxVertices != 0;
+    if (module->stage != HLSL_STAGE_GEOMETRY) {
+        if (hasLayout)
+            return HlslFail(module, HLSL_ERROR_GEOMETRY_LAYOUT, NULL,
+                            "geometry layout on non-geometry module");
+        return 1;
+    }
+    if (profile->model < HLSL_SHADER_MODEL_4 ||
+        profile->syntax != HLSL_SYNTAX_MODERN ||
+        !HlslProfileHasCapability(profile, HLSL_CAP_GEOMETRY) ||
+        module->geometryInput < HLSL_GEOMETRY_INPUT_POINT ||
+        module->geometryInput > HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ ||
+        module->geometryStream < HLSL_GEOMETRY_STREAM_POINT ||
+        module->geometryStream > HLSL_GEOMETRY_STREAM_TRIANGLE ||
+        module->geometryInputCount !=
+            HlslGeometryInputExtent(module->geometryInput))
+    {
+        return HlslFail(module, HLSL_ERROR_GEOMETRY_LAYOUT, NULL,
+                        "invalid geometry layout");
+    }
+    if (module->geometryMaxVertices <= 0 || profile->limits == NULL ||
+        profile->limits->geometryMaxVertices <= 0 ||
+        module->geometryMaxVertices >
+            profile->limits->geometryMaxVertices)
+    {
+        return HlslFail(module, HLSL_ERROR_GEOMETRY_LIMIT, NULL,
+                        "geometry maximum vertices");
+    }
+    outputComponents = HlslGeometryOutputComponents(module);
+    if (outputComponents < 0)
+        return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
+                        "invalid geometry output type");
+    if (outputComponents > 0 &&
+        (profile->limits->geometryTotalOutputComponents <= 0 ||
+         module->geometryMaxVertices >
+             profile->limits->geometryTotalOutputComponents /
+             outputComponents))
+    {
+        return HlslFail(module, HLSL_ERROR_GEOMETRY_LIMIT, NULL,
+                        "geometry total output components");
+    }
+    return 1;
+} // HlslValidateGeometryLayout
 
 typedef struct HlslValidationContext_Rec {
     HlslModule *module;
@@ -909,6 +1297,7 @@ static int HlslValidateExpression(HlslValidationContext *context,
     if (expression == NULL || depth > 512 ||
         HlslFrameContains(parent, expression) ||
         !HlslTypeIsValid(&expression->type, 1) ||
+        HlslTypeContainsObject(&expression->type, 0) ||
         !HlslTypeDeclsAreOwned(context->module, &expression->type))
     {
         return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
@@ -1114,6 +1503,51 @@ static int HlslValidateDeclInitializers(HlslValidationContext *context,
     return 1;
 } // HlslValidateDeclInitializers
 
+static const HlslType *HlslGeometryOutputType(const HlslModule *module)
+{
+    const HlslDecl *structure;
+
+    for (structure = module->structs; structure != NULL;
+         structure = structure->next)
+    {
+        if (structure->storage == HLSL_STORAGE_OUTPUT)
+            return &structure->type;
+    }
+    return NULL;
+} // HlslGeometryOutputType
+
+static int HlslValidateFlatReplay(HlslValidationContext *context,
+                                  const HlslFlatReplay *replay)
+{
+    const HlslType *outputType;
+
+    if (HlslFlatReplayListHasCycle(replay))
+        return HlslFail(context->module, HLSL_ERROR_INVALID_IR, NULL,
+                        "cyclic HLSL flat replay list");
+    outputType = HlslGeometryOutputType(context->module);
+    for (; replay != NULL; replay = replay->next) {
+        if (replay->owner != context->module ||
+            !HlslOwnsDecl(context->module, replay->target) ||
+            !HlslOwnsDecl(context->module, replay->shadow) ||
+            !HlslOwnsDecl(context->module, replay->defined) ||
+            !HlslMemberBelongsToType(outputType, replay->target) ||
+            !HlslTypesEqual(&replay->target->type,
+                            &replay->shadow->type) ||
+            replay->defined->type.arraySize != 0 ||
+            replay->defined->type.base != HLSL_BASE_BOOL ||
+            replay->defined->type.len != 1 ||
+            replay->defined->type.rows != 0 ||
+            replay->defined->type.cols != 0)
+        {
+            return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
+                            replay->target != NULL ?
+                            &replay->target->loc : NULL,
+                            "invalid HLSL flat replay");
+        }
+    }
+    return 1;
+} // HlslValidateFlatReplay
+
 static int HlslValidateStatements(HlslValidationContext *context,
                                   const HlslStmt *statement, int depth)
 {
@@ -1242,6 +1676,43 @@ static int HlslValidateStatements(HlslValidationContext *context,
                                 &statement->loc,
                                 "HLSL jump outside loop");
             }
+            break;
+        case HLSL_STMT_APPEND:
+            if (context->module->stage != HLSL_STAGE_GEOMETRY ||
+                context->function != context->module->entry)
+            {
+                return HlslFail(context->module,
+                                HLSL_ERROR_GEOMETRY_LAYOUT,
+                                &statement->loc,
+                                "append outside geometry entry");
+            }
+            if (statement->u.append.record == NULL ||
+                !HlslValidateExpression(context,
+                    statement->u.append.record, NULL, 0) ||
+                !HlslTypesEqual(&statement->u.append.record->type,
+                    HlslGeometryOutputType(context->module)) ||
+                !HlslValidateFlatReplay(context,
+                    statement->u.append.replay))
+            {
+                return context->module->errors != 0 ? 0 :
+                    HlslFail(context->module, HLSL_ERROR_INVALID_IR,
+                             &statement->loc,
+                             "invalid HLSL geometry append");
+            }
+            break;
+        case HLSL_STMT_RESTART_STRIP:
+            if (context->module->stage != HLSL_STAGE_GEOMETRY ||
+                context->function != context->module->entry)
+            {
+                return HlslFail(context->module,
+                                HLSL_ERROR_GEOMETRY_LAYOUT,
+                                &statement->loc,
+                                "restart outside geometry entry");
+            }
+            if (statement->u.expression != NULL)
+                return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
+                                &statement->loc,
+                                "restart strip has operands");
             break;
         default:
             return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
@@ -1946,6 +2417,8 @@ static const char *HlslBankName(HlslRegisterBank bank)
     case HLSL_REGISTER_I: return "i";
     case HLSL_REGISTER_B: return "b";
     case HLSL_REGISTER_S: return "s";
+    case HLSL_REGISTER_T: return "t";
+    case HLSL_REGISTER_CB: return "b";
     case HLSL_REGISTER_NONE: break;
     }
     return "register";
@@ -2499,7 +2972,12 @@ static int HlslValidateTargetModule(HlslModule *module,
         profile->limits->floatConstants < 0 ||
         profile->limits->intConstants < 0 ||
         profile->limits->boolConstants < 0 ||
-        profile->limits->samplers < 0)
+        profile->limits->samplers < 0 ||
+        profile->limits->constantBufferSlots < 0 ||
+        profile->limits->constantBufferVectors < 0 ||
+        profile->limits->resources < 0 ||
+        profile->limits->geometryMaxVertices < 0 ||
+        profile->limits->geometryTotalOutputComponents < 0)
     {
         return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
                         "missing HLSL profile limits");
@@ -2546,7 +3024,7 @@ static int HlslIsEmptyModule(const HlslModule *module)
            entry->result.base == HLSL_BASE_VOID &&
            entry->parameters == NULL && entry->body == NULL &&
            module->structs == NULL && module->globals == NULL &&
-           module->bindings == NULL;
+           module->bindings == NULL && module->resources == NULL;
 } // HlslIsEmptyModule
 
 int HlslValidateModule(HlslModule *module,
@@ -2566,6 +3044,11 @@ int HlslValidateModule(HlslModule *module,
     {
         return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
                         "invalid HLSL module");
+    }
+    if (!HlslValidateGeometryLayout(module, profile) ||
+        !HlslValidateResources(module, profile))
+    {
+        return 0;
     }
     if (HlslIsEmptyModule(module))
         return 1;

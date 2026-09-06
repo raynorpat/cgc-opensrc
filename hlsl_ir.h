@@ -72,7 +72,12 @@ typedef enum HlslBase_Enum {
     HLSL_BASE_SAMPLER3D,
     HLSL_BASE_SAMPLERCUBE,
     HLSL_BASE_STRUCT,
-    HLSL_BASE_UINT
+    HLSL_BASE_UINT,
+    HLSL_BASE_TEXTURE1D,
+    HLSL_BASE_TEXTURE2D,
+    HLSL_BASE_TEXTURE3D,
+    HLSL_BASE_TEXTURECUBE,
+    HLSL_BASE_SAMPLER_STATE
 } HlslBase;
 
 typedef enum HlslSemanticKind_Enum {
@@ -102,7 +107,9 @@ typedef enum HlslRegisterBank_Enum {
     HLSL_REGISTER_C,
     HLSL_REGISTER_I,
     HLSL_REGISTER_B,
-    HLSL_REGISTER_S
+    HLSL_REGISTER_S,
+    HLSL_REGISTER_T,
+    HLSL_REGISTER_CB
 } HlslRegisterBank;
 
 typedef enum HlslBuiltin_Enum {
@@ -232,8 +239,46 @@ typedef enum HlslErrorKind_Enum {
     HLSL_ERROR_SAMPLER,
     HLSL_ERROR_INTRINSIC,
     HLSL_ERROR_NAME_COLLISION,
-    HLSL_ERROR_INVALID_IR
+    HLSL_ERROR_INVALID_IR,
+    HLSL_ERROR_SYSTEM_SEMANTIC,
+    HLSL_ERROR_INTERPOLATION,
+    HLSL_ERROR_CBUFFER,
+    HLSL_ERROR_RESOURCE_PAIR,
+    HLSL_ERROR_GEOMETRY_LAYOUT,
+    HLSL_ERROR_GEOMETRY_LIMIT
 } HlslErrorKind;
+
+typedef enum HlslResourceKind_Enum {
+    HLSL_RESOURCE_CBUFFER,
+    HLSL_RESOURCE_TEXTURE,
+    HLSL_RESOURCE_SAMPLER
+} HlslResourceKind;
+
+typedef struct HlslPackOffset_Rec {
+    int vector;
+    int component;
+    int componentCount;
+} HlslPackOffset;
+
+typedef struct HlslResourceBinding_Rec {
+    HlslResourceKind kind;
+    int slot;
+    int pairId;
+} HlslResourceBinding;
+
+typedef enum HlslGeometryInput_Enum {
+    HLSL_GEOMETRY_INPUT_POINT,
+    HLSL_GEOMETRY_INPUT_LINE,
+    HLSL_GEOMETRY_INPUT_LINE_ADJ,
+    HLSL_GEOMETRY_INPUT_TRIANGLE,
+    HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ
+} HlslGeometryInput;
+
+typedef enum HlslGeometryStream_Enum {
+    HLSL_GEOMETRY_STREAM_POINT,
+    HLSL_GEOMETRY_STREAM_LINE,
+    HLSL_GEOMETRY_STREAM_TRIANGLE
+} HlslGeometryStream;
 
 typedef enum HlslStorage_Enum {
     HLSL_STORAGE_NONE,
@@ -329,7 +374,9 @@ typedef enum HlslStmtKind_Enum {
     HLSL_STMT_RETURN,
     HLSL_STMT_DISCARD,
     HLSL_STMT_BREAK,
-    HLSL_STMT_CONTINUE
+    HLSL_STMT_CONTINUE,
+    HLSL_STMT_APPEND,
+    HLSL_STMT_RESTART_STRIP
 } HlslStmtKind;
 
 typedef struct HlslLoc_Rec {
@@ -344,6 +391,8 @@ typedef struct HlslExpr_Rec HlslExpr;
 typedef struct HlslStmt_Rec HlslStmt;
 typedef struct HlslFunction_Rec HlslFunction;
 typedef struct HlslBinding_Rec HlslBinding;
+typedef struct HlslResource_Rec HlslResource;
+typedef struct HlslFlatReplay_Rec HlslFlatReplay;
 typedef struct HlslProfileDesc_Rec HlslProfileDesc;
 typedef struct HlslModule_Rec HlslModule;
 typedef void *(*HlslAllocFn)(void *arg, size_t size);
@@ -357,6 +406,26 @@ struct HlslType_Rec {
     const char *structName;
     HlslType *elementType;
     HlslDecl *members;
+};
+
+struct HlslResource_Rec {
+    HlslResource *next;
+    HlslModule *owner;
+    HlslResourceKind kind;
+    HlslType type;
+    const char *name;
+    HlslLoc loc;
+    HlslResourceBinding binding;
+    HlslDecl *sourceDeclaration;
+    HlslDecl *members;
+};
+
+struct HlslFlatReplay_Rec {
+    HlslFlatReplay *next;
+    HlslModule *owner;
+    HlslDecl *target;
+    HlslDecl *shadow;
+    HlslDecl *defined;
 };
 
 typedef struct HlslPhysicalBinding_Rec {
@@ -460,6 +529,10 @@ struct HlslStmt_Rec {
         } forStmt;
         HlslStmt *block;
         HlslExpr *returnExpr;
+        struct {
+            HlslExpr *record;
+            HlslFlatReplay *replay;
+        } append;
     } u;
 };
 
@@ -485,6 +558,8 @@ struct HlslDecl_Rec {
     HlslParameterQualifier parameterQualifier;
     HlslPhysicalBinding physical;
     HlslRegisterBank sourceBank;
+    int hasPackOffset;
+    HlslPackOffset packOffset;
 };
 
 struct HlslFunction_Rec {
@@ -551,6 +626,11 @@ struct HlslModule_Rec {
     int resourceAvailable;
     int temporaryCount;
     int errors;
+    HlslResource *resources;
+    HlslGeometryInput geometryInput;
+    HlslGeometryStream geometryStream;
+    int geometryInputCount;
+    int geometryMaxVertices;
 };
 
 int HlslErrorCode(HlslErrorKind kind);
@@ -611,6 +691,19 @@ HlslFunction *HlslNewFunction(HlslModule *module, HlslType result,
     const char *name);
 HlslBinding *HlslNewBinding(HlslModule *module, HlslStorage storage,
     HlslType type, const char *name, const char *semantic);
+HlslResource *HlslNewResource(HlslModule *module, HlslResourceKind kind,
+    HlslType type, const char *name, HlslLoc loc);
+int HlslBindResource(HlslModule *module, HlslResource *resource,
+    int slot, int pairId);
+int HlslSetPackOffset(HlslModule *module, HlslDecl *field,
+    HlslPackOffset offset);
+int HlslSetGeometryLayout(HlslModule *module, HlslGeometryInput input,
+    HlslGeometryStream stream, int inputCount, int maxVertices);
+HlslStmt *HlslNewAppend(HlslModule *module, HlslExpr *record,
+    HlslFlatReplay *replay, HlslLoc loc);
+HlslStmt *HlslNewRestartStrip(HlslModule *module, HlslLoc loc);
+HlslFlatReplay *HlslNewFlatReplay(HlslModule *module, HlslDecl *target,
+    HlslDecl *shadow, HlslDecl *defined);
 
 void HlslAppendDecl(HlslDecl **list, HlslDecl *decl);
 void HlslAppendExpr(HlslExpr **list, HlslExpr *expr);
@@ -621,7 +714,7 @@ void HlslAppendBinding(HlslBinding **list, HlslBinding *binding);
 int HlslAllocateOneBinding(HlslModule *module,
     const HlslProfileDesc *profile, HlslBinding *binding);
 
-int HlslWriteModule(FILE *out, const HlslModule *module,
+int HlslWriteModule(FILE *out, HlslModule *module,
     const HlslProfileDesc *profile);
 
 #endif // !defined(__HLSL_IR_H)

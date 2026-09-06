@@ -356,12 +356,18 @@ static const int hlslErrorCodes[] = {
     6409,
     6410,
     6411,
-    9013
+    9013,
+    6412,
+    6413,
+    6414,
+    6415,
+    6416,
+    6417
 };
 
 int HlslErrorCode(HlslErrorKind kind)
 {
-    if (kind < HLSL_ERROR_NONE || kind > HLSL_ERROR_INVALID_IR)
+    if (kind < HLSL_ERROR_NONE || kind > HLSL_ERROR_GEOMETRY_LIMIT)
         return 0;
     return hlslErrorCodes[(int) kind];
 } // HlslErrorCode
@@ -557,6 +563,16 @@ static const char *HlslTypeNameInner(const HlslType *type,
         return type->len == 1 ? "sampler3D" : NULL;
     case HLSL_BASE_SAMPLERCUBE:
         return type->len == 1 ? "samplerCUBE" : NULL;
+    case HLSL_BASE_TEXTURE1D:
+        return type->len == 1 ? "Texture1D" : NULL;
+    case HLSL_BASE_TEXTURE2D:
+        return type->len == 1 ? "Texture2D" : NULL;
+    case HLSL_BASE_TEXTURE3D:
+        return type->len == 1 ? "Texture3D" : NULL;
+    case HLSL_BASE_TEXTURECUBE:
+        return type->len == 1 ? "TextureCube" : NULL;
+    case HLSL_BASE_SAMPLER_STATE:
+        return type->len == 1 ? "SamplerState" : NULL;
     case HLSL_BASE_STRUCT:
         return type->len == 0 && type->structName != NULL &&
                type->structName[0] != '\0' ? type->structName : NULL;
@@ -1673,6 +1689,11 @@ static int HlslTypeRegisterSpanInner(const HlslType *type,
     case HLSL_BASE_SAMPLER3D:
     case HLSL_BASE_SAMPLERCUBE:
         return type->len == 1 ? 1 : 0;
+    case HLSL_BASE_TEXTURE1D:
+    case HLSL_BASE_TEXTURE2D:
+    case HLSL_BASE_TEXTURE3D:
+    case HLSL_BASE_TEXTURECUBE:
+    case HLSL_BASE_SAMPLER_STATE:
     case HLSL_BASE_VOID:
     case HLSL_BASE_STRUCT:
         return 0;
@@ -1875,6 +1896,164 @@ HlslBinding *HlslNewBinding(HlslModule *module, HlslStorage storage,
     }
     return binding;
 }
+
+HlslResource *HlslNewResource(HlslModule *module, HlslResourceKind kind,
+    HlslType type, const char *name, HlslLoc loc)
+{
+    HlslResource *resource;
+    HlslResource *last;
+
+    if (module == NULL || kind < HLSL_RESOURCE_CBUFFER ||
+        kind > HLSL_RESOURCE_SAMPLER)
+    {
+        return NULL;
+    }
+    resource = (HlslResource *) HlslAlloc(module, sizeof(HlslResource));
+    if (resource == NULL)
+        return NULL;
+    resource->owner = module;
+    resource->kind = kind;
+    resource->type = type;
+    resource->name = name;
+    resource->loc = loc;
+    resource->binding.kind = kind;
+    resource->binding.slot = -1;
+    resource->binding.pairId = -1;
+    if (module->resources == NULL) {
+        module->resources = resource;
+    } else {
+        last = module->resources;
+        while (last->next != NULL)
+            last = last->next;
+        last->next = resource;
+    }
+    return resource;
+} // HlslNewResource
+
+static int HlslModuleOwnsResource(const HlslModule *module,
+                                  const HlslResource *resource)
+{
+    const HlslResource *current;
+    const HlslResource *slow;
+    const HlslResource *fast;
+
+    slow = module->resources;
+    fast = module->resources;
+    while (fast != NULL && fast->next != NULL) {
+        slow = slow->next;
+        fast = fast->next->next;
+        if (slow == fast)
+            return 0;
+    }
+    for (current = module->resources; current != NULL;
+         current = current->next)
+    {
+        if (current == resource)
+            return 1;
+    }
+    return 0;
+} // HlslModuleOwnsResource
+
+int HlslBindResource(HlslModule *module, HlslResource *resource,
+    int slot, int pairId)
+{
+    if (module == NULL || resource == NULL || resource->owner != module ||
+        !HlslModuleOwnsResource(module, resource) ||
+        resource->kind < HLSL_RESOURCE_CBUFFER ||
+        resource->kind > HLSL_RESOURCE_SAMPLER ||
+        resource->binding.kind != resource->kind || slot < 0)
+    {
+        return 0;
+    }
+    resource->binding.slot = slot;
+    resource->binding.pairId = pairId;
+    return 1;
+} // HlslBindResource
+
+int HlslSetPackOffset(HlslModule *module, HlslDecl *field,
+    HlslPackOffset offset)
+{
+    if (module == NULL || field == NULL || offset.vector < 0 ||
+        offset.component < 0 || offset.component > 3 ||
+        offset.componentCount <= 0 || offset.componentCount > 4 ||
+        offset.component + offset.componentCount > 4)
+    {
+        return 0;
+    }
+    field->hasPackOffset = 1;
+    field->packOffset = offset;
+    return 1;
+} // HlslSetPackOffset
+
+static int HlslGeometryInputExtent(HlslGeometryInput input)
+{
+    switch (input) {
+    case HLSL_GEOMETRY_INPUT_POINT: return 1;
+    case HLSL_GEOMETRY_INPUT_LINE: return 2;
+    case HLSL_GEOMETRY_INPUT_LINE_ADJ: return 4;
+    case HLSL_GEOMETRY_INPUT_TRIANGLE: return 3;
+    case HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ: return 6;
+    }
+    return 0;
+} // HlslGeometryInputExtent
+
+int HlslSetGeometryLayout(HlslModule *module, HlslGeometryInput input,
+    HlslGeometryStream stream, int inputCount, int maxVertices)
+{
+    if (module == NULL || module->stage != HLSL_STAGE_GEOMETRY ||
+        input < HLSL_GEOMETRY_INPUT_POINT ||
+        input > HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ ||
+        stream < HLSL_GEOMETRY_STREAM_POINT ||
+        stream > HLSL_GEOMETRY_STREAM_TRIANGLE ||
+        inputCount != HlslGeometryInputExtent(input) || maxVertices <= 0)
+    {
+        return 0;
+    }
+    module->geometryInput = input;
+    module->geometryStream = stream;
+    module->geometryInputCount = inputCount;
+    module->geometryMaxVertices = maxVertices;
+    return 1;
+} // HlslSetGeometryLayout
+
+HlslStmt *HlslNewAppend(HlslModule *module, HlslExpr *record,
+    HlslFlatReplay *replay, HlslLoc loc)
+{
+    HlslStmt *statement;
+
+    statement = HlslNewStmt(module, HLSL_STMT_APPEND);
+    if (statement != NULL) {
+        statement->loc = loc;
+        statement->u.append.record = record;
+        statement->u.append.replay = replay;
+    }
+    return statement;
+} // HlslNewAppend
+
+HlslStmt *HlslNewRestartStrip(HlslModule *module, HlslLoc loc)
+{
+    HlslStmt *statement;
+
+    statement = HlslNewStmt(module, HLSL_STMT_RESTART_STRIP);
+    if (statement != NULL)
+        statement->loc = loc;
+    return statement;
+} // HlslNewRestartStrip
+
+HlslFlatReplay *HlslNewFlatReplay(HlslModule *module, HlslDecl *target,
+    HlslDecl *shadow, HlslDecl *defined)
+{
+    HlslFlatReplay *replay;
+
+    replay = (HlslFlatReplay *) HlslAlloc(module, sizeof(HlslFlatReplay));
+    if (replay != NULL) {
+        replay->owner = module;
+        replay->target = target;
+        replay->shadow = shadow;
+        replay->defined = defined;
+    }
+    return replay;
+} // HlslNewFlatReplay
 
 void HlslAppendDecl(HlslDecl **list, HlslDecl *decl)
 {
