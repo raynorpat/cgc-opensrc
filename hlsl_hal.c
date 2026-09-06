@@ -252,7 +252,6 @@ typedef struct HlslHALData_Rec {
 } HlslHALData;
 
 // Static HAL callbacks:
-static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile);
 static int FreeHAL_hlsl(slHAL *fHAL);
 static int RegisterNames_hlsl(slHAL *fHAL);
 static int GetConnectorID_hlsl(int name);
@@ -296,10 +295,10 @@ static const HlslProfileDesc *GetHlslProfile(void)
 } // GetHlslProfile
 
 /*
- * InitHAL_hlsl() - Shared HAL initialization.
+ * InitHAL_hlsl_profile() - Shared HAL initialization.
  */
 
-static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
+int InitHAL_hlsl_profile(slHAL *fHAL, const HlslProfileDesc *profile)
 {
     HlslHALData *data;
 
@@ -344,7 +343,7 @@ static int InitHAL_hlsl(slHAL *fHAL, const HlslProfileDesc *profile)
     fHAL->numOutputCRegs = profile->numOutputRegs;
 
     return 1;
-} // InitHAL_hlsl
+} // InitHAL_hlsl_profile
 
 /*
  * FreeHAL_hlsl()
@@ -1291,7 +1290,7 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
 
 int InitHAL_hlslv(slHAL *fHAL)
 {
-    return InitHAL_hlsl(fHAL, &HlslProfile_hlslv);
+    return InitHAL_hlsl_profile(fHAL, &HlslProfile_hlslv);
 } // InitHAL_hlslv
 
 /*
@@ -1300,7 +1299,7 @@ int InitHAL_hlslv(slHAL *fHAL)
 
 int InitHAL_hlslf(slHAL *fHAL)
 {
-    return InitHAL_hlsl(fHAL, &HlslProfile_hlslf);
+    return InitHAL_hlsl_profile(fHAL, &HlslProfile_hlslf);
 } // InitHAL_hlslf
 
 ///////////////////////////////////////////////////////////////////////////////

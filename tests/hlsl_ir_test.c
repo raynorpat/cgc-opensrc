@@ -3341,6 +3341,7 @@ int main(int argc, char **argv)
                               &semanticIndex));
     assert(!HlslParseSemantic("TEXCOORD0", semanticRoot, 4,
                               &semanticIndex));
+    assert(sizeof(&InitHAL_hlsl_profile) > 0);
     assert(HlslProfile_hlslv.stage == HLSL_STAGE_VERTEX);
     assert(HlslProfile_hlslv.model == HLSL_SHADER_MODEL_3);
     assert(HlslProfile_hlslv.syntax == HLSL_SYNTAX_LEGACY);

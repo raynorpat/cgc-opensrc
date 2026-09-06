@@ -186,6 +186,7 @@ extern const HlslProfileDesc HlslProfile_hlslf;
 
 // Profile registration:
 int RegisterProfiles_hlsl(void);
+int InitHAL_hlsl_profile(slHAL *hal, const HlslProfileDesc *profile);
 int InitHAL_hlslv(slHAL *hal);
 int InitHAL_hlslf(slHAL *hal);
 
