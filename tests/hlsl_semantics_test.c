@@ -1337,6 +1337,14 @@ int HlslLegalizeModule(HlslModule *module,
     return 0;
 }
 
+int HlslLegalizeModernTextureAbi(HlslModule *module,
+                                 const HlslProfileDesc *profile)
+{
+    (void) module;
+    (void) profile;
+    return 1;
+}
+
 int HlslValidateSamplerUsage(HlslModule *module,
                              const HlslProfileDesc *profile)
 {

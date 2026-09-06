@@ -1,0 +1,139 @@
+struct Payload
+{
+    float2 value;
+    int index;
+};
+
+float main(float value)
+{
+    return value + 1.0;
+}
+
+float adjust(float value)
+{
+    return value * 2.0;
+}
+
+float2 adjust(float2 value)
+{
+    return value.yx + float2(1.0, 2.0);
+}
+
+float4 shared_operations(float4 value)
+{
+    float a = value.x;
+    float b = value.y + 2.0;
+    float3 v = value.xyz;
+    float3 w = value.wzy;
+    int3 integers = int3(1, -2, 3);
+    bool flag = value.x > value.y;
+    bool3 flags = bool3(flag, !flag, flag);
+
+    a = abs(a) + sign(b) + floor(a) + ceil(b) + round(a) + trunc(b);
+    a = a + sqrt(abs(b)) + rsqrt(abs(b) + 1.0);
+    a = a + pow(abs(a) + 1.0, b) + exp(a) + exp2(b);
+    a = a + log(abs(a) + 1.0) + log2(abs(b) + 1.0);
+    a = a + sin(a) + cos(b) + tan(a) + asin(saturate(a));
+    a = a + acos(saturate(b)) + atan(a) + atan2(a, b);
+    a = a + sinh(a) + cosh(b) + tanh(a);
+    a = a + frac(b) + fmod(a, b) + step(a, b);
+    a = min(max(a, b), b + 1.0);
+    a = clamp(a, 0.0, 1.0);
+    a = lerp(a, b, 0.5) + smoothstep(0.0, 1.0, b);
+    a = a + dot(v, w) + length(v) + distance(v, w);
+    v = cross(v, w) + normalize(v);
+    v = v + reflect(v, w) + refract(v, w, 0.75);
+    integers = abs(integers) + sign(integers);
+    flag = any(flag) || all(flag) || any(flags) || all(flags);
+    return float4(v.x + a, v.y, v.z,
+                  flag ? float(integers.x) : float(integers.y));
+}
+
+void update(inout float2 value, int index, float amount)
+{
+    if (index == 0)
+        value = float2(value.x + amount, value.y);
+    else
+        value = float2(value.x, value.y + amount);
+}
+
+float reduce(float values[3], int count)
+{
+    float result = 0.0;
+    int index;
+
+    for (index = 0; index < count; ++index) {
+        if (index == 1)
+            continue;
+        result = result + values[index];
+        if (result > 8.0)
+            break;
+    }
+    while (result < 2.0)
+        result = result + 0.5;
+    do {
+        result = result - 0.25;
+    } while (result > 4.0);
+    return result;
+}
+
+uniform float3x3 transform;
+uniform float scale = 2.0;
+
+struct VertexResult
+{
+    float4 position : POSITION;
+    float2 data : TEXCOORD0;
+    int identifier : TEXCOORD1;
+};
+
+VertexResult language_vertex(float4 position : POSITION,
+                             int vertexId : VERTEXID,
+                             out float auxiliary : TEXCOORD2)
+{
+    VertexResult output;
+    Payload payload;
+    float values[3];
+    float3 transformed;
+    float amount;
+
+    payload.value = adjust(position.xy);
+    payload.index = vertexId > 0 ? 1 : 0;
+    update(payload.value, payload.index, adjust(position.z));
+    values[0] = payload.value.x;
+    values[1] = payload.value.y;
+    values[2] = main(position.w);
+    amount = reduce(values, 3);
+    transformed = mul(transform, position.xyz);
+    auxiliary = amount;
+    output.position = shared_operations(
+        float4(transformed.x, transformed.y,
+               transformed.z, position.w)) * scale;
+    output.data = payload.value.xy;
+    output.identifier = int(vertexId);
+    return output;
+}
+
+struct PixelResult
+{
+    float4 color : COLOR0;
+    float depth : DEPTH;
+};
+
+PixelResult language_pixel(float4 value : TEXCOORD0,
+                           float face : FACE,
+                           out float4 auxiliary : COLOR1)
+{
+    PixelResult output;
+    float2 gradient;
+    float amount;
+
+    gradient = ddx(value.xy) + ddy(value.zw);
+    amount = adjust(value.x) + main(value.y);
+    if (face < 0.5)
+        discard;
+    auxiliary = float4(gradient.x, gradient.y, amount, 1.0);
+    output.color = saturate(shared_operations(value) + auxiliary);
+    output.depth = value.z;
+    return output;
+}

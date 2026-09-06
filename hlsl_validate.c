@@ -2955,6 +2955,9 @@ static int HlslValidateModernBindings(HlslModule *module,
     HlslPackOffset packed;
     HlslBase samplerBase;
     HlslBase textureBase;
+    int componentCount;
+    int expectedDefaultOffset;
+    int expectedLogicalOffset;
     int isArray;
     int malformed;
     int vectorSpan;
@@ -3070,55 +3073,110 @@ static int HlslValidateModernBindings(HlslModule *module,
             return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
                             "invalid modern HLSL binding storage");
         leaf = binding->leafBindings;
-        if (!binding->isAllocated || leaf == NULL || leaf->next != NULL ||
-            binding->declaration == NULL ||
-            binding->declaration != leaf->declaration ||
-            !HlslCbufferDirectlyContains(module, leaf->declaration) ||
-            HlslAllocationOccurrences(module, leaf) != 1 ||
-            HlslRootLeafOccurrences(module, leaf) != 1 ||
-            leaf->leafBindings != NULL || !leaf->isAllocated ||
-            leaf->storage != binding->storage ||
-            !HlslTypesEqual(&leaf->type, &binding->type) ||
-            !HlslTypesEqual(&leaf->type, &leaf->declaration->type) ||
+        cursor.vector = binding->physical.regno;
+        cursor.component = binding->physical.component;
+        if (!binding->isAllocated || leaf == NULL ||
+            binding->physical.bank != HLSL_REGISTER_C ||
+            binding->physical.regno < 0 ||
+            binding->physical.component < 0 ||
+            binding->physical.component > 3 ||
+            !HlslModernPackType(&binding->type, &cursor, &packed,
+                                &vectorSpan) ||
+            packed.vector != binding->physical.regno ||
+            packed.component != binding->physical.component ||
+            binding->physical.span != vectorSpan ||
             binding->logicalTypeName == NULL ||
             binding->logicalTypeName[0] == '\0' ||
-            !HlslStringsEqual(leaf->logicalTypeName,
-                              binding->logicalTypeName) ||
-            !HlslStringsEqual(leaf->semantic, binding->semantic) ||
-            !HlslLocationsEqual(&leaf->loc, &binding->loc) ||
-            leaf->sourceOrdinal != binding->sourceOrdinal ||
-            leaf->recursiveOffset != 0 ||
-            leaf->hasExplicitRegister != binding->hasExplicitRegister ||
-            leaf->declaration->initializer != NULL ||
-            !leaf->declaration->hasPackOffset ||
-            !HlslNameOwnsEmission(module, leaf,
-                                  leaf->declaration->name) ||
-            !HlslDefaultsEqual(binding, leaf, 0) ||
-            !HlslPhysicalBindingsEqual(&binding->physical,
-                                       &leaf->physical) ||
-            !HlslPhysicalBindingsEqual(&leaf->physical,
-                                       &leaf->declaration->physical))
+            ((leaf->next == NULL) ?
+             (binding->declaration == NULL ||
+              binding->declaration != leaf->declaration ||
+              !HlslTypesEqual(&leaf->type, &binding->type) ||
+              !HlslPhysicalBindingsEqual(&binding->physical,
+                                         &leaf->physical)) :
+             binding->declaration != NULL))
         {
             return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
                             "invalid modern HLSL binding graph");
         }
-        cursor.vector = leaf->declaration->packOffset.vector;
-        cursor.component = leaf->declaration->packOffset.component;
-        if (!HlslModernPackType(&leaf->type, &cursor, &packed,
-                                &vectorSpan) ||
-            packed.vector != leaf->declaration->packOffset.vector ||
-            packed.component != leaf->declaration->packOffset.component ||
-            packed.componentCount !=
-                leaf->declaration->packOffset.componentCount ||
-            leaf->physical.bank != HLSL_REGISTER_C ||
-            leaf->physical.regno != packed.vector ||
-            leaf->physical.component != packed.component ||
-            leaf->physical.span != vectorSpan ||
-            !HlslPackOffsetIsValid(&packed, &leaf->type,
-                profile->limits->constantBufferVectors))
+        expectedDefaultOffset = 0;
+        expectedLogicalOffset = 0;
+        for (leaf = binding->leafBindings; leaf != NULL;
+             leaf = leaf->next)
         {
-            return HlslFail(module, HLSL_ERROR_INVALID_IR, &binding->loc,
-                            "invalid modern HLSL physical binding");
+            if (leaf->declaration == NULL ||
+                !HlslCbufferDirectlyContains(module,
+                                             leaf->declaration) ||
+                HlslAllocationOccurrences(module, leaf) != 1 ||
+                HlslRootLeafOccurrences(module, leaf) != 1 ||
+                leaf->leafBindings != NULL || !leaf->isAllocated ||
+                leaf->storage != binding->storage ||
+                !HlslTypesEqual(&leaf->type,
+                                &leaf->declaration->type) ||
+                !HlslStringsEqual(leaf->logicalTypeName,
+                                  binding->logicalTypeName) ||
+                !HlslStringsEqual(leaf->semantic,
+                                  binding->semantic) ||
+                !HlslLocationsEqual(&leaf->loc, &binding->loc) ||
+                leaf->sourceOrdinal != binding->sourceOrdinal ||
+                leaf->recursiveOffset != expectedLogicalOffset ||
+                leaf->hasExplicitRegister !=
+                    binding->hasExplicitRegister ||
+                leaf->declaration->initializer != NULL ||
+                !leaf->declaration->hasPackOffset ||
+                !HlslNameOwnsEmission(module, leaf,
+                                      leaf->declaration->name) ||
+                !HlslDefaultsEqual(binding, leaf,
+                                   expectedDefaultOffset) ||
+                !HlslPhysicalBindingsEqual(&leaf->physical,
+                    &leaf->declaration->physical) ||
+                !HlslModernLogicalComponentCount(&leaf->type,
+                                                  &componentCount) ||
+                componentCount <= 0 ||
+                expectedLogicalOffset > INT_MAX - componentCount)
+            {
+                return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                                &binding->loc,
+                                "invalid modern HLSL binding leaf");
+            }
+            cursor.vector = leaf->declaration->packOffset.vector;
+            cursor.component = leaf->declaration->packOffset.component;
+            if (!HlslModernPackType(&leaf->type, &cursor, &packed,
+                                    &vectorSpan) ||
+                packed.vector !=
+                    leaf->declaration->packOffset.vector ||
+                packed.component !=
+                    leaf->declaration->packOffset.component ||
+                packed.componentCount !=
+                    leaf->declaration->packOffset.componentCount ||
+                leaf->physical.bank != HLSL_REGISTER_C ||
+                leaf->physical.regno != packed.vector ||
+                leaf->physical.component != packed.component ||
+                leaf->physical.span != vectorSpan ||
+                !HlslPackOffsetIsValid(&packed, &leaf->type,
+                    profile->limits->constantBufferVectors))
+            {
+                return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                                &binding->loc,
+                                "invalid modern HLSL physical binding");
+            }
+            expectedLogicalOffset += componentCount;
+            if (expectedDefaultOffset >
+                INT_MAX - leaf->defaultCount)
+            {
+                return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                                &binding->loc,
+                                "invalid modern HLSL binding defaults");
+            }
+            expectedDefaultOffset += leaf->defaultCount;
+        }
+        if (!HlslModernLogicalComponentCount(&binding->type,
+                                              &componentCount) ||
+            expectedLogicalOffset != componentCount ||
+            expectedDefaultOffset != binding->defaultCount)
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                            &binding->loc,
+                            "incomplete modern HLSL binding leaves");
         }
     }
     for (leaf = module->allocatedBindings; leaf != NULL;

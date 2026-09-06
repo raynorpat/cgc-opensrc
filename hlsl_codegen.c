@@ -1343,14 +1343,26 @@ static int HlslWriteModernBindingRecord(FILE *out,
     }
     byteOffset = declaration->packOffset.vector * 16 +
                  declaration->packOffset.component * 4;
-    byteSize = declaration->packOffset.componentCount * 4;
+    if (binding->type.arraySize > 0 ||
+        binding->type.base == HLSL_BASE_STRUCT ||
+        binding->type.rows > 0 || binding->type.cols > 0)
+    {
+        if (binding->physical.span <= 0 ||
+            binding->physical.span > INT_MAX / 16)
+        {
+            return 0;
+        }
+        byteSize = binding->physical.span * 16;
+    } else {
+        byteSize = declaration->packOffset.componentCount * 4;
+    }
     if (fprintf(out,
             "// cgc-bind uniform %s %s b%d c%d.%c byte=%d size=%d "
             "span=%d semantic=%s\n",
             binding->publicName, binding->logicalTypeName,
             resource->binding.slot, declaration->packOffset.vector,
             components[declaration->packOffset.component], byteOffset,
-            byteSize, leaf->physical.span,
+            byteSize, binding->physical.span,
             binding->semantic != NULL && binding->semantic[0] != '\0' ?
                 binding->semantic : "-") < 0)
     {
@@ -1530,10 +1542,6 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
     if (wroteSection && fputc('\n', out) == EOF)
         return 0;
     if (modern) {
-        for (decl = module->structs; decl != NULL; decl = decl->next) {
-            if (!HlslWriteStruct(out, decl) || fputc('\n', out) == EOF)
-                return 0;
-        }
         for (resource = module->resources; resource != NULL;
              resource = resource->next)
         {
@@ -1561,6 +1569,10 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
         }
         if (resource != NULL && fputc('\n', out) == EOF)
             return 0;
+        for (decl = module->structs; decl != NULL; decl = decl->next) {
+            if (!HlslWriteStruct(out, decl) || fputc('\n', out) == EOF)
+                return 0;
+        }
     }
     for (decl = module->globals; decl != NULL; decl = decl->next) {
         if (!HlslWriteDecl(out, decl, 0, 0))

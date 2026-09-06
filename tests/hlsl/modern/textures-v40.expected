@@ -9,6 +9,15 @@
 // cgc-bind sampler volumeImage sampler3D t2 s2
 // cgc-bind sampler cubeImage samplerCUBE t3 s3
 
+Texture1D<float4> cgc_texture_lineImage : register(t0);
+SamplerState cgc_sampler_lineImage : register(s0);
+Texture2D<float4> cgc_texture_planeImage : register(t1);
+SamplerState cgc_sampler_planeImage : register(s1);
+Texture3D<float4> cgc_texture_volumeImage : register(t2);
+SamplerState cgc_sampler_volumeImage : register(s2);
+TextureCube<float4> cgc_texture_cubeImage : register(t3);
+SamplerState cgc_sampler_cubeImage : register(s3);
+
 struct cg_VertexIn
 {
     float4 position : POSITION0;
@@ -19,15 +28,6 @@ struct cg_VertexOut
 {
     float4 result : SV_Position;
 };
-
-Texture1D<float4> cgc_texture_lineImage : register(t0);
-SamplerState cgc_sampler_lineImage : register(s0);
-Texture2D<float4> cgc_texture_planeImage : register(t1);
-SamplerState cgc_sampler_planeImage : register(s1);
-Texture3D<float4> cgc_texture_volumeImage : register(t2);
-SamplerState cgc_sampler_volumeImage : register(s2);
-TextureCube<float4> cgc_texture_cubeImage : register(t3);
-SamplerState cgc_sampler_cubeImage : register(s3);
 
 float4 cg_sample_plane_grad(Texture2D<float4> cgc_texture_image, SamplerState cgc_sampler_image, float2 uv, float2 dx, float2 dy)
 {

@@ -81,12 +81,17 @@ typedef struct HlslLeafPlanList_Rec {
 typedef struct HlslModernBindingPlan_Rec {
     HlslBinding *binding;
     HlslBinding *record;
+    HlslBinding *records;
+    HlslDecl *members;
     const char *fieldName;
     HlslPackOffset offset;
     int vectorSpan;
+    int flattened;
 } HlslModernBindingPlan;
 
 static const char hlslModernCbufferIdentity;
+
+static int HlslModernTypeNeedsFlattening(const HlslType *type);
 
 static void *HlslBindAlloc(HlslModule *module, size_t size)
 {
@@ -1310,6 +1315,53 @@ static int HlslAppendMixedBindingCopy(HlslModule *module,
     return 0;
 } // HlslAppendMixedBindingCopy
 
+static int HlslAppendModernBindingCopy(HlslModule *module,
+                                       const HlslType *type,
+                                       HlslExpr *target,
+                                       HlslBinding **leaf,
+                                       HlslStmt **statements)
+{
+    HlslDecl *member;
+    HlslExpr *element;
+    int i;
+
+    if (type == NULL || target == NULL || leaf == NULL)
+        return 0;
+    if (type->arraySize > 0 &&
+        HlslModernTypeNeedsFlattening(type->elementType))
+    {
+        for (i = 0; i < type->arraySize; i++) {
+            element = HlslBindingIndex(module, target,
+                                       type->elementType, i);
+            if (!HlslAppendModernBindingCopy(module, type->elementType,
+                                              element, leaf, statements))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        for (member = type->members; member != NULL; member = member->next) {
+            if (!HlslAppendModernBindingCopy(module, &member->type,
+                    HlslBindingMember(module, target, member), leaf,
+                    statements))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (*leaf == NULL || (*leaf)->declaration == NULL ||
+        !HlslAppendBindingCopy(module, type, target,
+            HlslBindingSymbol(module, (*leaf)->declaration), statements))
+    {
+        return 0;
+    }
+    *leaf = (*leaf)->next;
+    return 1;
+} // HlslAppendModernBindingCopy
+
 static int HlslExpressionUsesDecl(const HlslExpr *expression,
                                   const HlslDecl *decl)
 {
@@ -1793,7 +1845,7 @@ static HlslDecl *HlslNewMixedBindingLocal(HlslModule *module,
 static int HlslInstallMixedBindingConsumer(HlslModule *module,
                                            HlslFunction *function,
                                            HlslBinding *binding,
-                                           HlslDecl *source)
+                                           HlslDecl *source, int modern)
 {
     HlslBinding *leaf;
     HlslDecl *local;
@@ -1807,8 +1859,11 @@ static int HlslInstallMixedBindingConsumer(HlslModule *module,
     HlslReplaceStatementDecl(function->body, source, local);
     initializers = NULL;
     leaf = binding->leafBindings;
-    if (!HlslAppendMixedBindingCopy(module, &binding->type,
-            HlslBindingSymbol(module, local), &leaf, &initializers) ||
+    if (!(modern ?
+          HlslAppendModernBindingCopy(module, &binding->type,
+              HlslBindingSymbol(module, local), &leaf, &initializers) :
+          HlslAppendMixedBindingCopy(module, &binding->type,
+              HlslBindingSymbol(module, local), &leaf, &initializers)) ||
         leaf != NULL || initializers == NULL)
     {
         return 0;
@@ -1852,7 +1907,8 @@ static int HlslBindingNeedsReconstruction(const HlslBinding *binding)
 } // HlslBindingNeedsReconstruction
 
 static int HlslInstallReconstructedBindingValue(HlslModule *module,
-                                                HlslBinding *binding)
+                                                HlslBinding *binding,
+                                                int modern)
 {
     HlslDecl **parameterPlace;
     HlslDecl *valueDecl;
@@ -1886,7 +1942,7 @@ static int HlslInstallReconstructedBindingValue(HlslModule *module,
     {
         if (function != module->wrapper &&
             !HlslInstallMixedBindingConsumer(module, function, binding,
-                                             valueDecl))
+                                             valueDecl, modern))
         {
             return 0;
         }
@@ -3333,14 +3389,206 @@ static const char *HlslModernFieldName(HlslModule *module,
     return HlslAllocateGeneratedName(module, identity, source);
 } // HlslModernFieldName
 
+static int HlslModernTypeNeedsFlattening(const HlslType *type)
+{
+    if (type == NULL)
+        return 0;
+    if (type->arraySize > 0)
+        return HlslModernTypeNeedsFlattening(type->elementType);
+    return type->base == HLSL_BASE_STRUCT;
+} // HlslModernTypeNeedsFlattening
+
+static int HlslModernRoundCursor(HlslModernPackCursor *cursor)
+{
+    if (cursor == NULL || cursor->vector < 0 || cursor->component < 0 ||
+        cursor->component > 3)
+    {
+        return 0;
+    }
+    if (cursor->component == 0)
+        return 1;
+    if (cursor->vector == INT_MAX)
+        return 0;
+    cursor->vector++;
+    cursor->component = 0;
+    return 1;
+} // HlslModernRoundCursor
+
+static const char *HlslModernLeafFieldName(HlslModule *module,
+    const char *path, const void *identity)
+{
+    char *source;
+    char *current;
+    size_t length;
+
+    if (path == NULL)
+        return NULL;
+    length = strlen(path);
+    if (length > (size_t) -1 - 5)
+        return NULL;
+    source = (char *) HlslBindAlloc(module, length + 5);
+    if (source == NULL)
+        return NULL;
+    memcpy(source, "cgc_", 4);
+    memcpy(source + 4, path, length + 1);
+    for (current = source + 4; *current != '\0'; current++) {
+        if (!((*current >= 'A' && *current <= 'Z') ||
+              (*current >= 'a' && *current <= 'z') ||
+              (*current >= '0' && *current <= '9') || *current == '_'))
+        {
+            *current = '_';
+        }
+    }
+    return HlslAllocateGeneratedName(module, identity, source);
+} // HlslModernLeafFieldName
+
+static int HlslModernAppendPhysicalLeaf(HlslModule *module,
+    HlslBinding *binding, const HlslType *type, const char *path,
+    HlslModernPackCursor *cursor, int *logicalOffset,
+    HlslBinding **records, HlslDecl **members)
+{
+    HlslBinding *record;
+    HlslDecl *declaration;
+    HlslPackOffset offset;
+    const char *name;
+    int componentCount;
+    int vectorSpan;
+
+    record = HlslNewBinding(module, binding->storage, *type, path,
+                            binding->semantic);
+    name = record != NULL ?
+        HlslModernLeafFieldName(module, path, record) : NULL;
+    declaration = name != NULL ?
+        HlslNewDecl(module, HLSL_STORAGE_UNIFORM, *type, name) : NULL;
+    if (record == NULL || declaration == NULL ||
+        !HlslModernPackType(type, cursor, &offset, &vectorSpan) ||
+        !HlslModernLogicalComponentCount(type, &componentCount) ||
+        componentCount <= 0 || *logicalOffset < 0 ||
+        *logicalOffset > INT_MAX - componentCount)
+    {
+        return 0;
+    }
+    record->publicName = path;
+    record->logicalTypeName = binding->logicalTypeName;
+    record->loc = binding->loc;
+    record->sourceOrdinal = binding->sourceOrdinal;
+    record->recursiveOffset = *logicalOffset;
+    record->hasExplicitRegister = binding->hasExplicitRegister;
+    record->isAllocated = 1;
+    record->sourceBase = binding->sourceBase;
+    record->physical.bank = HLSL_REGISTER_C;
+    record->physical.regno = offset.vector;
+    record->physical.component = offset.component;
+    record->physical.span = vectorSpan;
+    record->declaration = declaration;
+    if (binding->defaultCount > 0) {
+        record->defaultCount = componentCount;
+        record->defaultValues = binding->defaultValues != NULL ?
+            binding->defaultValues + *logicalOffset : NULL;
+        record->defaultLiterals = binding->defaultLiterals != NULL ?
+            binding->defaultLiterals + *logicalOffset : NULL;
+    }
+
+    declaration->publicName = path;
+    declaration->semantic = binding->semantic;
+    declaration->loc = binding->loc;
+    declaration->sourceOrdinal = binding->sourceOrdinal;
+    declaration->physical = record->physical;
+    declaration->hasPackOffset = 1;
+    declaration->packOffset = offset;
+    HlslAppendBinding(records, record);
+    HlslAppendDecl(members, declaration);
+    *logicalOffset += componentCount;
+    return 1;
+} // HlslModernAppendPhysicalLeaf
+
+static int HlslModernBuildPhysicalLeaves(HlslModule *module,
+    HlslBinding *binding, const HlslType *type, const char *path,
+    HlslModernPackCursor *cursor, int *logicalOffset,
+    HlslBinding **records, HlslDecl **members, int depth)
+{
+    const HlslDecl *member;
+    const char *childPath;
+    int i;
+
+    if (type == NULL || path == NULL || cursor == NULL ||
+        logicalOffset == NULL || depth > 128)
+    {
+        return 0;
+    }
+    if (type->arraySize > 0 &&
+        HlslModernTypeNeedsFlattening(type->elementType))
+    {
+        if (type->elementType == NULL ||
+            !HlslModernRoundCursor(cursor))
+        {
+            return 0;
+        }
+        for (i = 0; i < type->arraySize; i++) {
+            childPath = HlslIndexPublicPath(module, path, i);
+            if (childPath == NULL ||
+                !HlslModernBuildPhysicalLeaves(module, binding,
+                    type->elementType, childPath, cursor, logicalOffset,
+                    records, members, depth + 1) ||
+                !HlslModernRoundCursor(cursor))
+            {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    if (type->base == HLSL_BASE_STRUCT) {
+        if (type->members == NULL || !HlslModernRoundCursor(cursor))
+            return 0;
+        for (member = type->members; member != NULL;
+             member = member->next)
+        {
+            childPath = HlslJoinPublicPath(module, path,
+                member->publicName != NULL ? member->publicName :
+                                             member->name);
+            if (childPath == NULL ||
+                !HlslModernBuildPhysicalLeaves(module, binding,
+                    &member->type, childPath, cursor, logicalOffset,
+                    records, members, depth + 1))
+            {
+                return 0;
+            }
+        }
+        return HlslModernRoundCursor(cursor);
+    }
+    return HlslModernAppendPhysicalLeaf(module, binding, type, path,
+        cursor, logicalOffset, records, members);
+} // HlslModernBuildPhysicalLeaves
+
 static int HlslModernPrepareBinding(HlslModule *module,
                                     HlslModernBindingPlan *plan)
 {
     HlslBinding *binding;
     HlslBinding *record;
+    HlslModernPackCursor cursor;
     const char *name;
+    int logicalOffset;
 
     binding = plan->binding;
+    if (HlslModernTypeNeedsFlattening(&binding->type)) {
+        cursor.vector = plan->offset.vector;
+        cursor.component = plan->offset.component;
+        logicalOffset = 0;
+        if (!HlslModernBuildPhysicalLeaves(module, binding,
+                &binding->type, HlslPublicBindingName(binding), &cursor,
+                &logicalOffset, &plan->records, &plan->members, 0) ||
+            plan->records == NULL || plan->records->next == NULL ||
+            cursor.vector != plan->offset.vector + plan->vectorSpan ||
+            cursor.component != 0 ||
+            logicalOffset != HlslTypeComponentCount(&binding->type))
+        {
+            return HlslBindFailure(module, binding,
+                HLSL_ERROR_INVALID_IR,
+                "modern HLSL aggregate binding allocation");
+        }
+        plan->flattened = 1;
+        return 1;
+    }
     record = HlslNewBinding(module, binding->storage, binding->type,
                             binding->name, binding->semantic);
     name = record != NULL ? HlslModernFieldName(module, binding, record) :
@@ -3364,6 +3612,7 @@ static int HlslModernPrepareBinding(HlslModule *module,
     record->physical.component = plan->offset.component;
     record->physical.span = plan->vectorSpan;
     plan->record = record;
+    plan->records = record;
     plan->fieldName = name;
     return 1;
 } // HlslModernPrepareBinding
@@ -3377,6 +3626,21 @@ static void HlslModernCommitBinding(HlslModule *module,
     HlslDecl *declaration;
 
     binding = plan->binding;
+    if (plan->flattened) {
+        binding->leafBindings = plan->records;
+        binding->isAllocated = 1;
+        binding->physical.bank = HLSL_REGISTER_C;
+        binding->physical.regno = plan->offset.vector;
+        binding->physical.component = plan->offset.component;
+        binding->physical.span = plan->vectorSpan;
+        for (record = plan->records; record != NULL;
+             record = record->next)
+        {
+            HlslAppendAllocatedBinding(&module->allocatedBindings, record);
+        }
+        HlslAppendDecl(members, plan->members);
+        return;
+    }
     record = plan->record;
     declaration = binding->declaration;
     declaration->next = NULL;
@@ -3970,8 +4234,20 @@ int HlslAllocateBindings(HlslModule *module,
         if (!HlslAllocateModernSamplerBindings(module, profile,
                                                ordered, count))
             return 0;
-        if (HlslAllocateModernBindings(module, profile, ordered, count))
+        if (HlslAllocateModernBindings(module, profile, ordered, count)) {
+            for (i = 0; i < count; i++) {
+                if (ordered[i]->storage == HLSL_STORAGE_UNIFORM &&
+                    HlslBindingNeedsReconstruction(ordered[i]) &&
+                    !HlslInstallReconstructedBindingValue(module,
+                                                           ordered[i], 1))
+                {
+                    return HlslBindFailure(module, ordered[i],
+                        HLSL_ERROR_INVALID_IR,
+                        "modern HLSL aggregate binding value");
+                }
+            }
             return 1;
+        }
         module->names = savedNames;
         module->resources = savedResources;
         if (resourceTail != NULL)
@@ -4002,7 +4278,8 @@ int HlslAllocateBindings(HlslModule *module,
         HlslMarkPhysicalIntegerParameter(module, ordered[i]);
         if (module->entry != NULL &&
             HlslBindingNeedsReconstruction(ordered[i]) &&
-            !HlslInstallReconstructedBindingValue(module, ordered[i]))
+            !HlslInstallReconstructedBindingValue(module, ordered[i],
+                profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN))
         {
             return HlslBindFailure(module, ordered[i],
                                    HLSL_ERROR_INVALID_IR,

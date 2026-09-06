@@ -1,0 +1,189 @@
+// profile hlslv50
+// target vs_5_0
+// cgc-bind interface in position float4 POSITION0 POSITION0 user default
+// cgc-bind interface in vertexId uint SV_VertexID SV_VertexID system nointerpolation
+// cgc-bind interface out position float4 SV_Position SV_Position system default
+// cgc-bind interface out data float2 TEXCOORD0 TEXCOORD0 user default
+// cgc-bind interface out identifier int TEXCOORD1 TEXCOORD1 user nointerpolation
+// cgc-bind interface out auxiliary float TEXCOORD2 TEXCOORD2 user default
+
+// cgc-bind uniform transform float3x3 b0 c0.x byte=0 size=48 span=3 semantic=-
+// cgc-bind uniform scale float b0 c3.x byte=48 size=4 span=1 semantic=-
+// cgc-default scale 2.0
+
+cbuffer cgc_Uniforms : register(b0)
+{
+    row_major float3x3 cgc_transform : packoffset(c0);
+    float cgc_scale : packoffset(c3.x);
+};
+
+struct cg_Payload
+{
+    float2 value;
+    int index;
+};
+
+struct cg_VertexResult
+{
+    float4 position;
+    float2 data;
+    int identifier;
+};
+
+struct cg_VertexIn
+{
+    float4 position : POSITION0;
+    nointerpolation uint vertexId : SV_VertexID;
+};
+
+struct cg_VertexOut
+{
+    float4 position : SV_Position;
+    float2 data : TEXCOORD0;
+    nointerpolation int identifier : TEXCOORD1;
+    float auxiliary : TEXCOORD2;
+};
+
+float cg_rsqrt_float(float value);
+
+float cg_saturate_float(float value);
+
+float2 cg_adjust(float2 value)
+{
+    return value.yx + (float2) float2(1.0, 2.0);
+}
+
+void cg_update(inout float2 value, int index, float amount)
+{
+    if (index == (int) 0)
+    {
+        value = float2(value.x + amount, value.y);
+    }
+    else
+    {
+        value = float2(value.x, value.y + amount);
+    }
+}
+
+float cg_adjust_1(float value)
+{
+    return value * (float) 2.0;
+}
+
+float cg_main(float value)
+{
+    return value + (float) 1.0;
+}
+
+float cg_reduce(float values[3], int count)
+{
+    float result;
+    int index;
+    result = (float) 0.0;
+    for (index = (int) 0; index < count; ++index)
+    {
+        {
+            if (index == (int) 1)
+            {
+                continue;
+            }
+            result = result + values[index];
+            if (result > (float) 8.0)
+            {
+                break;
+            }
+        }
+    }
+    while (result < (float) 2.0)
+    {
+        result = result + (float) 0.5;
+    }
+    do
+    {
+        {
+            result = result - (float) 0.25;
+        }
+    }
+    while (result > (float) 4.0);
+    return result;
+}
+
+float4 cg_shared_operations(float4 value)
+{
+    float a;
+    float b;
+    float3 v;
+    float3 w;
+    int3 integers;
+    bool flag;
+    bool3 flags;
+    a = value.x;
+    b = value.y + 2.0;
+    v = value.xyz;
+    w = value.wzy;
+    integers = (int3) int3(1, -2, 3);
+    flag = value.x > value.y;
+    flags = bool3(flag, !flag, flag);
+    a = abs(a) + sign(b) + floor(a) + ceil(b) + round(a) + trunc(b);
+    a = a + sqrt(abs(b)) + cg_rsqrt_float(abs(b) + (float) 1.0);
+    a = a + pow(abs(a) + (float) 1.0, b) + exp(a) + exp2(b);
+    a = a + log(abs(a) + (float) 1.0) + log2(abs(b) + (float) 1.0);
+    a = a + sin(a) + cos(b) + tan(a) + asin(cg_saturate_float(a));
+    a = a + acos(cg_saturate_float(b)) + atan(a) + atan2(a, b);
+    a = a + sinh(a) + cosh(b) + tanh(a);
+    a = a + frac(b) + fmod(a, b) + step(a, b);
+    a = min(max(a, b), b + (float) 1.0);
+    a = clamp(a, (float) 0.0, (float) 1.0);
+    a = lerp(a, b, (float) 0.5) + smoothstep((float) 0.0, (float) 1.0, b);
+    a = a + dot(v, w) + length(v) + distance(v, w);
+    v = cross(v, w) + normalize(v);
+    v = v + reflect(v, w) + refract(v, w, (float) 0.75);
+    integers = abs(integers) + sign(integers);
+    flag = any(flag) || all(flag) || any(flags) || all(flags);
+    return float4(v.x + a, v.y, v.z, flag ? (float) integers.x : (float) integers.y);
+}
+
+float cg_rsqrt_float(float value)
+{
+    return rsqrt(value);
+}
+
+float cg_saturate_float(float value)
+{
+    return min(max(value, 0.0), 1.0);
+}
+
+cg_VertexResult cg_entry(float4 position, int vertexId, out float auxiliary)
+{
+    cg_VertexResult cg_output = (cg_VertexResult) 0;
+    cg_Payload payload;
+    float values[3];
+    float3 transformed;
+    float amount;
+    payload.value = cg_adjust(position.xy);
+    payload.index = (int) (vertexId > 0 ? 1 : 0);
+    cg_update(payload.value, payload.index, cg_adjust_1(position.z));
+    values[0] = payload.value.x;
+    values[1] = payload.value.y;
+    values[2] = cg_main(position.w);
+    amount = cg_reduce(values, 3);
+    transformed = mul(cgc_transform, position.xyz);
+    auxiliary = amount;
+    cg_output.position = cg_shared_operations(float4(transformed.x, transformed.y, transformed.z, position.w)) * cgc_scale;
+    cg_output.data = payload.value.xy;
+    cg_output.identifier = vertexId;
+    return cg_output;
+}
+
+cg_VertexOut main(cg_VertexIn input)
+{
+    float auxiliary;
+    cg_VertexOut output;
+    cg_VertexResult cg_result;
+    cg_result = cg_entry(input.position, (int) input.vertexId, auxiliary);
+    output.position = cg_result.position;
+    output.data = cg_result.data;
+    output.identifier = cg_result.identifier;
+    output.auxiliary = auxiliary;
+    return output;
+}

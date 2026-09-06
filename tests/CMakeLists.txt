@@ -1460,6 +1460,7 @@ add_executable(hlsl_profile_identity_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
     ${PROJECT_SOURCE_DIR}/hlsl_modern.c
     ${PROJECT_SOURCE_DIR}/memory.c
     hlsl_profile_identity_test.c
@@ -1900,6 +1901,14 @@ function(add_hlsl_validation_case name profile source packing)
     if(FXC_EXECUTABLE)
         if(profile STREQUAL "hlslv")
             set(target vs_3_0)
+        elseif(profile STREQUAL "hlslv40")
+            set(target vs_4_0)
+        elseif(profile STREQUAL "hlslv50")
+            set(target vs_5_0)
+        elseif(profile STREQUAL "hlslf40")
+            set(target ps_4_0)
+        elseif(profile STREQUAL "hlslf50")
+            set(target ps_5_0)
         else()
             set(target ps_3_0)
         endif()
@@ -2038,6 +2047,47 @@ add_hlsl_modern_uniform(modern_uniform_v40 hlslv40
 add_hlsl_modern_uniform(modern_uniform_v50 hlslv50
     uniforms-v50.expected)
 
+function(add_hlsl_modern_language name profile expected entry)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DENTRY=${entry}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/language.cg
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/${expected}
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+endfunction()
+
+add_hlsl_modern_language(modern_language_v40 hlslv40
+    language-v40.expected language_vertex)
+add_hlsl_modern_language(modern_language_p40 hlslf40
+    language-p40.expected language_pixel)
+add_hlsl_modern_language(modern_language_v50 hlslv50
+    language-v50.expected language_vertex)
+add_hlsl_modern_language(modern_language_p50 hlslf50
+    language-p50.expected language_pixel)
+
+add_hlsl_fixture(modern_position_v40 hlslv40
+    position.cg tests/hlsl/modern/position-v40.expected)
+add_hlsl_fixture(modern_position_v50 hlslv50
+    position.cg tests/hlsl/modern/position-v50.expected)
+add_hlsl_fixture(modern_reflection_v40 hlslv40
+    reflection.cg tests/hlsl/modern/reflection-v40.expected)
+add_hlsl_fixture(modern_reflection_v50 hlslv50
+    reflection.cg tests/hlsl/modern/reflection-v50.expected)
+add_hlsl_fixture(modern_vertexlight_v40 hlslv40
+    vertexlight.cg tests/hlsl/modern/vertexlight-v40.expected)
+add_hlsl_fixture(modern_vertexlight_v50 hlslv50
+    vertexlight.cg tests/hlsl/modern/vertexlight-v50.expected)
+add_hlsl_fixture(modern_vertexlight4_v40 hlslv40
+    vertexlight4.cg tests/hlsl/modern/vertexlight4-v40.expected)
+add_hlsl_fixture(modern_vertexlight4_v50 hlslv50
+    vertexlight4.cg tests/hlsl/modern/vertexlight4-v50.expected)
+
 function(add_hlsl_modern_semantic_failure name profile source entry code line reason)
     add_test(
         NAME ${name}
@@ -2085,6 +2135,14 @@ add_hlsl_modern_semantic_failure(modern_texture_dimension hlslf40
 add_hlsl_modern_semantic_failure(modern_texture_coordinate hlslf40
     tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg main
     6409 4 tex2D)
+add_hlsl_modern_semantic_failure(modern_derivative_stage_v40 hlslv40
+    tests/hlsl/diagnostics/vp_derivative.cg main 6402 3 ddx)
+add_hlsl_modern_semantic_failure(modern_derivative_stage_v50 hlslv50
+    tests/hlsl/diagnostics/vp_derivative.cg main 6402 3 ddx)
+add_hlsl_modern_semantic_failure(modern_discard_stage_v40 hlslv40
+    tests/glsl/diagnostics/vp_discard.cg main 6402 8 discard)
+add_hlsl_modern_semantic_failure(modern_discard_stage_v50 hlslv50
+    tests/glsl/diagnostics/vp_discard.cg main 6402 8 discard)
 
 add_test(
     NAME hlslg40_registration

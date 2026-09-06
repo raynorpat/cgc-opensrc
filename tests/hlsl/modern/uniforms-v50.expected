@@ -17,6 +17,44 @@
 // cgc-bind uniform gain float b0 c1.z byte=24 size=4 span=1 semantic=-
 // cgc-default gain 22.0
 
+cbuffer cgc_Uniforms : register(b0)
+{
+    float cgc_scale : packoffset(c0.x);
+    float3 cgc_axis : packoffset(c0.y);
+    float2 cgc_bias : packoffset(c1.x);
+    float cgc_gain : packoffset(c1.z);
+    row_major float3x2 cgc_transform : packoffset(c2);
+    float4 cgc_colors[2] : packoffset(c5);
+    float2 cgc_settings_inner_offset : packoffset(c7.x);
+    int cgc_settings_inner_count : packoffset(c7.z);
+    bool cgc_settings_inner_enabled : packoffset(c7.w);
+    float3 cgc_settings_tint : packoffset(c8.x);
+    float2 cgc_table_0__0__inner_offset : packoffset(c9.x);
+    int cgc_table_0__0__inner_count : packoffset(c9.z);
+    bool cgc_table_0__0__inner_enabled : packoffset(c9.w);
+    float3 cgc_table_0__0__tint : packoffset(c10.x);
+    float2 cgc_table_0__1__inner_offset : packoffset(c11.x);
+    int cgc_table_0__1__inner_count : packoffset(c11.z);
+    bool cgc_table_0__1__inner_enabled : packoffset(c11.w);
+    float3 cgc_table_0__1__tint : packoffset(c12.x);
+    float2 cgc_table_0__2__inner_offset : packoffset(c13.x);
+    int cgc_table_0__2__inner_count : packoffset(c13.z);
+    bool cgc_table_0__2__inner_enabled : packoffset(c13.w);
+    float3 cgc_table_0__2__tint : packoffset(c14.x);
+    float2 cgc_table_1__0__inner_offset : packoffset(c15.x);
+    int cgc_table_1__0__inner_count : packoffset(c15.z);
+    bool cgc_table_1__0__inner_enabled : packoffset(c15.w);
+    float3 cgc_table_1__0__tint : packoffset(c16.x);
+    float2 cgc_table_1__1__inner_offset : packoffset(c17.x);
+    int cgc_table_1__1__inner_count : packoffset(c17.z);
+    bool cgc_table_1__1__inner_enabled : packoffset(c17.w);
+    float3 cgc_table_1__1__tint : packoffset(c18.x);
+    float2 cgc_table_1__2__inner_offset : packoffset(c19.x);
+    int cgc_table_1__2__inner_count : packoffset(c19.z);
+    bool cgc_table_1__2__inner_enabled : packoffset(c19.w);
+    float3 cgc_table_1__2__tint : packoffset(c20.x);
+};
+
 struct cg_InnerSettings
 {
     float2 offset;
@@ -45,24 +83,42 @@ struct cg_VertexOut_1
     float4 position : SV_Position;
 };
 
-cbuffer cgc_Uniforms : register(b0)
-{
-    float cgc_scale : packoffset(c0.x);
-    float3 cgc_axis : packoffset(c0.y);
-    float2 cgc_bias : packoffset(c1.x);
-    float cgc_gain : packoffset(c1.z);
-    row_major float3x2 cgc_transform : packoffset(c2);
-    float4 cgc_colors[2] : packoffset(c5);
-    cg_Settings cgc_settings : packoffset(c7);
-    cg_Settings cgc_table[2][3] : packoffset(c9);
-};
-
 cg_VertexOut cg_entry(float4 position, float gain)
 {
     cg_VertexOut cg_output = (cg_VertexOut) 0;
     float3 transformed;
+    cg_Settings settings;
+    cg_Settings table[2][3];
     transformed = mul(cgc_transform, position.xy);
-    cg_output.position = position * ((float) cgc_scale * gain) + float4(cgc_axis.x + cgc_bias.x + transformed.x + cgc_colors[0].x + cgc_table[1][2].inner.offset.x, cgc_settings.inner.offset.y + transformed.y, cgc_settings.tint.z + (float) cgc_settings.inner.count, (float) (cgc_settings.inner.enabled ? 1.0 : 0.0));
+    settings.inner.offset = cgc_settings_inner_offset;
+    settings.inner.count = cgc_settings_inner_count;
+    settings.inner.enabled = cgc_settings_inner_enabled;
+    settings.tint = cgc_settings_tint;
+    table[0][0].inner.offset = cgc_table_0__0__inner_offset;
+    table[0][0].inner.count = cgc_table_0__0__inner_count;
+    table[0][0].inner.enabled = cgc_table_0__0__inner_enabled;
+    table[0][0].tint = cgc_table_0__0__tint;
+    table[0][1].inner.offset = cgc_table_0__1__inner_offset;
+    table[0][1].inner.count = cgc_table_0__1__inner_count;
+    table[0][1].inner.enabled = cgc_table_0__1__inner_enabled;
+    table[0][1].tint = cgc_table_0__1__tint;
+    table[0][2].inner.offset = cgc_table_0__2__inner_offset;
+    table[0][2].inner.count = cgc_table_0__2__inner_count;
+    table[0][2].inner.enabled = cgc_table_0__2__inner_enabled;
+    table[0][2].tint = cgc_table_0__2__tint;
+    table[1][0].inner.offset = cgc_table_1__0__inner_offset;
+    table[1][0].inner.count = cgc_table_1__0__inner_count;
+    table[1][0].inner.enabled = cgc_table_1__0__inner_enabled;
+    table[1][0].tint = cgc_table_1__0__tint;
+    table[1][1].inner.offset = cgc_table_1__1__inner_offset;
+    table[1][1].inner.count = cgc_table_1__1__inner_count;
+    table[1][1].inner.enabled = cgc_table_1__1__inner_enabled;
+    table[1][1].tint = cgc_table_1__1__tint;
+    table[1][2].inner.offset = cgc_table_1__2__inner_offset;
+    table[1][2].inner.count = cgc_table_1__2__inner_count;
+    table[1][2].inner.enabled = cgc_table_1__2__inner_enabled;
+    table[1][2].tint = cgc_table_1__2__tint;
+    cg_output.position = position * ((float) cgc_scale * gain) + float4(cgc_axis.x + cgc_bias.x + transformed.x + cgc_colors[0].x + table[1][2].inner.offset.x, settings.inner.offset.y + transformed.y, settings.tint.z + (float) settings.inner.count, (float) (settings.inner.enabled ? 1.0 : 0.0));
     return cg_output;
 }
 

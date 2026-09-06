@@ -1,0 +1,93 @@
+// profile hlslv40
+// target vs_4_0
+// cgc-bind interface in position float4 ATTRIB0 ATTRIB0 user default
+// cgc-bind interface in normal float3 ATTRIB1 ATTRIB1 user default
+// cgc-bind interface out HPOS float4 SV_Position SV_Position system default
+// cgc-bind interface out COL0 float4 COLOR0 COLOR0 user default
+// cgc-bind interface out TEX0 float4 TEXCOORD0 TEXCOORD0 user default
+
+// cgc-bind uniform modelview_matrix float4x4 b0 c0.x byte=0 size=64 span=4 semantic=-
+// cgc-bind uniform projection_matrix float4x4 b0 c4.x byte=64 size=64 span=4 semantic=-
+// cgc-bind uniform lightdir float3 b0 c8.x byte=128 size=12 span=1 semantic=-
+// cgc-bind uniform lightcolor float3 b0 c9.x byte=144 size=12 span=1 semantic=-
+// cgc-bind uniform ambientcolor float3 b0 c10.x byte=160 size=12 span=1 semantic=-
+
+cbuffer cgc_Uniforms : register(b0)
+{
+    row_major float4x4 cgc_modelview_matrix : packoffset(c0);
+    row_major float4x4 cgc_projection_matrix : packoffset(c4);
+    float3 cgc_lightdir : packoffset(c8.x);
+    float3 cgc_lightcolor : packoffset(c9.x);
+    float3 cgc_ambientcolor : packoffset(c10.x);
+};
+
+struct cg_appdata
+{
+    float4 position;
+    float3 normal;
+};
+
+struct cg_vf20
+{
+    float4 HPOS;
+    float4 COL0;
+    float4 TEX0;
+};
+
+struct cg_VertexIn
+{
+    float4 position : ATTRIB0;
+    float3 normal : ATTRIB1;
+};
+
+struct cg_VertexOut
+{
+    float4 HPOS : SV_Position;
+    float4 COL0 : COLOR0;
+    float4 TEX0 : TEXCOORD0;
+};
+
+float cg_rsqrt_float(float value);
+
+cg_vf20 cg_entry(cg_appdata I, row_major float4x4 modelview_matrix, row_major float4x4 projection_matrix, float3 lightdir, float3 lightcolor, float3 ambientcolor)
+{
+    cg_vf20 O = (cg_vf20) 0;
+    float3 n;
+    float3 u;
+    float3 r;
+    float4 v;
+    float m;
+    row_major float3x3 m3;
+    v = mul(modelview_matrix, I.position);
+    u = normalize(v.xyz);
+    m3[0].xyz = modelview_matrix[0].xyz;
+    m3[1].xyz = modelview_matrix[1].xyz;
+    m3[2].xyz = modelview_matrix[2].xyz;
+    n = mul(m3, I.normal);
+    r = u - 2.0 * n * dot(n, u);
+    r.z = r.z + 1.0;
+    m = 0.5 * cg_rsqrt_float(dot(r, r));
+    O.TEX0.x = r.x * m + 0.5;
+    O.TEX0.y = r.y * m + 0.5;
+    O.HPOS = mul(projection_matrix, v);
+    return O;
+}
+
+float cg_rsqrt_float(float value)
+{
+    return rsqrt(value);
+}
+
+cg_VertexOut main(cg_VertexIn input)
+{
+    cg_appdata I;
+    cg_VertexOut output;
+    cg_vf20 cg_result;
+    I.position = input.position;
+    I.normal = input.normal;
+    cg_result = cg_entry(I, cgc_modelview_matrix, cgc_projection_matrix, cgc_lightdir, cgc_lightcolor, cgc_ambientcolor);
+    output.HPOS = cg_result.HPOS;
+    output.COL0 = cg_result.COL0;
+    output.TEX0 = cg_result.TEX0;
+    return output;
+}

@@ -1,0 +1,130 @@
+// profile hlslf50
+// target ps_5_0
+// cgc-bind interface in value float4 TEXCOORD0 TEXCOORD0 user default
+// cgc-bind interface in face bool SV_IsFrontFace SV_IsFrontFace system default
+// cgc-bind interface out color float4 SV_Target0 SV_Target0 system default
+// cgc-bind interface out depth float SV_Depth SV_Depth system default
+// cgc-bind interface out auxiliary float4 SV_Target1 SV_Target1 system default
+
+// cgc-bind uniform transform float3x3 b0 c0.x byte=0 size=48 span=3 semantic=-
+// cgc-bind uniform scale float b0 c3.x byte=48 size=4 span=1 semantic=-
+
+cbuffer cgc_Uniforms : register(b0)
+{
+    row_major float3x3 cgc_transform : packoffset(c0);
+    float cgc_scale : packoffset(c3.x);
+};
+
+struct cg_PixelResult
+{
+    float4 color;
+    float depth;
+};
+
+struct cg_PixelIn
+{
+    float4 value : TEXCOORD0;
+    bool face : SV_IsFrontFace;
+};
+
+struct cg_PixelOut
+{
+    float4 color : SV_Target0;
+    float depth : SV_Depth;
+    float4 auxiliary : SV_Target1;
+};
+
+float cg_rsqrt_float(float value);
+
+float cg_saturate_float(float value);
+
+float4 cg_saturate_float4(float4 value);
+
+float cg_adjust(float value)
+{
+    return value * (float) 2.0;
+}
+
+float cg_main(float value)
+{
+    return value + (float) 1.0;
+}
+
+float4 cg_shared_operations(float4 value)
+{
+    float a;
+    float b;
+    float3 v;
+    float3 w;
+    int3 integers;
+    bool flag;
+    bool3 flags;
+    a = value.x;
+    b = value.y + 2.0;
+    v = value.xyz;
+    w = value.wzy;
+    integers = (int3) int3(1, -2, 3);
+    flag = value.x > value.y;
+    flags = bool3(flag, !flag, flag);
+    a = abs(a) + sign(b) + floor(a) + ceil(b) + round(a) + trunc(b);
+    a = a + sqrt(abs(b)) + cg_rsqrt_float(abs(b) + (float) 1.0);
+    a = a + pow(abs(a) + (float) 1.0, b) + exp(a) + exp2(b);
+    a = a + log(abs(a) + (float) 1.0) + log2(abs(b) + (float) 1.0);
+    a = a + sin(a) + cos(b) + tan(a) + asin(cg_saturate_float(a));
+    a = a + acos(cg_saturate_float(b)) + atan(a) + atan2(a, b);
+    a = a + sinh(a) + cosh(b) + tanh(a);
+    a = a + frac(b) + fmod(a, b) + step(a, b);
+    a = min(max(a, b), b + (float) 1.0);
+    a = clamp(a, (float) 0.0, (float) 1.0);
+    a = lerp(a, b, (float) 0.5) + smoothstep((float) 0.0, (float) 1.0, b);
+    a = a + dot(v, w) + length(v) + distance(v, w);
+    v = cross(v, w) + normalize(v);
+    v = v + reflect(v, w) + refract(v, w, (float) 0.75);
+    integers = abs(integers) + sign(integers);
+    flag = any(flag) || all(flag) || any(flags) || all(flags);
+    return float4(v.x + a, v.y, v.z, flag ? (float) integers.x : (float) integers.y);
+}
+
+float cg_rsqrt_float(float value)
+{
+    return rsqrt(value);
+}
+
+float cg_saturate_float(float value)
+{
+    return min(max(value, 0.0), 1.0);
+}
+
+cg_PixelResult cg_entry(float4 value, float face, out float4 auxiliary)
+{
+    cg_PixelResult cg_output = (cg_PixelResult) 0;
+    float2 gradient;
+    float amount;
+    gradient = ddx(value.xy) + ddy(value.zw);
+    amount = cg_adjust(value.x) + cg_main(value.y);
+    if (face < 0.5)
+    {
+        discard;
+    }
+    auxiliary = float4(gradient.x, gradient.y, amount, 1.0);
+    cg_output.color = cg_saturate_float4(cg_shared_operations(value) + auxiliary);
+    cg_output.depth = value.z;
+    return cg_output;
+}
+
+float4 cg_saturate_float4(float4 value)
+{
+    return min(max(value, float4(0.0, 0.0, 0.0, 0.0)), float4(1.0, 1.0, 1.0, 1.0));
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    float4 auxiliary;
+    cg_PixelOut output;
+    cg_PixelResult cg_result;
+    cg_result = cg_entry(input.value, (float) input.face, auxiliary);
+    output.color = cg_result.color;
+    output.depth = cg_result.depth;
+    output.auxiliary = auxiliary;
+    return output;
+}
