@@ -3264,15 +3264,21 @@ static void TestModernAggregateReconstructionIsTransactional(void)
 static void TestModernAggregateBindingTopologyValidation(void)
 {
     ValidationFixture fixture;
+    ValidationFixture reversedFixture;
     ValidationFixture splitFixture;
     HlslBinding *binding;
+    HlslBinding *reversedBinding;
     HlslBinding *splitBinding;
     HlslBinding *firstLeaf;
     HlslBinding *secondLeaf;
+    HlslBinding *reversedFirstLeaf;
+    HlslBinding *reversedSecondLeaf;
     HlslBinding *splitFirstLeaf;
     HlslBinding *splitSecondLeaf;
     HlslDecl firstMember;
     HlslDecl secondMember;
+    HlslDecl reversedFirstMember;
+    HlslDecl reversedSecondMember;
     HlslDecl splitFirstMember;
     HlslDecl splitSecondMember;
     HlslPackOffset firstOffset;
@@ -3304,7 +3310,30 @@ static void TestModernAggregateBindingTopologyValidation(void)
     fixture.module.errorKind = HLSL_ERROR_NONE;
     fixture.module.errorReason = NULL;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
-                             HLSL_ERROR_INVALID_IR);
+                             HLSL_ERROR_CBUFFER);
+
+    InitValidationFixture(&reversedFixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&reversedFixture);
+    reversedBinding = AddModernAggregateConsumerFixture(&reversedFixture,
+        &reversedFirstMember, &reversedSecondMember, NULL);
+    assert(HlslAllocateBindings(&reversedFixture.module,
+                                &HlslProfile_hlslv40));
+    reversedFirstLeaf = reversedBinding->leafBindings;
+    reversedSecondLeaf = reversedFirstLeaf != NULL ?
+                         reversedFirstLeaf->next : NULL;
+    firstCbuffer = reversedFixture.module.resources;
+    assert(reversedFirstLeaf != NULL && reversedSecondLeaf != NULL &&
+           firstCbuffer != NULL &&
+           firstCbuffer->members == reversedFirstLeaf->declaration &&
+           reversedFirstLeaf->declaration->next ==
+               reversedSecondLeaf->declaration);
+    reversedSecondLeaf->declaration->next =
+        reversedFirstLeaf->declaration;
+    reversedFirstLeaf->declaration->next = NULL;
+    firstCbuffer->members = reversedSecondLeaf->declaration;
+    firstCbuffer->type.members = reversedSecondLeaf->declaration;
+    AssertModernInvalidWrite(&reversedFixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_CBUFFER);
 
     InitValidationFixture(&splitFixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&splitFixture);
@@ -3334,6 +3363,23 @@ static void AssertModernInvalidWrite(ValidationFixture *fixture,
     AssertWriteFailureLeavesEmpty(&fixture->module, profile);
     assert(fixture->module.errors == 1);
     assert(fixture->module.errorKind == kind);
+}
+
+static void TestModernPublicMainValidation(void)
+{
+    ValidationFixture fixture;
+    HlslFunction *duplicate;
+    HlslType voidType;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    duplicate = HlslNewFunction(&fixture.module, voidType, "main");
+    assert(duplicate != NULL);
+    duplicate->next = fixture.wrapper;
+    fixture.entry->next = duplicate;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslv40,
+                             HLSL_ERROR_INVALID_IR);
 }
 
 static void TestModernIrBuilders(void)
@@ -5789,6 +5835,7 @@ int main(int argc, char **argv)
     TestModernSamplerPairAllocation();
     TestModernConstantBufferBinding();
     TestModernAggregateReconstructionIsTransactional();
+    TestModernPublicMainValidation();
     TestModernAggregateBindingTopologyValidation();
     TestModernResourceValidation();
     TestModernGeometryValidation();

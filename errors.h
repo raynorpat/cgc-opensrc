@@ -364,6 +364,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define ERROR_S_HLSL_UNSUPPORTED_TYPE       6400, "HLSL Shader Model 3 does not support type \"%s\""
 #define ERROR_S_HLSL_UNSUPPORTED_OPERATION  6401, "HLSL Shader Model 3 does not support operation \"%s\""
+#define ERROR_SS_HLSL_UNSUPPORTED_TYPE_MODEL 6400, "HLSL Shader Model %s does not support type \"%s\""
+#define ERROR_SS_HLSL_UNSUPPORTED_OPERATION_MODEL 6401, "HLSL Shader Model %s does not support operation \"%s\""
 #define ERROR_SS_HLSL_STAGE_OPERATION       6402, "%s profile does not support operation \"%s\""
 #define ERROR_S_HLSL_SEMANTIC               6403, "HLSL profile cannot bind semantic \"%s\""
 #define ERROR_S_HLSL_INTERFACE_CONFLICT     6404, "HLSL interface conflicts at semantic \"%s\""
@@ -373,6 +375,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ERROR_SII_HLSL_RESOURCE_LIMIT       6408, "HLSL %s limit exceeded: %d used, %d available"
 #define ERROR_S_HLSL_SAMPLER                6409, "HLSL Shader Model 3 does not support sampler feature \"%s\""
 #define ERROR_S_HLSL_INTRINSIC              6410, "HLSL Shader Model 3 has no exact intrinsic for \"%s\""
+#define ERROR_SS_HLSL_SAMPLER_MODEL         6409, "HLSL Shader Model %s does not support sampler feature \"%s\""
+#define ERROR_SS_HLSL_INTRINSIC_MODEL       6410, "HLSL Shader Model %s has no exact intrinsic for \"%s\""
 #define ERROR_S_HLSL_NAME_COLLISION         6411, "HLSL name cannot be resolved for \"%s\""
 #define ERROR_S_HLSL_RESOURCE_PAIR          6415, "HLSL texture/sampler resource pair cannot bind \"%s\""
 #define ERROR___HLSL_INVALID_IR              9013, "invalid HLSL intermediate representation"

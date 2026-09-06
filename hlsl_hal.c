@@ -364,6 +364,8 @@ static int HandleParameterTypeError_hlsl(SourceLoc *loc,
                                          const Symbol *fSymb, int paramno);
 static void HlslAppendSignatureText(char *target, size_t size,
                                     size_t *used, const char *text);
+static void ReportHlslModelDiagnostic(SourceLoc *loc,
+    const HlslProfileDesc *profile, HlslErrorKind kind, const char *reason);
 static int BindUniformUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, Binding *fBind);
 static int BindUniformPragma_hlsl(SourceLoc *loc, Symbol *fSymb,
                                   Binding *lBind, const Binding *fBind);
@@ -729,6 +731,50 @@ static void HlslAppendSignatureText(char *target, size_t size,
     target[*used] = '\0';
 } // HlslAppendSignatureText
 
+static const char *HlslShaderModelDiagnosticName(
+    const HlslProfileDesc *profile)
+{
+    if (profile == NULL)
+        return "unknown";
+    switch (profile->model) {
+    case HLSL_SHADER_MODEL_3:
+        return "3";
+    case HLSL_SHADER_MODEL_4:
+        return "4";
+    case HLSL_SHADER_MODEL_5:
+        return "5";
+    default:
+        return "unknown";
+    }
+} // HlslShaderModelDiagnosticName
+
+static void ReportHlslModelDiagnostic(SourceLoc *loc,
+    const HlslProfileDesc *profile, HlslErrorKind kind, const char *reason)
+{
+    const char *model;
+
+    model = HlslShaderModelDiagnosticName(profile);
+    switch (kind) {
+    case HLSL_ERROR_UNSUPPORTED_TYPE:
+        SemanticError(loc, ERROR_SS_HLSL_UNSUPPORTED_TYPE_MODEL,
+                      model, reason);
+        break;
+    case HLSL_ERROR_UNSUPPORTED_OPERATION:
+        SemanticError(loc, ERROR_SS_HLSL_UNSUPPORTED_OPERATION_MODEL,
+                      model, reason);
+        break;
+    case HLSL_ERROR_SAMPLER:
+        SemanticError(loc, ERROR_SS_HLSL_SAMPLER_MODEL, model, reason);
+        break;
+    case HLSL_ERROR_INTRINSIC:
+        SemanticError(loc, ERROR_SS_HLSL_INTRINSIC_MODEL, model, reason);
+        break;
+    default:
+        InternalError(loc, ERROR___HLSL_INVALID_IR);
+        break;
+    }
+} // ReportHlslModelDiagnostic
+
 static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
 {
     const HlslProfileDesc *profile;
@@ -787,7 +833,8 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
             name, &result, params, count);
         if (otherStage != HLSL_BUILTIN_NONE) {
             if (HlslBuiltinIsTexture(otherStage))
-                SemanticError(&fSymb->loc, ERROR_S_HLSL_SAMPLER, name);
+                ReportHlslModelDiagnostic(&fSymb->loc, profile,
+                                          HLSL_ERROR_SAMPLER, name);
             else
                 SemanticError(&fSymb->loc, ERROR_SS_HLSL_STAGE_OPERATION,
                               profile->name, name);
@@ -795,7 +842,8 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
         }
     }
     if (HlslIsTextureName(name)) {
-        SemanticError(&fSymb->loc, ERROR_S_HLSL_SAMPLER, name);
+        ReportHlslModelDiagnostic(&fSymb->loc, profile,
+                                  HLSL_ERROR_SAMPLER, name);
         return 0;
     }
 
@@ -818,7 +866,8 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
                                 "unsupported");
     }
     HlslAppendSignatureText(signature, sizeof(signature), &used, ")");
-    SemanticError(&fSymb->loc, ERROR_S_HLSL_INTRINSIC, signature);
+    ReportHlslModelDiagnostic(&fSymb->loc, profile,
+                              HLSL_ERROR_INTRINSIC, signature);
     return 0;
 } // CheckInternalFunction_hlsl
 
@@ -860,7 +909,8 @@ static int HandleParameterTypeError_hlsl(SourceLoc *loc,
             return 0;
         }
     }
-    SemanticError(loc, ERROR_S_HLSL_SAMPLER, name);
+    ReportHlslModelDiagnostic(loc, GetHlslProfile(),
+                              HLSL_ERROR_SAMPLER, name);
     return 1;
 } // HandleParameterTypeError_hlsl
 
@@ -1387,7 +1437,8 @@ static int ReportHlslFailure(const HlslModule *module,
     }
     switch (module->errorKind) {
     case HLSL_ERROR_UNSUPPORTED_TYPE:
-        SemanticError(&failureLoc, ERROR_S_HLSL_UNSUPPORTED_TYPE, reason);
+        ReportHlslModelDiagnostic(&failureLoc, profile,
+                                  HLSL_ERROR_UNSUPPORTED_TYPE, reason);
         break;
     case HLSL_ERROR_STAGE_OPERATION:
         SemanticError(&failureLoc, ERROR_SS_HLSL_STAGE_OPERATION,
@@ -1409,10 +1460,12 @@ static int ReportHlslFailure(const HlslModule *module,
         SemanticError(&failureLoc, ERROR_S_HLSL_REGISTER_COLLISION, reason);
         break;
     case HLSL_ERROR_SAMPLER:
-        SemanticError(&failureLoc, ERROR_S_HLSL_SAMPLER, reason);
+        ReportHlslModelDiagnostic(&failureLoc, profile,
+                                  HLSL_ERROR_SAMPLER, reason);
         break;
     case HLSL_ERROR_INTRINSIC:
-        SemanticError(&failureLoc, ERROR_S_HLSL_INTRINSIC, reason);
+        ReportHlslModelDiagnostic(&failureLoc, profile,
+                                  HLSL_ERROR_INTRINSIC, reason);
         break;
     case HLSL_ERROR_NAME_COLLISION:
         SemanticError(&failureLoc, ERROR_S_HLSL_NAME_COLLISION, reason);
@@ -1424,8 +1477,9 @@ static int ReportHlslFailure(const HlslModule *module,
         InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
         break;
     case HLSL_ERROR_UNSUPPORTED_OPERATION:
-        SemanticError(&failureLoc, ERROR_S_HLSL_UNSUPPORTED_OPERATION,
-                      reason);
+        ReportHlslModelDiagnostic(&failureLoc, profile,
+                                  HLSL_ERROR_UNSUPPORTED_OPERATION,
+                                  reason);
         break;
     case HLSL_ERROR_NONE:
     case HLSL_ERROR_RESOURCE_LIMIT:

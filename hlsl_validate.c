@@ -943,7 +943,9 @@ static int HlslValidateCbuffer(HlslModule *module,
                                const HlslResource *resource)
 {
     const HlslDecl *left;
+    const HlslDecl *previous;
     const HlslDecl *right;
+    int previousStart;
 
     if (resource->type.base != HLSL_BASE_STRUCT ||
         resource->type.arraySize != 0 || resource->type.len != 0 ||
@@ -962,7 +964,11 @@ static int HlslValidateCbuffer(HlslModule *module,
         return HlslFail(module, HLSL_ERROR_CBUFFER, &resource->loc,
                         resource->name);
     }
+    previous = NULL;
+    previousStart = 0;
     for (left = resource->members; left != NULL; left = left->next) {
+        int currentStart;
+
         if (!left->hasPackOffset ||
             !HlslPackOffsetIsValid(&left->packOffset, &left->type,
                 profile->limits->constantBufferVectors))
@@ -970,6 +976,14 @@ static int HlslValidateCbuffer(HlslModule *module,
             return HlslFail(module, HLSL_ERROR_CBUFFER, &left->loc,
                             left->name);
         }
+        currentStart = left->packOffset.vector * 4 +
+                       left->packOffset.component;
+        if (previous != NULL && currentStart <= previousStart) {
+            return HlslFail(module, HLSL_ERROR_CBUFFER, &left->loc,
+                            left->name);
+        }
+        previous = left;
+        previousStart = currentStart;
         for (right = left->next; right != NULL; right = right->next) {
             if (!right->hasPackOffset ||
                 !HlslPackOffsetIsValid(&right->packOffset, &right->type,
@@ -2031,6 +2045,8 @@ static int HlslValidateStructuralModule(HlslModule *module,
          function = function->next)
     {
         if (function->name == NULL || function->name[0] == '\0' ||
+            (function != module->wrapper &&
+             !strcmp(function->name, "main")) ||
             !HlslTypeIsValid(&function->result, 1) ||
             !HlslTypeDeclsAreOwned(module, &function->result) ||
             !HlslDeclListShapeIsValid(function->parameters, 0) ||
@@ -3615,14 +3631,16 @@ static int HlslValidateTargetExpression(HlslModule *module,
     }
     switch (expression->kind) {
     case HLSL_EXPR_UNARY:
-        if (HlslIsSm3BitwiseOperator(expression->u.unary.op))
+        if (profile->model == HLSL_SHADER_MODEL_3 &&
+            HlslIsSm3BitwiseOperator(expression->u.unary.op))
             return HlslFail(module, HLSL_ERROR_UNSUPPORTED_OPERATION,
                             &expression->loc,
                             "bitwise and shift operators");
         return HlslValidateTargetExpression(module, profile,
                                              expression->u.unary.operand);
     case HLSL_EXPR_BINARY:
-        if (HlslIsSm3BitwiseOperator(expression->u.binary.op))
+        if (profile->model == HLSL_SHADER_MODEL_3 &&
+            HlslIsSm3BitwiseOperator(expression->u.binary.op))
             return HlslFail(module, HLSL_ERROR_UNSUPPORTED_OPERATION,
                             &expression->loc,
                             "bitwise and shift operators");

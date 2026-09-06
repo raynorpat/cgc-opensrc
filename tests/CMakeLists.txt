@@ -1919,6 +1919,10 @@ function(add_hlsl_validation_case name profile source packing)
            "^hlslv_limit_(inputs16|constants256|int16|bool16|samplers4)$")
             set(suppress_warnings TRUE)
         endif()
+        set(hlsl_validation_entry)
+        if(ARGC GREATER 4)
+            list(APPEND hlsl_validation_entry -DENTRY=${ARGV4})
+        endif()
         add_test(
             NAME hlsl_validate_${name}
             COMMAND ${CMAKE_COMMAND}
@@ -1930,6 +1934,7 @@ function(add_hlsl_validation_case name profile source packing)
                 "-DCONFIG=$<CONFIG>"
                 -DPACKING=${packing}
                 -DSUPPRESS_WARNINGS=${suppress_warnings}
+                ${hlsl_validation_entry}
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.hlsl"
                 "-DBYTECODE=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.fxc"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/validate_hlsl.cmake)
@@ -1937,11 +1942,18 @@ function(add_hlsl_validation_case name profile source packing)
 endfunction()
 
 function(add_hlsl_validation name profile source)
+    set(hlsl_validation_entry)
+    if(ARGC GREATER 3)
+        list(APPEND hlsl_validation_entry ${ARGV3})
+    endif()
     if(name MATCHES "matrix|rectangular")
-        add_hlsl_validation_case(${name}_zpr ${profile} ${source} /Zpr)
-        add_hlsl_validation_case(${name}_zpc ${profile} ${source} /Zpc)
+        add_hlsl_validation_case(${name}_zpr ${profile} ${source} /Zpr
+            ${hlsl_validation_entry})
+        add_hlsl_validation_case(${name}_zpc ${profile} ${source} /Zpc
+            ${hlsl_validation_entry})
     else()
-        add_hlsl_validation_case(${name} ${profile} ${source} "")
+        add_hlsl_validation_case(${name} ${profile} ${source} ""
+            ${hlsl_validation_entry})
     endif()
 endfunction()
 
@@ -2071,6 +2083,32 @@ add_hlsl_modern_language(modern_language_v50 hlslv50
 add_hlsl_modern_language(modern_language_p50 hlslf50
     language-p50.expected language_pixel)
 
+function(add_hlsl_modern_bitwise name profile expected entry)
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DENTRY=${entry}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/bitwise.cg
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/${expected}
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    add_hlsl_validation(${name} ${profile}
+        tests/hlsl/modern/bitwise.cg ${entry})
+endfunction()
+
+add_hlsl_modern_bitwise(modern_bitwise_v40 hlslv40
+    bitwise-v40.expected bitwise_vertex)
+add_hlsl_modern_bitwise(modern_bitwise_p40 hlslf40
+    bitwise-p40.expected bitwise_pixel)
+add_hlsl_modern_bitwise(modern_bitwise_v50 hlslv50
+    bitwise-v50.expected bitwise_vertex)
+add_hlsl_modern_bitwise(modern_bitwise_p50 hlslf50
+    bitwise-p50.expected bitwise_pixel)
+
 add_hlsl_fixture(modern_empty_input_p40 hlslf40
     tests/hlsl/modern/empty-input.cg
     tests/hlsl/modern/empty-input-p40.expected)
@@ -2159,6 +2197,31 @@ add_hlsl_modern_semantic_failure(modern_discard_stage_v40 hlslv40
     tests/glsl/diagnostics/vp_discard.cg main 6402 8 discard)
 add_hlsl_modern_semantic_failure(modern_discard_stage_v50 hlslv50
     tests/glsl/diagnostics/vp_discard.cg main 6402 8 discard)
+
+add_hlsl_modern_semantic_failure(modern_unsupported_type_v40 hlslv40
+    tests/hlsl/diagnostics/vp_unsupported_type.cg main 6400 2
+    "HLSL Shader Model 4 does not support type \"sampler\"")
+add_hlsl_modern_semantic_failure(modern_unsupported_type_v50 hlslv50
+    tests/hlsl/diagnostics/vp_unsupported_type.cg main 6400 2
+    "HLSL Shader Model 5 does not support type \"sampler\"")
+add_hlsl_modern_semantic_failure(modern_unsupported_operation_v40 hlslv40
+    tests/hlsl/profile/vp_static.cg main 6401 1
+    "HLSL Shader Model 4 does not support operation \"static storage\"")
+add_hlsl_modern_semantic_failure(modern_unsupported_operation_v50 hlslv50
+    tests/hlsl/profile/vp_static.cg main 6401 1
+    "HLSL Shader Model 5 does not support operation \"static storage\"")
+add_hlsl_modern_semantic_failure(modern_sampler_feature_p40 hlslf40
+    tests/hlsl/diagnostics/fp_sampler_array.cg main 6409 1
+    "HLSL Shader Model 4 does not support sampler feature \"sampler array\"")
+add_hlsl_modern_semantic_failure(modern_sampler_feature_p50 hlslf50
+    tests/hlsl/diagnostics/fp_sampler_array.cg main 6409 1
+    "HLSL Shader Model 5 does not support sampler feature \"sampler array\"")
+add_hlsl_modern_semantic_failure(modern_intrinsic_v40 hlslv40
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_angle.cg main 6410 3
+    "HLSL Shader Model 4 has no exact intrinsic for \"degrees\"")
+add_hlsl_modern_semantic_failure(modern_intrinsic_v50 hlslv50
+    tests/hlsl/diagnostics/vp_unsupported_intrinsic_angle.cg main 6410 3
+    "HLSL Shader Model 5 has no exact intrinsic for \"degrees\"")
 
 add_test(
     NAME hlslg40_registration

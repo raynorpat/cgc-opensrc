@@ -1,0 +1,41 @@
+// profile hlslf50
+// target ps_5_0
+// cgc-bind interface in value float4 TEXCOORD0 TEXCOORD0 user default
+// cgc-bind interface out result float4 SV_Target0 SV_Target0 system default
+
+struct cg_PixelIn
+{
+    float4 value : TEXCOORD0;
+};
+
+struct cg_PixelOut
+{
+    float4 result : SV_Target0;
+};
+
+int cg_exercise_bitwise(int value, int mask)
+{
+    value = (value | mask) ^ value & mask;
+    value = value << (int) 1;
+    value = value >> (int) 1;
+    value = value | (int) 8;
+    value = value ^ (int) 3;
+    value = value & (int) 15;
+    value = value << (int) 1;
+    value = value >> (int) 1;
+    return ~value;
+}
+
+float4 cg_entry(float4 value)
+{
+    int bits;
+    bits = cg_exercise_bitwise((int) value.x, 6);
+    return value + float4((float) bits, 0.0, 0.0, 0.0);
+}
+
+cg_PixelOut main(cg_PixelIn input)
+{
+    cg_PixelOut output;
+    output.result = cg_entry(input.value);
+    return output;
+}

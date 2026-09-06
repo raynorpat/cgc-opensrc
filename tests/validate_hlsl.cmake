@@ -14,6 +14,9 @@ set(cgc_arguments -quiet)
 if(DEFINED SUPPRESS_WARNINGS AND SUPPRESS_WARNINGS)
     list(APPEND cgc_arguments -nowarn)
 endif()
+if(DEFINED ENTRY AND NOT ENTRY STREQUAL "")
+    list(APPEND cgc_arguments -entry "${ENTRY}")
+endif()
 list(APPEND cgc_arguments -profile "${PROFILE}" -o "${OUTPUT}" "${SOURCE}")
 execute_process(
     COMMAND "${CGC}" ${cgc_arguments}

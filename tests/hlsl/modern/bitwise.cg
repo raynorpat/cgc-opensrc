@@ -1,0 +1,24 @@
+int exercise_bitwise(int value, int mask)
+{
+    value = (value | mask) ^ (value & mask);
+    value = value << 1;
+    value = value >> 1;
+    value = value | 8;
+    value = value ^ 3;
+    value = value & 15;
+    value = value << 1;
+    value = value >> 1;
+    return ~value;
+}
+
+float4 bitwise_vertex(float4 position : POSITION) : POSITION
+{
+    int value = exercise_bitwise(int(position.x), 5);
+    return position + float4(float(value), 0.0, 0.0, 0.0);
+}
+
+float4 bitwise_pixel(float4 value : TEXCOORD0) : COLOR0
+{
+    int bits = exercise_bitwise(int(value.x), 6);
+    return value + float4(float(bits), 0.0, 0.0, 0.0);
+}
