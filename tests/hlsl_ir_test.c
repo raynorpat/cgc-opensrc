@@ -57,9 +57,97 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hlsl_ir.h"
 #include "slglobals.h"
 #include "hlsl_hal.h"
+#include "glsl_hal.h"
 
 #undef malloc
 #undef calloc
+
+static int AssertUnique(const int *ids, int count)
+{
+    int i;
+    int j;
+    int unique;
+
+    unique = 1;
+    for (i = 0; i < count; i++) {
+        for (j = i + 1; j < count; j++) {
+            if (ids[i] == ids[j]) {
+                fprintf(stderr, "identity collision: entries %d and %d use %d\n",
+                        i, j, ids[i]);
+                unique = 0;
+            }
+        }
+    }
+    return unique;
+}
+
+static int TestModernProfileIdentities(void)
+{
+    static const int profileIds[] = {
+        PROFILE_GLSLG_ID,
+        PROFILE_HLSLV_ID,
+        PROFILE_HLSLF_ID,
+        PROFILE_HLSLV40_ID,
+        PROFILE_HLSLG40_ID,
+        PROFILE_HLSLF40_ID,
+        PROFILE_HLSLV50_ID,
+        PROFILE_HLSLG50_ID,
+        PROFILE_HLSLF50_ID
+    };
+    static const int connectorIds[] = {
+        CID_GLSLG_IN_ID,
+        CID_GLSLG_OUT_ID,
+        CID_HLSLV_IN_ID,
+        CID_HLSLV_OUT_ID,
+        CID_HLSLF_IN_ID,
+        CID_HLSLF_OUT_ID,
+        CID_HLSLV40_IN_ID,
+        CID_HLSLV40_OUT_ID,
+        CID_HLSLG40_IN_ID,
+        CID_HLSLG40_OUT_ID,
+        CID_HLSLF40_IN_ID,
+        CID_HLSLF40_OUT_ID,
+        CID_HLSLV50_IN_ID,
+        CID_HLSLV50_OUT_ID,
+        CID_HLSLG50_IN_ID,
+        CID_HLSLG50_OUT_ID,
+        CID_HLSLF50_IN_ID,
+        CID_HLSLF50_OUT_ID
+    };
+    int unique;
+
+    assert(PROFILE_HLSLV_ID == 15);
+    assert(PROFILE_HLSLF_ID == 16);
+    assert(PROFILE_HLSLV40_ID == 17);
+    assert(PROFILE_HLSLG40_ID == 18);
+    assert(PROFILE_HLSLF40_ID == 19);
+    assert(PROFILE_HLSLV50_ID == 20);
+    assert(PROFILE_HLSLG50_ID == 21);
+    assert(PROFILE_HLSLF50_ID == 22);
+    assert(CID_HLSLV_IN_ID == 20);
+    assert(CID_HLSLV_OUT_ID == 21);
+    assert(CID_HLSLF_IN_ID == 22);
+    assert(CID_HLSLF_OUT_ID == 23);
+    assert(CID_HLSLV40_IN_ID == 24);
+    assert(CID_HLSLV40_OUT_ID == 25);
+    assert(CID_HLSLG40_IN_ID == 26);
+    assert(CID_HLSLG40_OUT_ID == 27);
+    assert(CID_HLSLF40_IN_ID == 28);
+    assert(CID_HLSLF40_OUT_ID == 29);
+    assert(CID_HLSLV50_IN_ID == 30);
+    assert(CID_HLSLV50_OUT_ID == 31);
+    assert(CID_HLSLG50_IN_ID == 32);
+    assert(CID_HLSLG50_OUT_ID == 33);
+    assert(CID_HLSLF50_IN_ID == 34);
+    assert(CID_HLSLF50_OUT_ID == 35);
+
+    unique = AssertUnique(profileIds,
+                          (int) (sizeof(profileIds) / sizeof(profileIds[0])));
+    unique &= AssertUnique(connectorIds,
+                           (int) (sizeof(connectorIds) /
+                                  sizeof(connectorIds[0])));
+    return unique;
+}
 
 static void *TestAlloc(void *arg, size_t size)
 {
@@ -3225,6 +3313,8 @@ int main(int argc, char **argv)
                                              &secondGeneratedIdentity,
                                              "cg_entry"), "cg_entry_1"));
     TestReservedNames();
+    if (!TestModernProfileIdentities())
+        return 1;
     TestTypeRegisterSpans();
     TestDeclarationQualifiers();
     TestModuleWriter();

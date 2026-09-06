@@ -53,13 +53,31 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define VENDOR_STRING_HLSL         "Microsoft"
 #define VERSION_STRING_HLSL        "DirectX 9.0c Shader Model 3"
 #define PROFILE_HLSLV_NAME         "hlslv"
-#define PROFILE_HLSLV_ID           14
 #define PROFILE_HLSLF_NAME         "hlslf"
-#define PROFILE_HLSLF_ID           15
-#define CID_HLSLV_IN_ID            18
-#define CID_HLSLV_OUT_ID           19
-#define CID_HLSLF_IN_ID            20
-#define CID_HLSLF_OUT_ID           21
+#define PROFILE_HLSLV_ID           15
+#define PROFILE_HLSLF_ID           16
+#define PROFILE_HLSLV40_ID         17
+#define PROFILE_HLSLG40_ID         18
+#define PROFILE_HLSLF40_ID         19
+#define PROFILE_HLSLV50_ID         20
+#define PROFILE_HLSLG50_ID         21
+#define PROFILE_HLSLF50_ID         22
+#define CID_HLSLV_IN_ID            20
+#define CID_HLSLV_OUT_ID           21
+#define CID_HLSLF_IN_ID            22
+#define CID_HLSLF_OUT_ID           23
+#define CID_HLSLV40_IN_ID          24
+#define CID_HLSLV40_OUT_ID         25
+#define CID_HLSLG40_IN_ID          26
+#define CID_HLSLG40_OUT_ID         27
+#define CID_HLSLF40_IN_ID          28
+#define CID_HLSLF40_OUT_ID         29
+#define CID_HLSLV50_IN_ID          30
+#define CID_HLSLV50_OUT_ID         31
+#define CID_HLSLG50_IN_ID          32
+#define CID_HLSLG50_OUT_ID         33
+#define CID_HLSLF50_IN_ID          34
+#define CID_HLSLF50_OUT_ID         35
 #define HLSL_BUILTIN_GROUP         4
 
 typedef struct HlslLimits_Rec {

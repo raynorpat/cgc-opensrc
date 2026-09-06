@@ -280,9 +280,9 @@ static const HlslProfileDesc *GetHlslProfile(void)
 int RegisterProfiles_hlsl(void)
 {
     RegisterProfile(InitHAL_hlslv, PROFILE_HLSLV_NAME, PROFILE_HLSLV_ID);
-    SetProfileIdentity(PROFILE_HLSLV_NAME, CG_PROFILE_STAGE_NEUTRAL, NULL, 0);
+    SetProfileIdentity(PROFILE_HLSLV_NAME, CG_PROFILE_STAGE_VERTEX, "vs", 10);
     RegisterProfile(InitHAL_hlslf, PROFILE_HLSLF_NAME, PROFILE_HLSLF_ID);
-    SetProfileIdentity(PROFILE_HLSLF_NAME, CG_PROFILE_STAGE_NEUTRAL, NULL, 0);
+    SetProfileIdentity(PROFILE_HLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT, "ps", 10);
     return 1;
 } // RegisterProfiles_hlsl
 
