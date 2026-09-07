@@ -238,6 +238,28 @@ function(compare_modern_interfaces producer_records consumer_records boundary)
     endforeach()
 endfunction()
 
+set(vertex_modern FALSE)
+set(geometry_modern FALSE)
+set(pixel_modern FALSE)
+if(VERTEX_PROFILE MATCHES "^hlslv(40|50)$")
+    set(vertex_modern TRUE)
+endif()
+if(has_geometry AND GEOMETRY_PROFILE MATCHES "^hlslg(40|50)$")
+    set(geometry_modern TRUE)
+endif()
+if(PIXEL_PROFILE MATCHES "^hlslf(40|50)$")
+    set(pixel_modern TRUE)
+endif()
+
+set(modern FALSE)
+if(vertex_modern OR geometry_modern OR pixel_modern)
+    set(modern TRUE)
+    if(NOT vertex_modern OR NOT pixel_modern OR
+       (has_geometry AND NOT geometry_modern))
+        message(FATAL_ERROR "cannot mix legacy and modern HLSL link profiles")
+    endif()
+endif()
+
 compile_hlsl("${VERTEX_PROFILE}" "${VERTEX_SOURCE}" "${VERTEX_OUTPUT}"
     "${VERTEX_OPTIONS}")
 if(has_geometry)
@@ -247,24 +269,10 @@ endif()
 compile_hlsl("${PIXEL_PROFILE}" "${FRAGMENT_SOURCE}" "${FRAGMENT_OUTPUT}"
     "${PIXEL_OPTIONS}")
 
-set(modern FALSE)
-if(VERTEX_PROFILE MATCHES "^hlslv(40|50)$" OR
-   PIXEL_PROFILE MATCHES "^hlslf(40|50)$")
-    set(modern TRUE)
-endif()
-
 if(modern)
-    if(NOT VERTEX_PROFILE MATCHES "^hlslv(40|50)$" OR
-       NOT PIXEL_PROFILE MATCHES "^hlslf(40|50)$")
-        message(FATAL_ERROR "cannot mix legacy and modern HLSL link profiles")
-    endif()
     read_modern_interface("${VERTEX_OUTPUT}" out vertex_outputs)
     read_modern_interface("${FRAGMENT_OUTPUT}" in pixel_inputs)
     if(has_geometry)
-        if(NOT GEOMETRY_PROFILE MATCHES "^hlslg(40|50)$")
-            message(FATAL_ERROR
-                "modern HLSL pipeline requires a modern geometry profile")
-        endif()
         read_modern_interface("${GEOMETRY_OUTPUT}" in geometry_inputs)
         read_modern_interface("${GEOMETRY_OUTPUT}" out geometry_outputs)
         compare_modern_interfaces("${vertex_outputs}" "${geometry_inputs}"
