@@ -3366,7 +3366,7 @@ foreach(model 40 50)
         "INTERFACE_COUNT=8;TEST_PIXEL_OUTPUT=1;TEST_PIXEL_DEPTH=1" "")
     add_hlsl_modern_boundary_failure(
         hlslf${model}_limit_outputs hlslf${model}
-        tests/hlsl/limits/modern_interface.cg 6412 248
+        tests/hlsl/limits/modern_interface.cg 6412 341
         "COLOR8"
         "INTERFACE_COUNT=9;TEST_PIXEL_OUTPUT=1" "")
 
