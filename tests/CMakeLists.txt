@@ -2487,10 +2487,10 @@ add_hlsl_geometry_fixture(vertex_id_bridge
     tests/hlsl/geometry/vertex_id_bridge geometry_main)
 add_hlsl_geometry_fixture(vertex_id_consumer
     tests/hlsl/diagnostics/geometry_missing_vertex_id_producer.cg
-    tests/hlsl/geometry/vertex_id_bridge main)
+    tests/hlsl/geometry/vertex_id_consumer main)
 add_hlsl_geometry_fixture(vertex_id_decoy_independent
     tests/hlsl/diagnostics/geometry_decoy_vertex_id_producer.cg
-    tests/hlsl/geometry/vertex_id_bridge main)
+    tests/hlsl/geometry/vertex_id_decoy_independent main)
 
 function(add_hlsl_geometry_attrib_fixture name source)
     set(geometry_options "TRIANGLE;TRIANGLE_OUT;Vertices=4")
@@ -5433,16 +5433,22 @@ set(hlsl_modern_witness_candidates
     hlsl_invariants_unit
     hlsl_link_mixed_modern_geometry_model
     hlsl_modern_fresh_directory
+    hlsl_modern_raw_output_determinism
     hlsl_optional_fxc_missing_sdk
     hlsl_require_fxc_missing_sdk
     hlsl_semantics_unit
     hlsl_sm4_pipeline_geometry
     hlsl_sm4_pipeline_gs_ps_interpolation_mismatch
+    hlsl_sm4_pipeline_gs_ps_semantic_mismatch
     hlsl_sm4_pipeline_vertex_id
+    hlsl_sm4_pipeline_vertex_id_missing
+    hlsl_sm4_pipeline_vs_gs_semantic_mismatch
     hlsl_sm4_pipeline_vs_gs_type_mismatch
     hlsl_sm5_pipeline_geometry
+    hlsl_sm5_pipeline_gs_ps_semantic_mismatch
     hlsl_sm5_pipeline_gs_ps_type_mismatch
     hlsl_sm5_pipeline_vertex_id
+    hlsl_sm5_pipeline_vertex_id_bridge_mismatch
     hlslg40_registration_output
     hlslg50_registration_output
     hlsl_validation_exact_target_contract

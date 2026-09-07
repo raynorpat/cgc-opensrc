@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslg50
 // target gs_5_0
+// entry main
 struct cg_GeometryOut
 {
     float cgc_placeholder : TEXCOORD0;

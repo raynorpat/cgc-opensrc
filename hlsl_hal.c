@@ -255,6 +255,18 @@ int HlslProfileHasCapability(const HlslProfileDesc *profile,
            (profile->capabilities & capability) != 0;
 } // HlslProfileHasCapability
 
+int HlslHALUsesStableOutputHeader(const slHAL *hal)
+{
+    if (hal == NULL)
+        return 0;
+    return hal->pid == PROFILE_HLSLV40_ID ||
+           hal->pid == PROFILE_HLSLG40_ID ||
+           hal->pid == PROFILE_HLSLF40_ID ||
+           hal->pid == PROFILE_HLSLV50_ID ||
+           hal->pid == PROFILE_HLSLG50_ID ||
+           hal->pid == PROFILE_HLSLF50_ID;
+} // HlslHALUsesStableOutputHeader
+
 int HlslProfileIsValid(const HlslProfileDesc *profile)
 {
     if (profile == NULL ||
@@ -1643,6 +1655,7 @@ static int GenerateCodeIR_hlsl(SourceLoc *loc, Scope *fScope,
     profile = GetHlslProfile();
     HlslInitModule(&module, profile->stage, HlslCompilerAlloc,
                    CurrentScope->pool);
+    module.selectedEntryName = GetAtomString(atable, program->name);
     errorsBefore = GetErrorCount();
     if (!((profile->stage == HLSL_STAGE_GEOMETRY && sourceIR != NULL) ?
           HlslLowerProgramWithIR(&module, profile, loc, fScope, program,

@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslg50
 // target gs_5_0
+// entry main
 // cgc-bind interface in position float4 ATTRIB3 ATTRIB3 user default
 // cgc-bind interface in uv float2 ATTRIB4 ATTRIB4 user default
 

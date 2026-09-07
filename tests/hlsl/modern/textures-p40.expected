@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslf40
 // target ps_4_0
+// entry texture_pixel
 // cgc-bind interface in coord float4 TEXCOORD0 TEXCOORD0 user default
 // cgc-bind interface out result float4 SV_Target0 SV_Target0 system default
 

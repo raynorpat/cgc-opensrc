@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslf40
 // target ps_4_0
+// entry language_pixel
 // cgc-bind interface in value float4 TEXCOORD0 TEXCOORD0 user default
 // cgc-bind interface in face bool SV_IsFrontFace SV_IsFrontFace system default
 // cgc-bind interface out color float4 SV_Target0 SV_Target0 system default

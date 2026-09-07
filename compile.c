@@ -62,6 +62,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cg_reach.h"
 #include "cg_ir_lower.h"
 #include "language.h"
+#include "hlsl_hal.h"
 
 /*
  * lIRPoolAlloc() - Cg IR nodes live in the compilation's global-scope
@@ -454,8 +455,10 @@ int OpenOutputFile(void)
     Cg->options.outfd = Cg->options.outputTransaction.stream;
     Cg->options.OutputFileOpen = 1;
     Cg->theHAL->PrintCodeHeader(Cg->options.outfd);
-    fprintf(Cg->options.outfd, "%s cgc version %d.%d.%04d%s, build date %s  %s\n", Cg->theHAL->comment,
-            HSL_VERSION, HSL_SUB_VERSION, HSL_SUB_SUB_VERSION, NDA_STRING, Build_Date, Build_Time);
+    if (!HlslHALUsesStableOutputHeader(Cg->theHAL)) {
+        fprintf(Cg->options.outfd, "%s cgc version %d.%d.%04d%s, build date %s  %s\n", Cg->theHAL->comment,
+                HSL_VERSION, HSL_SUB_VERSION, HSL_SUB_SUB_VERSION, NDA_STRING, Build_Date, Build_Time);
+    }
     return 1;
 } // OpenOutputFile
 
@@ -493,6 +496,8 @@ void PrintOptions(int argc, char **argv)
 {
     int ii;
 
+    if (HlslHALUsesStableOutputHeader(Cg->theHAL))
+        return;
     if (argc > 1) {
         fprintf(Cg->options.outfd, "%s command line args:", Cg->theHAL->comment);
         for (ii = 1; ii < argc; ii++)

@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslv40
 // target vs_4_0
+// entry uniform_vertex
 // cgc-bind interface in position float4 POSITION0 POSITION0 user default
 // cgc-bind interface out position float4 SV_Position SV_Position system default
 

@@ -658,6 +658,7 @@ struct HlslModule_Rec {
     HlslFunction *functions;
     HlslFunction *entry;
     HlslFunction *wrapper;
+    const char *selectedEntryName;
     HlslBinding *bindings;
     HlslBinding *allocatedBindings;
     unsigned char cRegisterUsed[HLSL_MAX_FLOAT_CONSTANTS];

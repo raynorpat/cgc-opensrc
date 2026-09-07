@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslf40
 // target ps_4_0
+// entry main
 void cg_entry()
 {
     discard;

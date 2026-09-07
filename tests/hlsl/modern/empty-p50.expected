@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslf50
 // target ps_5_0
+// entry main
 void main()
 {
 }

@@ -1665,8 +1665,18 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
     int wroteInterface;
     int wroteSection;
 
-    if (fprintf(out, "// profile %s\n", profile->name) < 0 ||
+    modern = profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN;
+    if ((modern &&
+         (module->selectedEntryName == NULL ||
+          !HlslIsIdentifier(module->selectedEntryName) ||
+          fprintf(out, "// compiler cgc\n") < 0)) ||
+        fprintf(out, "// profile %s\n", profile->name) < 0 ||
         fprintf(out, "// target %s\n", profile->target) < 0)
+    {
+        return 0;
+    }
+    if (modern &&
+        fprintf(out, "// entry %s\n", module->selectedEntryName) < 0)
     {
         return 0;
     }
@@ -1676,7 +1686,6 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
     {
         return 0;
     }
-    modern = profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN;
     if (modern) {
         wroteSection = HlslWriteModernBindingMetadata(out, module);
         if (wroteSection < 0)

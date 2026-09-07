@@ -282,9 +282,13 @@ implementation and one result.
 | Validation | VS-to-GS type mismatch is detected | native | `hlsl_sm4_pipeline_vs_gs_type_mismatch` |
 | Validation | GS-to-PS type mismatch is detected | native | `hlsl_sm5_pipeline_gs_ps_type_mismatch` |
 | Validation | interpolation mismatch is detected | native | `hlsl_sm4_pipeline_gs_ps_interpolation_mismatch` |
+| Validation | VS-to-GS semantic mismatch is detected | native | `hlsl_sm4_pipeline_vs_gs_semantic_mismatch` |
+| Validation | GS-to-PS semantic mismatch is detected | native | `hlsl_sm5_pipeline_gs_ps_semantic_mismatch` |
+| Validation | missing vertex-ID bridge is detected | native | `hlsl_sm4_pipeline_vertex_id_missing` |
+| Validation | mismatched vertex-ID bridge is detected | native | `hlsl_sm5_pipeline_vertex_id_bridge_mismatch` |
 | Validation | exact profile-to-`fxc` target mapping | native | `hlsl_validation_exact_target_contract` |
 | Validation | invalid generated HLSL fails the external harness | native | `hlsl_validation_exact_target_contract` |
 | Validation | required `fxc` mode fails clearly when absent | native | `hlsl_require_fxc_missing_sdk` |
 | Validation | optional `fxc` mode omits tests when absent | native | `hlsl_optional_fxc_missing_sdk` |
-| Validation | deterministic golden output | native | `modern_position_v50` |
+| Validation | deterministic raw file and stdout output | native | `hlsl_modern_raw_output_determinism` |
 | Validation | fresh-directory external validation | native | `hlsl_modern_fresh_directory` |

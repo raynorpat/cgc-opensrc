@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslv40
 // target vs_4_0
+// entry main
 // cgc-bind interface in position float4 ATTRIB0 ATTRIB0 user default
 // cgc-bind interface in normal float3 ATTRIB1 ATTRIB1 user default
 // cgc-bind interface in color float4 ATTRIB2 ATTRIB2 user default

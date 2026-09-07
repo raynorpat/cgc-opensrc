@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslv40
 // target vs_4_0
+// entry main
 void main()
 {
 }

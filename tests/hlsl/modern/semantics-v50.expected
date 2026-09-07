@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslv50
 // target vs_5_0
+// entry vertex_main
 // cgc-bind interface in position float4 POSITION0 POSITION0 user default
 // cgc-bind interface in color float4 COLOR3 COLOR3 user default
 // cgc-bind interface in value int TEXCOORD7 TEXCOORD7 user nointerpolation

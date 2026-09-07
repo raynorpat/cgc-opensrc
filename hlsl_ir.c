@@ -340,6 +340,7 @@ void HlslInitModule(HlslModule *module, HlslStage stage, HlslAllocFn alloc,
     module->stage = stage;
     module->alloc = alloc;
     module->allocArg = allocArg;
+    module->selectedEntryName = "main";
 }
 
 static const int hlslErrorCodes[] = {

@@ -48,10 +48,12 @@ endif()
 file(READ "${ACTUAL}" actual_text)
 string(REPLACE "\r\n" "\n" actual_text "${actual_text}")
 string(REPLACE "\r" "\n" actual_text "${actual_text}")
-string(REGEX REPLACE "(^|\n)// cgc version [^\n]*\n" "\\1"
-    actual_text "${actual_text}")
-string(REGEX REPLACE "(^|\n)// command line args:[^\n]*\n" "\\1"
-    actual_text "${actual_text}")
+if(NOT PROFILE MATCHES "^hlsl[vgf](40|50)$")
+    string(REGEX REPLACE "(^|\n)// cgc version [^\n]*\n" "\\1"
+        actual_text "${actual_text}")
+    string(REGEX REPLACE "(^|\n)// command line args:[^\n]*\n" "\\1"
+        actual_text "${actual_text}")
+endif()
 string(REGEX REPLACE "(^|\n)// End of program\n?$" "\\1"
     actual_text "${actual_text}")
 

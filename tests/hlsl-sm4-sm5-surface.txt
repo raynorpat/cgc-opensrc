@@ -261,15 +261,19 @@ Type|multisample texture object
 Type|rectangular matrices
 Type|scalar `unsigned` aliases
 Type|square float matrices
-Validation|deterministic golden output
+Validation|deterministic raw file and stdout output
 Validation|exact profile-to-`fxc` target mapping
 Validation|exact SM4 three-stage pipeline
 Validation|exact SM5 three-stage pipeline
 Validation|fresh-directory external validation
+Validation|GS-to-PS semantic mismatch is detected
 Validation|GS-to-PS type mismatch is detected
 Validation|interpolation mismatch is detected
 Validation|invalid generated HLSL fails the external harness
 Validation|optional `fxc` mode omits tests when absent
 Validation|required `fxc` mode fails clearly when absent
 Validation|verified IR gates all source output
+Validation|mismatched vertex-ID bridge is detected
+Validation|missing vertex-ID bridge is detected
+Validation|VS-to-GS semantic mismatch is detected
 Validation|VS-to-GS type mismatch is detected

@@ -210,6 +210,7 @@ int InitHAL_hlslf40(slHAL *hal);
 int InitHAL_hlslv50(slHAL *hal);
 int InitHAL_hlslg50(slHAL *hal);
 int InitHAL_hlslf50(slHAL *hal);
+int HlslHALUsesStableOutputHeader(const slHAL *hal);
 
 // Interface semantic helpers:
 int HlslParseSemantic(const char *semantic, char *root, size_t rootSize,

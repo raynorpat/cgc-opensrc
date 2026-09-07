@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslg40
 // target gs_4_0
+// entry main
 // cgc-bind interface out POSITION float4 SV_Position SV_Position system default
 // cgc-bind interface out COLOR0 float4 COLOR0 COLOR0 user default
 // cgc-bind interface in position float4 SV_Position SV_Position system default

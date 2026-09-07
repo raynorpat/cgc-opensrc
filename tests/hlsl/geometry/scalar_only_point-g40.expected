@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslg40
 // target gs_4_0
+// entry point_main
 // cgc-bind interface out POSITION float4 SV_Position SV_Position system default
 // cgc-bind interface in primitive uint SV_PrimitiveID SV_PrimitiveID system nointerpolation
 

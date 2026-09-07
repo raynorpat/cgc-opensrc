@@ -232,6 +232,10 @@ emit bytecode, invoke a DirectX runtime, or expose hull, domain, compute,
 tessellation, UAV, resource-array, multisample, load, or gather features.
 Every successful file contains one public `main`; the selected Cg entry and
 reachable helpers remain internal implementation details.
+The first four lines identify the compiler, exact profile, exact target, and
+selected source entry in that order. This stable header contains no build time,
+command line, source path, or output path, so file and standard-output emission
+are byte-deterministic across directories.
 
 Representative Windows commands are:
 

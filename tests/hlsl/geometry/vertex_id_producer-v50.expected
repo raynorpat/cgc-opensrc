@@ -1,5 +1,7 @@
+// compiler cgc
 // profile hlslv50
 // target vs_5_0
+// entry vertex_main
 // cgc-bind interface in position float4 POSITION0 POSITION0 user default
 // cgc-bind interface in vertexId uint SV_VertexID SV_VertexID system nointerpolation
 // cgc-bind interface out position float4 SV_Position SV_Position system default
