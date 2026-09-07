@@ -100,7 +100,7 @@ The design source of truth is
 - Modify: `tests/hlsl_ir_test.c`
 - Modify: `tests/CMakeLists.txt`
 
-- [ ] **Step 1: Prove the completed SM3 backend exists**
+- [x] **Step 1: Prove the completed SM3 backend exists**
 
 Run:
 
@@ -119,7 +119,7 @@ Expected: every required file exists and `rg` returns no skeleton marker. If
 this gate fails, stop and execute the SM3 plan; do not emulate its missing
 backend inside this follow-on.
 
-- [ ] **Step 2: Capture the prerequisite regression baseline**
+- [x] **Step 2: Capture the prerequisite regression baseline**
 
 Run:
 
@@ -136,7 +136,7 @@ Expected: both complete suites pass before identity changes. Record the status
 output in the task checkpoint; pre-existing unrelated paths are not part of
 this plan and must not be staged, removed, or rewritten.
 
-- [ ] **Step 3: Add failing identity uniqueness assertions**
+- [x] **Step 3: Add failing identity uniqueness assertions**
 
 In `tests/hlsl_ir_test.c`, add a table containing every profile and connector
 ID through the new range and assert pairwise uniqueness:
@@ -164,7 +164,7 @@ The literals are the reserved modern ranges. This first red test includes the
 existing HLSL macros so it exposes the current collisions with `glslg` without
 requiring production declarations that Task 3 has not added yet.
 
-- [ ] **Step 4: Run the identity test and observe the collision**
+- [x] **Step 4: Run the identity test and observe the collision**
 
 Run:
 
@@ -177,7 +177,7 @@ Expected: an assertion showing the existing
 `PROFILE_HLSLV_ID == PROFILE_GLSLG_ID` collision and the corresponding input
 connector collision.
 
-- [ ] **Step 5: Install the stable identity table**
+- [x] **Step 5: Install the stable identity table**
 
 Replace the HLSL constants in `hlsl_hal.h` with:
 
@@ -216,7 +216,7 @@ SetProfileIdentity(PROFILE_HLSLV_NAME, CG_PROFILE_STAGE_VERTEX, "vs", 10);
 SetProfileIdentity(PROFILE_HLSLF_NAME, CG_PROFILE_STAGE_FRAGMENT, "ps", 10);
 ```
 
-- [ ] **Step 6: Pin the exact values and rerun SM3 tests**
+- [x] **Step 6: Pin the exact values and rerun SM3 tests**
 
 Replace the reservation literals in Step 3 with the production modern macros,
 add direct assertions for every integer in Step 5, rebuild, and run:
@@ -228,7 +228,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl|profile|geometry' --output-
 
 Expected: identity tests pass; existing SM3 goldens remain byte-identical.
 
-- [ ] **Step 7: Commit the prerequisite repair**
+- [x] **Step 7: Commit the prerequisite repair**
 
 ```powershell
 git add -- hlsl_hal.h hlsl_hal.c tests/hlsl_ir_test.c tests/CMakeLists.txt
@@ -246,7 +246,7 @@ git commit -m "Repair HLSL profile identities"
 - Modify: `hlsl_validate.c`
 - Modify: `tests/hlsl_ir_test.c`
 
-- [ ] **Step 1: Add failing descriptor tests**
+- [x] **Step 1: Add failing descriptor tests**
 
 Construct the two existing descriptors in `tests/hlsl_ir_test.c` and assert:
 
@@ -263,7 +263,7 @@ assert(HlslProfileHasCapability(&HlslProfile_hlslf, HLSL_CAP_DISCARD));
 Run `hlsl_ir_unit`; expected: compile failure because the model, syntax, and
 capability contracts do not exist.
 
-- [ ] **Step 2: Define stable model and capability types**
+- [x] **Step 2: Define stable model and capability types**
 
 Append `HLSL_STAGE_GEOMETRY` to the existing `HlslStage` enum in `hlsl_ir.h`;
 do not move or renumber the two existing stage values. Add the remaining
@@ -363,7 +363,7 @@ int HlslProfileHasCapability(const HlslProfileDesc *profile,
                              unsigned int capability);
 ```
 
-- [ ] **Step 3: Populate SM3 descriptors explicitly**
+- [x] **Step 3: Populate SM3 descriptors explicitly**
 
 Rename the existing version literal to `VERSION_STRING_HLSL_SM3` and add
 `VERSION_STRING_HLSL_SM4` (`DirectX 10 Shader Model 4`) and
@@ -372,13 +372,13 @@ to their SM3 version, `HLSL_SHADER_MODEL_3`, `HLSL_SYNTAX_LEGACY`, and exact
 capability masks. Make `InitHAL_hlsl_profile` assign `fHAL->version` from the
 descriptor. Do not select behavior by comparing `target` or version text.
 
-- [ ] **Step 4: Make validation reject impossible descriptor combinations**
+- [x] **Step 4: Make validation reject impossible descriptor combinations**
 
 In `hlsl_validate.c`, reject a legacy descriptor with model 4/5, a modern
 descriptor with model 3, geometry without `HLSL_CAP_GEOMETRY`, or an empty
 target/version. Use the existing HLSL internal-verifier reason path.
 
-- [ ] **Step 5: Prove refactoring leaves SM3 output unchanged**
+- [x] **Step 5: Prove refactoring leaves SM3 output unchanged**
 
 Run:
 
@@ -390,7 +390,7 @@ git diff -- tests/hlsl
 
 Expected: focused tests pass and no SM3 golden changes appear.
 
-- [ ] **Step 6: Commit the descriptor refactor**
+- [x] **Step 6: Commit the descriptor refactor**
 
 ```powershell
 git add -- hlsl_ir.h hlsl_hal.h hlsl_hal.c hlslv_hal.c hlslf_hal.c hlsl_validate.c tests/hlsl_ir_test.c
@@ -418,7 +418,7 @@ git commit -m "Make HLSL descriptors shader-model aware"
 - Create: `tests/hlsl/modern/empty-v50.expected`
 - Create: `tests/hlsl/modern/empty-p50.expected`
 
-- [ ] **Step 1: Register six failing profile-selection fixtures**
+- [x] **Step 1: Register six failing profile-selection fixtures**
 
 Add four `add_hlsl_fixture` calls for the vertex/pixel profiles. Their expected
 goldens contain the exact profile and target comments plus an empty `main`.
@@ -469,7 +469,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl(v|g|f)(40|50)_registration'
 
 Expected: all six cases fail with “unknown profile”.
 
-- [ ] **Step 2: Declare names, descriptors, and initializers**
+- [x] **Step 2: Declare names, descriptors, and initializers**
 
 Add exact public names and declarations to `hlsl_hal.h`:
 
@@ -491,7 +491,7 @@ extern const HlslProfileDesc HlslProfile_hlslf50;
 
 Declare `InitHAL_hlslv40` through `InitHAL_hlslf50` with the same naming.
 
-- [ ] **Step 3: Create thin descriptor files**
+- [x] **Step 3: Create thin descriptor files**
 
 Each new file contains the NVIDIA notice, an empty input/output connector pair,
 one immutable `HlslProfileDesc`, and its initializer. `hlslg40_hal.c` uses this
@@ -553,13 +553,13 @@ not ad hoc capability tests.
 Expose the shared initializer as `InitHAL_hlsl_profile` in `hlsl_hal.h`; it is
 not a HAL registration entry itself.
 
-- [ ] **Step 4: Compile and register all files**
+- [x] **Step 4: Compile and register all files**
 
 Add all six `.c` files to `CGC_SOURCES`. In `RegisterProfiles_hlsl`, register
 each exact name/ID and call `SetProfileIdentity` with `vs`, `gs`, or `ps` and
 specificity 10.
 
-- [ ] **Step 5: Route profile stage identity without premature lowering**
+- [x] **Step 5: Route profile stage identity without premature lowering**
 
 Initialize `HlslModule.stage` from the selected descriptor. Register
 `SetProfileIdentity` records so overload resolution distinguishes vertex,
@@ -568,7 +568,7 @@ Cg analysis has resolved a positive maximum and both topologies; this task
 does not lower their bodies. Task 9 makes those resolved values mandatory in
 HLSL IR when code generation is enabled.
 
-- [ ] **Step 6: Run registration and transaction tests**
+- [x] **Step 6: Run registration and transaction tests**
 
 ```powershell
 cmake -S . -B build-hlsl-modern
@@ -579,7 +579,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl(v|g|f)(40|50)|hlsl_ir_unit'
 Expected: four source goldens, two no-code geometry registrations, and all
 descriptor-stage assertions pass; every existing SM3 test remains unchanged.
 
-- [ ] **Step 7: Commit profile registration**
+- [x] **Step 7: Commit profile registration**
 
 ```powershell
 git add -- CMakeLists.txt hlsl_hal.h hlsl_hal.c hlslv40_hal.c hlslg40_hal.c hlslf40_hal.c hlslv50_hal.c hlslg50_hal.c hlslf50_hal.c tests/check_hlsl_nocode.cmake tests/CMakeLists.txt tests/hlsl/modern
@@ -608,7 +608,7 @@ git commit -m "Register Shader Model 4 and 5 HLSL profiles"
 - Create: `tests/hlsl/diagnostics/modern_psize.cg`
 - Create: `tests/hlsl/diagnostics/modern_system_conflict.cg`
 
-- [ ] **Step 1: Add failing pure-policy assertions**
+- [x] **Step 1: Add failing pure-policy assertions**
 
 Assert exact stage/direction mappings in `tests/hlsl_ir_test.c`:
 
@@ -627,7 +627,7 @@ assert(HlslModernRequiredInterpolation(TYPE_BASE_INT) ==
 
 Run `hlsl_ir_unit`; expected: missing header/API failure.
 
-- [ ] **Step 2: Define semantic IR and policy types**
+- [x] **Step 2: Define semantic IR and policy types**
 
 Add the target identities that declarations must retain to `hlsl_ir.h`:
 
@@ -676,7 +676,7 @@ boundary casts.
 Declare exact policy queries for semantic lookup, ABI base type, legal stage
 and direction, emitted spelling, and required interpolation.
 
-- [ ] **Step 3: Implement table-driven modern mappings**
+- [x] **Step 3: Implement table-driven modern mappings**
 
 In `hlsl_modern.c`, encode the design table. Map Cg geometry `INSTANCEID` and
 `PRIMITIVEID` scalar inputs to the same `SV_PrimitiveID` identity; return a
@@ -684,7 +684,7 @@ conflict if both claim it. Map public ID ABI fields to `uint`, preserving
 explicit conversions to the Cg `int` value. Return unsupported for rasterizer
 `PSIZE` rather than emitting an inert user semantic.
 
-- [ ] **Step 4: Add canonical cross-stage keys**
+- [x] **Step 4: Add canonical cross-stage keys**
 
 Extend the completed binder's interface key with semantic kind, numeric index,
 type shape, width, and interpolation. Ensure user semantic comparison is
@@ -699,7 +699,7 @@ profiles, extend the existing metadata line without changing SM3 output:
 `nointerpolation` from the IR field; the canonical key is never reconstructed
 from emitted spelling by a test script.
 
-- [ ] **Step 5: Add compiler fixtures**
+- [x] **Step 5: Add compiler fixtures**
 
 First teach `tests/check_hlsl.cmake` and `tests/check_hlsl_failure.cmake` to
 accept optional `ENTRY`, appending `-entry <name>` to their existing argument
@@ -712,7 +712,7 @@ varyings, and `CLP0`. Goldens must contain `SV_Position`, `SV_Target3`,
 exactly. The two negative fixtures assert the assigned HLSL diagnostic,
 source line, single error, and zero published body.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc hlsl_ir_unit
@@ -721,7 +721,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl_ir_unit|modern_semantic|mod
 
 Expected: all policy and compiler fixtures pass.
 
-- [ ] **Step 7: Commit modern semantics**
+- [x] **Step 7: Commit modern semantics**
 
 ```powershell
 git add -- hlsl_modern.h hlsl_modern.c hlsl_ir.h hlsl_ir.c hlsl_hal.h hlsl_bind.c hlsl_validate.c hlsl_codegen.c CMakeLists.txt tests/hlsl_ir_test.c tests/check_hlsl.cmake tests/check_hlsl_failure.cmake tests/CMakeLists.txt tests/hlsl/modern tests/hlsl/diagnostics
@@ -737,7 +737,7 @@ git commit -m "Define modern HLSL interface semantics"
 - Modify: `hlsl_codegen.c`
 - Modify: `tests/hlsl_ir_test.c`
 
-- [ ] **Step 1: Add malformed-module tests before builders**
+- [x] **Step 1: Add malformed-module tests before builders**
 
 Add one test for each invariant: cbuffer with an invalid `b` slot; overlapping
 packoffset spans; texture without sampler; mismatched `tN`/`sN`; geometry
@@ -746,7 +746,7 @@ outside geometry; restart with operands; flat replay with a non-Boolean flag;
 and a writer invoked on an invalid module. Assert `HlslWriteModule` returns
 false and the temporary stream remains zero bytes.
 
-- [ ] **Step 2: Add modern resource IR types**
+- [x] **Step 2: Add modern resource IR types**
 
 Append these values to the existing enums in `hlsl_ir.h`; do not insert them
 between SM3 values or reuse `HLSL_REGISTER_B`, which is the legacy Boolean
@@ -821,7 +821,7 @@ int HlslSetPackOffset(HlslModule *module, HlslDecl *field,
                       HlslPackOffset offset);
 ```
 
-- [ ] **Step 3: Add geometry IR types**
+- [x] **Step 3: Add geometry IR types**
 
 Define target-specific stable enums and fields:
 
@@ -848,7 +848,7 @@ contains its output-record expression and replay-list head, while restart has
 no payload. Define `HlslFlatReplay` with `next`, `owner`, target field, shadow
 declaration, and Boolean defined-flag fields.
 
-- [ ] **Step 4: Implement builders with module ownership**
+- [x] **Step 4: Implement builders with module ownership**
 
 Add:
 
@@ -865,7 +865,7 @@ HlslFlatReplay *HlslNewFlatReplay(HlslModule *module, HlslDecl *target,
 
 Builders allocate only from the module arena and never print diagnostics.
 
-- [ ] **Step 5: Port exact verifier contracts**
+- [x] **Step 5: Port exact verifier contracts**
 
 In `hlsl_validate.c`, extend the existing `HlslValidateModule` path to validate
 ownership, stage/model, layout/extent, positive maximum, resource pairing,
@@ -873,7 +873,7 @@ packoffset overlap/alignment, append record type, flat target/shadow type
 equality, Boolean defined flags, and statement placement. Keep user capability
 diagnostics outside structural-invalid-IR checks.
 
-- [ ] **Step 6: Make the writer gate unconditional**
+- [x] **Step 6: Make the writer gate unconditional**
 
 Change `HlslWriteModule` to take mutable `HlslModule *`, call
 `HlslValidateModule(module, profile)` before creating its temporary stream,
@@ -882,7 +882,7 @@ profile comment before validation succeeds. Consolidate or remove duplicate
 checks in the private `HlslCanWriteModule` only after equivalent assertions
 exist in `HlslValidateModule`.
 
-- [ ] **Step 7: Run unit tests in Debug and Release**
+- [x] **Step 7: Run unit tests in Debug and Release**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target hlsl_ir_unit
@@ -894,7 +894,7 @@ ctest --test-dir build-hlsl-modern -C Release -R '^hlsl_ir_unit$' --output-on-fa
 Expected: builders, malformed modules, and zero-byte gates pass with assertions
 active in the dedicated assertion test if the prerequisite plan provides one.
 
-- [ ] **Step 8: Commit modern IR**
+- [x] **Step 8: Commit modern IR**
 
 ```powershell
 git add -- hlsl_ir.h hlsl_ir.c hlsl_validate.c hlsl_codegen.c tests/hlsl_ir_test.c
@@ -915,14 +915,14 @@ git commit -m "Represent modern resources and geometry in HLSL IR"
 - Create: `tests/hlsl/modern/uniforms-v50.expected`
 - Create: `tests/hlsl/diagnostics/modern_packoffset_conflict.cg`
 
-- [ ] **Step 1: Add failing packing unit cases**
+- [x] **Step 1: Add failing packing unit cases**
 
 Assert these exact allocations in a fresh `b0` buffer: `float` at `c0.x`,
 `float3` at `c0.y`, the next `float2` at `c1.x`, `row_major float3x2` at
 `c2`–`c4`, and `float4[2]` at `c5`–`c6`. Add an explicit overlap between a
 value at `c2` and the matrix span and assert the binding-collision reason.
 
-- [ ] **Step 2: Define one modern packing API**
+- [x] **Step 2: Define one modern packing API**
 
 Declare in `hlsl_modern.h`:
 
@@ -941,14 +941,14 @@ four-component vector; arrays start each element on a new vector; each
 row-major matrix row begins a vector; structures begin on a new vector and end
 at a vector boundary.
 
-- [ ] **Step 3: Bind explicit declarations before implicit declarations**
+- [x] **Step 3: Bind explicit declarations before implicit declarations**
 
 In `hlsl_bind.c`, reserve explicit `packoffset` spans first, then allocate
 unbound values in source declaration order. Use one generated cbuffer named
 `cgc_Uniforms` at `register(b0)`. Reject source bindings that cannot map
 unambiguously to this contract.
 
-- [ ] **Step 4: Preserve logical aggregates and defaults**
+- [x] **Step 4: Preserve logical aggregates and defaults**
 
 Keep one public metadata record per Cg logical declaration. When mixed or
 nested aggregates require physical leaves, emit deterministic leaf fields and
@@ -956,7 +956,7 @@ reconstruct the logical value exactly once at its use boundary. Emit stable
 `// cgc-default` metadata for source defaults; do not emit a cbuffer field
 initializer or change the application-owned runtime initialization contract.
 
-- [ ] **Step 5: Emit exact cbuffer syntax**
+- [x] **Step 5: Emit exact cbuffer syntax**
 
 `hlsl_codegen.c` must produce:
 
@@ -971,7 +971,7 @@ cbuffer cgc_Uniforms : register(b0)
 The writer prints fields in physical order and metadata in logical source
 order.
 
-- [ ] **Step 6: Add compiler golden and negative fixture**
+- [x] **Step 6: Add compiler golden and negative fixture**
 
 Compile the same named vertex entry under `hlslv40` and `hlslv50`; both
 goldens cover scalars, vectors, row-major rectangular matrices, arrays, nested
@@ -980,7 +980,7 @@ profile/target comments they remain identical. The negative fixture
 intentionally overlaps two explicit spans and asserts the exact collision
 diagnostic and no published body.
 
-- [ ] **Step 7: Run packing and regression tests**
+- [x] **Step 7: Run packing and regression tests**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc hlsl_ir_unit
@@ -990,7 +990,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R '^hlslv_|^hlslf_' --output-on-fai
 
 Expected: modern fixtures pass and SM3 fixtures remain unchanged.
 
-- [ ] **Step 8: Commit constant buffers**
+- [x] **Step 8: Commit constant buffers**
 
 ```powershell
 git add -- hlsl_modern.h hlsl_modern.c hlsl_bind.c hlsl_codegen.c hlsl_validate.c tests/hlsl_ir_test.c tests/CMakeLists.txt tests/hlsl/modern tests/hlsl/diagnostics
@@ -1017,14 +1017,14 @@ git commit -m "Bind modern HLSL constant buffers"
 - Create: `tests/hlsl/diagnostics/modern_texture_pair_conflict.cg`
 - Create: `tests/hlsl/diagnostics/modern_texture_stage.cg`
 
-- [ ] **Step 1: Add failing pair-allocation tests**
+- [x] **Step 1: Add failing pair-allocation tests**
 
 Create two implicit samplers and one explicit `TEXUNIT5`. Assert atomic pairs
 `t0/s0`, `t1/s1`, and `t5/s5`. Reserve only `t2`, request another Cg sampler,
 and assert it skips index 2 rather than creating `t2/s3`. Add exhaustion at
 index 16 and assert the sampler-pair limit reason.
 
-- [ ] **Step 2: Define texture dimensions and method selection**
+- [x] **Step 2: Define texture dimensions and method selection**
 
 Add the source-to-object dimension policy to `hlsl_modern.h`:
 
@@ -1059,7 +1059,7 @@ Declare a signature-driven selector that accepts stage, source intrinsic ID,
 dimension, coordinate width, and result type; it returns a method or a
 structured unsupported/stage/signature reason.
 
-- [ ] **Step 3: Allocate pairs atomically**
+- [x] **Step 3: Allocate pairs atomically**
 
 In `hlsl_bind.c`, allocate one pair ID and same numeric slot for each logical
 Cg sampler. `TEXUNITn` reserves both namespaces before implicit allocation.
@@ -1069,7 +1069,7 @@ sampler-typed helper parameter into adjacent typed `Texture*` and
 pair in source-parameter order. Preserve one logical Cg identity for overload
 resolution and diagnostics; do not synthesize combined modern sampler types.
 
-- [ ] **Step 4: Legalize exact texture forms**
+- [x] **Step 4: Legalize exact texture forms**
 
 Map ordinary, explicit-level, biased, gradient, and projected Cg forms to
 `.Sample`, `.SampleLevel`, `.SampleBias`, and `.SampleGrad`. Capture projected
@@ -1080,7 +1080,7 @@ stages. Extend `HlslValidateModule` to verify receiver type, pair identity,
 argument count and shapes, coordinate width, result type, and stage before the
 writer sees the node.
 
-- [ ] **Step 5: Emit paired declarations and method calls**
+- [x] **Step 5: Emit paired declarations and method calls**
 
 For a 2D sampler at slot 3, emit exactly:
 
@@ -1092,7 +1092,7 @@ SamplerState cgc_sampler_diffuse : register(s3);
 Calls use `cgc_texture_diffuse.Sample(cgc_sampler_diffuse, uv)` and never emit
 legacy `sampler2D` syntax in SM4/SM5.
 
-- [ ] **Step 6: Add complete method fixtures**
+- [x] **Step 6: Add complete method fixtures**
 
 Put named vertex and pixel entries in the success source and compile them under
 all four non-geometry modern profiles. Together they cover 1D, 2D, 3D, cube,
@@ -1104,7 +1104,7 @@ Negative fixtures cover mismatched dimension, coordinate width, return shape,
 explicit pair collision, out-of-range unit, and derivative-dependent use in
 vertex. Task 11 adds the matching geometry rejection.
 
-- [ ] **Step 7: Run texture tests**
+- [x] **Step 7: Run texture tests**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc hlsl_ir_unit
@@ -1113,7 +1113,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl_ir_unit|modern_texture' --o
 
 Expected: all success and rejection cases pass transactionally.
 
-- [ ] **Step 8: Commit modern resources**
+- [x] **Step 8: Commit modern resources**
 
 ```powershell
 git add -- hlsl_modern.h hlsl_modern.c hlsl_ir.h hlsl_ir.c hlsl_legalize.c hlsl_bind.c hlsl_codegen.c hlsl_validate.c tests/hlsl_ir_test.c tests/CMakeLists.txt tests/hlsl/modern tests/hlsl/diagnostics
@@ -1143,40 +1143,40 @@ git commit -m "Lower Cg samplers to modern HLSL resources"
 - Create: `tests/hlsl/modern/vertexlight4-v40.expected`
 - Create: `tests/hlsl/modern/vertexlight4-v50.expected`
 
-- [ ] **Step 1: Register failing complete-language goldens**
+- [x] **Step 1: Register failing complete-language goldens**
 
 Register the four bundled vertex shaders under `hlslv40` and `hlslv50` plus
 one focused vertex and pixel fixture under all four non-geometry modern
 profiles. Expected initial failures identify common-lowering, wrapper, or
 model-policy cases not yet qualified by the narrower preceding fixtures.
 
-- [ ] **Step 2: Reuse common Cg-to-HLSL lowering**
+- [x] **Step 2: Reuse common Cg-to-HLSL lowering**
 
 Route SM4/SM5 through the completed SM3 lowerer for types, declarations,
 helpers, overloads, expressions, evaluation-order temporaries, structured
 control flow, returns, arrays, structures, and matrices. Branch only through
 descriptor capability queries; do not duplicate lowering by target string.
 
-- [ ] **Step 3: Build modern public wrappers**
+- [x] **Step 3: Build modern public wrappers**
 
 Generate stage structures with modern semantics, call the internal entry once,
 and marshal return/out/inout values. Add explicit `int`/`uint` boundary casts
 for system values. Omit empty input/output structures and protect `main` via
 the identity-aware name allocator.
 
-- [ ] **Step 4: Complete intrinsic and statement legalization**
+- [x] **Step 4: Complete intrinsic and statement legalization**
 
 Run every intrinsic row from the SM3 compatibility matrix through the modern
 selector. Accept shared exact operations, permit pixel derivatives/discard,
 reject them in vertex, and retain row-major matrix behavior. Do not add SM5
 intrinsics absent from Cg IR.
 
-- [ ] **Step 5: Emit distinct profile/target metadata with otherwise stable source**
+- [x] **Step 5: Emit distinct profile/target metadata with otherwise stable source**
 
 SM4 and SM5 goldens must differ only where the selected target, model limit,
 or exact capability requires it. Both emit modern cbuffer and texture syntax.
 
-- [ ] **Step 6: Run all vertex/pixel goldens and SM3 regression**
+- [x] **Step 6: Run all vertex/pixel goldens and SM3 regression**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc hlsl_ir_unit
@@ -1186,7 +1186,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl(v|f)(40|50)|hlslv_|hlslf_' 
 Expected: bundled and focused modern fixtures pass; every SM3 test remains
 unchanged.
 
-- [ ] **Step 7: Commit vertex/pixel output**
+- [x] **Step 7: Commit vertex/pixel output**
 
 ```powershell
 git add -- hlsl_lower.c hlsl_legalize.c hlsl_bind.c hlsl_validate.c hlsl_codegen.c tests/CMakeLists.txt tests/hlsl/modern
@@ -1211,14 +1211,14 @@ git commit -m "Emit Shader Model 4 and 5 vertex and pixel HLSL"
 - Create: `tests/hlsl/geometry/system_values-{g40,g50}.expected`
 - Create: `tests/hlsl/geometry/vertex_id_bridge.cg`
 
-- [ ] **Step 1: Add failing topology assertions**
+- [x] **Step 1: Add failing topology assertions**
 
 For each `CgGeometryInput`, assert the exact HLSL keyword and extent:
 point/1, line/2, lineadj/4, triangle/3, triangleadj/6. Assert output mappings
 PointStream, LineStream, and TriangleStream. Assert missing or non-positive
 `Vertices=N` is rejected for both geometry profiles.
 
-- [ ] **Step 2: Add pure topology conversion functions**
+- [x] **Step 2: Add pure topology conversion functions**
 
 Declare and implement:
 
@@ -1231,14 +1231,14 @@ int HlslModernGeometryStream(CgGeometryOutput output,
 
 Use exhaustive switches with rejecting defaults.
 
-- [ ] **Step 3: Lower verified layout metadata**
+- [x] **Step 3: Lower verified layout metadata**
 
 In `hlsl_lower.c`, require `CGIR_STAGE_GEOMETRY`, convert the verified input and
 output topologies, require a positive maximum, and call
 `HlslSetGeometryLayout`. Reconstruct every `AttribArray<T>` from the public
 input array with the exact topology extent.
 
-- [ ] **Step 4: Bind geometry system values**
+- [x] **Step 4: Bind geometry system values**
 
 Use scalar wrapper parameters for `SV_PrimitiveID`. Map both Cg scalar
 `INSTANCEID` and `PRIMITIVEID` to that identity and reject a simultaneous
@@ -1246,14 +1246,14 @@ claim. Map output `PRIMITIVEID` to `SV_PrimitiveID` and `LAYER` to
 `SV_RenderTargetArrayIndex`, with explicit public-`uint`/internal-`int`
 conversions.
 
-- [ ] **Step 5: Implement the vertex-ID bridge**
+- [x] **Step 5: Implement the vertex-ID bridge**
 
 When a geometry interface consumes `VERTEXID`, require matching vertex output
 metadata named by canonical key `CG_VERTEXID0`, mark both sides
 `nointerpolation`, write `SV_VertexID` into it in the vertex wrapper, and
 reconstruct the geometry `AttribArray<int>` from the input array.
 
-- [ ] **Step 6: Extend the fixture runners and add focused tests**
+- [x] **Step 6: Extend the fixture runners and add focused tests**
 
 Extend the argument-list support added in Task 4 with a semicolon-list
 `PROFILE_OPTIONS`. Append one `-po <value>` pair per option before the source
@@ -1266,7 +1266,7 @@ topology, output topology, and `Vertices=N` through `PROFILE_OPTIONS`. Add
 negative tests for missing maximum, wrong extent, duplicate primitive system
 input, invalid system type, and missing vertex-ID producer metadata.
 
-- [ ] **Step 7: Run layout tests**
+- [x] **Step 7: Run layout tests**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc hlsl_ir_unit
@@ -1276,7 +1276,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl_ir_unit|hlslg.*topology|hls
 Expected: all topology/system tests pass or fail with their exact intended
 diagnostic.
 
-- [ ] **Step 8: Commit geometry interfaces**
+- [x] **Step 8: Commit geometry interfaces**
 
 ```powershell
 git add -- hlsl_modern.h hlsl_modern.c hlsl_lower.c hlsl_bind.c hlsl_validate.c tests/hlsl_ir_test.c tests/check_hlsl.cmake tests/check_hlsl_failure.cmake tests/CMakeLists.txt tests/hlsl/geometry tests/hlsl/diagnostics
@@ -1299,7 +1299,7 @@ git commit -m "Lower Cg geometry interfaces to HLSL"
 - Create: `tests/hlsl/geometry/reachable_helper.cg`
 - Create: `tests/hlsl/geometry/{pass_through,amplify,restart,flat,conditional_flat,reachable_helper}-{g40,g50}.expected`
 
-- [ ] **Step 1: Add failing explicit-node assertions**
+- [x] **Step 1: Add failing explicit-node assertions**
 
 Lower a small verified Cg geometry module and assert one
 `HLSL_STMT_APPEND` per `CGIR_STMT_GEOMETRY_EMIT`, one
@@ -1307,14 +1307,14 @@ Lower a small verified Cg geometry module and assert one
 shadow assignments rather than calls. Assert the original control-flow parent
 of every node is preserved.
 
-- [ ] **Step 2: Lower `emitVertex` bundles once**
+- [x] **Step 2: Lower `emitVertex` bundles once**
 
 Evaluate resolved bundle leaves in source order into temporaries where needed,
 assign a complete generated output record, attach the current flat replay list,
 and build `HlslNewAppend`. If one semantic appears in both the emit bundle and
 defined flat state, replay occurs last and therefore supplies the flat value.
 
-- [ ] **Step 3: Lower path-correct flat state**
+- [x] **Step 3: Lower path-correct flat state**
 
 Before lowering bodies, compute a transitive geometry-effect bit for every
 reachable function: direct or called use of emit, restart, or flat state marks
@@ -1328,12 +1328,12 @@ defined flag initialized false. `flatAttrib` assigns the shadow then true
 inside its original branch/loop/helper path through those hidden parameters.
 Each later append carries a replay triple; no undefined shadow is read.
 
-- [ ] **Step 4: Lower restart explicitly**
+- [x] **Step 4: Lower restart explicitly**
 
 Convert `CGIR_STMT_GEOMETRY_RESTART` to `HlslNewRestartStrip` with its source
 location and no operands.
 
-- [ ] **Step 5: Emit exact stream methods**
+- [x] **Step 5: Emit exact stream methods**
 
 In `hlsl_codegen.c`, append emits guarded flat assignments followed by:
 
@@ -1352,14 +1352,14 @@ and array extent, and one `inout <Topology>Stream<Output>` parameter. Internal
 helper signatures expose only the generated state required by the transitive
 effect analysis, in deterministic declaration order.
 
-- [ ] **Step 6: Register behavioral goldens**
+- [x] **Step 6: Register behavioral goldens**
 
 For both `hlslg40` and `hlslg50`, register pass-through, loop amplification,
 multiple restarts, repeated flat update, conditional flat update, and reachable
 helper fixtures. Goldens assert source order and one method call per Cg
 operation.
 
-- [ ] **Step 7: Run operation tests**
+- [x] **Step 7: Run operation tests**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc hlsl_ir_unit
@@ -1368,7 +1368,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl_ir_unit|hlslg.*(pass|amplif
 
 Expected: all explicit-node and compiler goldens pass.
 
-- [ ] **Step 8: Commit geometry operations**
+- [x] **Step 8: Commit geometry operations**
 
 ```powershell
 git add -- hlsl_lower.c hlsl_legalize.c hlsl_codegen.c hlsl_validate.c tests/hlsl_ir_test.c tests/CMakeLists.txt tests/hlsl/geometry
@@ -1393,7 +1393,7 @@ git commit -m "Emit HLSL geometry stream operations"
 - Create: `tests/hlsl/geometry/textures-{g40,g50}.expected`
 - Create: `tests/hlsl/diagnostics/modern_texture_geometry_stage.cg`
 
-- [ ] **Step 1: Extend the current link runner to three stages**
+- [x] **Step 1: Extend the current link runner to three stages**
 
 Preserve the current SM3 `VERTEX_SOURCE`/`FRAGMENT_SOURCE` path and legacy
 four-field `// cgc-bind interface` parser. Add explicit `VERTEX_PROFILE`,
@@ -1406,7 +1406,7 @@ system/user class, and interpolation. Compare vertex→geometry and
 geometry→pixel independently; never infer canonical identity from source
 names or `SV_` spelling.
 
-- [ ] **Step 2: Add a representative matching pipeline**
+- [x] **Step 2: Add a representative matching pipeline**
 
 The vertex stage exports position, float texture coordinates, color, and an
 integer user varying. Geometry consumes the topology-sized array, writes
@@ -1419,7 +1419,7 @@ geometry models. Its goldens contain stage-legal `.SampleLevel` and
 `.SampleGrad` calls. The negative fixture uses implicit `.Sample` and asserts
 the exact derivative/stage diagnostic with zero output.
 
-- [ ] **Step 3: Add the vertex-ID bridge pipeline**
+- [x] **Step 3: Add the vertex-ID bridge pipeline**
 
 Compile `vp_vertex_id.cg` with `hlslv40/50`, `gp_vertex_id.cg` with
 `hlslg40/50`, and `fp_vertex_id.cg` with `hlslf40/50`. Assert the VS public
@@ -1427,14 +1427,14 @@ input uses `SV_VertexID`, the VS→GS bridge uses one matching
 `nointerpolation CG_VERTEXID0`, and the pixel interface does not expose the
 bridge unless source explicitly forwards it.
 
-- [ ] **Step 4: Add exact negative pipelines**
+- [x] **Step 4: Add exact negative pipelines**
 
 Register one type mismatch and one interpolation mismatch at each boundary.
 The runner must report the canonical key and both conflicting declarations.
 Each individual shader must still pass compiler generation and optional
 external validation; only the repository cross-stage check fails.
 
-- [ ] **Step 5: Run all pipeline tests**
+- [x] **Step 5: Run all pipeline tests**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc
@@ -1444,7 +1444,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl_(sm4|sm5)_pipeline' --outpu
 Expected: matching and vertex-ID pipelines pass; mismatch tests pass by
 observing their exact expected link failure.
 
-- [ ] **Step 6: Commit pipeline qualification**
+- [x] **Step 6: Commit pipeline qualification**
 
 ```powershell
 git add -- tests/check_hlsl_link.cmake tests/CMakeLists.txt tests/hlsl/link tests/hlsl/geometry tests/hlsl/diagnostics
@@ -1472,7 +1472,7 @@ git commit -m "Qualify modern HLSL shader pipelines"
 - Create: `tests/hlsl/diagnostics/modern_wrong_stage.cg`
 - Create: `tests/hlsl/diagnostics/modern_unsupported.cg`
 
-- [ ] **Step 1: Add descriptor boundary assertions**
+- [x] **Step 1: Add descriptor boundary assertions**
 
 Pin this exact descriptor table, with input/output counts measured in
 four-component signature registers:
@@ -1494,7 +1494,7 @@ invocation; non-geometry descriptors store zero for both fields. Assert every
 field per descriptor so the SM4/SM5 signature differences cannot collapse
 into one shared table.
 
-- [ ] **Step 2: Generate exact-boundary and one-over compiler fixtures**
+- [x] **Step 2: Generate exact-boundary and one-over compiler fixtures**
 
 Use CMake loops to generate or parameterize one compiler test at each boundary
 the current Cg surface can reach and one test one unit beyond it. Keep
@@ -1510,7 +1510,7 @@ and exercise exactly 1024 and 1025. Interface tests count canonical physical
 leaves, not declarations. Resource tests count paired Cg samplers and packed
 cbuffer spans.
 
-- [ ] **Step 3: Assign stable modern HLSL diagnostics**
+- [x] **Step 3: Assign stable modern HLSL diagnostics**
 
 Extend the existing 6400–6499 HLSL block with concrete macros for profile
 stage mismatch, unsupported model capability, system semantic stage/type,
@@ -1518,21 +1518,21 @@ interface conflict, interpolation conflict, cbuffer placement/collision/limit,
 resource-pair collision/limit, texture method stage/signature, missing geometry
 maximum, geometry maximum limit, and geometry total-output limit.
 
-- [ ] **Step 4: Map structured reasons exactly once**
+- [x] **Step 4: Map structured reasons exactly once**
 
 `hlsl_hal.c` records the error count before each backend phase. A phase that
 returns a structured user reason maps it to one diagnostic and source location;
 common code does not append a generic error. Structural IR failures use the
 existing internal HLSL IR diagnostic.
 
-- [ ] **Step 5: Tighten the failure runner**
+- [x] **Step 5: Tighten the failure runner**
 
 Require exact `CODE`, `EXPECTED_LINE`, and `MESSAGE`; optionally accept one
 `NOTES` list. Count exactly one primary `error C####:` and assert the output
 file is absent or zero length with no `cgc-bind`, cbuffer, texture, structure,
 or function body.
 
-- [ ] **Step 6: Run all boundaries and transactions**
+- [x] **Step 6: Run all boundaries and transactions**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc hlsl_ir_unit
@@ -1542,7 +1542,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl.*(limit|boundary|transactio
 Expected: every exact boundary succeeds, every one-over case emits its assigned
 single error, and every failure is transactional.
 
-- [ ] **Step 7: Run the full suite before committing**
+- [x] **Step 7: Run the full suite before committing**
 
 ```powershell
 ctest --test-dir build-hlsl-modern -C Debug --output-on-failure
@@ -1550,7 +1550,7 @@ ctest --test-dir build-hlsl-modern -C Debug --output-on-failure
 
 Expected: zero failures across all existing and new profiles.
 
-- [ ] **Step 8: Commit validation and diagnostics**
+- [x] **Step 8: Commit validation and diagnostics**
 
 ```powershell
 git add -- hlslv40_hal.c hlslg40_hal.c hlslf40_hal.c hlslv50_hal.c hlslg50_hal.c hlslf50_hal.c hlsl_validate.c hlsl_hal.c errors.h tests/hlsl_ir_test.c tests/check_hlsl_failure.cmake tests/CMakeLists.txt tests/hlsl/limits tests/hlsl/diagnostics
@@ -1566,7 +1566,7 @@ git commit -m "Validate Shader Model 4 and 5 HLSL limits"
 - Create: `docs/hlsl-sm4-sm5-compatibility.md`
 - Modify: `docs/superpowers/plans/2026-09-05-directx10-11-hlsl-sm4-sm5.md`
 
-- [ ] **Step 1: Extend the existing exact-target validator**
+- [x] **Step 1: Extend the existing exact-target validator**
 
 Keep `tests/validate_hlsl.cmake`'s current required `CGC`, `FXC`, `PROFILE`,
 `TARGET`, `SOURCE`, `OUTPUT`, `BYTECODE`, and `CONFIG` inputs and public
@@ -1584,7 +1584,7 @@ Continue preserving compiler and `fxc` stdout/stderr on failure. Add a
 external tests as today; when the option is `ON`, fail configuration with a
 clear Windows SDK requirement instead of silently omitting them.
 
-- [ ] **Step 2: Register all six target validators**
+- [x] **Step 2: Register all six target validators**
 
 Validate every tracked successful modern Cg fixture through the existing
 compile-then-`fxc` runner and its exact target. At minimum, register one bundled
@@ -1592,7 +1592,7 @@ vertex shader, one texture-heavy pixel shader, and every geometry topology
 under both models. Add a script self-test with an intentionally invalid
 generated HLSL file to prove nonzero `fxc` status fails the harness.
 
-- [ ] **Step 3: Fill the compatibility matrix completely**
+- [x] **Step 3: Fill the compatibility matrix completely**
 
 Create `docs/hlsl-sm4-sm5-compatibility.md` with rows for every current Cg 2.0
 type, qualifier, expression/operator family, statement, semantic, intrinsic,
@@ -1601,13 +1601,13 @@ texture form, binding form, and geometry feature. Each row contains one of
 exposed`, plus at least one registered test name. Do not leave blank status or
 test cells.
 
-- [ ] **Step 4: Document the public profiles**
+- [x] **Step 4: Document the public profiles**
 
 Update `README.md` with the six names/targets, source-only boundary, public
 `main`, example commands, required geometry options, modern system semantics,
 cbuffer policy, same-index `tN/sN` sampler pairs, and optional `fxc` behavior.
 
-- [ ] **Step 5: Prove generated sources are reproducible**
+- [x] **Step 5: Prove generated sources are reproducible**
 
 Run parser and standard-library regeneration and require no tracked diff:
 
@@ -1618,23 +1618,23 @@ git diff -- parser.c parser.h stdlib.c
 
 Expected: no output.
 
-- [ ] **Step 6: Manually qualify representative output**
+- [x] **Step 6: Manually qualify representative output**
 
 ```powershell
 $cgcModern = Resolve-Path 'build-hlsl-modern\Release\cgc.exe'
 & $cgcModern -quiet -profile hlslv40 -entry main -o build-hlsl-modern\position-v40.hlsl position.cg
 & $cgcModern -quiet -profile hlslv50 -entry main -o build-hlsl-modern\position-v50.hlsl position.cg
-& $cgcModern -quiet -profile hlslg40 -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o build-hlsl-modern\geometry-g40.hlsl tests\hlsl\geometry\pass_through.cg
-& $cgcModern -quiet -profile hlslg50 -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o build-hlsl-modern\geometry-g50.hlsl tests\hlsl\geometry\pass_through.cg
-& $cgcModern -quiet -profile hlslf40 -entry main -o build-hlsl-modern\pixel-p40.hlsl tests\hlsl\modern\textures.cg
-& $cgcModern -quiet -profile hlslf50 -entry main -o build-hlsl-modern\pixel-p50.hlsl tests\hlsl\modern\textures.cg
+& $cgcModern -quiet -profile hlslg40 -entry main -po POINT -po POINT_OUT -po Vertices=3 -o build-hlsl-modern\geometry-g40.hlsl tests\hlsl\geometry\pass_through.cg
+& $cgcModern -quiet -profile hlslg50 -entry main -po POINT -po POINT_OUT -po Vertices=3 -o build-hlsl-modern\geometry-g50.hlsl tests\hlsl\geometry\pass_through.cg
+& $cgcModern -quiet -profile hlslf40 -entry texture_pixel -o build-hlsl-modern\pixel-p40.hlsl tests\hlsl\modern\textures.cg
+& $cgcModern -quiet -profile hlslf50 -entry texture_pixel -o build-hlsl-modern\pixel-p50.hlsl tests\hlsl\modern\textures.cg
 if ($LASTEXITCODE -ne 0) { throw 'modern HLSL manual qualification failed' }
 ```
 
 Expected: six readable files with exact profile/target metadata, stable
 bindings, valid resources, internal entry, and one public `main`.
 
-- [ ] **Step 7: Run complete Release and Debug qualification**
+- [x] **Step 7: Run complete Release and Debug qualification**
 
 ```powershell
 cmake --build build-hlsl-modern --config Release
@@ -1648,7 +1648,7 @@ Windows SDK qualification environment, configure with
 `-DCGC_REQUIRE_FXC=ON` and require every registered external validation test
 to run.
 
-- [ ] **Step 8: Run final repository audit**
+- [x] **Step 8: Run final repository audit**
 
 ```powershell
 git diff --check
@@ -1668,7 +1668,7 @@ only intended documentation/test changes plus unrelated untracked paths that
 were already recorded at the Task 1 baseline; the plan-created
 `build-hlsl-modern` directory is gone.
 
-- [ ] **Step 9: Mark this plan complete and commit documentation**
+- [x] **Step 9: Mark this plan complete and commit documentation**
 
 Change every completed checkbox in this file to `[x]`, then run:
 
@@ -1679,27 +1679,27 @@ git commit -m "Document Shader Model 4 and 5 HLSL profiles"
 
 ## Final Acceptance Checklist
 
-- [ ] The DirectX 9 HLSL plan is complete and all SM3 goldens remain stable.
-- [ ] Profile IDs 14–22 and connector IDs 18–35 are unique and pinned.
-- [ ] All six modern profiles register with exact stage, target, and model.
-- [ ] Every representable current Cg 2.0 construct emits verified deterministic
+- [x] The DirectX 9 HLSL plan is complete and all SM3 goldens remain stable.
+- [x] Profile IDs 14–22 and connector IDs 18–35 are unique and pinned.
+- [x] All six modern profiles register with exact stage, target, and model.
+- [x] Every representable current Cg 2.0 construct emits verified deterministic
   HLSL; every unsupported construct has one precise diagnostic.
-- [ ] Modern system-value types, interpolation, and cross-stage keys match the
+- [x] Modern system-value types, interpolation, and cross-stage keys match the
   design specification.
-- [ ] Every Cg sampler owns one same-index `tN/sN` pair and every supported
+- [x] Every Cg sampler owns one same-index `tN/sN` pair and every supported
   texture intrinsic selects the exact method and legal stage.
-- [ ] All five geometry inputs, three output streams, positive maximum, and
+- [x] All five geometry inputs, three output streams, positive maximum, and
   three geometry operations reach explicit verified HLSL IR.
-- [ ] Flat state is path-correct through helpers, branches, loops, repeated
+- [x] Flat state is path-correct through helpers, branches, loops, repeated
   updates, and multiple appends.
-- [ ] Exact SM4/SM5 resource boundaries pass and one-over cases fail
+- [x] Exact SM4/SM5 resource boundaries pass and one-over cases fail
   transactionally.
-- [ ] Matching SM4 and SM5 vertex–geometry–pixel pipelines pass; deliberate
+- [x] Matching SM4 and SM5 vertex–geometry–pixel pipelines pass; deliberate
   type, semantic, interpolation, and bridge mismatches fail.
-- [ ] Every external qualification shader compiles under its exact `fxc`
+- [x] Every external qualification shader compiles under its exact `fxc`
   target when `fxc` is available.
-- [ ] The compatibility matrix has no blank classification or test cell.
-- [ ] Parser and standard-library regeneration leave no diff.
-- [ ] Complete Debug and Release suites report zero failures.
-- [ ] `git diff --check` reports no errors and `git status --short` contains no
+- [x] The compatibility matrix has no blank classification or test cell.
+- [x] Parser and standard-library regeneration leave no diff.
+- [x] Complete Debug and Release suites report zero failures.
+- [x] `git diff --check` reports no errors and `git status --short` contains no
   unintended plan-created files; baseline unrelated paths remain untouched.

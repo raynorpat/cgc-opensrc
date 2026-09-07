@@ -79,6 +79,10 @@ The compiler provides these profiles:
   entry points to core GLSL 1.50.
 - `hlslv` and `hlslf` translate Cg vertex and fragment entry points to
   DirectX 9 HLSL Shader Model 3.
+- `hlslv40`, `hlslg40`, and `hlslf40` translate vertex, geometry, and pixel
+  entry points to DirectX 10 HLSL targets `vs_4_0`, `gs_4_0`, and `ps_4_0`.
+- `hlslv50`, `hlslg50`, and `hlslf50` translate the same stages to DirectX 11
+  HLSL targets `vs_5_0`, `gs_5_0`, and `ps_5_0`.
 - `arbvp1` emits base `!!ARBvp1.0` vertex assembly.
 - `arbfp1` emits base `!!ARBfp1.0` fragment assembly.
 
@@ -220,6 +224,68 @@ and updates to the parser or standard library for a newer Cg release are also
 out of scope. Output is not promised to be byte-identical to NVIDIA Cg, and
 the profiles do not predict optimization-dependent instruction or temporary
 register usage without an external HLSL compiler.
+
+## DirectX 10 and 11 HLSL Shader Model 4 and 5 profiles
+
+The six modern profiles emit readable standalone HLSL source. They do not
+emit bytecode, invoke a DirectX runtime, or expose hull, domain, compute,
+tessellation, UAV, resource-array, multisample, load, or gather features.
+Every successful file contains one public `main`; the selected Cg entry and
+reachable helpers remain internal implementation details.
+
+Representative Windows commands are:
+
+```powershell
+.\build\Release\cgc.exe -quiet -profile hlslv40 -entry main -o shader.v40.hlsl position.cg
+.\build\Release\cgc.exe -quiet -profile hlslf40 -entry texture_pixel -o shader.p40.hlsl tests\hlsl\modern\textures.cg
+.\build\Release\cgc.exe -quiet -profile hlslg40 -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o shader.g40.hlsl tests\hlsl\geometry\pass_through.cg
+.\build\Release\cgc.exe -quiet -profile hlslv50 -entry main -o shader.v50.hlsl position.cg
+.\build\Release\cgc.exe -quiet -profile hlslf50 -entry texture_pixel -o shader.p50.hlsl tests\hlsl\modern\textures.cg
+.\build\Release\cgc.exe -quiet -profile hlslg50 -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o shader.g50.hlsl tests\hlsl\geometry\pass_through.cg
+```
+
+A geometry entry requires one input topology (`POINT`, `LINE`, `LINE_ADJ`,
+`TRIANGLE`, or `TRIANGLE_ADJ`), one output topology (`POINT_OUT`, `LINE_OUT`,
+or `TRIANGLE_OUT`), and a positive `Vertices=N` maximum. Source modifiers and
+profile options may agree; conflicts are diagnosed. The generated wrapper
+uses the exact HLSL input array extent, stream-object type, and
+`[maxvertexcount(N)]`. `emitVertex`, `flatAttrib`, and `restartStrip` become
+explicit stream operations, including path-correct persistent flat state.
+
+Modern system values use their stage-correct HLSL spellings: position becomes
+`SV_Position`, pixel colors become `SV_Targetn`, depth becomes `SV_Depth`,
+vertex and instance IDs become `SV_VertexID` and `SV_InstanceID`, geometry
+primitive identity becomes `SV_PrimitiveID`, layer becomes
+`SV_RenderTargetArrayIndex`, front face becomes `SV_IsFrontFace`, and clip
+outputs become `SV_ClipDistance`. Integral and flat varyings are emitted with
+`nointerpolation`. A geometry `VERTEXID` input uses a generated canonical
+vertex-to-geometry user-semantic bridge rather than an invalid geometry-stage
+`SV_VertexID` input.
+
+Numeric and Boolean uniforms are packed deterministically into an explicitly
+bound generated constant buffer at `b0` with `packoffset` declarations.
+Defaults remain visible in `// cgc-default` metadata. Each Cg sampler owns one
+logical binding but emits a typed texture and `SamplerState` at the same
+numeric index (`tN` and `sN`). Supported calls select `.Sample`,
+`.SampleLevel`, `.SampleBias`, or `.SampleGrad` according to their source form
+and legal stage.
+
+`fxc.exe` is optional. When found, CTest first runs `cgc`, then compiles every
+practical successful fixture through public `main` with `/WX /Ges` and the
+exact `/T` target. Ordinary configuration omits these external tests when the
+Windows SDK compiler is absent. A dedicated qualification environment can
+require it and fail configuration clearly:
+
+```powershell
+cmake -S . -B build -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
+```
+
+The [Shader Model 4 and 5 compatibility matrix](docs/hlsl-sm4-sm5-compatibility.md)
+classifies every exposed Cg 2.0 type, qualifier, expression/operator family,
+statement, semantic, intrinsic, texture form, binding form, resource limit,
+and geometry feature with a registered test.
 
 ## OpenGL ARB Profiles
 

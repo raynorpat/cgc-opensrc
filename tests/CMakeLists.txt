@@ -2053,6 +2053,10 @@ function(add_hlsl_validation_case name profile source packing)
             list(APPEND hlsl_validation_options
                 "-DPROFILE_OPTIONS=${ARGV5}")
         endif()
+        if(ARGC GREATER 6)
+            list(APPEND hlsl_validation_options
+                "-DDEFINES=${ARGV6}")
+        endif()
         add_test(
             NAME hlsl_validate_${name}
             COMMAND ${CMAKE_COMMAND}
@@ -3093,6 +3097,8 @@ foreach(model 40 50)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_${model_name}_pipeline_geometry_texture_stage.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+    set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+        "hlsl_${model_name}_pipeline_geometry_texture_stage|6420")
 endforeach()
 
 add_test(NAME hlsl_link_fresh_directory
@@ -3190,6 +3196,17 @@ function(add_hlsl_modern_boundary_success name profile source defines
             ${boundary_profile_args}
             -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl
             ${PROJECT_SOURCE_DIR}/${source})
+    string(REPLACE ";" "\\;" boundary_validation_defines "${defines}")
+    string(REPLACE ";" "\\;" boundary_validation_options
+        "${profile_options}")
+    # The signature-only geometry output boundary fixture intentionally does
+    # not initialize its synthetic 32-field output record, which fxc rejects.
+    # Its cgc boundary test remains registered; executable geometry fixtures
+    # cover exact external compilation.
+    if(NOT name MATCHES "^hlslg(40|50)_boundary_outputs$")
+        add_hlsl_validation_case(${name} ${profile} ${source} "" ""
+            "${boundary_validation_options}" "${boundary_validation_defines}")
+    endif()
 endfunction()
 
 function(add_hlsl_modern_boundary_failure name profile source code line
@@ -5094,6 +5111,14 @@ add_glsl150_contract(glsl150_glslv_position glslv
 add_test(NAME hlsl_compatibility_matrix
     COMMAND ${CMAKE_COMMAND}
         -DMATRIX=${PROJECT_SOURCE_DIR}/docs/hlsl-sm3-compatibility.md
+        "-DREGISTERED_TESTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-tests.txt"
+        "-DREGISTERED_CONTRACTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_compatibility_matrix.cmake)
+add_test(NAME hlsl_sm4_sm5_compatibility_matrix
+    COMMAND ${CMAKE_COMMAND}
+        -DMODE=modern
+        -DEXPECTED_ROWS=261
+        -DMATRIX=${PROJECT_SOURCE_DIR}/docs/hlsl-sm4-sm5-compatibility.md
         "-DREGISTERED_TESTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-tests.txt"
         "-DREGISTERED_CONTRACTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_compatibility_matrix.cmake)

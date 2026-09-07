@@ -13,9 +13,19 @@ file(STRINGS "${REGISTERED_TESTS}" registered_tests)
 file(STRINGS "${REGISTERED_CONTRACTS}" registered_contracts)
 file(STRINGS "${MATRIX}" matrix_lines)
 
-set(required_categories
-    Target Type Aggregate Qualifier Default Operator Statement Function
-    Semantic Binding Intrinsic Texture Resource Validation)
+if(DEFINED MODE AND MODE STREQUAL "modern")
+    set(required_categories
+        Target Type Aggregate Qualifier Default Operator Statement Function
+        Semantic Binding Intrinsic Texture Resource Geometry Validation)
+    set(status_pattern
+        "^(native|legalized|stage/model-specific|rejected C[0-9][0-9][0-9][0-9]|not exposed)$")
+else()
+    set(required_categories
+        Target Type Aggregate Qualifier Default Operator Statement Function
+        Semantic Binding Intrinsic Texture Resource Validation)
+    set(status_pattern
+        "^(native|legalized|vertex|pixel|rejected C[0-9][0-9][0-9][0-9])$")
+endif()
 set(seen_categories)
 set(seen_features)
 set(row_count 0)
@@ -53,8 +63,7 @@ foreach(line IN LISTS matrix_lines)
         message(FATAL_ERROR
             "matrix row has invalid category '${category}': ${line}")
     endif()
-    if(NOT status MATCHES
-       "^(native|legalized|vertex|pixel|rejected C[0-9][0-9][0-9][0-9])$")
+    if(NOT status MATCHES "${status_pattern}")
         message(FATAL_ERROR
             "matrix row has invalid status '${status}': ${line}")
     endif()
@@ -83,9 +92,14 @@ foreach(line IN LISTS matrix_lines)
     math(EXPR row_count "${row_count} + 1")
 endforeach()
 
-if(NOT row_count EQUAL 286)
+if(DEFINED EXPECTED_ROWS)
+    set(expected_rows ${EXPECTED_ROWS})
+else()
+    set(expected_rows 286)
+endif()
+if(NOT row_count EQUAL expected_rows)
     message(FATAL_ERROR
-        "HLSL compatibility matrix is incomplete: ${row_count} rows, expected 286")
+        "HLSL compatibility matrix is incomplete: ${row_count} rows, expected ${expected_rows}")
 endif()
 
 foreach(category IN LISTS required_categories)
