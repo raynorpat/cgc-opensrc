@@ -16,10 +16,10 @@ implementation and one result.
 | Category | Feature | Status | Test |
 |---|---|---|---|
 | Target | `hlslv40` emits `vs_4_0` | stage/model-specific | `hlslv40_registration` |
-| Target | `hlslg40` emits `gs_4_0` | stage/model-specific | `hlslg40_registration` |
+| Target | `hlslg40` emits `gs_4_0` | stage/model-specific | `hlsl_validate_hlslg40_registration` |
 | Target | `hlslf40` emits `ps_4_0` | stage/model-specific | `hlslf40_registration` |
 | Target | `hlslv50` emits `vs_5_0` | stage/model-specific | `hlslv50_registration` |
-| Target | `hlslg50` emits `gs_5_0` | stage/model-specific | `hlslg50_registration` |
+| Target | `hlslg50` emits `gs_5_0` | stage/model-specific | `hlsl_validate_hlslg50_registration` |
 | Target | `hlslf50` emits `ps_5_0` | stage/model-specific | `hlslf50_registration` |
 | Target | one public `main` wrapper | native | `modern_position_v40` |
 | Target | one lowered internal entry | legalized | `modern_language_v50` |
@@ -48,38 +48,42 @@ implementation and one result.
 | Type | comparison sampler object | not exposed | `cg20_manifest` |
 | Type | multisample texture object | not exposed | `cg20_manifest` |
 | Aggregate | tagged structure declaration and value | native | `modern_language_v40` |
+| Aggregate | structure forward declaration | legalized | `modern_declaration_forms_v40` |
+| Aggregate | structure implements interface | rejected C6400 | `modern_interface_implementation_v40` |
+| Aggregate | connector-tagged structure declaration | rejected C5001 | `modern_connector_tag_v40` |
 | Aggregate | nested structure members | native | `hlslg40_attrib_array_nested` |
 | Aggregate | sized arrays | native | `modern_language_v50` |
 | Aggregate | multidimensional sized arrays | native | `modern_multidimensional_array_v40` |
 | Aggregate | structure arrays | native | `modern_struct_array_v40` |
 | Aggregate | structure and array initialization | legalized | `modern_uniform_v40` |
 | Aggregate | nested output aggregates | legalized | `hlslg40_attrib_array_nested` |
-| Aggregate | aliased aggregate `out` arguments | legalized | `hlslv_aliased_out` |
+| Aggregate | aliased aggregate `out` arguments | legalized | `modern_aliased_out_v40` |
 | Aggregate | unsized array value | rejected C6400 | `hlslv_diagnostic_unsized_array` |
 | Aggregate | anonymous structure value | rejected C6400 | `hlslv_diagnostic_untagged_struct` |
 | Aggregate | interface dispatch | rejected C6400 | `hlslv_diagnostic_interface_dispatch` |
 | Aggregate | `AttribArray<T>` | stage/model-specific | `hlslg40_attrib_array_struct` |
-| Qualifier | `const` storage | legalized | `hlslv_declaration_forms` |
-| Qualifier | `packed` | legalized | `hlslv_declaration_forms` |
+| Aggregate | `AttribArray<T>` outside geometry input | rejected C6309 | `modern_attrib_array_stage_v40` |
+| Qualifier | `const` storage | legalized | `modern_declaration_forms_v40` |
+| Qualifier | `packed` | legalized | `modern_declaration_forms_v40` |
 | Qualifier | `uniform` program domain | native | `modern_uniform_v40` |
 | Qualifier | `varying` program domain | native | `modern_language_v40` |
 | Qualifier | `in` parameter | native | `modern_language_v40` |
 | Qualifier | `out` parameter | legalized | `modern_language_p40` |
 | Qualifier | `inout` parameter | legalized | `modern_language_v50` |
 | Qualifier | `typedef` | legalized | `modern_typedef_v40` |
-| Qualifier | `inline` | legalized | `hlslv_inline_helper` |
+| Qualifier | `inline` | legalized | `modern_inline_helper_v40` |
 | Qualifier | profile-qualified declaration | legalized | `modern_profile_overload_v40` |
-| Qualifier | declarator annotation | legalized | `hlslv_annotation` |
+| Qualifier | declarator annotation | legalized | `modern_annotation_v40` |
 | Qualifier | source `__internal` function | rejected C5201 | `hlslv_diagnostic_internal_function` |
 | Qualifier | `static` storage | rejected C6401 | `modern_unsupported_operation_v40` |
 | Qualifier | `extern` storage | rejected C6401 | `hlslv_diagnostic_extern_storage` |
 | Qualifier | geometry input topology modifier | stage/model-specific | `hlslg40_triangle_topology` |
 | Qualifier | geometry output topology modifier | stage/model-specific | `hlslg50_triangle_topology` |
-| Default | scalar entry default | legalized | `hlslv_defaults` |
-| Default | vector entry default | legalized | `hlslv_defaults` |
+| Default | scalar entry default | legalized | `modern_defaults_v40` |
+| Default | vector entry default | legalized | `modern_defaults_v40` |
 | Default | matrix entry default | legalized | `modern_uniform_v40` |
-| Default | array entry default | legalized | `hlslv_defaults` |
-| Default | structure entry default | legalized | `hlslv_defaults` |
+| Default | array entry default | legalized | `modern_defaults_v40` |
+| Default | structure entry default | legalized | `modern_defaults_v40` |
 | Default | helper default argument | legalized | `modern_default_arguments_v40` |
 | Default | `#pragma bind` numeric default | legalized | `modern_uniform_v40` |
 | Default | `cgc-default` metadata | legalized | `modern_uniform_v50` |
@@ -103,6 +107,7 @@ implementation and one result.
 | Operator | logical not | native | `modern_language_v40` |
 | Operator | bitwise not | native | `modern_bitwise_v40` |
 | Operator | scalar and vector cast | native | `modern_language_v50` |
+| Operator | explicit matrix cast | rejected C6401 | `modern_matrix_cast_v40` |
 | Operator | aggregate cast | rejected C6401 | `hlslv_diagnostic_struct_cast` |
 | Operator | sampler cast | rejected C1033 | `hlslf_diagnostic_sampler_cast` |
 | Operator | multiply, divide, and remainder | native | `modern_language_v40` |
@@ -120,11 +125,11 @@ implementation and one result.
 | Operator | nested side effects preserve source order | legalized | `hlslg40_ordered_bundle` |
 | Statement | declaration | native | `modern_language_v40` |
 | Statement | expression | native | `modern_language_v40` |
-| Statement | empty statement | native | `hlslv_empty_control` |
+| Statement | empty statement | native | `modern_empty_control_v40` |
 | Statement | compound block | native | `modern_language_v40` |
 | Statement | `if` and `if else` | native | `modern_language_v40` |
 | Statement | `for` loop | native | `modern_language_v50` |
-| Statement | comma-separated `for` expressions | legalized | `hlslv_loop_prefixes` |
+| Statement | comma-separated `for` expressions | legalized | `modern_loop_prefixes_v40` |
 | Statement | `while` loop | native | `modern_language_v40` |
 | Statement | `do while` loop | native | `modern_language_v40` |
 | Statement | `break` | native | `modern_language_v40` |
@@ -134,7 +139,7 @@ implementation and one result.
 | Statement | scalar and vector `discard` | stage/model-specific | `modern_language_p40` |
 | Statement | vertex-stage `discard` | rejected C6402 | `modern_discard_stage_v40` |
 | Statement | switch statement | not exposed | `cg20_manifest` |
-| Function | prototype and definition | native | `hlslv_helpers` |
+| Function | prototype and definition | native | `modern_helpers_v40` |
 | Function | overloaded helpers | native | `modern_language_v40` |
 | Function | scalar, vector, matrix, array, and structure parameters | native | `modern_language_v50` |
 | Function | sampler helper parameter | legalized | `modern_texture_p40` |
@@ -143,7 +148,7 @@ implementation and one result.
 | Function | profile-qualified overload resolution | legalized | `modern_profile_overload_v40` |
 | Function | direct recursion | rejected C6401 | `hlslv_recursion` |
 | Function | mutual recursion | rejected C6401 | `hlslv_inline_mutual_recursion` |
-| Function | user helper sharing intrinsic spelling | native | `hlslv_intrinsic_user_same_name` |
+| Function | user helper sharing intrinsic spelling | native | `modern_intrinsic_user_same_name_v40` |
 | Semantic | vertex `POSITION` input and output | stage/model-specific | `modern_position_v40` |
 | Semantic | pixel `WPOS` or position input maps to `SV_Position` | legalized | `modern_semantic_p40` |
 | Semantic | pixel `COLORn` output maps to `SV_Targetn` | legalized | `modern_semantic_p50` |
@@ -162,7 +167,7 @@ implementation and one result.
 | Semantic | flat geometry output gets `nointerpolation` | legalized | `hlslg40_flat` |
 | Semantic | `centroid` interpolation | stage/model-specific | `hlsl_sm4_pipeline_geometry` |
 | Semantic | `noperspective` interpolation | stage/model-specific | `hlsl_sm5_pipeline_geometry` |
-| Semantic | semantic identity is case-insensitive | legalized | `hlslv_interface_case_output_conflict` |
+| Semantic | semantic identity is case-insensitive | legalized | `modern_semantic_case_output_conflict_v40` |
 | Semantic | duplicate canonical semantic | rejected C6404 | `modern_system_conflict` |
 | Semantic | reserved `SV_` source semantic | rejected C6412 | `modern_reserved_semantic` |
 | Semantic | invalid stage-direction semantic | rejected C6403 | `modern_pixel_user_semantic` |
@@ -170,6 +175,11 @@ implementation and one result.
 | Semantic | vertex-ID bridge user semantic | legalized | `hlsl_sm4_pipeline_vertex_id` |
 | Semantic | vertex-ID bridge agreement is checked across stages | native | `hlsl_sm5_pipeline_vertex_id` |
 | Binding | one generated application cbuffer at `b0` | legalized | `modern_uniform_v40` |
+| Binding | explicit `C#` register binding | legalized | `modern_explicit_c_register_v40` |
+| Binding | explicit `I#` register binding | rejected C6414 | `modern_explicit_i_register_v40` |
+| Binding | explicit `B#` register binding | rejected C6414 | `modern_explicit_b_register_v40` |
+| Binding | explicit `S#` register binding | legalized | `modern_explicit_s_register_p40` |
+| Binding | `#pragma bind` register-array form | legalized | `modern_pragma_register_array_v40` |
 | Binding | deterministic HLSL cbuffer packing | legalized | `modern_uniform_v50` |
 | Binding | explicit `packoffset(cN.component)` | legalized | `modern_uniform_v40` |
 | Binding | explicit bindings reserve before implicit bindings | legalized | `modern_uniform_v50` |
@@ -202,6 +212,7 @@ implementation and one result.
 | Intrinsic | derivative in vertex stage | rejected C6402 | `modern_derivative_stage_v40` |
 | Intrinsic | implicit-derivative sample in geometry stage | rejected C6420 | `hlsl_sm4_pipeline_geometry_texture_stage` |
 | Intrinsic | `degrees` and `radians` | rejected C6410 | `modern_intrinsic_v40` |
+| Intrinsic | unsupported overload or scalar-kind combination | rejected C6410 | `modern_intrinsic_bad_overload_v40` |
 | Intrinsic | `determinant` and `transpose` | rejected C6410 | `hlslv_diagnostic_intrinsic_matrix` |
 | Intrinsic | `frexp`, `ldexp`, `sincos`, and `modf` families | rejected C6410 | `hlslv_diagnostic_intrinsic_decompose` |
 | Intrinsic | floating classification family | rejected C6410 | `hlslv_diagnostic_intrinsic_classify` |
@@ -212,6 +223,7 @@ implementation and one result.
 | Texture | `sampler2D` lowers to `Texture2D` plus `SamplerState` | legalized | `modern_texture_p40` |
 | Texture | `sampler3D` lowers to `Texture3D` plus `SamplerState` | legalized | `modern_texture_p50` |
 | Texture | `samplerCUBE` lowers to `TextureCube` plus `SamplerState` | legalized | `modern_texture_p50` |
+| Texture | non-rectangle `h4tex*` and `x4tex*` aliases | legalized | `modern_texture_aliases_p40` |
 | Texture | ordinary pixel sample uses `.Sample` | legalized | `modern_texture_p40` |
 | Texture | explicit LOD uses `.SampleLevel` | legalized | `modern_texture_v40` |
 | Texture | bias uses `.SampleBias` | stage/model-specific | `modern_texture_p50` |
@@ -275,4 +287,4 @@ implementation and one result.
 | Validation | required `fxc` mode fails clearly when absent | native | `hlsl_require_fxc_missing_sdk` |
 | Validation | optional `fxc` mode omits tests when absent | native | `hlsl_optional_fxc_missing_sdk` |
 | Validation | deterministic golden output | native | `modern_position_v50` |
-| Validation | fresh-directory external validation | native | `hlsl_validate_fresh_directory` |
+| Validation | fresh-directory external validation | native | `hlsl_validate_modern_fresh_directory` |

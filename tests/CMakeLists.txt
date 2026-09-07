@@ -2778,7 +2778,7 @@ add_hlsl_modern_semantic_failure(modern_intrinsic_v50 hlslv50
     tests/hlsl/diagnostics/vp_unsupported_intrinsic_angle.cg main 6410 3
     "HLSL Shader Model 5 has no exact intrinsic for \"degrees\"")
 add_hlsl_modern_semantic_failure(modern_matrix_cast_v40 hlslv40
-    tests/hlsl/diagnostics/vp_struct_cast.cg main 6401 19
+    tests/hlsl/diagnostics/vp_matrix_cast.cg main 6401 8
     "aggregate cast")
 add_hlsl_modern_semantic_failure(modern_interface_implementation_v40 hlslv40
     tests/cg20/interfaces/conformance.cg main 6400 4
@@ -2800,6 +2800,9 @@ add_hlsl_modern_semantic_failure(modern_explicit_i_register_v40 hlslv40
     scalarLimit)
 add_hlsl_modern_semantic_failure(modern_explicit_b_register_v40 hlslv40
     tests/hlsl/bindings/vp_bool_bank_shapes.cg main 6414 14 flags)
+add_hlsl_modern_semantic_failure(modern_semantic_case_output_conflict_v40
+    hlslv40 tests/hlsl/diagnostics/vp_case_output_conflict.cg main
+    6404 4 COLOR0)
 
 add_test(
     NAME hlslg40_registration
@@ -5355,7 +5358,8 @@ set(hlsl_modern_witness_tests
     hlsl_sm5_pipeline_gs_ps_type_mismatch
     hlsl_sm5_pipeline_vertex_id
     hlsl_validation_exact_target_contract
-    hlsl_validator_rejects_invalid_generated_source)
+    hlsl_validator_rejects_invalid_generated_source
+    modern_semantic_case_output_conflict_v40)
 foreach(hlsl_modern_witness IN LISTS hlsl_modern_witness_tests)
     list(FIND hlsl_registered_tests "${hlsl_modern_witness}"
         hlsl_modern_witness_index)
