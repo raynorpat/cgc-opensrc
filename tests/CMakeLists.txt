@@ -2062,6 +2062,29 @@ function(add_hlsl_validation_case name profile source packing)
             list(APPEND hlsl_validation_options
                 "-DDEFINES=${ARGV6}")
         endif()
+        set(validation_entry "")
+        if(ARGC GREATER 4)
+            set(validation_entry "${ARGV4}")
+        endif()
+        set(validation_profile_options "")
+        if(ARGC GREATER 5)
+            set(validation_profile_options "${ARGV5}")
+        endif()
+        set(validation_defines "")
+        if(ARGC GREATER 6)
+            set(validation_defines "${ARGV6}")
+        endif()
+        string(REPLACE ";" "," validation_profile_options
+            "${validation_profile_options}")
+        string(REPLACE "\\" "" validation_profile_options
+            "${validation_profile_options}")
+        string(REPLACE ";" "," validation_defines
+            "${validation_defines}")
+        string(REPLACE "\\" "" validation_defines
+            "${validation_defines}")
+        set_property(DIRECTORY APPEND PROPERTY
+            HLSL_EXTERNAL_VALIDATION_CASES
+            "${name}|${profile}|${source}|${packing}|${validation_entry}|${validation_profile_options}|${validation_defines}")
         add_test(
             NAME hlsl_validate_${name}
             COMMAND ${CMAKE_COMMAND}
@@ -5175,9 +5198,18 @@ add_test(NAME hlsl_sm4_sm5_compatibility_matrix
         "-DREGISTERED_TESTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-tests.txt"
         "-DREGISTERED_CONTRACTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_compatibility_matrix.cmake)
+if(FXC_EXECUTABLE)
+    add_test(NAME hlsl_modern_fxc_coverage
+        COMMAND ${CMAKE_COMMAND}
+            -DREQUIRED=${CMAKE_CURRENT_SOURCE_DIR}/hlsl-modern-fxc-required.txt
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-external-validation-cases.txt"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_modern_fxc_coverage.cmake)
+endif()
 get_property(hlsl_registered_tests DIRECTORY PROPERTY TESTS)
 get_property(hlsl_registered_contracts DIRECTORY
     PROPERTY HLSL_FAILURE_CONTRACTS)
+get_property(hlsl_external_validation_cases DIRECTORY
+    PROPERTY HLSL_EXTERNAL_VALIDATION_CASES)
 string(REPLACE ";" "\n" hlsl_registered_contract_lines
     "${hlsl_registered_contracts}")
 string(APPEND hlsl_registered_contract_lines "\n")
@@ -5189,3 +5221,8 @@ file(GENERATE
 file(GENERATE
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
     CONTENT "${hlsl_registered_contract_lines}")
+string(REPLACE ";" "\n" hlsl_external_validation_lines
+    "${hlsl_external_validation_cases}")
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-external-validation-cases.txt"
+    CONTENT "${hlsl_external_validation_lines}\n")
