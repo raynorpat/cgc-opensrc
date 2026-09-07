@@ -2197,6 +2197,31 @@ add_hlsl_geometry_topology(triangle triangle_main TRIANGLE TRIANGLE_OUT)
 add_hlsl_geometry_topology(triangleadj triangleadj_main TRIANGLE_ADJ
     TRIANGLE_OUT)
 
+function(add_hlsl_geometry_scalar_topology name input extent)
+    set(geometry_options "${input};POINT_OUT;Vertices=1")
+    string(REPLACE ";" "\\;" geometry_options_escaped
+        "${geometry_options}")
+    foreach(profile hlslg40 hlslg50)
+        string(SUBSTRING "${profile}" 4 3 model_suffix)
+        add_test(
+            NAME ${profile}_scalar_only_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DPROFILE=${profile}
+                -DENTRY=${name}_main
+                "-DPROFILE_OPTIONS=${geometry_options_escaped}"
+                -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/scalar_only_topology.cg
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/scalar_only_${name}-${model_suffix}.expected
+                -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+                "-DCONFIG=$<CONFIG>"
+                "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_scalar_only_${name}.hlsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    endforeach()
+endfunction()
+
+add_hlsl_geometry_scalar_topology(point POINT 1)
+add_hlsl_geometry_scalar_topology(line LINE 2)
+
 function(add_hlsl_geometry_fixture name source expected entry)
     set(geometry_options "POINT;POINT_OUT;Vertices=4")
     string(REPLACE ";" "\\;" geometry_options_escaped
@@ -2303,6 +2328,7 @@ add_hlsl_geometry_operation(aggregate_once POINT POINT_OUT 1)
 add_hlsl_geometry_operation(lvalue_chain POINT POINT_OUT 1)
 add_hlsl_geometry_operation(loop_order POINT POINT_OUT 1)
 add_hlsl_geometry_operation(vector_conditional POINT POINT_OUT 1)
+add_hlsl_geometry_operation(heterogeneous_emit POINT POINT_OUT 2)
 
 foreach(profile hlslv40 hlslv50)
     string(SUBSTRING "${profile}" 4 3 model_suffix)
@@ -2388,6 +2414,9 @@ add_hlsl_geometry_failure_with_note(geometry_duplicate_primitive
 add_hlsl_geometry_failure(geometry_invalid_system_type
     tests/hlsl/diagnostics/geometry_invalid_system_type.cg 6321 2
     "invalid.value.type" "POINT;POINT_OUT;Vertices=4")
+add_hlsl_geometry_failure(geometry_output_type_conflict
+    tests/hlsl/diagnostics/geometry_output_type_conflict.cg 6404 5
+    "TEXCOORD0" "POINT;POINT_OUT;Vertices=2")
 add_hlsl_geometry_failure(geometry_scalar_user_input
     tests/hlsl/diagnostics/geometry_scalar_user_input.cg 6406 3
     "geometry scalar input" "POINT;POINT_OUT;Vertices=4")

@@ -151,6 +151,24 @@ static CgIRExpr *NewOrderedVector(CgIRModule *module, Type *scalar,
     return item;
 }
 
+static CgIRExpr *NewConstantVector(CgIRModule *module, Type *scalar,
+                                   Type *vector, SourceLoc loc,
+                                   float numberValue)
+{
+    CgNumericValue number;
+    CgIRExpr *arguments;
+    int i;
+
+    memset(&number, 0, sizeof(number));
+    number.kind = CG_SCALAR_FLOAT;
+    number.value.f = numberValue;
+    arguments = NULL;
+    for (i = 0; i < 4; i++)
+        CgIRAppendExpr(&arguments,
+            CgIRNewConstant(module, scalar, &loc, &number));
+    return CgIRNewConstruct(module, vector, &loc, arguments);
+}
+
 static CgIRExpr *NewOrderedPair(CgIRModule *module, Type *scalar,
                                 Type *pair, SourceLoc loc,
                                 Symbol *bump, Symbol *value)
@@ -387,6 +405,31 @@ static HlslStmt *AssertIndexedSwizzleStore(HlslStmt *statement,
     return statement->next;
 }
 
+static HlslStmt *AssertDeclarationInitializers(HlslStmt *statement,
+                                               const Symbol *scalar,
+                                               const Symbol *aggregate,
+                                               const Symbol *index)
+{
+    const HlslExpr *assignment;
+
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
+           assignment->u.binary.left->u.symbol->identity == scalar);
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
+           assignment->u.binary.left->u.symbol->identity == aggregate &&
+           assignment->u.binary.right->kind == HLSL_EXPR_CONSTRUCT);
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
+           assignment->u.binary.left->u.symbol->identity == index);
+    return statement->next;
+}
+
 static HlslStmt *AssertVectorConditional(HlslStmt *statement,
                                          const Symbol *selected)
 {
@@ -478,6 +521,7 @@ int main(int argc, char **argv)
     CgIRDecl *sourceNextIndex;
     CgIRDecl *sourceChoose;
     CgIRDecl *sourceSelected;
+    CgIRDecl *sourceInitialized;
     CgIRGeometryInfo geometry;
     CgIRGeometryValue *value;
     CgIRStmt *root;
@@ -540,6 +584,7 @@ int main(int argc, char **argv)
     Symbol *nextIndexSymbol;
     Symbol *chooseSymbol;
     Symbol *selectedSymbol;
+    Symbol *initializedSymbol;
     Scope locals;
     Scope bumpLocals;
     Scope nextLocals;
@@ -640,9 +685,11 @@ int main(int argc, char **argv)
                                  lvalueLoc);
     selectedSymbol = NewTestSymbol(VARIABLE_S, "selected", float2Type,
                                    lvalueLoc);
+    initializedSymbol = NewTestSymbol(VARIABLE_S, "initialized", float4Type,
+                                      lvalueLoc);
     assert(next != NULL && valuesSymbol != NULL && indexSymbol != NULL &&
            nextIndexSymbol != NULL && chooseSymbol != NULL &&
-           selectedSymbol != NULL);
+           selectedSymbol != NULL && initializedSymbol != NULL);
     next->properties |= SYMB_IS_DEFINED;
     next->details.fun.params = nextIndexSymbol;
     memset(&nextLocals, 0, sizeof(nextLocals));
@@ -652,6 +699,7 @@ int main(int argc, char **argv)
     valuesSymbol->right = indexSymbol;
     indexSymbol->right = chooseSymbol;
     chooseSymbol->right = selectedSymbol;
+    selectedSymbol->right = initializedSymbol;
 
     CgIRInitModule(&source, TestAlloc, NULL);
     assert(CgIRSetStage(&source, CGIR_STAGE_GEOMETRY));
@@ -701,6 +749,14 @@ int main(int argc, char **argv)
         &entryLoc);
     assert(sourceValue != NULL && sourceValue->initializer != NULL);
     CgIRAppendDecl(&sourceEntry->locals, sourceValue);
+    sourceInitialized = CgIRNewDecl(&source, initializedSymbol,
+        initializedSymbol->name, float4Type, CGIR_STORAGE_NONE,
+        CGIR_DOMAIN_NONE, 0,
+        NewConstantVector(&source, floatType, float4Type, lvalueLoc, 2.0f),
+        &lvalueLoc);
+    assert(sourceInitialized != NULL &&
+           sourceInitialized->initializer != NULL);
+    CgIRAppendDecl(&sourceEntry->locals, sourceInitialized);
     memset(&intZero, 0, sizeof(intZero));
     intZero.kind = CG_SCALAR_INT;
     sourceValues = CgIRNewDecl(&source, valuesSymbol, valuesSymbol->name,
@@ -882,6 +938,9 @@ int main(int argc, char **argv)
     CgIRAppendStmt(&root->u.block,
                    CgIRNewDeclStmt(&source, &entryLoc, sourceValue));
     CgIRAppendStmt(&root->u.block,
+                   CgIRNewDeclStmt(&source, &lvalueLoc,
+                                   sourceInitialized));
+    CgIRAppendStmt(&root->u.block,
                    CgIRNewDeclStmt(&source, &lvalueLoc, sourceValues));
     CgIRAppendStmt(&root->u.block,
                    CgIRNewDeclStmt(&source, &lvalueLoc, sourceIndex));
@@ -916,7 +975,9 @@ int main(int argc, char **argv)
     assert(CountKind(entry->body, HLSL_STMT_RESTART_STRIP) ==
            CountIRKind(sourceEntry->body, CGIR_STMT_GEOMETRY_RESTART));
 
-    hIf = AssertIndexedSwizzleStore(entry->body, next, valuesSymbol,
+    hIf = AssertDeclarationInitializers(entry->body, valueSymbol,
+                                        initializedSymbol, indexSymbol);
+    hIf = AssertIndexedSwizzleStore(hIf, next, valuesSymbol,
                                     valueSymbol);
     hIf = AssertVectorConditional(hIf, selectedSymbol);
     hIf = AssertLoopPrefixes(hIf, bump);
@@ -970,6 +1031,11 @@ int main(int argc, char **argv)
     assert(emitBlock->loc.file == emitLoc.file &&
            emitBlock->loc.line == emitLoc.line);
     AssertOrderedBundlePrefix(emitBlock->u.block, bump, valueSymbol);
+    assignment = FindAssignment(emitBlock->u.block,
+                                entry->geometryOutputRecord);
+    assert(assignment != NULL &&
+           assignment->u.expression->u.binary.right->kind ==
+               HLSL_EXPR_CAST);
     append = emitBlock->u.block;
     while (append != NULL && append->kind != HLSL_STMT_APPEND)
         append = append->next;
@@ -977,5 +1043,9 @@ int main(int argc, char **argv)
     assert(append->loc.file == emitLoc.file &&
            append->loc.line == emitLoc.line);
     assert(append->u.append.replay == entry->geometryFlatState);
+    assert(HlslLegalizeModule(&target, &HlslProfile_hlslg40));
+    assert(target.wrapper != NULL &&
+           target.wrapper->geometryFlatState != NULL &&
+           target.wrapper->geometryFlatState->shadow->initializer != NULL);
     return 0;
 }

@@ -1,0 +1,12 @@
+// A geometry entry with only a per-primitive scalar still needs the exact
+// topology-shaped vertex input in its public HLSL ABI.
+
+POINT POINT_OUT void point_main(int primitive : PRIMITIVEID)
+{
+    emitVertex(float4(primitive, 0.0, 0.0, 1.0) : POSITION);
+}
+
+LINE POINT_OUT void line_main(int primitive : PRIMITIVEID)
+{
+    emitVertex(float4(primitive, 0.0, 0.0, 1.0) : POSITION);
+}

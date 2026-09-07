@@ -1,0 +1,6 @@
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    emitVertex(position[0] : POSITION,
+               float4(1.0, 1.0, 1.0, 1.0) : TEXCOORD0);
+    emitVertex(position[0] : POSITION, float2(1.0, 1.0) : TEXCOORD0);
+}

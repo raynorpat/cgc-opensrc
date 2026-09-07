@@ -4863,6 +4863,58 @@ static void TestModernGeometrySystemOutputWrappers(void)
     AssertModernGeometrySystemOutputWrapper(&HlslProfile_hlslg50);
 }
 
+static void AssertGeometryScalarOnlyInputGetsTopology(
+    const HlslProfileDesc *profile, HlslGeometryInput topology, int extent)
+{
+    HlslModule module;
+    HlslFunction *entry;
+    HlslDecl *primitive;
+    HlslDecl *input;
+    HlslType voidType;
+    HlslType intType;
+
+    HlslInitModule(&module, HLSL_STAGE_GEOMETRY, TestAlloc, NULL);
+    assert(HlslSetGeometryLayout(&module, topology,
+        HLSL_GEOMETRY_STREAM_POINT, extent, 1));
+    voidType = HlslNumericType(HLSL_BASE_VOID, 0);
+    intType = HlslNumericType(HLSL_BASE_INT, 1);
+    entry = HlslNewFunction(&module, voidType, "cg_entry");
+    primitive = HlslNewDecl(&module, HLSL_STORAGE_INPUT,
+                            intType, "primitive");
+    assert(entry != NULL && primitive != NULL);
+    primitive->inputSemantic = "PRIMITIVEID";
+    primitive->semantic = "SV_PrimitiveID";
+    primitive->canonicalSemantic = "SV_PrimitiveID";
+    primitive->semanticKind = HLSL_SEMANTIC_SV_PRIMITIVE_ID;
+    primitive->interpolation = HLSL_INTERPOLATION_NOINTERPOLATION;
+    primitive->parameterQualifier = HLSL_PARAMETER_IN;
+    entry->parameters = primitive;
+    entry->isEntry = 1;
+    module.entry = entry;
+    module.functions = entry;
+
+    assert(HlslBuildEntryWrapper(&module, profile));
+    input = module.structs;
+    assert(input != NULL && input->storage == HLSL_STORAGE_INPUT &&
+           input->members != NULL && input->members->next == NULL &&
+           input->members->geometryRole ==
+               HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER);
+    assert(module.wrapper != NULL && module.wrapper->parameters != NULL &&
+           module.wrapper->parameters->type.arraySize == extent);
+}
+
+static void TestGeometryScalarOnlyInputTopology(void)
+{
+    AssertGeometryScalarOnlyInputGetsTopology(&HlslProfile_hlslg40,
+        HLSL_GEOMETRY_INPUT_POINT, 1);
+    AssertGeometryScalarOnlyInputGetsTopology(&HlslProfile_hlslg40,
+        HLSL_GEOMETRY_INPUT_LINE, 2);
+    AssertGeometryScalarOnlyInputGetsTopology(&HlslProfile_hlslg50,
+        HLSL_GEOMETRY_INPUT_POINT, 1);
+    AssertGeometryScalarOnlyInputGetsTopology(&HlslProfile_hlslg50,
+        HLSL_GEOMETRY_INPUT_LINE, 2);
+}
+
 static void AssertModernSemanticIdentityRejected(ValidationFixture *fixture)
 {
     assert(!HlslValidateModule(&fixture->module,
@@ -6229,6 +6281,7 @@ int main(int argc, char **argv)
     TestModernGeometryValidation();
     TestModernVertexIdBridgeValidation();
     TestModernGeometrySystemOutputWrappers();
+    TestGeometryScalarOnlyInputTopology();
     TestModernGeometryTopologyConversion();
     TestModernSemanticIdentityValidation();
     TestTargetValidatorInterfaceLimits();

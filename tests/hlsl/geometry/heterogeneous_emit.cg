@@ -1,0 +1,8 @@
+// Missing fields in a later emit must not inherit values from an earlier one.
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          uniform float4 color)
+{
+    emitVertex(position[0] : POSITION, color : COLOR0);
+    emitVertex(position[0] + float4(1.0, 0.0, 0.0, 0.0) : POSITION);
+}
