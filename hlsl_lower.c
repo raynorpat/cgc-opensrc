@@ -53,25 +53,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "cg_stdlib.h"
 #include "cg_ir.h"
 #include "hlsl_hal.h"
-
-typedef struct HlslLowerContext_Rec {
-    HlslModule *module;
-    const HlslProfileDesc *profile;
-    Scope *scope;
-    HlslFunction *function;
-    Symbol *collectingHelper;
-    SourceLoc statementLoc;
-    int entryFile;
-    int loopDepth;
-    int geometryInputExtent;
-    const CgIRModule *sourceIR;
-} HlslLowerContext;
-
-typedef enum HlslValueMode_Enum {
-    HLSL_VALUE_DISCARD,
-    HLSL_VALUE_RVALUE,
-    HLSL_VALUE_LVALUE
-} HlslValueMode;
+#include "hlsl_lower_internal.h"
 
 static int HlslEnsureType(HlslLowerContext *context, Type *type);
 static int HlslLowerType(HlslLowerContext *context, Type *source,
@@ -85,83 +67,12 @@ static HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
 static int HlslLowerIRStatements(HlslLowerContext *context,
                                  const CgIRStmt *source,
                                  HlslStmt **list);
-static char *HlslCopyText(HlslLowerContext *context, const char *text);
 static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
                                     Symbol *symbol,
                                     const SourceLoc *callLoc,
                                     HlslBuiltin *builtin,
                                     HlslType *result,
                                     HlslType *params, int *paramCount);
-
-static void HlslSetLoc(HlslLoc *target, const SourceLoc *source)
-{
-    if (target != NULL && source != NULL) {
-        target->file = source->file;
-        target->line = source->line;
-    }
-} // HlslSetLoc
-
-static HlslExpr *HlslNewSourceExpr(HlslLowerContext *context,
-                                   HlslExprKind kind, HlslType type)
-{
-    HlslLoc loc;
-
-    loc.file = 0;
-    loc.line = 0;
-    if (context != NULL)
-        HlslSetLoc(&loc, &context->statementLoc);
-    return context != NULL ?
-           HlslNewLocatedExpr(context->module, kind, type, &loc) : NULL;
-} // HlslNewSourceExpr
-
-static int HlslLowerFailure(HlslLowerContext *context, HlslErrorKind kind,
-                            const char *reason, const SourceLoc *loc)
-{
-    HlslModule *module;
-
-    module = context != NULL ? context->module : NULL;
-    if (module != NULL && module->errors == 0) {
-        module->errorKind = kind;
-        module->errorReason = reason;
-        HlslSetLoc(&module->errorLoc, loc != NULL ? loc :
-                   &context->statementLoc);
-    }
-    if (module != NULL)
-        module->errors++;
-    return 0;
-} // HlslLowerFailure
-
-static void *HlslLowerAlloc(HlslLowerContext *context, size_t size)
-{
-    void *memory;
-
-    if (context == NULL || context->module == NULL ||
-        context->module->alloc == NULL)
-    {
-        return NULL;
-    }
-    memory = (*context->module->alloc)(context->module->allocArg, size);
-    if (memory != NULL)
-        memset(memory, 0, size);
-    return memory;
-} // HlslLowerAlloc
-
-static char *HlslGeneratedSource(HlslLowerContext *context,
-                                 const char *source)
-{
-    char *name;
-    size_t length;
-
-    if (source == NULL)
-        return NULL;
-    length = strlen(source);
-    name = (char *) HlslLowerAlloc(context, length + 4);
-    if (name == NULL)
-        return NULL;
-    memcpy(name, "cg_", 3);
-    memcpy(name + 3, source, length + 1);
-    return name;
-} // HlslGeneratedSource
 
 static Type *HlslCanonicalStructType(Type *type);
 
@@ -292,66 +203,6 @@ static HlslDecl *HlslFindStruct(HlslLowerContext *context, Type *type)
     }
     return NULL;
 } // HlslFindStruct
-
-static HlslDecl *HlslFindDeclList(HlslDecl *list, const void *identity)
-{
-    HlslDecl *decl;
-
-    for (decl = list; decl != NULL; decl = decl->next) {
-        if (decl->identity == identity)
-            return decl;
-    }
-    return NULL;
-} // HlslFindDeclList
-
-static HlslDecl *HlslFindDecl(HlslLowerContext *context,
-                              const void *identity)
-{
-    HlslDecl *decl;
-    HlslBinding *binding;
-
-    if (context->function != NULL) {
-        decl = HlslFindDeclList(context->function->parameters, identity);
-        if (decl == NULL)
-            decl = HlslFindDeclList(context->function->locals, identity);
-        if (decl != NULL)
-            return decl;
-    }
-    decl = HlslFindDeclList(context->module->globals, identity);
-    if (decl != NULL)
-        return decl;
-    for (decl = context->module->structs; decl != NULL; decl = decl->next) {
-        HlslDecl *member;
-
-        member = HlslFindDeclList(decl->members, identity);
-        if (member != NULL)
-            return member;
-    }
-    for (binding = context->module->bindings; binding != NULL;
-         binding = binding->next)
-    {
-        if (binding->declaration != NULL &&
-            binding->declaration->identity == identity)
-        {
-            return binding->declaration;
-        }
-    }
-    return NULL;
-} // HlslFindDecl
-
-static HlslFunction *HlslFindFunction(HlslModule *module,
-                                      const void *identity)
-{
-    HlslFunction *function;
-
-    for (function = module->functions; function != NULL;
-         function = function->next)
-    {
-        if (function->identity == identity)
-            return function;
-    }
-    return NULL;
-} // HlslFindFunction
 
 static int HlslLowerType(HlslLowerContext *context, Type *source,
                          HlslType *target, const SourceLoc *loc)
@@ -2312,18 +2163,6 @@ static HlslExpr *HlslLowerOrderedValue(HlslLowerContext *context,
         value = HlslCaptureValue(context, prefix, value);
     return value;
 } // HlslLowerOrderedValue
-
-static char *HlslCopyText(HlslLowerContext *context, const char *text)
-{
-    char *copy;
-    size_t length;
-
-    length = strlen(text) + 1;
-    copy = (char *) HlslLowerAlloc(context, length);
-    if (copy != NULL)
-        memcpy(copy, text, length);
-    return copy;
-} // HlslCopyText
 
 static HlslExpr *HlslNewSwizzle(HlslLowerContext *context,
                                 HlslExpr *object, const HlslType *type,
