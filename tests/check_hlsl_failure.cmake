@@ -46,7 +46,9 @@ if(NOT match_count EQUAL 1)
     message(FATAL_ERROR
         "${PROFILE} reported ${match_count} compiler errors:\n${diagnostics}")
 endif()
-if(NOT diagnostics MATCHES "error C${CODE}:")
+string(REGEX MATCH "[^\r\n]*error C[0-9][0-9][0-9][0-9]:[^\r\n]*"
+    primary_diagnostic "${diagnostics}")
+if(NOT primary_diagnostic MATCHES "error C${CODE}:")
     message(FATAL_ERROR
         "${PROFILE} did not report C${CODE}:\n${diagnostics}")
 endif()
@@ -56,13 +58,13 @@ else()
     get_filename_component(source_name "${SOURCE}" NAME)
     set(expected_location "${source_name}(${EXPECTED_LINE})")
 endif()
-string(FIND "${diagnostics}" "${expected_location}"
+string(FIND "${primary_diagnostic}" "${expected_location}"
     location_index)
 if(location_index EQUAL -1)
     message(FATAL_ERROR
         "${PROFILE} reported the wrong source line:\n${diagnostics}")
 endif()
-if(NOT diagnostics MATCHES "${MESSAGE}")
+if(NOT primary_diagnostic MATCHES "${MESSAGE}")
     message(FATAL_ERROR
         "${PROFILE} did not match message ${MESSAGE}:\n${diagnostics}")
 endif()

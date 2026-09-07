@@ -245,11 +245,10 @@ struct PixelResult {
     float4 color7 : COLOR7;
 #endif
 #if INTERFACE_COUNT >= 9
-#if defined(TEST_PIXEL_DEPTH)
-    float depth : DEPTH;
-#else
     float4 color8 : COLOR8;
 #endif
+#if defined(TEST_PIXEL_DEPTH)
+    float depth : DEPTH;
 #endif
 };
 

@@ -3094,6 +3094,46 @@ static int HlslColorOutputUsage(const HlslProfileDesc *profile,
     return used;
 } // HlslColorOutputUsage
 
+static int HlslDepthOutputUsage(const HlslDecl *members,
+                                const HlslLoc **failureLoc)
+{
+    int used;
+
+    used = 0;
+    for (; members != NULL; members = members->next) {
+        if (members->semanticKind != HLSL_SEMANTIC_SV_DEPTH)
+            continue;
+        if (used == INT_MAX)
+            return INT_MAX;
+        used++;
+        if (failureLoc != NULL)
+            *failureLoc = &members->loc;
+    }
+    return used;
+} // HlslDepthOutputUsage
+
+static int HlslOutputRegisterUsage(const HlslProfileDesc *profile,
+                                   const HlslDecl *members)
+{
+    int used;
+
+    used = 0;
+    for (; members != NULL; members = members->next) {
+        if (members->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+            continue;
+        if (profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN &&
+            profile->stage == HLSL_STAGE_PIXEL &&
+            members->semanticKind == HLSL_SEMANTIC_SV_DEPTH)
+        {
+            continue;
+        }
+        if (used == INT_MAX)
+            return INT_MAX;
+        used++;
+    }
+    return used;
+} // HlslOutputRegisterUsage
+
 static int HlslClipCullComponentUsage(const HlslDecl *members,
                                       const HlslLoc **failureLoc)
 {
@@ -3174,6 +3214,58 @@ static int HlslValidateGeometryPlaceholder(HlslModule *module,
     return 1;
 } // HlslValidateGeometryPlaceholder
 
+static int HlslValidateInterfaceLimits(HlslModule *module,
+    const HlslProfileDesc *profile, const HlslDecl *inputs,
+    const HlslDecl *geometryScalars, const HlslDecl *outputs)
+{
+    const HlslLoc *colorLoc;
+    const HlslLoc *clipLoc;
+    const HlslLoc *depthLoc;
+    int clipCullComponents;
+    int colors;
+    int depths;
+    int used;
+
+    used = HlslCountDeclarations(inputs) +
+           HlslCountDeclarations(geometryScalars);
+    if (used > profile->limits->inputs)
+        return HlslSetResourceFailure(module, "inputs", used,
+            profile->limits->inputs, HlslLastDeclLoc(inputs));
+    used = HlslOutputRegisterUsage(profile, outputs);
+    if (used > profile->limits->outputs)
+        return HlslSetResourceFailure(module, "outputs", used,
+            profile->limits->outputs, HlslLastDeclLoc(outputs));
+    clipLoc = NULL;
+    clipCullComponents = HlslClipCullComponentUsage(outputs, &clipLoc);
+    if (clipCullComponents > profile->limits->clipDistanceComponents)
+        return HlslSetResourceFailure(module,
+            "clip/cull distance components", clipCullComponents,
+            profile->limits->clipDistanceComponents, clipLoc);
+    if (profile->stage == HLSL_STAGE_PIXEL) {
+        colorLoc = NULL;
+        colors = HlslColorOutputUsage(profile, outputs, &colorLoc);
+        if (colors > profile->limits->colorOutputs)
+            return HlslSetResourceFailure(module, "color outputs", colors,
+                profile->limits->colorOutputs, colorLoc);
+        depthLoc = NULL;
+        depths = HlslDepthOutputUsage(outputs, &depthLoc);
+        if (depths > profile->limits->depthOutputs)
+            return HlslSetResourceFailure(module, "depth outputs", depths,
+                profile->limits->depthOutputs, depthLoc);
+    }
+    return 1;
+} // HlslValidateInterfaceLimits
+
+#if defined(HLSL_VALIDATION_TESTING)
+int HlslValidateInterfaceLimitsForTesting(HlslModule *module,
+    const HlslProfileDesc *profile, const HlslDecl *inputs,
+    const HlslDecl *geometryScalars, const HlslDecl *outputs)
+{
+    return HlslValidateInterfaceLimits(module, profile, inputs,
+                                       geometryScalars, outputs);
+}
+#endif
+
 static int HlslValidateInterfaces(HlslModule *module,
                                   const HlslProfileDesc *profile)
 {
@@ -3182,11 +3274,6 @@ static int HlslValidateInterfaces(HlslModule *module,
     HlslDecl *output;
     HlslDecl *wrapperInput;
     HlslDecl *geometryScalars;
-    const HlslLoc *colorLoc;
-    const HlslLoc *clipLoc;
-    int used;
-    int colors;
-    int clipCullComponents;
 
     input = NULL;
     output = NULL;
@@ -3301,29 +3388,11 @@ static int HlslValidateInterfaces(HlslModule *module,
     {
         return 0;
     }
-    used = HlslCountDeclarations(input != NULL ? input->members : NULL) +
-           HlslCountDeclarations(geometryScalars);
-    if (used > profile->limits->inputs)
-        return HlslSetResourceFailure(module, "inputs", used,
-            profile->limits->inputs, HlslLastDeclLoc(input->members));
-    used = HlslCountDeclarations(output != NULL ? output->members : NULL);
-    if (used > profile->limits->outputs)
-        return HlslSetResourceFailure(module, "outputs", used,
-            profile->limits->outputs, HlslLastDeclLoc(output->members));
-    clipLoc = NULL;
-    clipCullComponents = HlslClipCullComponentUsage(
-        output != NULL ? output->members : NULL, &clipLoc);
-    if (clipCullComponents > profile->limits->clipDistanceComponents)
-        return HlslSetResourceFailure(module,
-            "clip/cull distance components", clipCullComponents,
-            profile->limits->clipDistanceComponents, clipLoc);
-    if (profile->stage == HLSL_STAGE_PIXEL) {
-        colorLoc = NULL;
-        colors = HlslColorOutputUsage(profile,
-            output != NULL ? output->members : NULL, &colorLoc);
-        if (colors > profile->limits->colorOutputs)
-            return HlslSetResourceFailure(module, "color outputs", colors,
-                profile->limits->colorOutputs, colorLoc);
+    if (!HlslValidateInterfaceLimits(module, profile,
+            input != NULL ? input->members : NULL, geometryScalars,
+            output != NULL ? output->members : NULL))
+    {
+        return 0;
     }
     if (module->stage == HLSL_STAGE_VERTEX &&
         !HlslHasPosition(profile,
@@ -4491,6 +4560,7 @@ static int HlslValidateTargetModule(HlslModule *module,
     if (profile->limits == NULL || profile->limits->inputs < 0 ||
         profile->limits->outputs < 0 ||
         profile->limits->colorOutputs < 0 ||
+        profile->limits->depthOutputs < 0 ||
         profile->limits->floatConstants < 0 ||
         profile->limits->intConstants < 0 ||
         profile->limits->boolConstants < 0 ||
