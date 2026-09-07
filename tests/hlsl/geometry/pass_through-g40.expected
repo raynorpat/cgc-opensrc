@@ -1,0 +1,55 @@
+// profile hlslg40
+// target gs_4_0
+// cgc-bind interface out POSITION float4 SV_Position SV_Position system default
+// cgc-bind interface out COLOR0 float4 COLOR0 COLOR0 user default
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+
+struct cg_GeometryOut
+{
+    float4 position : SV_Position;
+    float4 color0 : COLOR0;
+};
+
+struct cg_PassOutput
+{
+    float4 position;
+    float4 color;
+};
+
+struct cg_GeometryIn
+{
+    float4 position : SV_Position;
+};
+
+cg_PassOutput cg_makeOutput(float4 position)
+{
+    cg_PassOutput result = (cg_PassOutput) 0;
+    result.position = position;
+    result.color = (float4) float4(1.0, 0.0, 0.0, 1.0);
+    return result;
+}
+
+void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, inout cg_GeometryOut cgc_output)
+{
+    cg_PassOutput temp1;
+    float4 temp2;
+    float4 temp3;
+    {
+        temp1 = cg_makeOutput(position[0]);
+        temp2 = temp1.position;
+        temp3 = temp1.color;
+        cgc_output.position = temp2;
+        cgc_output.color0 = temp3;
+        cgc_stream.Append(cgc_output);
+    }
+}
+
+[maxvertexcount(1)]
+void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_stream)
+{
+    float4 position[1];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
+    position[0] = input[0].position;
+    cg_entry(position, cgc_stream, cgc_output);
+    return;
+}

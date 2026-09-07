@@ -1,0 +1,20 @@
+// Task 10: one aggregate Cg geometry emission is evaluated once and becomes
+// one stream append.
+
+struct PassOutput {
+    float4 position : POSITION;
+    float4 color : COLOR0;
+};
+
+PassOutput makeOutput(float4 position)
+{
+    PassOutput result;
+    result.position = position;
+    result.color = float4(1.0, 0.0, 0.0, 1.0);
+    return result;
+}
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    emitVertex(makeOutput(position[0]));
+}

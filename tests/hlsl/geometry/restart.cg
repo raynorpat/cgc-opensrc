@@ -1,0 +1,9 @@
+// Task 10: every source restart becomes one operand-free stream method.
+
+LINE LINE_OUT void main(AttribArray<float4> position : POSITION)
+{
+    emitVertex(position[0] : POSITION);
+    restartStrip();
+    emitVertex(position[1] : POSITION);
+    restartStrip();
+}

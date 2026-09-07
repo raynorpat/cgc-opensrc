@@ -840,6 +840,23 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
                     HLSL_ERROR_INVALID_IR, &statement->loc,
                     "HLSL loop jump");
             break;
+        case HLSL_STMT_APPEND:
+            if (module->stage != HLSL_STAGE_GEOMETRY ||
+                statement->u.append.record == NULL ||
+                !HlslLegalizeExpr(module, statement->u.append.record,
+                                  allowUint))
+            {
+                return HlslLegalizeFailure(module,
+                    HLSL_ERROR_GEOMETRY_LAYOUT, &statement->loc,
+                    "geometry append");
+            }
+            break;
+        case HLSL_STMT_RESTART_STRIP:
+            if (module->stage != HLSL_STAGE_GEOMETRY)
+                return HlslLegalizeFailure(module,
+                    HLSL_ERROR_GEOMETRY_LAYOUT, &statement->loc,
+                    "geometry restart");
+            break;
         default:
             return HlslLegalizeFailure(module,
                                        HLSL_ERROR_UNSUPPORTED_OPERATION,
@@ -849,6 +866,341 @@ static int HlslLegalizeStatements(HlslModule *module, HlslStmt *statement,
     }
     return 1;
 } // HlslLegalizeStatements
+
+static HlslExpr *HlslGeometrySymbol(HlslModule *module, HlslDecl *decl)
+{
+    HlslExpr *expression;
+
+    if (decl == NULL)
+        return NULL;
+    expression = HlslNewExpr(module, HLSL_EXPR_SYMBOL, decl->type);
+    if (expression != NULL)
+        expression->u.symbol = decl;
+    return expression;
+} // HlslGeometrySymbol
+
+static HlslFlatReplay *HlslGeometryStateForTarget(HlslFunction *function,
+                                                  HlslDecl *target)
+{
+    HlslFlatReplay *state;
+
+    for (state = function != NULL ? function->geometryFlatState : NULL;
+         state != NULL; state = state->next)
+    {
+        if (state->target == target)
+            return state;
+    }
+    return NULL;
+} // HlslGeometryStateForTarget
+
+static int HlslAppendGeometryCallState(HlslModule *module,
+                                       HlslFunction *caller,
+                                       HlslExpr *call)
+{
+    HlslFunction *callee;
+    HlslFlatReplay *calleeState;
+    HlslFlatReplay *callerState;
+    HlslExpr *argument;
+
+    callee = call->u.call.function;
+    if (callee == NULL || !callee->geometryEffect)
+        return 1;
+    if (caller == NULL || !caller->geometryEffect ||
+        caller->geometryStream == NULL ||
+        caller->geometryOutputRecord == NULL)
+    {
+        return 0;
+    }
+    argument = HlslGeometrySymbol(module, caller->geometryStream);
+    if (argument == NULL)
+        return 0;
+    HlslAppendExpr(&call->u.call.arguments, argument);
+    argument = HlslGeometrySymbol(module, caller->geometryOutputRecord);
+    if (argument == NULL)
+        return 0;
+    HlslAppendExpr(&call->u.call.arguments, argument);
+    for (calleeState = callee->geometryFlatState; calleeState != NULL;
+         calleeState = calleeState->next)
+    {
+        callerState = HlslGeometryStateForTarget(caller,
+                                                 calleeState->target);
+        if (callerState == NULL)
+            return 0;
+        argument = HlslGeometrySymbol(module, callerState->shadow);
+        if (argument == NULL)
+            return 0;
+        HlslAppendExpr(&call->u.call.arguments, argument);
+        argument = HlslGeometrySymbol(module, callerState->defined);
+        if (argument == NULL)
+            return 0;
+        HlslAppendExpr(&call->u.call.arguments, argument);
+    }
+    return 1;
+} // HlslAppendGeometryCallState
+
+static int HlslRewriteGeometryCallsExpr(HlslModule *module,
+    HlslFunction *caller, HlslExpr *expression)
+{
+    HlslExpr *argument;
+
+    if (expression == NULL)
+        return 1;
+    switch (expression->kind) {
+    case HLSL_EXPR_UNARY:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                                            expression->u.unary.operand);
+    case HLSL_EXPR_BINARY:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                                            expression->u.binary.left) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                                            expression->u.binary.right);
+    case HLSL_EXPR_CONDITIONAL:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                expression->u.conditional.condition) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                expression->u.conditional.trueExpr) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                expression->u.conditional.falseExpr);
+    case HLSL_EXPR_CALL:
+        for (argument = expression->u.call.arguments; argument != NULL;
+             argument = argument->next)
+        {
+            if (!HlslRewriteGeometryCallsExpr(module, caller, argument))
+                return 0;
+        }
+        return HlslAppendGeometryCallState(module, caller, expression);
+    case HLSL_EXPR_CONSTRUCT:
+        for (argument = expression->u.construct.arguments;
+             argument != NULL; argument = argument->next)
+        {
+            if (!HlslRewriteGeometryCallsExpr(module, caller, argument))
+                return 0;
+        }
+        return 1;
+    case HLSL_EXPR_CAST:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                                            expression->u.cast.expression);
+    case HLSL_EXPR_MEMBER:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                                            expression->u.member.object);
+    case HLSL_EXPR_INDEX:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                    expression->u.index.object) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                    expression->u.index.index);
+    case HLSL_EXPR_SWIZZLE:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                                            expression->u.swizzle.object);
+    case HLSL_EXPR_TEXTURE_METHOD:
+        return HlslRewriteGeometryCallsExpr(module, caller,
+                    expression->u.textureMethod.texture) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                    expression->u.textureMethod.sampler) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                    expression->u.textureMethod.coordinates) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                    expression->u.textureMethod.argument1) &&
+               HlslRewriteGeometryCallsExpr(module, caller,
+                    expression->u.textureMethod.argument2);
+    default:
+        return 1;
+    }
+} // HlslRewriteGeometryCallsExpr
+
+static int HlslRewriteGeometryCalls(HlslModule *module,
+    HlslFunction *caller, HlslStmt *statement)
+{
+    for (; statement != NULL; statement = statement->next) {
+        switch (statement->kind) {
+        case HLSL_STMT_EXPRESSION:
+            if (!HlslRewriteGeometryCallsExpr(module, caller,
+                                              statement->u.expression))
+                return 0;
+            break;
+        case HLSL_STMT_IF:
+            if (!HlslRewriteGeometryCallsExpr(module, caller,
+                    statement->u.ifStmt.condition) ||
+                !HlslRewriteGeometryCalls(module, caller,
+                    statement->u.ifStmt.trueBranch) ||
+                !HlslRewriteGeometryCalls(module, caller,
+                    statement->u.ifStmt.falseBranch)) return 0;
+            break;
+        case HLSL_STMT_WHILE:
+        case HLSL_STMT_DO:
+            if (!HlslRewriteGeometryCallsExpr(module, caller,
+                    statement->u.loop.condition) ||
+                !HlslRewriteGeometryCalls(module, caller,
+                    statement->u.loop.body)) return 0;
+            break;
+        case HLSL_STMT_FOR:
+            if (!HlslRewriteGeometryCalls(module, caller,
+                    statement->u.forStmt.init) ||
+                !HlslRewriteGeometryCallsExpr(module, caller,
+                    statement->u.forStmt.condition) ||
+                !HlslRewriteGeometryCalls(module, caller,
+                    statement->u.forStmt.step) ||
+                !HlslRewriteGeometryCalls(module, caller,
+                    statement->u.forStmt.body)) return 0;
+            break;
+        case HLSL_STMT_BLOCK:
+            if (!HlslRewriteGeometryCalls(module, caller,
+                                          statement->u.block)) return 0;
+            break;
+        case HLSL_STMT_RETURN:
+            if (!HlslRewriteGeometryCallsExpr(module, caller,
+                                              statement->u.returnExpr))
+                return 0;
+            break;
+        case HLSL_STMT_APPEND:
+            if (!HlslRewriteGeometryCallsExpr(module, caller,
+                                              statement->u.append.record))
+                return 0;
+            break;
+        default:
+            break;
+        }
+    }
+    return 1;
+} // HlslRewriteGeometryCalls
+
+static HlslExpr *HlslGeometryInitializer(HlslModule *module,
+                                         HlslType type, int boolean)
+{
+    HlslExpr *value;
+    HlslExpr *cast;
+
+    value = HlslNewExpr(module,
+        boolean ? HLSL_EXPR_BOOL : HLSL_EXPR_INT,
+        HlslNumericType(boolean ? HLSL_BASE_BOOL : HLSL_BASE_INT, 1));
+    if (value == NULL)
+        return NULL;
+    if (boolean) {
+        value->u.literalBool = 0;
+        return value;
+    }
+    value->u.literalInt = 0;
+    cast = HlslNewExpr(module, HLSL_EXPR_CAST, type);
+    if (cast != NULL)
+        cast->u.cast.expression = value;
+    return cast;
+} // HlslGeometryInitializer
+
+static int HlslPrepareGeometryWrapper(HlslModule *module)
+{
+    HlslFunction *wrapper;
+    HlslFunction *entry;
+    HlslFlatReplay *entryState;
+    HlslFlatReplay *wrapperState;
+    HlslFlatReplay **tail;
+    HlslDecl *shadow;
+    HlslDecl *defined;
+    HlslType streamType;
+    HlslType boolType;
+    const char *name;
+    char generated[192];
+
+    entry = module->entry;
+    wrapper = module->wrapper;
+    if (entry == NULL || wrapper == NULL || !entry->geometryEffect)
+        return 1;
+    if (module->geometryOutputStruct == NULL)
+        return 0;
+    wrapper->geometryEffect = 1;
+    streamType = HlslNumericType(HLSL_BASE_GEOMETRY_STREAM,
+                                 (int) module->geometryStream + 1);
+    name = HlslAllocateScopedSymbolName(module, wrapper, wrapper,
+                                        "cgc_stream");
+    wrapper->geometryStream = name != NULL ? HlslNewDecl(module,
+        HLSL_STORAGE_NONE, streamType, name) : NULL;
+    name = HlslAllocateScopedSymbolName(module, wrapper,
+        module->geometryOutputStruct, "cgc_output");
+    wrapper->geometryOutputRecord = name != NULL ? HlslNewDecl(module,
+        HLSL_STORAGE_NONE, module->geometryOutputStruct->type, name) : NULL;
+    if (wrapper->geometryStream == NULL ||
+        wrapper->geometryOutputRecord == NULL)
+        return 0;
+    wrapper->geometryStream->parameterQualifier = HLSL_PARAMETER_INOUT;
+    wrapper->geometryStream->geometryRole = HLSL_GEOMETRY_DECL_STREAM;
+    wrapper->geometryStream->publicName = module->geometryOutputStruct->name;
+    wrapper->geometryOutputRecord->geometryRole =
+        HLSL_GEOMETRY_DECL_OUTPUT_RECORD;
+    wrapper->geometryOutputRecord->initializer =
+        HlslGeometryInitializer(module,
+            wrapper->geometryOutputRecord->type, 0);
+    if (wrapper->geometryOutputRecord->initializer == NULL)
+        return 0;
+    HlslAppendDecl(&wrapper->parameters, wrapper->geometryStream);
+    HlslAppendDecl(&wrapper->locals, wrapper->geometryOutputRecord);
+
+    boolType = HlslNumericType(HLSL_BASE_BOOL, 1);
+    tail = &wrapper->geometryFlatState;
+    for (entryState = entry->geometryFlatState; entryState != NULL;
+         entryState = entryState->next)
+    {
+        if (strlen(entryState->target->name) + 18 > sizeof(generated))
+            return 0;
+        sprintf(generated, "cgc_flat_%s", entryState->target->name);
+        name = HlslAllocateScopedSymbolName(module, wrapper,
+                                            entryState->target, generated);
+        shadow = name != NULL ? HlslNewDecl(module, HLSL_STORAGE_NONE,
+            entryState->shadow->type, name) : NULL;
+        sprintf(generated, "cgc_flat_%s_defined",
+                entryState->target->name);
+        name = HlslAllocateScopedSymbolName(module, wrapper, shadow,
+                                            generated);
+        defined = name != NULL ? HlslNewDecl(module, HLSL_STORAGE_NONE,
+            boolType, name) : NULL;
+        wrapperState = shadow != NULL && defined != NULL ?
+            HlslNewFlatReplay(module, entryState->target,
+                              shadow, defined) : NULL;
+        if (wrapperState == NULL)
+            return 0;
+        shadow->geometryRole = HLSL_GEOMETRY_DECL_FLAT_SHADOW;
+        defined->geometryRole = HLSL_GEOMETRY_DECL_FLAT_DEFINED;
+        defined->initializer = HlslGeometryInitializer(module,
+                                                       boolType, 1);
+        if (defined->initializer == NULL)
+            return 0;
+        HlslAppendDecl(&wrapper->locals, shadow);
+        HlslAppendDecl(&wrapper->locals, defined);
+        *tail = wrapperState;
+        tail = &wrapperState->next;
+    }
+    return 1;
+} // HlslPrepareGeometryWrapper
+
+static int HlslLegalizeGeometryState(HlslModule *module)
+{
+    HlslFunction *function;
+    HlslFlatReplay *state;
+
+    if (module->stage != HLSL_STAGE_GEOMETRY)
+        return 1;
+    if (!HlslPrepareGeometryWrapper(module))
+        return 0;
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (!function->geometryEffect || function == module->wrapper)
+            continue;
+        HlslAppendDecl(&function->parameters, function->geometryStream);
+        HlslAppendDecl(&function->parameters,
+                       function->geometryOutputRecord);
+        for (state = function->geometryFlatState; state != NULL;
+             state = state->next)
+        {
+            HlslAppendDecl(&function->parameters, state->shadow);
+            HlslAppendDecl(&function->parameters, state->defined);
+        }
+    }
+    for (function = module->functions; function != NULL;
+         function = function->next)
+    {
+        if (!HlslRewriteGeometryCalls(module, function, function->body))
+            return 0;
+    }
+    return 1;
+} // HlslLegalizeGeometryState
 
 int HlslLegalizeModule(HlslModule *module,
                        const HlslProfileDesc *profile)
@@ -863,7 +1215,8 @@ int HlslLegalizeModule(HlslModule *module,
                                    "invalid HLSL legalization module");
     }
     allowUint = profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN;
-    if (!HlslLegalizeDeclarations(module, module->globals, 1,
+    if (!HlslLegalizeGeometryState(module) ||
+        !HlslLegalizeDeclarations(module, module->globals, 1,
                                   allowUint) ||
         !HlslLegalizeDeclarations(module, module->structs, 0,
                                   allowUint))

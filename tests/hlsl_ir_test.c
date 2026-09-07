@@ -4359,7 +4359,6 @@ static void TestModernGeometryValidation(void)
     HlslFlatReplay *replay;
     HlslExpr *record;
     HlslExpr *badRecord;
-    HlslExpr *construct;
     HlslExpr *derivative;
     HlslExpr *sourceValue;
     HlslDecl *source;
@@ -4426,7 +4425,8 @@ static void TestModernGeometryValidation(void)
     helperCall->u.call.name = helper->name;
     callStatement->u.expression = helperCall;
     fixture.entry->body = callStatement;
-    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_INVALID_IR);
 
     ConfigureGeometryFixture(&fixture);
     assert(HlslSetGeometryLayout(&fixture.module,
@@ -4438,17 +4438,15 @@ static void TestModernGeometryValidation(void)
                               source->type);
     derivative = HlslNewExpr(&fixture.module, HLSL_EXPR_CALL,
                               source->type);
-    construct = HlslNewExpr(&fixture.module, HLSL_EXPR_CONSTRUCT,
-                             fixture.outputStruct->type);
-    assert(sourceValue != NULL && derivative != NULL && construct != NULL);
+    assert(sourceValue != NULL && derivative != NULL);
     fixture.entry->locals = source;
     sourceValue->u.symbol = source;
     derivative->u.call.name = "ddx";
     derivative->u.call.builtin = HLSL_BUILTIN_DDX;
     derivative->u.call.arguments = sourceValue;
-    construct->u.construct.arguments = derivative;
-    statement = HlslNewAppend(&fixture.module, construct, NULL, loc);
+    statement = HlslNewStmt(&fixture.module, HLSL_STMT_EXPRESSION);
     assert(statement != NULL);
+    statement->u.expression = derivative;
     fixture.entry->body = statement;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
                              HLSL_ERROR_STAGE_OPERATION);
@@ -4645,6 +4643,32 @@ static void TestModernGeometryValidation(void)
     statement = HlslNewAppend(&fixture.module, record, replay, loc);
     assert(replay != NULL && statement != NULL);
     fixture.entry->body = statement;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_INVALID_IR);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 1));
+    fixture.wrapper->parameters->type.arraySize = 1;
+    record = HlslNewExpr(&fixture.module, HLSL_EXPR_SYMBOL,
+                         fixture.outputStruct->type);
+    assert(record != NULL);
+    record->u.symbol = fixture.wrapper->locals;
+    statement = HlslNewAppend(&fixture.module, record, NULL, loc);
+    assert(statement != NULL);
+    fixture.entry->body = statement;
+    AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
+                             HLSL_ERROR_INVALID_IR);
+
+    ConfigureGeometryFixture(&fixture);
+    assert(HlslSetGeometryLayout(&fixture.module,
+        HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 1));
+    fixture.wrapper->parameters->type.arraySize = 1;
+    source = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+        HlslNumericType(HLSL_BASE_GEOMETRY_STREAM, 1),
+        "untrackedStream");
+    assert(source != NULL);
+    HlslAppendDecl(&fixture.entry->locals, source);
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
                              HLSL_ERROR_INVALID_IR);
 

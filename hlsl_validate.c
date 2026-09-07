@@ -277,6 +277,8 @@ static int HlslTypeIsValidInner(const HlslType *type, int allowVoid,
     case HLSL_BASE_TEXTURECUBE:
     case HLSL_BASE_SAMPLER_STATE:
         return type->len == 1;
+    case HLSL_BASE_GEOMETRY_STREAM:
+        return type->len >= 1 && type->len <= 3;
     case HLSL_BASE_STRUCT:
         break;
     }
@@ -794,6 +796,10 @@ static int HlslDeclShapeIsValid(const HlslDecl *decl)
         decl->typeQualifier > HLSL_TYPE_QUALIFIER_CONST ||
         decl->parameterQualifier < HLSL_PARAMETER_IN ||
         decl->parameterQualifier > HLSL_PARAMETER_INOUT ||
+        decl->geometryRole < HLSL_GEOMETRY_DECL_NONE ||
+        decl->geometryRole > HLSL_GEOMETRY_DECL_FLAT_DEFINED ||
+        ((decl->type.base == HLSL_BASE_GEOMETRY_STREAM) !=
+         (decl->geometryRole == HLSL_GEOMETRY_DECL_STREAM)) ||
         !HlslTypeIsValid(&decl->type, 0) ||
         (HlslTypeContainsObject(&decl->type, 0) &&
          (decl->storage != HLSL_STORAGE_SAMPLER || !objectType)))
@@ -1276,6 +1282,94 @@ static int HlslValidateExpressionList(HlslValidationContext *context,
     return 1;
 } // HlslValidateExpressionList
 
+static const HlslExpr *HlslCallArgumentForParameter(
+    const HlslExpr *call, const HlslDecl *target)
+{
+    const HlslDecl *parameter;
+    const HlslExpr *argument;
+
+    if (call == NULL || call->kind != HLSL_EXPR_CALL ||
+        call->u.call.function == NULL || target == NULL)
+    {
+        return NULL;
+    }
+    parameter = call->u.call.function->parameters;
+    argument = call->u.call.arguments;
+    while (parameter != NULL && argument != NULL) {
+        if (parameter == target)
+            return argument;
+        parameter = parameter->next;
+        argument = argument->next;
+    }
+    return NULL;
+} // HlslCallArgumentForParameter
+
+static const HlslFlatReplay *HlslGeometryStateForTarget(
+    const HlslFunction *function, const HlslDecl *target)
+{
+    const HlslFlatReplay *state;
+
+    for (state = function != NULL ? function->geometryFlatState : NULL;
+         state != NULL; state = state->next)
+    {
+        if (state->target == target)
+            return state;
+    }
+    return NULL;
+} // HlslGeometryStateForTarget
+
+static int HlslCallPassesGeometrySymbol(const HlslExpr *call,
+                                        const HlslDecl *parameter,
+                                        const HlslDecl *argumentDecl)
+{
+    const HlslExpr *argument;
+
+    argument = HlslCallArgumentForParameter(call, parameter);
+    return argument != NULL && argument->kind == HLSL_EXPR_SYMBOL &&
+           argument->u.symbol == argumentDecl;
+} // HlslCallPassesGeometrySymbol
+
+static int HlslValidateGeometryCallState(HlslValidationContext *context,
+                                         const HlslExpr *call)
+{
+    const HlslFunction *callee;
+    const HlslFunction *caller;
+    const HlslFlatReplay *calleeState;
+    const HlslFlatReplay *callerState;
+
+    callee = call->u.call.function;
+    caller = context->function;
+    if (!callee->geometryEffect)
+        return 1;
+    if (caller == NULL || !caller->geometryEffect ||
+        !HlslCallPassesGeometrySymbol(call, callee->geometryStream,
+                                      caller->geometryStream) ||
+        !HlslCallPassesGeometrySymbol(call,
+            callee->geometryOutputRecord,
+            caller->geometryOutputRecord))
+    {
+        return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
+                        &call->loc, "unbound HLSL geometry call state");
+    }
+    for (calleeState = callee->geometryFlatState; calleeState != NULL;
+         calleeState = calleeState->next)
+    {
+        callerState = HlslGeometryStateForTarget(caller,
+                                                 calleeState->target);
+        if (callerState == NULL ||
+            !HlslCallPassesGeometrySymbol(call, calleeState->shadow,
+                                          callerState->shadow) ||
+            !HlslCallPassesGeometrySymbol(call, calleeState->defined,
+                                          callerState->defined))
+        {
+            return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
+                            &call->loc,
+                            "unbound HLSL geometry flat state");
+        }
+    }
+    return 1;
+} // HlslValidateGeometryCallState
+
 static int HlslValidateUserCall(HlslValidationContext *context,
                                 const HlslExpr *expression,
                                 const HlslPointerFrame *frame, int depth)
@@ -1353,6 +1447,8 @@ static int HlslValidateUserCall(HlslValidationContext *context,
     {
         return 0;
     }
+    if (!HlslValidateGeometryCallState(context, expression))
+        return 0;
     if (expression->u.call.function == context->module->entry)
         context->entryCalls++;
     return 1;
@@ -1797,6 +1893,256 @@ static const HlslType *HlslGeometryOutputType(const HlslModule *module)
     return NULL;
 } // HlslGeometryOutputType
 
+static int HlslDeclListContainsDirect(const HlslDecl *list,
+                                      const HlslDecl *target)
+{
+    for (; list != NULL; list = list->next) {
+        if (list == target)
+            return 1;
+    }
+    return 0;
+} // HlslDeclListContainsDirect
+
+static int HlslCountGeometryRole(const HlslDecl *list,
+                                 HlslGeometryDeclRole role)
+{
+    int count;
+
+    count = 0;
+    for (; list != NULL; list = list->next) {
+        if (list->geometryRole == role)
+            count++;
+    }
+    return count;
+} // HlslCountGeometryRole
+
+static int HlslGeometryZeroInitializer(const HlslDecl *decl)
+{
+    const HlslExpr *initializer;
+
+    initializer = decl != NULL ? decl->initializer : NULL;
+    return initializer != NULL && initializer->kind == HLSL_EXPR_CAST &&
+           HlslTypesEqual(&initializer->type, &decl->type) &&
+           initializer->u.cast.expression != NULL &&
+           initializer->u.cast.expression->kind == HLSL_EXPR_INT &&
+           initializer->u.cast.expression->u.literalInt == 0;
+} // HlslGeometryZeroInitializer
+
+static int HlslGeometryFalseInitializer(const HlslDecl *decl)
+{
+    const HlslExpr *initializer;
+
+    initializer = decl != NULL ? decl->initializer : NULL;
+    return initializer != NULL && initializer->kind == HLSL_EXPR_BOOL &&
+           initializer->type.base == HLSL_BASE_BOOL &&
+           initializer->type.len == 1 &&
+           initializer->u.literalBool == 0;
+} // HlslGeometryFalseInitializer
+
+static int HlslValidateGeometryFunctionState(HlslModule *module,
+                                             HlslFunction *function)
+{
+    const HlslDecl *member;
+    const HlslDecl *suffix;
+    const HlslFlatReplay *state;
+    int flatCount;
+    int wrapper;
+
+    if (!function->geometryEffect) {
+        if (function->geometryStream != NULL ||
+            function->geometryOutputRecord != NULL ||
+            function->geometryFlatState != NULL ||
+            HlslCountGeometryRole(function->parameters,
+                HLSL_GEOMETRY_DECL_STREAM) != 0 ||
+            HlslCountGeometryRole(function->parameters,
+                HLSL_GEOMETRY_DECL_OUTPUT_RECORD) != 0 ||
+            HlslCountGeometryRole(function->parameters,
+                HLSL_GEOMETRY_DECL_FLAT_SHADOW) != 0 ||
+            HlslCountGeometryRole(function->parameters,
+                HLSL_GEOMETRY_DECL_FLAT_DEFINED) != 0 ||
+            HlslCountGeometryRole(function->parameters,
+                HLSL_GEOMETRY_DECL_FLAT_TARGET) != 0 ||
+            HlslCountGeometryRole(function->locals,
+                HLSL_GEOMETRY_DECL_STREAM) != 0 ||
+            HlslCountGeometryRole(function->locals,
+                HLSL_GEOMETRY_DECL_OUTPUT_RECORD) != 0 ||
+            HlslCountGeometryRole(function->locals,
+                HLSL_GEOMETRY_DECL_FLAT_SHADOW) != 0 ||
+            HlslCountGeometryRole(function->locals,
+                HLSL_GEOMETRY_DECL_FLAT_DEFINED) != 0 ||
+            HlslCountGeometryRole(function->locals,
+                HLSL_GEOMETRY_DECL_FLAT_TARGET) != 0)
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                            &function->loc,
+                            "orphaned HLSL geometry state");
+        }
+        return 1;
+    }
+    wrapper = function == module->wrapper;
+    if (module->stage != HLSL_STAGE_GEOMETRY ||
+        module->geometryOutputStruct == NULL ||
+        module->geometryOutputStruct->storage != HLSL_STORAGE_OUTPUT ||
+        !HlslDeclListContainsDirect(module->structs,
+                                    module->geometryOutputStruct) ||
+        function->geometryStream == NULL ||
+        function->geometryOutputRecord == NULL ||
+        function->geometryStream->geometryRole !=
+            HLSL_GEOMETRY_DECL_STREAM ||
+        function->geometryStream->storage != HLSL_STORAGE_NONE ||
+        function->geometryStream->parameterQualifier !=
+            HLSL_PARAMETER_INOUT ||
+        function->geometryStream->type.base !=
+            HLSL_BASE_GEOMETRY_STREAM ||
+        function->geometryStream->type.arraySize != 0 ||
+        function->geometryStream->type.len !=
+            (int) module->geometryStream + 1 ||
+        function->geometryStream->publicName == NULL ||
+        module->geometryOutputStruct->name == NULL ||
+        strcmp(function->geometryStream->publicName,
+               module->geometryOutputStruct->name) ||
+        function->geometryOutputRecord->geometryRole !=
+            HLSL_GEOMETRY_DECL_OUTPUT_RECORD ||
+        function->geometryOutputRecord->storage != HLSL_STORAGE_NONE ||
+        !HlslTypesEqual(&function->geometryOutputRecord->type,
+                        &module->geometryOutputStruct->type))
+    {
+        return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                        &function->loc,
+                        "invalid HLSL geometry function state");
+    }
+    if ((wrapper &&
+         (!HlslDeclListContainsDirect(function->parameters,
+                                      function->geometryStream) ||
+          function->geometryStream->next != NULL ||
+          !HlslDeclListContainsDirect(function->locals,
+              function->geometryOutputRecord) ||
+          !HlslGeometryZeroInitializer(
+              function->geometryOutputRecord))) ||
+        (!wrapper &&
+         (!HlslDeclListContainsDirect(function->parameters,
+                                      function->geometryStream) ||
+          !HlslDeclListContainsDirect(function->parameters,
+              function->geometryOutputRecord) ||
+          function->geometryStream->next !=
+              function->geometryOutputRecord ||
+          function->geometryOutputRecord->parameterQualifier !=
+              HLSL_PARAMETER_INOUT ||
+          function->geometryOutputRecord->initializer != NULL)))
+    {
+        return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                        &function->loc,
+                        "misplaced HLSL geometry function state");
+    }
+
+    if ((wrapper &&
+         (HlslCountGeometryRole(function->parameters,
+              HLSL_GEOMETRY_DECL_STREAM) != 1 ||
+          HlslCountGeometryRole(function->parameters,
+              HLSL_GEOMETRY_DECL_OUTPUT_RECORD) != 0 ||
+          HlslCountGeometryRole(function->parameters,
+              HLSL_GEOMETRY_DECL_FLAT_SHADOW) != 0 ||
+          HlslCountGeometryRole(function->parameters,
+              HLSL_GEOMETRY_DECL_FLAT_DEFINED) != 0 ||
+          HlslCountGeometryRole(function->locals,
+              HLSL_GEOMETRY_DECL_STREAM) != 0 ||
+          HlslCountGeometryRole(function->locals,
+              HLSL_GEOMETRY_DECL_OUTPUT_RECORD) != 1)) ||
+        (!wrapper &&
+         (HlslCountGeometryRole(function->parameters,
+              HLSL_GEOMETRY_DECL_STREAM) != 1 ||
+          HlslCountGeometryRole(function->parameters,
+              HLSL_GEOMETRY_DECL_OUTPUT_RECORD) != 1 ||
+          HlslCountGeometryRole(function->locals,
+              HLSL_GEOMETRY_DECL_STREAM) != 0 ||
+          HlslCountGeometryRole(function->locals,
+              HLSL_GEOMETRY_DECL_OUTPUT_RECORD) != 0 ||
+          HlslCountGeometryRole(function->locals,
+              HLSL_GEOMETRY_DECL_FLAT_SHADOW) != 0 ||
+          HlslCountGeometryRole(function->locals,
+              HLSL_GEOMETRY_DECL_FLAT_DEFINED) != 0)) ||
+        HlslCountGeometryRole(function->parameters,
+            HLSL_GEOMETRY_DECL_FLAT_TARGET) != 0 ||
+        HlslCountGeometryRole(function->locals,
+            HLSL_GEOMETRY_DECL_FLAT_TARGET) != 0)
+    {
+        return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                        &function->loc,
+                        "duplicate HLSL geometry function state");
+    }
+
+    suffix = wrapper ? function->geometryOutputRecord :
+                       function->geometryStream;
+    if (!wrapper)
+        suffix = suffix->next;
+    state = function->geometryFlatState;
+    flatCount = 0;
+    for (member = module->geometryOutputStruct->members; member != NULL;
+         member = member->next)
+    {
+        if (member->geometryRole != HLSL_GEOMETRY_DECL_FLAT_TARGET)
+            continue;
+        if (state == NULL || state->owner != module ||
+            state->target != member ||
+            member->interpolation != HLSL_INTERPOLATION_NOINTERPOLATION ||
+            state->shadow == NULL || state->defined == NULL ||
+            state->shadow->geometryRole !=
+                HLSL_GEOMETRY_DECL_FLAT_SHADOW ||
+            state->defined->geometryRole !=
+                HLSL_GEOMETRY_DECL_FLAT_DEFINED ||
+            state->shadow->storage != HLSL_STORAGE_NONE ||
+            state->defined->storage != HLSL_STORAGE_NONE ||
+            !HlslTypesEqual(&state->shadow->type, &member->type) ||
+            state->defined->type.base != HLSL_BASE_BOOL ||
+            state->defined->type.len != 1 ||
+            state->defined->type.arraySize != 0 ||
+            (wrapper &&
+             (!HlslDeclListContainsDirect(function->locals,
+                                           state->shadow) ||
+              !HlslDeclListContainsDirect(function->locals,
+                                           state->defined) ||
+              state->shadow->initializer != NULL ||
+              !HlslGeometryFalseInitializer(state->defined))) ||
+            (!wrapper &&
+             (!HlslDeclListContainsDirect(function->parameters,
+                                           state->shadow) ||
+              !HlslDeclListContainsDirect(function->parameters,
+                                           state->defined) ||
+              state->shadow->parameterQualifier != HLSL_PARAMETER_INOUT ||
+              state->defined->parameterQualifier != HLSL_PARAMETER_INOUT ||
+              state->shadow->initializer != NULL ||
+              state->defined->initializer != NULL)))
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                            &function->loc,
+                            "invalid HLSL geometry flat state");
+        }
+        if (suffix->next != state->shadow ||
+            state->shadow->next != state->defined)
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                            &function->loc,
+                            "unordered HLSL geometry flat state");
+        }
+        suffix = state->defined;
+        state = state->next;
+        flatCount++;
+    }
+    if (state != NULL || suffix->next != NULL ||
+        HlslCountGeometryRole(wrapper ? function->locals :
+                                      function->parameters,
+            HLSL_GEOMETRY_DECL_FLAT_SHADOW) != flatCount ||
+        HlslCountGeometryRole(wrapper ? function->locals :
+                                      function->parameters,
+            HLSL_GEOMETRY_DECL_FLAT_DEFINED) != flatCount)
+    {
+        return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                        &function->loc,
+                        "unexpected HLSL geometry function state");
+    }
+    return 1;
+} // HlslValidateGeometryFunctionState
+
 static int HlslValidateFlatReplay(HlslValidationContext *context,
                                   const HlslFlatReplay *replay)
 {
@@ -1812,6 +2158,12 @@ static int HlslValidateFlatReplay(HlslValidationContext *context,
             !HlslOwnsDecl(context->module, replay->shadow) ||
             !HlslOwnsDecl(context->module, replay->defined) ||
             !HlslMemberBelongsToType(outputType, replay->target) ||
+            replay->target->geometryRole !=
+                HLSL_GEOMETRY_DECL_FLAT_TARGET ||
+            replay->shadow->geometryRole !=
+                HLSL_GEOMETRY_DECL_FLAT_SHADOW ||
+            replay->defined->geometryRole !=
+                HLSL_GEOMETRY_DECL_FLAT_DEFINED ||
             !HlslTypesEqual(&replay->target->type,
                             &replay->shadow->type) ||
             replay->defined->type.arraySize != 0 ||
@@ -1966,7 +2318,13 @@ static int HlslValidateStatements(HlslValidationContext *context,
                                 &statement->loc,
                                 "append outside geometry module");
             }
-            if (statement->u.append.record == NULL ||
+            if (!context->function->geometryEffect ||
+                statement->u.append.record == NULL ||
+                statement->u.append.record->kind != HLSL_EXPR_SYMBOL ||
+                statement->u.append.record->u.symbol !=
+                    context->function->geometryOutputRecord ||
+                statement->u.append.replay !=
+                    context->function->geometryFlatState ||
                 !HlslValidateExpression(context,
                     statement->u.append.record, NULL, 0) ||
                 !HlslTypesEqual(&statement->u.append.record->type,
@@ -1988,7 +2346,8 @@ static int HlslValidateStatements(HlslValidationContext *context,
                                 &statement->loc,
                                 "restart outside geometry module");
             }
-            if (statement->u.expression != NULL)
+            if (!context->function->geometryEffect ||
+                statement->u.expression != NULL)
                 return HlslFail(context->module, HLSL_ERROR_INVALID_IR,
                                 &statement->loc,
                                 "restart strip has operands");
@@ -2007,6 +2366,8 @@ static int HlslValidateStructuralModule(HlslModule *module,
 {
     HlslValidationContext context;
     HlslFunction *function;
+    HlslFunction *otherFunction;
+    HlslDecl *global;
     int wrapperCalls;
     int otherCalls;
     int entryFlags;
@@ -2037,6 +2398,12 @@ static int HlslValidateStructuralModule(HlslModule *module,
     context.module = module;
     context.profile = profile;
     entryFlags = 0;
+    for (global = module->globals; global != NULL; global = global->next) {
+        if (global->geometryRole != HLSL_GEOMETRY_DECL_NONE)
+            return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                            &global->loc,
+                            "mutable global HLSL geometry state");
+    }
     /* Validate every callable signature before any initializer or body can
        compare an argument against it.  Function lists are not guaranteed
        to place a callee before its caller, and malformed recursive member
@@ -2052,11 +2419,23 @@ static int HlslValidateStructuralModule(HlslModule *module,
             !HlslDeclListShapeIsValid(function->parameters, 0) ||
             !HlslDeclListShapeIsValid(function->locals, 0) ||
             !HlslDeclTypesAreOwned(module, function->parameters, 0) ||
-            !HlslDeclTypesAreOwned(module, function->locals, 0))
+            !HlslDeclTypesAreOwned(module, function->locals, 0) ||
+            !HlslValidateGeometryFunctionState(module, function))
         {
             return HlslFail(module, HLSL_ERROR_INVALID_IR,
                             &function->loc,
                             "invalid HLSL function structure");
+        }
+        for (otherFunction = function->next; otherFunction != NULL;
+             otherFunction = otherFunction->next)
+        {
+            if (otherFunction->name != NULL &&
+                !strcmp(function->name, otherFunction->name))
+            {
+                return HlslFail(module, HLSL_ERROR_INVALID_IR,
+                                &otherFunction->loc,
+                                "duplicate HLSL function body");
+            }
         }
         if (function->isEntry)
             entryFlags++;
@@ -2256,6 +2635,8 @@ static int HlslCountDeclarations(const HlslDecl *members)
 
     count = 0;
     for (; members != NULL; members = members->next) {
+        if (members->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+            continue;
         if (count == INT_MAX)
             return INT_MAX;
         count++;
@@ -2459,7 +2840,10 @@ static int HlslValidateModernInterfaceSemantics(HlslModule *module,
     HlslInterpolation required;
 
     for (left = members; left != NULL; left = left->next) {
-        required =
+        if (left->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+            continue;
+        required = left->geometryRole == HLSL_GEOMETRY_DECL_FLAT_TARGET ?
+            HLSL_INTERPOLATION_NOINTERPOLATION :
             HlslModernRequiredTargetInterpolation(left->type.base);
         if (!HlslModernSemanticIdentityIsValid(profile, left, isOutput) ||
             !HlslModernInterfaceTypeIsValid(left) ||
@@ -2469,6 +2853,8 @@ static int HlslValidateModernInterfaceSemantics(HlslModule *module,
                             HlslBindingReason(NULL, left->semantic));
         }
         for (right = left->next; right != NULL; right = right->next) {
+            if (right->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+                continue;
             if ((left->name != NULL && right->name != NULL &&
                  !strcmp(left->name, right->name)) ||
                 HlslModernDeclarationsConflict(left, right))
@@ -2489,7 +2875,11 @@ static int HlslValidateModernInterfaceListsDistinct(HlslModule *module,
     const HlslDecl *right;
 
     for (left = members; left != NULL; left = left->next) {
+        if (left->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+            continue;
         for (right = otherMembers; right != NULL; right = right->next) {
+            if (right->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+                continue;
             if ((left->name != NULL && right->name != NULL &&
                  !strcmp(left->name, right->name)) ||
                 HlslModernDeclarationsConflict(left, right))
@@ -2507,6 +2897,8 @@ static int HlslValidateGeometryScalarInputs(HlslModule *module,
                                              const HlslDecl *members)
 {
     for (; members != NULL; members = members->next) {
+        if (members->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+            continue;
         if (members->storage != HLSL_STORAGE_INPUT ||
             members->parameterQualifier != HLSL_PARAMETER_IN ||
             members->semanticKind != HLSL_SEMANTIC_SV_PRIMITIVE_ID)
@@ -2714,10 +3106,16 @@ static int HlslValidateInterfaces(HlslModule *module,
                         &module->wrapper->loc,
                         "HLSL wrapper interface shape");
     }
-    if (
-        (output == NULL && module->wrapper->result.base != HLSL_BASE_VOID) ||
-        (output != NULL &&
-         !HlslTypesEqual(&module->wrapper->result, &output->type)))
+    if ((profile->stage == HLSL_STAGE_GEOMETRY &&
+         module->wrapper->geometryEffect &&
+         (module->wrapper->result.base != HLSL_BASE_VOID ||
+          module->wrapper->result.len != 0)) ||
+        ((profile->stage != HLSL_STAGE_GEOMETRY ||
+          !module->wrapper->geometryEffect) &&
+         ((output == NULL &&
+           module->wrapper->result.base != HLSL_BASE_VOID) ||
+          (output != NULL &&
+           !HlslTypesEqual(&module->wrapper->result, &output->type)))))
     {
         return HlslFail(module, HLSL_ERROR_ENTRY_ABI,
                         &module->wrapper->loc,

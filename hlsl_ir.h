@@ -77,7 +77,8 @@ typedef enum HlslBase_Enum {
     HLSL_BASE_TEXTURE2D,
     HLSL_BASE_TEXTURE3D,
     HLSL_BASE_TEXTURECUBE,
-    HLSL_BASE_SAMPLER_STATE
+    HLSL_BASE_SAMPLER_STATE,
+    HLSL_BASE_GEOMETRY_STREAM
 } HlslBase;
 
 typedef enum HlslSemanticKind_Enum {
@@ -312,6 +313,15 @@ typedef enum HlslParameterQualifier_Enum {
     HLSL_PARAMETER_OUT,
     HLSL_PARAMETER_INOUT
 } HlslParameterQualifier;
+
+typedef enum HlslGeometryDeclRole_Enum {
+    HLSL_GEOMETRY_DECL_NONE,
+    HLSL_GEOMETRY_DECL_STREAM,
+    HLSL_GEOMETRY_DECL_OUTPUT_RECORD,
+    HLSL_GEOMETRY_DECL_FLAT_TARGET,
+    HLSL_GEOMETRY_DECL_FLAT_SHADOW,
+    HLSL_GEOMETRY_DECL_FLAT_DEFINED
+} HlslGeometryDeclRole;
 
 typedef enum HlslExprKind_Enum {
     HLSL_EXPR_SYMBOL,
@@ -578,6 +588,7 @@ struct HlslDecl_Rec {
     HlslRegisterBank sourceBank;
     int hasPackOffset;
     HlslPackOffset packOffset;
+    HlslGeometryDeclRole geometryRole;
 };
 
 struct HlslFunction_Rec {
@@ -594,6 +605,10 @@ struct HlslFunction_Rec {
     int isEntry;
     int needsPrototype;
     int visitState;
+    int geometryEffect;
+    HlslDecl *geometryStream;
+    HlslDecl *geometryOutputRecord;
+    HlslFlatReplay *geometryFlatState;
 };
 
 struct HlslBinding_Rec {
@@ -652,6 +667,7 @@ struct HlslModule_Rec {
     HlslGeometryStream geometryStream;
     int geometryInputCount;
     int geometryMaxVertices;
+    HlslDecl *geometryOutputStruct;
 };
 
 int HlslErrorCode(HlslErrorKind kind);

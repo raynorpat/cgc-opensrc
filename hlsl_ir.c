@@ -582,6 +582,8 @@ static const char *HlslTypeNameInner(const HlslType *type,
         return type->len == 1 ? "TextureCube" : NULL;
     case HLSL_BASE_SAMPLER_STATE:
         return type->len == 1 ? "SamplerState" : NULL;
+    case HLSL_BASE_GEOMETRY_STREAM:
+        return type->len >= 1 && type->len <= 3 ? "geometry_stream" : NULL;
     case HLSL_BASE_STRUCT:
         return type->len == 0 && type->structName != NULL &&
                type->structName[0] != '\0' ? type->structName : NULL;
@@ -1703,6 +1705,7 @@ static int HlslTypeRegisterSpanInner(const HlslType *type,
     case HLSL_BASE_TEXTURE3D:
     case HLSL_BASE_TEXTURECUBE:
     case HLSL_BASE_SAMPLER_STATE:
+    case HLSL_BASE_GEOMETRY_STREAM:
     case HLSL_BASE_VOID:
     case HLSL_BASE_STRUCT:
         return 0;

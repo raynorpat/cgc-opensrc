@@ -1,0 +1,10 @@
+// Task 10: loop amplification preserves the append in its loop body.
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    int i;
+    for (i = 0; i < 3; i = i + 1) {
+        emitVertex(position[0] + float4((float) i, 0.0, 0.0, 0.0)
+                   : POSITION);
+    }
+}

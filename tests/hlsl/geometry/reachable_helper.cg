@@ -1,0 +1,19 @@
+// Task 10: geometry effects flow transitively through reachable helpers.
+
+void leaf(float4 position, float4 color)
+{
+    flatAttrib(color : COLOR0);
+    emitVertex(position : POSITION, color * 0.5 : COLOR0);
+}
+
+void middle(float4 position, float4 color)
+{
+    leaf(position, color);
+    restartStrip();
+}
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          uniform float4 color)
+{
+    middle(position[0], color);
+}

@@ -1,0 +1,9 @@
+// Task 10: replay happens after the ordinary emit bundle assignment.
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          uniform float4 color)
+{
+    flatAttrib(color : COLOR0);
+    flatAttrib(color * 0.5 : COLOR0);
+    emitVertex(position[0] : POSITION, color * 0.25 : COLOR0);
+}

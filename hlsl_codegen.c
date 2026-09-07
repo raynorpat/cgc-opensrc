@@ -225,6 +225,16 @@ static int HlslIsScalarBooleanType(const HlslType *type)
 static int HlslWriteDeclTypeAndName(FILE *out, const HlslDecl *decl)
 {
     const HlslType *element;
+    const char *streamType;
+
+    if (decl->geometryRole == HLSL_GEOMETRY_DECL_STREAM) {
+        streamType = decl->type.len == 1 ? "PointStream" :
+                     decl->type.len == 2 ? "LineStream" :
+                     decl->type.len == 3 ? "TriangleStream" : NULL;
+        return streamType != NULL && decl->publicName != NULL &&
+               fprintf(out, "%s<%s> %s", streamType,
+                       decl->publicName, decl->name) >= 0;
+    }
 
     if (decl->type.arraySize == 0 && decl->type.len == 1 &&
         (decl->type.base == HLSL_BASE_TEXTURE1D ||
@@ -932,11 +942,30 @@ static int HlslWriteStruct(FILE *out, const HlslDecl *structure)
     return fputs("};\n", out) != EOF;
 } // HlslWriteStruct
 
-static int HlslWriteParameters(FILE *out, const HlslDecl *parameter)
+static const char *HlslGeometryInputKeyword(HlslGeometryInput input)
+{
+    switch (input) {
+    case HLSL_GEOMETRY_INPUT_POINT: return "point";
+    case HLSL_GEOMETRY_INPUT_LINE: return "line";
+    case HLSL_GEOMETRY_INPUT_LINE_ADJ: return "lineadj";
+    case HLSL_GEOMETRY_INPUT_TRIANGLE: return "triangle";
+    case HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ: return "triangleadj";
+    }
+    return NULL;
+} // HlslGeometryInputKeyword
+
+static int HlslWriteParameters(FILE *out, const HlslDecl *parameter,
+                               const HlslModule *module,
+                               const HlslFunction *function)
 {
     int first;
+    int geometryInput;
+    const char *keyword;
 
     first = 1;
+    geometryInput = module != NULL && function == module->wrapper &&
+                    module->stage == HLSL_STAGE_GEOMETRY &&
+                    function->geometryEffect;
     for (; parameter != NULL; parameter = parameter->next) {
         if ((!first && fputs(", ", out) == EOF))
             return 0;
@@ -949,6 +978,15 @@ static int HlslWriteParameters(FILE *out, const HlslDecl *parameter)
             fputs("inout ", out) == EOF)
         {
             return 0;
+        }
+        if (geometryInput &&
+            parameter->geometryRole != HLSL_GEOMETRY_DECL_STREAM &&
+            parameter->type.arraySize > 0)
+        {
+            keyword = HlslGeometryInputKeyword(module->geometryInput);
+            if (keyword == NULL || fprintf(out, "%s ", keyword) < 0)
+                return 0;
+            geometryInput = 0;
         }
         if (parameter->canonicalSemantic != NULL &&
             parameter->interpolation != HLSL_INTERPOLATION_DEFAULT &&
@@ -972,12 +1010,13 @@ static int HlslWriteParameters(FILE *out, const HlslDecl *parameter)
 } // HlslWriteParameters
 
 static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
-                               int indent);
+                               int indent, const HlslFunction *function);
 
-static int HlslWriteBracedBody(FILE *out, const HlslStmt *body, int indent)
+static int HlslWriteBracedBody(FILE *out, const HlslStmt *body, int indent,
+                               const HlslFunction *function)
 {
     return HlslWriteIndent(out, indent) && fputs("{\n", out) != EOF &&
-           HlslWriteStatements(out, body, indent + 1) &&
+           HlslWriteStatements(out, body, indent + 1, function) &&
            HlslWriteIndent(out, indent) && fputs("}\n", out) != EOF;
 } // HlslWriteBracedBody
 
@@ -1041,7 +1080,7 @@ static int HlslWriteLoopAttribute(FILE *out, const HlslExpr *condition,
 } // HlslWriteLoopAttribute
 
 static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
-                               int indent)
+                               int indent, const HlslFunction *function)
 {
     for (; statement != NULL; statement = statement->next) {
         if (!HlslWriteIndent(out, indent))
@@ -1066,7 +1105,7 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
                 !HlslWriteExpr(out, statement->u.ifStmt.condition, 0) ||
                 fputs(")\n", out) == EOF ||
                 !HlslWriteBracedBody(out,
-                    statement->u.ifStmt.trueBranch, indent))
+                    statement->u.ifStmt.trueBranch, indent, function))
             {
                 return 0;
             }
@@ -1074,7 +1113,7 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
                 (!HlslWriteIndent(out, indent) ||
                  fputs("else\n", out) == EOF ||
                  !HlslWriteBracedBody(out,
-                    statement->u.ifStmt.falseBranch, indent)))
+                    statement->u.ifStmt.falseBranch, indent, function)))
             {
                 return 0;
             }
@@ -1085,7 +1124,8 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
                 fputs("while (", out) == EOF ||
                 !HlslWriteExpr(out, statement->u.loop.condition, 0) ||
                 fputs(")\n", out) == EOF ||
-                !HlslWriteBracedBody(out, statement->u.loop.body, indent))
+                !HlslWriteBracedBody(out, statement->u.loop.body, indent,
+                                     function))
             {
                 return 0;
             }
@@ -1094,7 +1134,8 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
             if (!HlslWriteLoopAttribute(out, statement->u.loop.condition,
                                         statement->u.loop.body, indent) ||
                 fputs("do\n", out) == EOF ||
-                !HlslWriteBracedBody(out, statement->u.loop.body, indent) ||
+                !HlslWriteBracedBody(out, statement->u.loop.body, indent,
+                                     function) ||
                 !HlslWriteIndent(out, indent) ||
                 fputs("while (", out) == EOF ||
                 !HlslWriteExpr(out, statement->u.loop.condition, 0) ||
@@ -1117,7 +1158,7 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
                 !HlslWriteForPart(out, statement->u.forStmt.step) ||
                 fputs(")\n", out) == EOF ||
                 !HlslWriteBracedBody(out,
-                    statement->u.forStmt.body, indent))
+                    statement->u.forStmt.body, indent, function))
             {
                 return 0;
             }
@@ -1136,7 +1177,8 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
             break;
         case HLSL_STMT_BLOCK:
             if (fputs("{\n", out) == EOF ||
-                !HlslWriteStatements(out, statement->u.block, indent + 1) ||
+                !HlslWriteStatements(out, statement->u.block, indent + 1,
+                                     function) ||
                 !HlslWriteIndent(out, indent) || fputs("}\n", out) == EOF)
             {
                 return 0;
@@ -1154,6 +1196,52 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
             if (fputs("continue;\n", out) == EOF)
                 return 0;
             break;
+        case HLSL_STMT_APPEND:
+            {
+                const HlslFlatReplay *replay;
+                int wroteReplay;
+
+                if (function == NULL || function->geometryStream == NULL ||
+                    statement->u.append.record == NULL)
+                    return 0;
+                wroteReplay = 0;
+                for (replay = statement->u.append.replay; replay != NULL;
+                     replay = replay->next)
+                {
+                    if ((wroteReplay && !HlslWriteIndent(out, indent)) ||
+                        fprintf(out, "if (%s)\n", replay->defined->name) < 0 ||
+                        !HlslWriteIndent(out, indent) ||
+                        fputs("{\n", out) == EOF ||
+                        !HlslWriteIndent(out, indent + 1) ||
+                        !HlslWriteExpr(out, statement->u.append.record, 14) ||
+                        fprintf(out, ".%s = %s;\n",
+                                replay->target->name,
+                                replay->shadow->name) < 0 ||
+                        !HlslWriteIndent(out, indent) ||
+                        fputs("}\n", out) == EOF)
+                    {
+                        return 0;
+                    }
+                    wroteReplay = 1;
+                }
+                if ((wroteReplay && !HlslWriteIndent(out, indent)) ||
+                    fprintf(out, "%s.Append(",
+                            function->geometryStream->name) < 0 ||
+                    !HlslWriteExpr(out, statement->u.append.record, 0) ||
+                    fputs(");\n", out) == EOF)
+                {
+                    return 0;
+                }
+            }
+            break;
+        case HLSL_STMT_RESTART_STRIP:
+            if (function == NULL || function->geometryStream == NULL ||
+                fprintf(out, "%s.RestartStrip();\n",
+                        function->geometryStream->name) < 0)
+            {
+                return 0;
+            }
+            break;
         default:
             return 0;
         }
@@ -1162,11 +1250,12 @@ static int HlslWriteStatements(FILE *out, const HlslStmt *statement,
 } // HlslWriteStatements
 
 static int HlslWriteFunctionHeader(FILE *out,
-                                   const HlslFunction *function)
+                                   const HlslFunction *function,
+                                   const HlslModule *module)
 {
     if (fprintf(out, "%s %s(", HlslTypeName(&function->result),
                 function->name) < 0 ||
-        !HlslWriteParameters(out, function->parameters) ||
+        !HlslWriteParameters(out, function->parameters, module, function) ||
         fputc(')', out) == EOF)
     {
         return 0;
@@ -1174,11 +1263,20 @@ static int HlslWriteFunctionHeader(FILE *out,
     return 1;
 } // HlslWriteFunctionHeader
 
-static int HlslWriteFunction(FILE *out, const HlslFunction *function)
+static int HlslWriteFunction(FILE *out, const HlslFunction *function,
+                             const HlslModule *module)
 {
     const HlslDecl *local;
 
-    if (!HlslWriteFunctionHeader(out, function) ||
+    if (function == module->wrapper &&
+        module->stage == HLSL_STAGE_GEOMETRY &&
+        function->geometryEffect &&
+        fprintf(out, "[maxvertexcount(%d)]\n",
+                module->geometryMaxVertices) < 0)
+    {
+        return 0;
+    }
+    if (!HlslWriteFunctionHeader(out, function, module) ||
         fputs("\n{\n", out) == EOF)
     {
         return 0;
@@ -1187,7 +1285,7 @@ static int HlslWriteFunction(FILE *out, const HlslFunction *function)
         if (!HlslWriteDecl(out, local, 1, 0))
             return 0;
     }
-    if (!HlslWriteStatements(out, function->body, 1))
+    if (!HlslWriteStatements(out, function->body, 1, function))
         return 0;
     return fputs("}\n", out) != EOF;
 } // HlslWriteFunction
@@ -1636,7 +1734,7 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
          function = function->next)
     {
         if (function->needsPrototype &&
-            (!HlslWriteFunctionHeader(out, function) ||
+            (!HlslWriteFunctionHeader(out, function, module) ||
              fputs(";\n\n", out) == EOF))
         {
             return 0;
@@ -1645,7 +1743,7 @@ static int HlslEmitModule(FILE *out, const HlslModule *module,
     for (function = module->functions; function != NULL;
          function = function->next)
     {
-        if (!HlslWriteFunction(out, function))
+        if (!HlslWriteFunction(out, function, module))
             return 0;
         if (function->next != NULL && fputc('\n', out) == EOF)
             return 0;

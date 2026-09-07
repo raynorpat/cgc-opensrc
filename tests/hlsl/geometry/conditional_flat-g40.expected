@@ -1,0 +1,91 @@
+// profile hlslg40
+// target gs_4_0
+// cgc-bind interface out COLOR0 float4 COLOR0 COLOR0 user nointerpolation
+// cgc-bind interface out POSITION float4 SV_Position SV_Position system default
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+
+// cgc-bind uniform color float4 b0 c0.x byte=0 size=16 span=1 semantic=-
+// cgc-bind uniform choose bool b0 c1.x byte=16 size=4 span=1 semantic=-
+
+cbuffer cgc_Uniforms : register(b0)
+{
+    float4 cgc_color : packoffset(c0.x);
+    bool cgc_choose : packoffset(c1.x);
+};
+
+struct cg_GeometryOut
+{
+    nointerpolation float4 color0 : COLOR0;
+    float4 position : SV_Position;
+};
+
+struct cg_GeometryIn
+{
+    float4 position : SV_Position;
+};
+
+void cg_entry(float4 position[1], float4 color, bool choose, inout PointStream<cg_GeometryOut> cgc_stream, inout cg_GeometryOut cgc_output, inout float4 cgc_flat_color0, inout bool cgc_flat_color0_defined)
+{
+    int i;
+    float4 temp1;
+    float4 temp2;
+    float4 temp3;
+    float4 temp4;
+    float4 temp5;
+    if (choose)
+    {
+        {
+            {
+                temp1 = color;
+                cgc_flat_color0 = temp1;
+                cgc_flat_color0_defined = true;
+            }
+        }
+    }
+    else
+    {
+        {
+            {
+                temp2 = color * 0.5;
+                cgc_flat_color0 = temp2;
+                cgc_flat_color0_defined = true;
+            }
+        }
+    }
+    for (i = 0; i < 2; i = i + 1)
+    {
+        {
+            if (i == 1)
+            {
+                {
+                    temp3 = color * 0.25;
+                    cgc_flat_color0 = temp3;
+                    cgc_flat_color0_defined = true;
+                }
+            }
+            {
+                temp4 = position[0];
+                temp5 = color;
+                cgc_output.position = temp4;
+                cgc_output.color0 = temp5;
+                if (cgc_flat_color0_defined)
+                {
+                    cgc_output.color0 = cgc_flat_color0;
+                }
+                cgc_stream.Append(cgc_output);
+            }
+        }
+    }
+}
+
+[maxvertexcount(2)]
+void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_stream)
+{
+    float4 position[1];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
+    float4 cgc_flat_color0;
+    bool cgc_flat_color0_defined = false;
+    position[0] = input[0].position;
+    cg_entry(position, cgc_color, cgc_choose, cgc_stream, cgc_output, cgc_flat_color0, cgc_flat_color0_defined);
+    return;
+}

@@ -51,6 +51,7 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "slglobals.h"
 #include "cg_stdlib.h"
+#include "cg_reach.h"
 #include "hlsl_hal.h"
 
 typedef struct HlslLowerContext_Rec {
@@ -63,6 +64,7 @@ typedef struct HlslLowerContext_Rec {
     int entryFile;
     int loopDepth;
     int geometryInputExtent;
+    const CgGeometryProgram *geometry;
 } HlslLowerContext;
 
 typedef enum HlslValueMode_Enum {
@@ -76,6 +78,7 @@ static int HlslLowerType(HlslLowerContext *context, Type *source,
                          HlslType *target, const SourceLoc *loc);
 static HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
                                HlslStmt **prefix, HlslValueMode valueMode);
+static char *HlslCopyText(HlslLowerContext *context, const char *text);
 static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
                                     Symbol *symbol,
                                     const SourceLoc *callLoc,
@@ -135,6 +138,11 @@ static void *HlslLowerAlloc(HlslLowerContext *context, size_t size)
         memset(memory, 0, size);
     return memory;
 } // HlslLowerAlloc
+
+static void *HlslGeometryAlloc(void *arg, size_t size)
+{
+    return HlslLowerAlloc((HlslLowerContext *) arg, size);
+} // HlslGeometryAlloc
 
 static char *HlslGeneratedSource(HlslLowerContext *context,
                                  const char *source)
@@ -3129,6 +3137,289 @@ static int HlslRewriteLoopBreaks(HlslLowerContext *context,
     return 1;
 } // HlslRewriteLoopBreaks
 
+static HlslDecl *HlslGeometryOutputMember(HlslLowerContext *context,
+                                           int semantic)
+{
+    HlslDecl *member;
+    const char *canonical;
+
+    if (context == NULL || context->module->geometryOutputStruct == NULL)
+        return NULL;
+    canonical = GetAtomString(atable, semantic);
+    if (canonical == NULL)
+        return NULL;
+    for (member = context->module->geometryOutputStruct->members;
+         member != NULL; member = member->next)
+    {
+        if (member->publicName != NULL &&
+            !strcmp(member->publicName, canonical))
+        {
+            return member;
+        }
+    }
+    return NULL;
+} // HlslGeometryOutputMember
+
+static HlslFlatReplay *HlslGeometryFlatState(HlslLowerContext *context,
+                                              HlslDecl *target)
+{
+    HlslFlatReplay *state;
+
+    if (context == NULL || context->function == NULL)
+        return NULL;
+    for (state = context->function->geometryFlatState; state != NULL;
+         state = state->next)
+    {
+        if (state->target == target)
+            return state;
+    }
+    return NULL;
+} // HlslGeometryFlatState
+
+static HlslExpr *HlslGeometryMemberExpr(HlslLowerContext *context,
+                                         HlslDecl *object,
+                                         HlslDecl *member)
+{
+    HlslExpr *expression;
+
+    if (object == NULL || member == NULL)
+        return NULL;
+    expression = HlslNewSourceExpr(context, HLSL_EXPR_MEMBER,
+                                   member->type);
+    if (expression != NULL) {
+        expression->u.member.object = HlslNewSymbolExpr(context, object);
+        expression->u.member.decl = member;
+        expression->u.member.name = member->name;
+        if (expression->u.member.object == NULL)
+            return NULL;
+    }
+    return expression;
+} // HlslGeometryMemberExpr
+
+static HlslExpr *HlslGeometryConvert(HlslLowerContext *context,
+                                      HlslExpr *value,
+                                      const HlslType *type)
+{
+    HlslExpr *conversion;
+
+    if (value == NULL || type == NULL)
+        return NULL;
+    if (value->type.base == type->base && value->type.len == type->len &&
+        value->type.rows == type->rows && value->type.cols == type->cols &&
+        value->type.arraySize == type->arraySize)
+    {
+        return value;
+    }
+    conversion = HlslNewSourceExpr(context, HLSL_EXPR_CAST, *type);
+    if (conversion != NULL)
+        conversion->u.cast.expression = value;
+    return conversion;
+} // HlslGeometryConvert
+
+static expr *HlslGeometryValueRoot(expr *value)
+{
+    while (value != NULL && value->common.kind == BINARY_N &&
+           value->bin.op == MEMBER_SELECTOR_OP &&
+           value->bin.left != NULL && value->bin.right != NULL &&
+           value->bin.right->common.kind == SYMB_N &&
+           value->bin.right->sym.op == MEMBER_OP)
+    {
+        value = value->bin.left;
+    }
+    return value;
+} // HlslGeometryValueRoot
+
+static HlslExpr *HlslGeometryCapturedMember(
+    HlslLowerContext *context, expr *value, expr *root,
+    HlslDecl *capturedRoot)
+{
+    HlslExpr *target;
+    HlslExpr *object;
+    HlslDecl *member;
+    HlslType type;
+
+    if (context == NULL || value == NULL || root == NULL ||
+        capturedRoot == NULL)
+    {
+        return NULL;
+    }
+    if (value == root)
+        return HlslNewSymbolExpr(context, capturedRoot);
+    if (value->common.kind != BINARY_N ||
+        value->bin.op != MEMBER_SELECTOR_OP ||
+        value->bin.left == NULL || value->bin.right == NULL ||
+        value->bin.right->common.kind != SYMB_N ||
+        value->bin.right->sym.op != MEMBER_OP ||
+        value->bin.right->sym.symbol == NULL ||
+        !HlslLowerType(context, value->common.type, &type,
+                       &context->statementLoc))
+    {
+        return NULL;
+    }
+    object = HlslGeometryCapturedMember(context, value->bin.left, root,
+                                        capturedRoot);
+    member = HlslFindDecl(context, value->bin.right->sym.symbol);
+    target = object != NULL && member != NULL ?
+        HlslNewSourceExpr(context, HLSL_EXPR_MEMBER, type) : NULL;
+    if (target != NULL) {
+        target->u.member.object = object;
+        target->u.member.decl = member;
+        target->u.member.name = member->name;
+    }
+    return target;
+} // HlslGeometryCapturedMember
+
+static HlslStmt *HlslLowerGeometryOperation(
+    HlslLowerContext *context, const CgGeometryOperation *operation)
+{
+    const CgGeometryValue *value;
+    HlslFlatReplay *state;
+    HlslDecl *target;
+    HlslExpr *lowered;
+    HlslExpr *left;
+    HlslExpr *assignment;
+    HlslExpr *record;
+    HlslStmt *statement;
+    HlslStmt *body;
+    HlslDecl **targets;
+    HlslExpr **captured;
+    HlslExpr **rootCaptures;
+    expr **roots;
+    HlslLoc loc;
+    int valueCount;
+    int valueIndex;
+    int rootIndex;
+    int rootUses;
+
+    if (context == NULL || operation == NULL || context->function == NULL ||
+        !context->function->geometryEffect ||
+        context->function->geometryStream == NULL ||
+        context->function->geometryOutputRecord == NULL)
+    {
+        return NULL;
+    }
+    HlslSetLoc(&loc, &operation->loc);
+    if (operation->kind == CG_GEOMETRY_OPERATION_RESTART)
+        return HlslNewRestartStrip(context->module, loc);
+
+    valueCount = 0;
+    for (value = operation->values; value != NULL; value = value->next)
+        valueCount++;
+    if (valueCount <= 0 ||
+        (size_t) valueCount > (size_t) -1 / sizeof(HlslDecl *) ||
+        (size_t) valueCount > (size_t) -1 / sizeof(HlslExpr *))
+    {
+        return NULL;
+    }
+    targets = (HlslDecl **) HlslLowerAlloc(context,
+        (size_t) valueCount * sizeof(HlslDecl *));
+    captured = (HlslExpr **) HlslLowerAlloc(context,
+        (size_t) valueCount * sizeof(HlslExpr *));
+    rootCaptures = (HlslExpr **) HlslLowerAlloc(context,
+        (size_t) valueCount * sizeof(HlslExpr *));
+    roots = (expr **) HlslLowerAlloc(context,
+        (size_t) valueCount * sizeof(expr *));
+    if (targets == NULL || captured == NULL || rootCaptures == NULL ||
+        roots == NULL)
+    {
+        return NULL;
+    }
+
+    valueIndex = 0;
+    for (value = operation->values; value != NULL; value = value->next) {
+        roots[valueIndex] = HlslGeometryValueRoot(value->value);
+        valueIndex++;
+    }
+
+    body = NULL;
+    valueIndex = 0;
+    for (value = operation->values; value != NULL; value = value->next) {
+        target = HlslGeometryOutputMember(context,
+                                           value->canonicalSemantic);
+        if (target == NULL)
+            return NULL;
+        context->statementLoc = value->loc;
+        rootUses = 0;
+        for (rootIndex = 0; rootIndex < valueCount; rootIndex++) {
+            if (roots[rootIndex] == roots[valueIndex])
+                rootUses++;
+        }
+        if (rootUses > 1) {
+            rootIndex = 0;
+            while (rootIndex < valueIndex &&
+                   roots[rootIndex] != roots[valueIndex])
+            {
+                rootIndex++;
+            }
+            if (rootIndex == valueIndex) {
+                lowered = HlslLowerExpr(context, roots[valueIndex], &body,
+                                        HLSL_VALUE_RVALUE);
+                rootCaptures[valueIndex] = lowered != NULL ?
+                    HlslCaptureValue(context, &body, lowered) : NULL;
+            } else {
+                rootCaptures[valueIndex] = rootCaptures[rootIndex];
+            }
+            lowered = rootCaptures[valueIndex] != NULL &&
+                      rootCaptures[valueIndex]->kind == HLSL_EXPR_SYMBOL ?
+                HlslGeometryCapturedMember(context, value->value,
+                    roots[valueIndex], rootCaptures[valueIndex]->u.symbol) :
+                NULL;
+        } else {
+            lowered = HlslLowerExpr(context, value->value, &body,
+                                    HLSL_VALUE_RVALUE);
+        }
+        if (lowered == NULL)
+            return NULL;
+        lowered = HlslGeometryConvert(context, lowered, &target->type);
+        captured[valueIndex] = lowered != NULL ?
+            HlslCaptureValue(context, &body, lowered) : NULL;
+        targets[valueIndex] = target;
+        if (captured[valueIndex] == NULL)
+            return NULL;
+        valueIndex++;
+    }
+    context->statementLoc = operation->loc;
+    for (valueIndex = 0; valueIndex < valueCount; valueIndex++) {
+        target = targets[valueIndex];
+        if (operation->kind == CG_GEOMETRY_OPERATION_FLAT) {
+            state = HlslGeometryFlatState(context, target);
+            if (state == NULL)
+                return NULL;
+            left = HlslNewSymbolExpr(context, state->shadow);
+        } else {
+            left = HlslGeometryMemberExpr(context,
+                context->function->geometryOutputRecord, target);
+        }
+        assignment = HlslNewAssignment(context, left,
+                                        captured[valueIndex]);
+        statement = HlslNewExpressionStmt(context, assignment);
+        if (statement == NULL)
+            return NULL;
+        HlslAppendStmt(&body, statement);
+        if (operation->kind == CG_GEOMETRY_OPERATION_FLAT) {
+            statement = HlslNewBoolAssignment(context, state->defined, 1);
+            if (statement == NULL)
+                return NULL;
+            HlslAppendStmt(&body, statement);
+        }
+    }
+    if (operation->kind == CG_GEOMETRY_OPERATION_EMIT) {
+        record = HlslNewSymbolExpr(context,
+            context->function->geometryOutputRecord);
+        statement = HlslNewAppend(context->module, record,
+            context->function->geometryFlatState, loc);
+        if (statement == NULL)
+            return NULL;
+        HlslAppendStmt(&body, statement);
+    }
+    statement = HlslNewStmt(context->module, HLSL_STMT_BLOCK);
+    if (statement != NULL) {
+        statement->u.block = body;
+        statement->loc = loc;
+    }
+    return statement;
+} // HlslLowerGeometryOperation
+
 static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
                                HlslStmt **list)
 {
@@ -3150,6 +3441,7 @@ static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
     HlslDecl *flag;
     HlslType boolType;
     expr *discardCondition;
+    CgGeometryOperation *geometryOperation;
 
     for (; source != NULL; source = source->commonst.next) {
         context->statementLoc = source->commonst.loc;
@@ -3160,7 +3452,16 @@ static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
         {
             continue;
         }
-        if (source->commonst.kind == EXPR_STMT) {
+        geometryOperation = context->geometry != NULL ?
+            CgGeometryFindOperation(context->geometry, source) : NULL;
+        if (geometryOperation != NULL) {
+            target = HlslLowerGeometryOperation(context,
+                                                 geometryOperation);
+            if (target == NULL)
+                return HlslLowerFailure(context, HLSL_ERROR_INVALID_IR,
+                                        "geometry operation lowering",
+                                        &source->commonst.loc);
+        } else if (source->commonst.kind == EXPR_STMT) {
             if (source->exprst.exp == NULL)
                 continue;
             target = HlslNewStmt(context->module,
@@ -3401,8 +3702,22 @@ static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source);
 static int HlslCollectCallsInStatements(HlslLowerContext *context,
                                         stmt *source)
 {
+    CgGeometryOperation *operation;
+    CgGeometryValue *value;
+
     for (; source != NULL; source = source->commonst.next) {
         context->statementLoc = source->commonst.loc;
+        operation = context->geometry != NULL ?
+            CgGeometryFindOperation(context->geometry, source) : NULL;
+        if (operation != NULL) {
+            for (value = operation->values; value != NULL;
+                 value = value->next)
+            {
+                if (!HlslCollectCallsInExpr(context, value->value))
+                    return 0;
+            }
+            continue;
+        }
         switch (source->commonst.kind) {
         case EXPR_STMT:
             if (!HlslCollectCallsInExpr(context, source->exprst.exp))
@@ -3578,6 +3893,412 @@ static int HlslCollectCallsInExpr(HlslLowerContext *context, expr *source)
     }
 } // HlslCollectCallsInExpr
 
+static int HlslGeometryStatementHasDirectEffect(
+    HlslLowerContext *context, stmt *source)
+{
+    for (; source != NULL; source = source->commonst.next) {
+        if (context->geometry != NULL &&
+            CgGeometryFindOperation(context->geometry, source) != NULL)
+        {
+            return 1;
+        }
+        switch (source->commonst.kind) {
+        case BLOCK_STMT:
+            if (HlslGeometryStatementHasDirectEffect(context,
+                                                     source->blockst.body))
+                return 1;
+            break;
+        case IF_STMT:
+            if (HlslGeometryStatementHasDirectEffect(context,
+                    source->ifst.thenstmt) ||
+                HlslGeometryStatementHasDirectEffect(context,
+                    source->ifst.elsestmt))
+            {
+                return 1;
+            }
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            if (HlslGeometryStatementHasDirectEffect(context,
+                                                     source->whilest.body))
+                return 1;
+            break;
+        case FOR_STMT:
+            if (HlslGeometryStatementHasDirectEffect(context,
+                    source->forst.init) ||
+                HlslGeometryStatementHasDirectEffect(context,
+                    source->forst.step) ||
+                HlslGeometryStatementHasDirectEffect(context,
+                    source->forst.body))
+            {
+                return 1;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    return 0;
+} // HlslGeometryStatementHasDirectEffect
+
+static int HlslGeometryExprCallsEffect(HlslLowerContext *context,
+                                        expr *source)
+{
+    HlslFunction *callee;
+
+    if (source == NULL)
+        return 0;
+    if (source->common.kind == BINARY_N &&
+        source->bin.op == FUN_CALL_OP && source->bin.left != NULL &&
+        source->bin.left->common.kind == SYMB_N)
+    {
+        callee = HlslFindFunction(context->module,
+                                  source->bin.left->sym.symbol);
+        if (callee != NULL && callee->geometryEffect)
+            return 1;
+    }
+    switch (source->common.kind) {
+    case UNARY_N:
+        return HlslGeometryExprCallsEffect(context, source->un.arg);
+    case BINARY_N:
+        return HlslGeometryExprCallsEffect(context, source->bin.left) ||
+               HlslGeometryExprCallsEffect(context, source->bin.right);
+    case TRINARY_N:
+        return HlslGeometryExprCallsEffect(context, source->tri.arg1) ||
+               HlslGeometryExprCallsEffect(context, source->tri.arg2) ||
+               HlslGeometryExprCallsEffect(context, source->tri.arg3);
+    default:
+        return 0;
+    }
+} // HlslGeometryExprCallsEffect
+
+static int HlslGeometryStatementsCallEffect(HlslLowerContext *context,
+                                             stmt *source)
+{
+    for (; source != NULL; source = source->commonst.next) {
+        switch (source->commonst.kind) {
+        case EXPR_STMT:
+            if (HlslGeometryExprCallsEffect(context, source->exprst.exp))
+                return 1;
+            break;
+        case BLOCK_STMT:
+            if (HlslGeometryStatementsCallEffect(context,
+                                                 source->blockst.body))
+                return 1;
+            break;
+        case IF_STMT:
+            if (HlslGeometryExprCallsEffect(context, source->ifst.cond) ||
+                HlslGeometryStatementsCallEffect(context,
+                    source->ifst.thenstmt) ||
+                HlslGeometryStatementsCallEffect(context,
+                    source->ifst.elsestmt))
+            {
+                return 1;
+            }
+            break;
+        case WHILE_STMT:
+        case DO_STMT:
+            if (HlslGeometryExprCallsEffect(context,
+                    source->whilest.cond) ||
+                HlslGeometryStatementsCallEffect(context,
+                    source->whilest.body))
+            {
+                return 1;
+            }
+            break;
+        case FOR_STMT:
+            if (HlslGeometryStatementsCallEffect(context,
+                    source->forst.init) ||
+                HlslGeometryExprCallsEffect(context,
+                    source->forst.cond) ||
+                HlslGeometryStatementsCallEffect(context,
+                    source->forst.step) ||
+                HlslGeometryStatementsCallEffect(context,
+                    source->forst.body))
+            {
+                return 1;
+            }
+            break;
+        case RETURN_STMT:
+            if (HlslGeometryExprCallsEffect(context,
+                                           source->returnst.exp))
+                return 1;
+            break;
+        case DISCARD_STMT:
+            if (HlslGeometryExprCallsEffect(context,
+                                           source->discardst.cond))
+                return 1;
+            break;
+        default:
+            break;
+        }
+    }
+    return 0;
+} // HlslGeometryStatementsCallEffect
+
+static int HlslMarkGeometryEffects(HlslLowerContext *context)
+{
+    HlslFunction *function;
+    Symbol *symbol;
+    int changed;
+
+    for (function = context->module->functions; function != NULL;
+         function = function->next)
+    {
+        symbol = (Symbol *) function->identity;
+        function->geometryEffect = symbol != NULL &&
+            HlslGeometryStatementHasDirectEffect(
+                context, symbol->details.fun.statements);
+    }
+    do {
+        changed = 0;
+        for (function = context->module->functions; function != NULL;
+             function = function->next)
+        {
+            symbol = (Symbol *) function->identity;
+            if (!function->geometryEffect && symbol != NULL &&
+                HlslGeometryStatementsCallEffect(
+                    context, symbol->details.fun.statements))
+            {
+                function->geometryEffect = 1;
+                changed = 1;
+            }
+        }
+    } while (changed);
+    return 1;
+} // HlslMarkGeometryEffects
+
+static int HlslGeometrySemanticInfo(HlslLowerContext *context,
+    const CgGeometryValue *value, HlslType *type, const char **spelling,
+    HlslSemanticKind *kindOut, int *indexOut)
+{
+    const char *canonical;
+    char root[64];
+    char emitted[96];
+    HlslSemanticKind kind;
+    HlslBase abiBase;
+    int index;
+
+    canonical = GetAtomString(atable, value->canonicalSemantic);
+    if (canonical == NULL ||
+        !HlslParseSemantic(canonical, root, sizeof(root), &index) ||
+        !HlslLowerType(context, value->type, type, &value->loc))
+    {
+        return 0;
+    }
+    kind = HlslModernSemantic(HLSL_STAGE_GEOMETRY,
+                              HLSL_DIRECTION_OUTPUT, root, index);
+    if (kind == HLSL_SEMANTIC_UNSUPPORTED ||
+        !HlslModernSemanticIsLegal(HLSL_STAGE_GEOMETRY,
+                                   HLSL_DIRECTION_OUTPUT, kind))
+    {
+        return 0;
+    }
+    if (kind == HLSL_SEMANTIC_USER) {
+        if (sprintf(emitted, "%s%d", root, index) < 0)
+            return 0;
+    } else if (!HlslModernSemanticSpelling(kind, index, emitted,
+                                           sizeof(emitted))) {
+        return 0;
+    }
+    abiBase = HlslModernAbiBase(kind);
+    if (abiBase == HLSL_BASE_UINT || abiBase == HLSL_BASE_BOOL)
+        type->base = abiBase;
+    *spelling = HlslCopyText(context, emitted);
+    *kindOut = kind;
+    *indexOut = index;
+    return *spelling != NULL;
+} // HlslGeometrySemanticInfo
+
+static const char *HlslGeometryMemberName(HlslLowerContext *context,
+                                           const char *semantic)
+{
+    char name[128];
+    size_t i;
+
+    if (semantic == NULL || strlen(semantic) + 1 > sizeof(name))
+        return NULL;
+    for (i = 0; semantic[i] != '\0'; i++) {
+        name[i] = semantic[i] >= 'A' && semantic[i] <= 'Z' ?
+                  (char) (semantic[i] - 'A' + 'a') : semantic[i];
+    }
+    name[i] = '\0';
+    return HlslAllocateScopedSymbolName(context->module,
+        context->module->geometryOutputStruct, semantic, name);
+} // HlslGeometryMemberName
+
+static int HlslCollectGeometryOutput(HlslLowerContext *context)
+{
+    static int outputIdentity;
+    const CgGeometryOperation *operation;
+    const CgGeometryValue *value;
+    HlslDecl *structure;
+    HlslDecl *member;
+    HlslType structureType;
+    HlslType memberType;
+    HlslSemanticKind kind;
+    const char *canonical;
+    const char *sourceSemantic;
+    const char *semantic;
+    const char *name;
+    const char *structureName;
+    int semanticIndex;
+
+    if (context->module->stage != HLSL_STAGE_GEOMETRY ||
+        context->geometry == NULL)
+    {
+        return 1;
+    }
+    structureName = HlslAllocateGeneratedName(context->module,
+        &outputIdentity, "cg_GeometryOut");
+    structureType = HlslNumericType(HLSL_BASE_STRUCT, 0);
+    structureType.structName = structureName;
+    structure = structureName != NULL ? HlslNewDecl(context->module,
+        HLSL_STORAGE_OUTPUT, structureType, structureName) : NULL;
+    if (structure == NULL)
+        return 0;
+    context->module->geometryOutputStruct = structure;
+
+    for (operation = context->geometry->operations; operation != NULL;
+         operation = operation->next)
+    {
+        for (value = operation->values; value != NULL; value = value->next) {
+            member = HlslGeometryOutputMember(context,
+                                               value->canonicalSemantic);
+            if (member == NULL) {
+                canonical = GetAtomString(atable,
+                                          value->canonicalSemantic);
+                sourceSemantic = GetAtomString(atable,
+                                               value->sourceSemantic);
+                if (canonical == NULL ||
+                    !HlslGeometrySemanticInfo(context, value, &memberType,
+                        &semantic, &kind, &semanticIndex))
+                {
+                    return 0;
+                }
+                name = HlslGeometryMemberName(context, canonical);
+                member = name != NULL ? HlslNewDecl(context->module,
+                    HLSL_STORAGE_NONE, memberType, name) : NULL;
+                if (member == NULL)
+                    return 0;
+                member->identity = value;
+                member->publicName = canonical;
+                member->semantic = semantic;
+                member->canonicalSemantic = semantic;
+                member->inputSemantic = sourceSemantic;
+                member->semanticKind = kind;
+                member->semanticIndex = semanticIndex;
+                member->interpolation =
+                    HlslModernRequiredTargetInterpolation(memberType.base);
+                HlslSetLoc(&member->loc, &value->loc);
+                HlslAppendDecl(&structure->members, member);
+            }
+            if (operation->kind == CG_GEOMETRY_OPERATION_FLAT) {
+                member->geometryRole = HLSL_GEOMETRY_DECL_FLAT_TARGET;
+                member->interpolation = HLSL_INTERPOLATION_NOINTERPOLATION;
+            }
+        }
+    }
+    if (structure->members == NULL)
+        return 1;
+    structure->type.members = structure->members;
+    HlslAppendDecl(&context->module->structs, structure);
+    return 1;
+} // HlslCollectGeometryOutput
+
+static int HlslPrepareGeometryFunctionState(HlslLowerContext *context,
+                                             HlslFunction *function)
+{
+    HlslFlatReplay **tail;
+    HlslFlatReplay *state;
+    HlslDecl *member;
+    HlslDecl *shadow;
+    HlslDecl *defined;
+    HlslType streamType;
+    HlslType boolType;
+    const char *name;
+    char generated[192];
+
+    if (!function->geometryEffect)
+        return 1;
+    if (context->module->geometryOutputStruct == NULL ||
+        context->module->geometryOutputStruct->members == NULL)
+    {
+        return 0;
+    }
+    streamType = HlslNumericType(HLSL_BASE_GEOMETRY_STREAM,
+        (int) context->module->geometryStream + 1);
+    name = HlslAllocateScopedSymbolName(context->module, function,
+                                        function, "cgc_stream");
+    function->geometryStream = name != NULL ? HlslNewDecl(
+        context->module, HLSL_STORAGE_NONE, streamType, name) : NULL;
+    name = HlslAllocateScopedSymbolName(context->module, function,
+        context->module->geometryOutputStruct, "cgc_output");
+    function->geometryOutputRecord = name != NULL ? HlslNewDecl(
+        context->module, HLSL_STORAGE_NONE,
+        context->module->geometryOutputStruct->type, name) : NULL;
+    if (function->geometryStream == NULL ||
+        function->geometryOutputRecord == NULL)
+    {
+        return 0;
+    }
+    function->geometryStream->parameterQualifier = HLSL_PARAMETER_INOUT;
+    function->geometryStream->geometryRole = HLSL_GEOMETRY_DECL_STREAM;
+    function->geometryStream->publicName =
+        context->module->geometryOutputStruct->name;
+    function->geometryOutputRecord->parameterQualifier =
+        HLSL_PARAMETER_INOUT;
+    function->geometryOutputRecord->geometryRole =
+        HLSL_GEOMETRY_DECL_OUTPUT_RECORD;
+
+    tail = &function->geometryFlatState;
+    boolType = HlslNumericType(HLSL_BASE_BOOL, 1);
+    for (member = context->module->geometryOutputStruct->members;
+         member != NULL; member = member->next)
+    {
+        if (member->geometryRole != HLSL_GEOMETRY_DECL_FLAT_TARGET)
+            continue;
+        if (strlen(member->name) + 18 > sizeof(generated))
+            return 0;
+        sprintf(generated, "cgc_flat_%s", member->name);
+        name = HlslAllocateScopedSymbolName(context->module, function,
+                                            member, generated);
+        shadow = name != NULL ? HlslNewDecl(context->module,
+            HLSL_STORAGE_NONE, member->type, name) : NULL;
+        sprintf(generated, "cgc_flat_%s_defined", member->name);
+        name = HlslAllocateScopedSymbolName(context->module, function,
+                                            shadow, generated);
+        defined = name != NULL ? HlslNewDecl(context->module,
+            HLSL_STORAGE_NONE, boolType, name) : NULL;
+        state = shadow != NULL && defined != NULL ?
+            HlslNewFlatReplay(context->module, member, shadow, defined) :
+            NULL;
+        if (state == NULL)
+            return 0;
+        shadow->parameterQualifier = HLSL_PARAMETER_INOUT;
+        shadow->geometryRole = HLSL_GEOMETRY_DECL_FLAT_SHADOW;
+        defined->parameterQualifier = HLSL_PARAMETER_INOUT;
+        defined->geometryRole = HLSL_GEOMETRY_DECL_FLAT_DEFINED;
+        *tail = state;
+        tail = &state->next;
+    }
+    return 1;
+} // HlslPrepareGeometryFunctionState
+
+static int HlslPrepareGeometryFunctions(HlslLowerContext *context)
+{
+    HlslFunction *function;
+
+    HlslMarkGeometryEffects(context);
+    for (function = context->module->functions; function != NULL;
+         function = function->next)
+    {
+        if (!HlslPrepareGeometryFunctionState(context, function))
+            return 0;
+    }
+    return 1;
+} // HlslPrepareGeometryFunctions
+
 static int HlslDeclListContains(const HlslDecl *declarations,
                                 const HlslDecl *target)
 {
@@ -3742,9 +4463,9 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     Type *sourceResult;
     const char *name;
     int emptyEntry;
-    CgGeometryOptions geometryOptions;
-    CgGeometryConfig geometryConfig;
+    CgGeometryProgram analyzedGeometry;
     CgGeometryDiagnostic geometryDiagnostic;
+    const CgReachGraph *reach;
     HlslGeometryInput geometryInput;
     HlslGeometryStream geometryStream;
     int geometryExtent;
@@ -3767,42 +4488,48 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     if (!HlslRejectStorage(&context, program))
         return 0;
     if (profile->stage == HLSL_STAGE_GEOMETRY) {
-        CgGeometryInitOptions(&geometryOptions);
         memset(&geometryDiagnostic, 0, sizeof(geometryDiagnostic));
-        if (!CgGeometryParseOptions(Cg->options.profileOptions,
-                                    &geometryOptions,
-                                    &geometryDiagnostic) ||
-            !CgGeometryResolveConfig(&program->details.fun.geometry,
-                                     &geometryOptions,
-                                     CGIR_STAGE_GEOMETRY,
-                                     &geometryConfig,
-                                     &geometryDiagnostic) ||
-            geometryConfig.stage != CGIR_STAGE_GEOMETRY)
+        reach = CgReachActiveGraph();
+        CgGeometryInitProgram(&analyzedGeometry, HlslGeometryAlloc,
+                              &context);
+        if (reach == NULL ||
+            !CgGeometryAnalyzeProgram(&analyzedGeometry, scope, program,
+                reach, Cg->options.profileOptions, CGIR_STAGE_GEOMETRY,
+                &geometryDiagnostic) ||
+            analyzedGeometry.config.stage != CGIR_STAGE_GEOMETRY)
         {
             return HlslLowerFailure(&context, HLSL_ERROR_GEOMETRY_LAYOUT,
                                     "verified geometry layout",
                                     &program->loc);
         }
-        if (!geometryConfig.hasMaxOutputVertices ||
-            geometryConfig.maxOutputVertices == 0)
+        context.geometry = &analyzedGeometry;
+        if (!analyzedGeometry.config.hasMaxOutputVertices ||
+            analyzedGeometry.config.maxOutputVertices == 0)
         {
             return HlslLowerFailure(&context, HLSL_ERROR_ENTRY_ABI,
                                     "Vertices=N", &program->loc);
         }
-        if (geometryConfig.maxOutputVertices > (unsigned int) INT_MAX ||
-            !HlslModernGeometryInput(geometryConfig.inputTopology,
+        if (analyzedGeometry.config.maxOutputVertices >
+                (unsigned int) INT_MAX ||
+            !HlslModernGeometryInput(analyzedGeometry.config.inputTopology,
                                      &geometryInput, &geometryExtent) ||
-            !HlslModernGeometryStream(geometryConfig.outputTopology,
+            !HlslModernGeometryStream(analyzedGeometry.config.outputTopology,
                                       &geometryStream) ||
-            geometryExtent != (int) geometryConfig.inputVertexCount ||
+            geometryExtent !=
+                (int) analyzedGeometry.config.inputVertexCount ||
             !HlslSetGeometryLayout(module, geometryInput, geometryStream,
-                geometryExtent, (int) geometryConfig.maxOutputVertices))
+                geometryExtent,
+                (int) analyzedGeometry.config.maxOutputVertices))
         {
             return HlslLowerFailure(&context, HLSL_ERROR_GEOMETRY_LAYOUT,
                                     "verified geometry layout",
                                     &program->loc);
         }
         context.geometryInputExtent = geometryExtent;
+        if (!HlslCollectGeometryOutput(&context))
+            return HlslLowerFailure(&context, HLSL_ERROR_INVALID_IR,
+                                    "geometry output interface",
+                                    &program->loc);
     }
     emptyEntry = HlslIsEmptyEntry(program);
     sourceResult = HlslOriginalEntryResult(program);
@@ -3838,10 +4565,16 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     {
         return 0;
     }
-    for (helper = module->functions; helper != NULL; helper = helper->next) {
-        if (helper->identity != NULL &&
-            !HlslLowerFunction(&context, helper))
-            return 0;
+    if (profile->stage != HLSL_STAGE_GEOMETRY) {
+        for (helper = module->functions; helper != NULL;
+             helper = helper->next)
+        {
+            if (helper->identity != NULL &&
+                !HlslLowerFunction(&context, helper))
+            {
+                return 0;
+            }
+        }
     }
     name = emptyEntry ? "main" :
            HlslAllocateGeneratedName(module, program, "cg_entry");
@@ -3858,6 +4591,24 @@ int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     HlslSetLoc(&function->loc, loc != NULL ? loc : &program->loc);
     module->entry = function;
     HlslAppendFunction(&module->functions, function);
+    if (profile->stage == HLSL_STAGE_GEOMETRY &&
+        !HlslPrepareGeometryFunctions(&context))
+    {
+        return HlslLowerFailure(&context, HLSL_ERROR_INVALID_IR,
+                                "geometry function state", &program->loc);
+    }
+    if (profile->stage == HLSL_STAGE_GEOMETRY) {
+        for (helper = module->functions;
+             helper != NULL && helper != function;
+             helper = helper->next)
+        {
+            if (helper->identity != NULL &&
+                !HlslLowerFunction(&context, helper))
+            {
+                return 0;
+            }
+        }
+    }
     context.function = function;
     if (!HlslCollectParameters(&context, program->details.fun.params, 1) ||
         program->details.fun.locals == NULL ||

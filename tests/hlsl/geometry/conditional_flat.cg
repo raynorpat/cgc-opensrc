@@ -1,0 +1,17 @@
+// Task 10: flat shadow updates remain inside their source branches/loop.
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          uniform float4 color, uniform bool choose)
+{
+    int i;
+    if (choose) {
+        flatAttrib(color : COLOR0);
+    } else {
+        flatAttrib(color * 0.5 : COLOR0);
+    }
+    for (i = 0; i < 2; i = i + 1) {
+        if (i == 1)
+            flatAttrib(color * 0.25 : COLOR0);
+        emitVertex(position[0] : POSITION, color : COLOR0);
+    }
+}

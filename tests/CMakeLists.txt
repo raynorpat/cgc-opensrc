@@ -2207,6 +2207,35 @@ add_hlsl_geometry_attrib_fixture(attrib_array_nested
 add_hlsl_geometry_attrib_fixture(attrib_array_inherited
     tests/hlsl/geometry/attrib_array_inherited.cg)
 
+function(add_hlsl_geometry_operation name input output vertices)
+    set(geometry_options "${input};${output};Vertices=${vertices}")
+    string(REPLACE ";" "\\;" geometry_options_escaped
+        "${geometry_options}")
+    foreach(profile hlslg40 hlslg50)
+        string(SUBSTRING "${profile}" 4 3 model_suffix)
+        add_test(
+            NAME ${profile}_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DCGC=$<TARGET_FILE:cgc>
+                -DPROFILE=${profile}
+                -DENTRY=main
+                "-DPROFILE_OPTIONS=${geometry_options_escaped}"
+                -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/${name}.cg
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/${name}-${model_suffix}.expected
+                -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+                "-DCONFIG=$<CONFIG>"
+                "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    endforeach()
+endfunction()
+
+add_hlsl_geometry_operation(pass_through POINT POINT_OUT 1)
+add_hlsl_geometry_operation(amplify POINT POINT_OUT 3)
+add_hlsl_geometry_operation(restart LINE LINE_OUT 2)
+add_hlsl_geometry_operation(flat POINT POINT_OUT 1)
+add_hlsl_geometry_operation(conditional_flat POINT POINT_OUT 2)
+add_hlsl_geometry_operation(reachable_helper POINT POINT_OUT 1)
+
 foreach(profile hlslv40 hlslv50)
     string(SUBSTRING "${profile}" 4 3 model_suffix)
     add_test(
