@@ -1573,6 +1573,13 @@ add_test(
 )
 
 add_test(
+    NAME hlsl_lower_structure
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_ROOT=${PROJECT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_lower_structure.cmake
+)
+
+add_test(
     NAME hlsl_geometry_lower_assertions_active
     COMMAND ${CMAKE_COMMAND}
         -DUNIT=$<TARGET_FILE:hlsl_geometry_lower_unit>
