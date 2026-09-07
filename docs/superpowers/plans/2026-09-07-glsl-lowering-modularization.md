@@ -1,6 +1,6 @@
 # GLSL Lowering Modularization Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Mechanically split glsl_lower.c into private modules while preserving compiler behavior.
 
@@ -804,7 +804,7 @@ git commit -m "Extract GLSL aggregate lowering"
 
 **Files:** Create `glsl_lower_legacy_expr.c`; modify `glsl_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -844,7 +844,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -857,7 +857,7 @@ set(CGC_GLSL_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -865,7 +865,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -881,7 +881,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 14's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add glsl_lower.c glsl_lower_legacy_expr.c CMakeLists.txt
 git commit -m "Extract GLSL legacy expr lowering"
@@ -891,7 +891,7 @@ git commit -m "Extract GLSL legacy expr lowering"
 
 **Files:** Create `glsl_lower_legacy_stmt.c`; modify `glsl_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -918,7 +918,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -932,7 +932,7 @@ set(CGC_GLSL_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -940,7 +940,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -956,7 +956,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 14's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add glsl_lower.c glsl_lower_legacy_stmt.c CMakeLists.txt
 git commit -m "Extract GLSL legacy stmt lowering"
@@ -966,7 +966,7 @@ git commit -m "Extract GLSL legacy stmt lowering"
 
 **Files:** Create `glsl_lower_ir_expr.c`; modify `glsl_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -1007,7 +1007,7 @@ forward declarations with their owning module.
 Preserve the explanatory Cg IR lowering comment with this module; it documents normalized shape assumptions.
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -1022,7 +1022,7 @@ set(CGC_GLSL_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -1030,7 +1030,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -1046,7 +1046,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 14's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add glsl_lower.c glsl_lower_ir_expr.c CMakeLists.txt
 git commit -m "Extract GLSL ir expr lowering"
@@ -1056,7 +1056,7 @@ git commit -m "Extract GLSL ir expr lowering"
 
 **Files:** Create `glsl_lower_ir_stmt.c`; modify `glsl_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -1083,7 +1083,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -1099,7 +1099,7 @@ set(CGC_GLSL_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -1107,7 +1107,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -1123,7 +1123,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 14's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add glsl_lower.c glsl_lower_ir_stmt.c CMakeLists.txt
 git commit -m "Extract GLSL ir stmt lowering"
@@ -1133,7 +1133,7 @@ git commit -m "Extract GLSL ir stmt lowering"
 
 **Files:** Create `glsl_lower_geometry.c`; modify `glsl_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -1171,7 +1171,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -1188,7 +1188,7 @@ set(CGC_GLSL_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -1196,7 +1196,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -1212,7 +1212,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 14's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add glsl_lower.c glsl_lower_geometry.c CMakeLists.txt
 git commit -m "Extract GLSL geometry lowering"
@@ -1222,7 +1222,7 @@ git commit -m "Extract GLSL geometry lowering"
 
 **Files:** Create `glsl_lower_function.c`; modify `glsl_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -1266,7 +1266,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -1284,7 +1284,7 @@ set(CGC_GLSL_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -1292,7 +1292,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -1308,7 +1308,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 14's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add glsl_lower.c glsl_lower_function.c CMakeLists.txt
 git commit -m "Extract GLSL function lowering"
@@ -1320,14 +1320,14 @@ git commit -m "Extract GLSL function lowering"
 create `tests/check_glsl_lower_structure.cmake` and
 `tests/check_glsl_lower_structure_selftest.cmake`.
 
-- [ ] **Step 1: Audit the facade.**
+- [x] **Step 1: Audit the facade.**
 Keep only the complete original license, standard includes, private include,
 and `GlslLowerLegacyProgram` and `GlslLowerCgIR`.
 Remove obsolete private forwards and section banners left by extraction.
 Public function bodies retain their exact original contents.
 The fixed ceiling is 350 lines; existing entry bodies and the license fit within it.
 
-- [ ] **Step 2: Add this complete structural checker.**
+- [x] **Step 2: Add this complete structural checker.**
 It follows the HLSL checker without changing the HLSL test. Test-double exceptions
 apply only to public-definition checks; production private-header leaks still fail.
 
@@ -1486,12 +1486,19 @@ if(geometry_list_position EQUAL -1)
     message(FATAL_ERROR
         "glsl_lower_ir_unit does not use CGC_GLSL_LOWER_SOURCES")
 endif()
-string(REGEX MATCH "glsl_lower[^ \t\r\n)]*\\.c"
-    direct_geometry_lower_source "${geometry_target_body}")
-if(NOT direct_geometry_lower_source STREQUAL "")
-    message(FATAL_ERROR
-        "glsl_lower_ir_unit directly lists ${direct_geometry_lower_source} instead of CGC_GLSL_LOWER_SOURCES")
-endif()
+string(REGEX MATCHALL "[^ \t\r\n]+" geometry_target_entries
+    "${geometry_target_body}")
+foreach(entry IN LISTS geometry_target_entries)
+    if(entry STREQUAL "glsl_lower_ir_test.c")
+        continue()
+    endif()
+    string(REGEX MATCH "glsl_lower[^ \t\r\n)]*\\.c"
+        direct_geometry_lower_source "${entry}")
+    if(NOT direct_geometry_lower_source STREQUAL "")
+        message(FATAL_ERROR
+            "glsl_lower_ir_unit directly lists ${direct_geometry_lower_source} instead of CGC_GLSL_LOWER_SOURCES")
+    endif()
+endforeach()
 
 file(GLOB_RECURSE repository_files RELATIVE "${SOURCE_ROOT}"
     "${SOURCE_ROOT}/*.c"
@@ -1556,7 +1563,7 @@ foreach(entry_point IN LISTS public_entry_points)
 endforeach()
 ```
 
-- [ ] **Step 3: Add this complete checker self-test.**
+- [x] **Step 3: Add this complete checker self-test.**
 ```cmake
 cmake_minimum_required(VERSION 3.16)
 if(NOT DEFINED SOURCE_ROOT OR NOT DEFINED STRUCTURE_SCRIPT)
@@ -1584,7 +1591,7 @@ set(root_cmake [=[set(CGC_GLSL_LOWER_SOURCES
 add_executable(cgc ${CGC_GLSL_LOWER_SOURCES})
 ]=])
 file(WRITE "${fixture}/CMakeLists.txt" "${root_cmake}")
-file(WRITE "${fixture}/tests/CMakeLists.txt" [=[add_executable(glsl_lower_ir_unit ${CGC_GLSL_LOWER_SOURCES})
+file(WRITE "${fixture}/tests/CMakeLists.txt" [=[add_executable(glsl_lower_ir_unit glsl_lower_ir_test.c ${CGC_GLSL_LOWER_SOURCES})
 ]=])
 file(WRITE "${fixture}/glsl_lower.c" [=[#include "glsl_lower_internal.h"
 int GlslLowerLegacyProgram(void) { return 0; }
@@ -1614,6 +1621,14 @@ function(Check expected)
     endif()
 endfunction()
 Check("PASS")
+foreach(direct_source glsl_lower.c glsl_lower_support.c)
+    file(WRITE "${fixture}/tests/CMakeLists.txt"
+        "add_executable(glsl_lower_ir_unit glsl_lower_ir_test.c ${direct_source} \${CGC_GLSL_LOWER_SOURCES})\n")
+    Check("directly lists ${direct_source}")
+endforeach()
+file(WRITE "${fixture}/tests/CMakeLists.txt" [=[add_executable(glsl_lower_ir_unit glsl_lower_ir_test.c ${CGC_GLSL_LOWER_SOURCES})
+]=])
+Check("PASS")
 file(WRITE "${fixture}/unrelated.c" "#include \"glsl_lower_internal.h\"\n")
 Check("outside the lowering")
 file(WRITE "${fixture}/unrelated.c" "int GlslLowerLegacyProgram(void) { return 0; }\n")
@@ -1642,7 +1657,7 @@ file(WRITE "${fixture}/glsl_lower_support.c" "#include \"glsl_lower_internal.h\"
 Check("PASS")
 ```
 
-- [ ] **Step 4: Run the checker and its negative fixtures.**
+- [x] **Step 4: Run the checker and its negative fixtures.**
 ```powershell
 $root = (Resolve-Path '.').Path
 $guard = (Resolve-Path 'tests/check_glsl_lower_structure.cmake').Path
@@ -1654,7 +1669,7 @@ if ($LASTEXITCODE -ne 0) { throw 'real structure failed' }
 Expected: both exit zero; negative fixtures internally prove rejection. Do not
 weaken guards to accommodate a failed extraction.
 
-- [ ] **Step 5: Register exactly one test in tests/CMakeLists.txt.**
+- [x] **Step 5: Register exactly one test in tests/CMakeLists.txt.**
 Place near glsl_lower_ir_unit:
 ```cmake
 add_test(
@@ -1680,7 +1695,7 @@ no new mutable globals, and unchanged public headers separately from the lexical
 
 **Files:** Verification artifacts only. Do not edit expected outputs.
 
-- [ ] **Step 1: Fresh candidate configuration and full Release qualification.**
+- [x] **Step 1: Fresh candidate configuration and full Release qualification.**
 ```powershell
 cmake -S . -B build-cg20-glsl-final -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -1692,7 +1707,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Release suite failed' }
 Expected: baseline test names retained, exactly one additional structural test.
 Do not count skipped OpenGL checks as successful driver validation.
 
-- [ ] **Step 2: Compare complete Release artifact sets before Debug writes them.**
+- [x] **Step 2: Compare complete Release artifact sets before Debug writes them.**
 Run this PowerShell from the candidate root. Baseline is the untouched sibling
 created by Task 1.
 
@@ -1725,7 +1740,7 @@ paths and line numbers before normalizing; compare complete normalized files and
 require zero remaining differences. Never remove arbitrary headers, instruction
 lines, version directives, bindings, or diagnostic content.
 
-- [ ] **Step 3: Verify diagnostic and status equivalence.**
+- [x] **Step 3: Verify diagnostic and status equivalence.**
 Compare the unchanged negative fixtures against both binaries using the existing
 CTest commands recorded in the JSON inventory. Retain full stdout/stderr and exit
 results in the build evidence. Existing expected-diagnostic tests must pass on
@@ -1788,7 +1803,7 @@ Both binaries receive the same absolute source/output paths, so this replay need
 no path normalization. The full suites also cover specialized transaction/pipeline
 drivers beyond the single-source failures selected above.
 
-- [ ] **Step 4: Full Debug build and suite.**
+- [x] **Step 4: Full Debug build and suite.**
 ```powershell
 cmake --build build-cg20-glsl-final --config Debug
 if ($LASTEXITCODE -ne 0) { throw 'Debug build failed' }
@@ -1915,41 +1930,46 @@ moves, which avoids temporary reverse-dependency link failures.
 | GlslIRCollectUniforms | interface | GlslLowerCgIR (facade) |
 | GlslIREnsureEntryLocals | decl | GlslLowerCgIR (facade) |
 
-## Execution checkpoint: Tasks 1–6 complete
+## Execution status: isolated qualification complete
 
-Implementation branch: `codex/glsl-lower-modularization`.
-Pristine baseline: `7774767b115522c4d9c21c9ee49c6471bd1f1a3f`.
-Candidate started from `0af222e`, which adds only the two implementation plans.
-Preparation commit: `5605167`; support extraction commit: `fb407bb`.
-Declaration extraction: `e58da00`; interface extraction: `899add4`;
-aggregate extraction: `9edbb07`.
-Every completed implementation task passed independent spec and quality reviews.
+Implementation through Task 13 and isolated Task 14 qualification are complete.
+Qualified source commit: `a36bce36366e4520039670597afa963359382e4e`.
+Pristine source: `7774767b115522c4d9c21c9ee49c6471bd1f1a3f`.
+Every implementation task passed independent specification and quality reviews;
+the complete branch also passed final review.
 
-- Pristine Debug and Release: 1,370 tests passed each, no skips; both WGL checks passed.
-- Candidate Debug/Release targets build; 490 selected tests and four additional
-  output-producing tests pass. All 205 original function bodies remain unchanged.
-- Complete 204-file GLSL artifact set matches: 3 raw-identical, 201 identical
-  after precisely recorded build timestamp and command-comment root substitutions.
-- Evidence and reusable audits are ignored under `build-cg20-glsl-preflight/`;
-  pristine evidence is frozen under the sibling baseline's `build-cg20-glsl-baseline/`.
-- The selected test filter requires five additional unit executables on a fresh
-  build: `glsl_ir_unit`, `hlsl_ir_unit`, `hlsl_geometry_lower_unit`,
-  `glsl_semantics_unit`, and `cg_geometry_unit`.
-- Complete output comparison additionally runs `cg20_profile_overload_vertex`,
-  `cg20_profile_overload_fragment`, `cg20_profile_overload_open`, and
-  `cg20_unreachable_profile_feature`. Compare exactly `tests/Release` and
-  `tests/validated/Release`; `tests/validator-failure/Release/probe.glsl` is scratch
-  outside these roots, not an additional shader artifact.
+- The facade is 269 lines; all 205 original bodies and approved owner/signature
+  records match. All 89 private declarations, private types, state, and public
+  headers are preserved.
+- Fresh full Release and Debug builds and suites passed: 1,371 tests each,
+  no skips. The sole inventory addition is `glsl_lower_structure`.
+- Both ARB WGL smoke tests passed in both configurations.
+- All 100 negative GLSL replays match complete stdout, stderr, and nonzero exit.
+- Four HLSL contracts pass, including 197 exact modern FXC combinations.
+- Final recursive Release comparison covers 205 GLSL files: 3 raw-identical,
+  202 identical after 404 precisely classified timestamp/root-comment differences.
+  The original frozen manifest contains 204 files. The additional validator-failure
+  probe has a separately recorded later pristine hash; that provenance is explicit
+  and the original manifest was not rewritten.
+- Incremental Tasks 3–12 compared the 204 files under `tests/Release` and
+  `tests/validated/Release`. Final review corrected that narrower inventory to
+  include `tests/validator-failure/Release/probe.glsl`.
+- The planned guard's broad source pattern falsely matched the existing
+  `glsl_lower_ir_test.c` harness. The corrected unit scan exempts only that exact
+  token; new fixtures prove direct facade/support entries remain rejected.
+  The implementation snippets above include this reviewed correction.
+- The selected incremental test filter needs five additional unit executables on
+  a fresh build: `glsl_ir_unit`, `hlsl_ir_unit`, `hlsl_geometry_lower_unit`,
+  `glsl_semantics_unit`, and `cg_geometry_unit`. Four additional output producers
+  are `cg20_profile_overload_vertex`, `cg20_profile_overload_fragment`,
+  `cg20_profile_overload_open`, and `cg20_unreachable_profile_feature`.
+- Evidence is retained in ignored `build-cg20-glsl-final/EVIDENCE.md` and
+  `build-cg20-glsl-preflight/`; pristine evidence remains frozen in the sibling
+  baseline worktree. Task 6 build/selected-test logs were captured by an independent
+  rerun after the first successful run did not retain full logs.
 
-Tasks 4–6 each passed Debug/Release target builds, the 490 selected tests and four
-additional artifact producers, exact ownership/residual audits, and the complete
-204-file differential check. Full Task 6 build and selected-test logs were captured
-by an independent rerun after the original run had not retained full logs.
-All 205 baseline bodies remain unchanged. Final diagnostic replay has been prepared
-as an ignored script but has not yet run.
-
-Next: Task 7, legacy expression lowering. Tasks 7–14 and all ARB implementation remain
-pending. Final qualification, integration, and push have not been performed.
+The user approved local integration into master, then ARB continuation. Main-checkout
+verification is pending; nothing has been pushed.
 
 ## Final review checklist
 
