@@ -1439,6 +1439,7 @@ add_executable(hlsl_ir_unit
 
 target_compile_definitions(hlsl_ir_unit PRIVATE
     HLSL_CANONICALIZATION_ONLY
+    HLSL_VALIDATION_TESTING
 )
 
 target_include_directories(hlsl_ir_unit PRIVATE
@@ -2578,6 +2579,15 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_nocode.cmake
 )
 add_test(
+    NAME hlsl_failure_runner_rejects_misattributed_primary
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_semantics_unit>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/vp_name_collision_report.cg
+        -DCHECKER=${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake
+        "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_failure_runner_misattributed.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure_rejects_misattributed.cmake
+)
+add_test(
     NAME hlslg50_registration
     COMMAND ${CMAKE_COMMAND}
         -DCGC=$<TARGET_FILE:cgc>
@@ -3195,11 +3205,20 @@ foreach(model 40 50)
         hlslf${model}_boundary_outputs hlslf${model}
         tests/hlsl/limits/modern_interface.cg
         "INTERFACE_COUNT=8;TEST_PIXEL_OUTPUT=1" "")
+    add_hlsl_modern_boundary_success(
+        hlslf${model}_boundary_color_depth hlslf${model}
+        tests/hlsl/limits/modern_interface.cg
+        "INTERFACE_COUNT=9;TEST_PIXEL_OUTPUT=1;TEST_PIXEL_DEPTH=1" "")
     add_hlsl_modern_boundary_failure(
         hlslf${model}_limit_outputs hlslf${model}
-        tests/hlsl/limits/modern_interface.cg 6408 248
-        "outputs limit exceeded: 9 used, 8 available"
+        tests/hlsl/limits/modern_interface.cg 6412 251
+        "COLOR8"
         "INTERFACE_COUNT=9;TEST_PIXEL_OUTPUT=1" "")
+
+    add_hlsl_modern_boundary_success(
+        hlslv${model}_boundary_clip_cull_components hlslv${model}
+        tests/hlsl/limits/modern_interface.cg
+        "TEST_CLIP_OUTPUT=1" "")
 
     add_hlsl_modern_boundary_success(
         hlslv${model}_boundary_cbuffer hlslv${model}

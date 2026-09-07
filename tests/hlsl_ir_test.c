@@ -61,6 +61,10 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "glsl_hal.h"
 #include "generic_hal.h"
 
+int HlslValidateInterfaceLimitsForTesting(HlslModule *module,
+    const HlslProfileDesc *profile, const HlslDecl *inputs,
+    const HlslDecl *geometryScalars, const HlslDecl *outputs);
+
 #undef malloc
 #undef calloc
 
@@ -3975,6 +3979,8 @@ static void TestProfileBuiltinCapabilityValidation(void)
 static void TestModernResourceValidation(void)
 {
     ValidationFixture fixture;
+    HlslProfileDesc profile;
+    HlslLimits limits;
     HlslResource *resource;
     HlslResource *sampler;
     HlslResource *secondTexture;
@@ -3989,6 +3995,39 @@ static void TestModernResourceValidation(void)
     HlslType nestedType;
     HlslPackOffset offset;
     FILE *stream;
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    first = HlslNewDecl(&fixture.module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_TEXTURE2D), "lastTexture");
+    second = HlslNewDecl(&fixture.module, HLSL_STORAGE_SAMPLER,
+        ModernObjectType(HLSL_BASE_SAMPLER_STATE), "lastSampler");
+    assert(first != NULL && second != NULL);
+    first->resourcePair = second;
+    second->resourcePair = first;
+    first->resourcePairId = second->resourcePairId = 127;
+    first->physical.bank = HLSL_REGISTER_T;
+    second->physical.bank = HLSL_REGISTER_S;
+    first->physical.regno = second->physical.regno = 127;
+    first->physical.span = second->physical.span = 1;
+    resource = AddModernResource(&fixture.module, HLSL_RESOURCE_TEXTURE,
+        HLSL_BASE_TEXTURE2D, "lastTexture", 127, 127);
+    sampler = AddModernResource(&fixture.module, HLSL_RESOURCE_SAMPLER,
+        HLSL_BASE_SAMPLER_STATE, "lastSampler", 127, 127);
+    resource->sourceDeclaration = first;
+    sampler->sourceDeclaration = second;
+    profile = HlslProfile_hlslv40;
+    limits = *profile.limits;
+    limits.samplers = 129;
+    profile.limits = &limits;
+    assert(HlslValidateModule(&fixture.module, &profile));
+    first->physical.regno = second->physical.regno = 128;
+    resource->binding.slot = sampler->binding.slot = 128;
+    fixture.module.errors = 0;
+    fixture.module.errorKind = HLSL_ERROR_NONE;
+    fixture.module.errorReason = NULL;
+    AssertModernInvalidWrite(&fixture, &profile,
+                             HLSL_ERROR_RESOURCE_PAIR);
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
@@ -5898,6 +5937,69 @@ static void TestTargetValidatorInterfaceLimits(void)
     assert(fixture.module.resourceAvailable == 7);
 }
 
+static void TestModernExactInterfaceLimitAccounting(void)
+{
+    HlslModule module;
+    HlslDecl *clip0;
+    HlslDecl *clip1;
+    HlslDecl *cull;
+    HlslDecl *colors;
+    HlslDecl *color;
+    HlslDecl *depth0;
+    HlslDecl *depth1;
+    char names[8][16];
+    int i;
+
+    HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
+    clip0 = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT,
+                        HlslNumericType(HLSL_BASE_FLOAT, 4), "clip0");
+    clip1 = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT,
+                        HlslNumericType(HLSL_BASE_FLOAT, 4), "clip1");
+    cull = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT,
+                       HlslNumericType(HLSL_BASE_FLOAT, 1), "cull0");
+    assert(clip0 != NULL && clip1 != NULL && cull != NULL);
+    clip0->semanticKind = HLSL_SEMANTIC_SV_CLIP_DISTANCE;
+    clip1->semanticKind = HLSL_SEMANTIC_SV_CLIP_DISTANCE;
+    cull->semanticKind = HLSL_SEMANTIC_SV_CLIP_DISTANCE;
+    clip0->next = clip1;
+    assert(HlslValidateInterfaceLimitsForTesting(&module,
+        &HlslProfile_hlslv40, NULL, NULL, clip0));
+    clip1->next = cull;
+    assert(!HlslValidateInterfaceLimitsForTesting(&module,
+        &HlslProfile_hlslv40, NULL, NULL, clip0));
+    assert(module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(!strcmp(module.resourceName, "clip/cull distance components"));
+    assert(module.resourceUsed == 9 && module.resourceAvailable == 8);
+
+    HlslInitModule(&module, HLSL_STAGE_PIXEL, TestAlloc, NULL);
+    colors = NULL;
+    for (i = 0; i < 8; i++) {
+        sprintf(names[i], "color%d", i);
+        color = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT,
+                            HlslNumericType(HLSL_BASE_FLOAT, 4), names[i]);
+        assert(color != NULL);
+        color->semanticKind = HLSL_SEMANTIC_SV_TARGET;
+        color->semanticIndex = i;
+        HlslAppendDecl(&colors, color);
+    }
+    depth0 = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT,
+                         HlslNumericType(HLSL_BASE_FLOAT, 1), "depth0");
+    depth1 = HlslNewDecl(&module, HLSL_STORAGE_OUTPUT,
+                         HlslNumericType(HLSL_BASE_FLOAT, 1), "depth1");
+    assert(depth0 != NULL && depth1 != NULL);
+    depth0->semanticKind = HLSL_SEMANTIC_SV_DEPTH;
+    depth1->semanticKind = HLSL_SEMANTIC_SV_DEPTH;
+    HlslAppendDecl(&colors, depth0);
+    assert(HlslValidateInterfaceLimitsForTesting(&module,
+        &HlslProfile_hlslf40, NULL, NULL, colors));
+    depth0->next = depth1;
+    assert(!HlslValidateInterfaceLimitsForTesting(&module,
+        &HlslProfile_hlslf40, NULL, NULL, colors));
+    assert(module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(!strcmp(module.resourceName, "depth outputs"));
+    assert(module.resourceUsed == 2 && module.resourceAvailable == 1);
+}
+
 static void TestStructuralValidatorRejectsCyclicSignatureGraphs(void)
 {
     ValidationFixture fixture;
@@ -6456,6 +6558,7 @@ int main(int argc, char **argv)
     TestModernGeometryTopologyConversion();
     TestModernSemanticIdentityValidation();
     TestTargetValidatorInterfaceLimits();
+    TestModernExactInterfaceLimitAccounting();
     TestStructuralValidatorRejectsCyclicSignatureGraphs();
     TestStructuralValidatorPreflightsBeforeInitializers();
     TestTargetValidatorRejectsMalformedBindingGraphs();

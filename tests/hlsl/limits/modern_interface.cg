@@ -245,7 +245,11 @@ struct PixelResult {
     float4 color7 : COLOR7;
 #endif
 #if INTERFACE_COUNT >= 9
+#if defined(TEST_PIXEL_DEPTH)
     float depth : DEPTH;
+#else
+    float4 color8 : COLOR8;
+#endif
 #endif
 };
 
@@ -270,6 +274,21 @@ POINT POINT_OUT void main(AttribArray<InterfaceValues> input)
 float4 main(InterfaceValues input) : COLOR0
 {
     return input.value0;
+}
+#elif defined(TEST_CLIP_OUTPUT)
+struct ClipResult {
+    float4 position : POSITION;
+    float4 clip0 : CLP0;
+    float4 clip1 : CLP1;
+};
+
+ClipResult main(float4 position : POSITION)
+{
+    ClipResult result;
+    result.position = position;
+    result.clip0 = position;
+    result.clip1 = position;
+    return result;
 }
 #else
 float4 main(InterfaceValues input) : POSITION

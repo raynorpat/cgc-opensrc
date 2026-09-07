@@ -1105,6 +1105,15 @@ static int RunFailureReporter(int argc, char **argv)
             source);
         return 1;
     }
+    if (!strcmp(profileName, "hlsl-misattributed-error")) {
+        fprintf(stderr,
+            "%s(4) : error C6411: wrong primary diagnostic\n",
+            source);
+        fprintf(stderr,
+            "%s(3) : notice C9500: expected diagnostic\n",
+            source);
+        return 1;
+    }
     if (strcmp(profileName, "hlsl-report-name"))
         return -1;
     HlslInitModule(&module, HLSL_STAGE_VERTEX, NULL, NULL);
