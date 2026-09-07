@@ -36,6 +36,23 @@ add_test(NAME hlsl_require_fxc_missing_sdk
         "-DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/require-fxc-missing"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_require_fxc.cmake)
 
+add_executable(hlsl_invalid_generator hlsl_invalid_generator.c)
+set_target_properties(hlsl_invalid_generator PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES)
+if(FXC_EXECUTABLE)
+    add_test(NAME hlsl_validator_rejects_invalid_generated_source
+        COMMAND ${CMAKE_COMMAND}
+            -DVALIDATOR=${CMAKE_CURRENT_SOURCE_DIR}/validate_hlsl.cmake
+            -DCGC=$<TARGET_FILE:hlsl_invalid_generator>
+            -DFXC=${FXC_EXECUTABLE}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/empty.cg
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/invalid-fxc/$<CONFIG>"
+            "-DCONFIG=$<CONFIG>"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_validator_rejects_invalid.cmake)
+endif()
+
 # Golden regeneration switch (Task 8 Step 7): used only by the fixture
 # registration below; flip to ON to rewrite the tracked GLSL
 # expectations, inspect every diff before committing, then turn it off.
@@ -2119,6 +2136,8 @@ function(add_hlsl_modern_semantic name profile expected entry)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    add_hlsl_validation(${name} ${profile}
+        tests/hlsl/modern/semantics.cg ${entry})
 endfunction()
 
 add_hlsl_modern_semantic(modern_semantic_v40 hlslv40
@@ -2143,6 +2162,8 @@ function(add_hlsl_modern_texture name profile expected entry)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    add_hlsl_validation(${name} ${profile}
+        tests/hlsl/modern/textures.cg ${entry})
 endfunction()
 
 add_hlsl_modern_texture(modern_texture_v40 hlslv40
@@ -2167,6 +2188,8 @@ function(add_hlsl_modern_uniform name profile expected)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    add_hlsl_validation(${name} ${profile}
+        tests/hlsl/modern/uniforms.cg uniform_vertex)
 endfunction()
 
 add_hlsl_modern_uniform(modern_uniform_v40 hlslv40
@@ -2187,6 +2210,8 @@ function(add_hlsl_modern_language name profile expected entry)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    add_hlsl_validation(${name} ${profile}
+        tests/hlsl/modern/language.cg ${entry})
 endfunction()
 
 add_hlsl_modern_language(modern_language_v40 hlslv40
@@ -2243,6 +2268,9 @@ function(add_hlsl_geometry_topology name entry input output)
                 "-DCONFIG=$<CONFIG>"
                 "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}_topology.hlsl"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+        add_hlsl_validation_case(${profile}_${name}_topology ${profile}
+            tests/hlsl/geometry/topologies.cg "" ${entry}
+            "${geometry_options_escaped}")
     endforeach()
 endfunction()
 
@@ -2272,6 +2300,9 @@ function(add_hlsl_geometry_scalar_topology name input extent)
                 "-DCONFIG=$<CONFIG>"
                 "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_scalar_only_${name}.hlsl"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+        add_hlsl_validation_case(${profile}_scalar_only_${name} ${profile}
+            tests/hlsl/geometry/scalar_only_topology.cg "" ${name}_main
+            "${geometry_options_escaped}")
     endforeach()
 endfunction()
 
@@ -2297,6 +2328,8 @@ function(add_hlsl_geometry_fixture name source expected entry)
                 "-DCONFIG=$<CONFIG>"
                 "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+        add_hlsl_validation_case(${profile}_${name} ${profile} ${source} ""
+            ${entry} "${geometry_options_escaped}")
     endforeach()
 endfunction()
 
@@ -2335,6 +2368,8 @@ function(add_hlsl_geometry_attrib_fixture name source)
                 "-DCONFIG=$<CONFIG>"
                 "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+        add_hlsl_validation_case(${profile}_${name} ${profile} ${source} ""
+            main "${geometry_options_escaped}")
     endforeach()
 endfunction()
 
@@ -2366,6 +2401,14 @@ function(add_hlsl_geometry_operation name input output vertices)
                 "-DCONFIG=$<CONFIG>"
                 "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+        # fxc reports X3557 for the intentionally one-iteration loop-order
+        # fixture.  /WX is part of the qualification contract, so that one
+        # source remains covered by its golden and direct lowering tests.
+        if(NOT name STREQUAL "loop_order")
+            add_hlsl_validation_case(${profile}_${name} ${profile}
+                tests/hlsl/geometry/${name}.cg "" main
+                "${geometry_options_escaped}")
+        endif()
     endforeach()
 endfunction()
 
@@ -2400,6 +2443,8 @@ foreach(profile hlslv40 hlslv50)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_vertex_id_producer.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    add_hlsl_validation(${profile}_vertex_id_producer ${profile}
+        tests/hlsl/geometry/vertex_id_bridge.cg vertex_main)
 endforeach()
 
 function(add_hlsl_geometry_failure name source code line reason options)
@@ -3069,6 +3114,7 @@ if(FXC_EXECUTABLE)
             -DFXC=${FXC_EXECUTABLE}
             -DPROFILE=hlslv
             -DTARGET=vs_3_0
+            -DLEGACY_SYNTAX=TRUE
             "-DCONFIG=$<CONFIG>"
             "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-validate"
             "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"

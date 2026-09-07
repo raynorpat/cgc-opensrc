@@ -39,7 +39,7 @@ if(EXISTS "${work_absolute}")
 endif()
 
 if(MODE STREQUAL "validate")
-    foreach(required FXC PROFILE TARGET SOURCE)
+    foreach(required FXC PROFILE TARGET LEGACY_SYNTAX SOURCE)
         if(NOT DEFINED ${required})
             message(FATAL_ERROR "${required} must be defined")
         endif()
@@ -52,6 +52,7 @@ if(MODE STREQUAL "validate")
             -DFXC=${FXC}
             -DPROFILE=${PROFILE}
             -DTARGET=${TARGET}
+            -DLEGACY_SYNTAX=${LEGACY_SYNTAX}
             -DSOURCE=${SOURCE}
             -DCONFIG=${CONFIG}
             -DOUTPUT=${output}
