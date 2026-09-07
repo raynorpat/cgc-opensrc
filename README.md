@@ -238,10 +238,10 @@ Representative Windows commands are:
 ```powershell
 .\build\Release\cgc.exe -quiet -profile hlslv40 -entry main -o shader.v40.hlsl position.cg
 .\build\Release\cgc.exe -quiet -profile hlslf40 -entry texture_pixel -o shader.p40.hlsl tests\hlsl\modern\textures.cg
-.\build\Release\cgc.exe -quiet -profile hlslg40 -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o shader.g40.hlsl tests\hlsl\geometry\pass_through.cg
+.\build\Release\cgc.exe -quiet -profile hlslg40 -entry main -po POINT -po POINT_OUT -po Vertices=1 -o shader.g40.hlsl tests\hlsl\geometry\pass_through.cg
 .\build\Release\cgc.exe -quiet -profile hlslv50 -entry main -o shader.v50.hlsl position.cg
 .\build\Release\cgc.exe -quiet -profile hlslf50 -entry texture_pixel -o shader.p50.hlsl tests\hlsl\modern\textures.cg
-.\build\Release\cgc.exe -quiet -profile hlslg50 -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o shader.g50.hlsl tests\hlsl\geometry\pass_through.cg
+.\build\Release\cgc.exe -quiet -profile hlslg50 -entry main -po POINT -po POINT_OUT -po Vertices=1 -o shader.g50.hlsl tests\hlsl\geometry\pass_through.cg
 ```
 
 A geometry entry requires one input topology (`POINT`, `LINE`, `LINE_ADJ`,

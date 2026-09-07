@@ -9,15 +9,16 @@ float bump(inout float value)
 POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
 {
     float value = 0.0;
+    float limit = position[0].x;
     int i = 0;
-    while (bump(value) + bump(value) < 4.0) {
+    while (bump(value) + bump(value) < 4.0 + limit) {
         if (value > 3.0)
             continue;
     }
     do {
         value = value + 1.0;
-    } while (bump(value) + bump(value) < 8.0);
-    for (i = 0; bump(value) + bump(value) < 12.0;
+    } while (bump(value) + bump(value) < 8.0 + limit);
+    for (i = 0; bump(value) + bump(value) < 12.0 + limit;
          i = int(bump(value)) + int(bump(value))) {
         if (i > 20)
             break;

@@ -210,6 +210,99 @@ POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
 {
     VertexResult result;
     result.position = position[0];
+#if INTERFACE_COUNT >= 2
+    result.value1 = position[0];
+#endif
+#if INTERFACE_COUNT >= 3
+    result.value2 = position[0];
+#endif
+#if INTERFACE_COUNT >= 4
+    result.value3 = position[0];
+#endif
+#if INTERFACE_COUNT >= 5
+    result.value4 = position[0];
+#endif
+#if INTERFACE_COUNT >= 6
+    result.value5 = position[0];
+#endif
+#if INTERFACE_COUNT >= 7
+    result.value6 = position[0];
+#endif
+#if INTERFACE_COUNT >= 8
+    result.value7 = position[0];
+#endif
+#if INTERFACE_COUNT >= 9
+    result.value8 = position[0];
+#endif
+#if INTERFACE_COUNT >= 10
+    result.value9 = position[0];
+#endif
+#if INTERFACE_COUNT >= 11
+    result.value10 = position[0];
+#endif
+#if INTERFACE_COUNT >= 12
+    result.value11 = position[0];
+#endif
+#if INTERFACE_COUNT >= 13
+    result.value12 = position[0];
+#endif
+#if INTERFACE_COUNT >= 14
+    result.value13 = position[0];
+#endif
+#if INTERFACE_COUNT >= 15
+    result.value14 = position[0];
+#endif
+#if INTERFACE_COUNT >= 16
+    result.value15 = position[0];
+#endif
+#if INTERFACE_COUNT >= 17
+    result.value16 = position[0];
+#endif
+#if INTERFACE_COUNT >= 18
+    result.value17 = position[0];
+#endif
+#if INTERFACE_COUNT >= 19
+    result.value18 = position[0];
+#endif
+#if INTERFACE_COUNT >= 20
+    result.value19 = position[0];
+#endif
+#if INTERFACE_COUNT >= 21
+    result.value20 = position[0];
+#endif
+#if INTERFACE_COUNT >= 22
+    result.value21 = position[0];
+#endif
+#if INTERFACE_COUNT >= 23
+    result.value22 = position[0];
+#endif
+#if INTERFACE_COUNT >= 24
+    result.value23 = position[0];
+#endif
+#if INTERFACE_COUNT >= 25
+    result.value24 = position[0];
+#endif
+#if INTERFACE_COUNT >= 26
+    result.value25 = position[0];
+#endif
+#if INTERFACE_COUNT >= 27
+    result.value26 = position[0];
+#endif
+#if INTERFACE_COUNT >= 28
+    result.value27 = position[0];
+#endif
+#if INTERFACE_COUNT >= 29
+    result.value28 = position[0];
+#endif
+#if INTERFACE_COUNT >= 30
+    result.value29 = position[0];
+#endif
+#if INTERFACE_COUNT >= 31
+    result.value30 = position[0];
+#endif
+#if INTERFACE_COUNT >= 32
+    result.value31 = position[0];
+#endif
     emitVertex(result);
 }
 #else

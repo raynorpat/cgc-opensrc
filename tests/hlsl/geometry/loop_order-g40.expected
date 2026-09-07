@@ -22,6 +22,7 @@ float cg_bump(inout float value)
 void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, inout cg_GeometryOut cgc_output)
 {
     float value;
+    float limit;
     int i;
     float temp1;
     float temp2;
@@ -33,12 +34,13 @@ void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, 
     int temp8;
     float4 temp9;
     value = 0.0;
+    limit = position[0].x;
     i = 0;
     while (true)
     {
         temp1 = cg_bump(value);
         temp2 = temp1 + cg_bump(value);
-        if (!(temp2 < 4.0))
+        if (!(temp2 < 4.0 + limit))
         {
             break;
         }
@@ -56,7 +58,7 @@ void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, 
         {
             temp3 = cg_bump(value);
             temp4 = temp3 + cg_bump(value);
-            if (!(temp4 < 8.0))
+            if (!(temp4 < 8.0 + limit))
             {
                 break;
             }
@@ -70,7 +72,7 @@ void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, 
     {
         temp6 = cg_bump(value);
         temp7 = temp6 + cg_bump(value);
-        if (!(temp7 < 12.0))
+        if (!(temp7 < 12.0 + limit))
         {
             break;
         }
