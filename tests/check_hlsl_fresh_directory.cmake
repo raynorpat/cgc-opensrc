@@ -7,7 +7,8 @@ endforeach()
 get_filename_component(test_root "${TEST_BINARY_ROOT}" REALPATH)
 get_filename_component(work_absolute "${WORK_DIR}" ABSOLUTE)
 get_filename_component(work_name "${work_absolute}" NAME)
-if(NOT work_name STREQUAL "fresh-link" AND
+if(NOT work_name STREQUAL "fresh-modern" AND
+   NOT work_name STREQUAL "fresh-link" AND
    NOT work_name STREQUAL "fresh-validate" AND
    NOT work_name STREQUAL "fresh-validate-modern")
     message(FATAL_ERROR
@@ -39,7 +40,30 @@ if(EXISTS "${work_absolute}")
         "failed to remove fresh-directory probe ${work_absolute}")
 endif()
 
-if(MODE STREQUAL "validate")
+if(MODE STREQUAL "compile")
+    foreach(required PROFILE SOURCE)
+        if(NOT DEFINED ${required})
+            message(FATAL_ERROR "${required} must be defined")
+        endif()
+    endforeach()
+    set(output "${work_absolute}/${CONFIG}/shader.hlsl")
+    get_filename_component(output_directory "${output}" DIRECTORY)
+    file(MAKE_DIRECTORY "${output_directory}")
+    execute_process(
+        COMMAND "${CGC}" -quiet -profile "${PROFILE}"
+            -o "${output}" "${SOURCE}"
+        RESULT_VARIABLE result
+        OUTPUT_VARIABLE stdout
+        ERROR_VARIABLE stderr)
+    if(NOT result EQUAL 0 OR NOT stdout STREQUAL "" OR
+       NOT stderr STREQUAL "")
+        message(FATAL_ERROR
+            "fresh modern compile failed (${result}):\n${stdout}${stderr}")
+    endif()
+    if(NOT EXISTS "${output}")
+        message(FATAL_ERROR "fresh modern output was not created")
+    endif()
+elseif(MODE STREQUAL "validate")
     foreach(required FXC PROFILE TARGET LEGACY_SYNTAX SOURCE)
         if(NOT DEFINED ${required})
             message(FATAL_ERROR "${required} must be defined")

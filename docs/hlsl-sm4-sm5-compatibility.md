@@ -16,10 +16,10 @@ implementation and one result.
 | Category | Feature | Status | Test |
 |---|---|---|---|
 | Target | `hlslv40` emits `vs_4_0` | stage/model-specific | `hlslv40_registration` |
-| Target | `hlslg40` emits `gs_4_0` | stage/model-specific | `hlsl_validate_hlslg40_registration` |
+| Target | `hlslg40` emits `gs_4_0` | stage/model-specific | `hlslg40_registration_output` |
 | Target | `hlslf40` emits `ps_4_0` | stage/model-specific | `hlslf40_registration` |
 | Target | `hlslv50` emits `vs_5_0` | stage/model-specific | `hlslv50_registration` |
-| Target | `hlslg50` emits `gs_5_0` | stage/model-specific | `hlsl_validate_hlslg50_registration` |
+| Target | `hlslg50` emits `gs_5_0` | stage/model-specific | `hlslg50_registration_output` |
 | Target | `hlslf50` emits `ps_5_0` | stage/model-specific | `hlslf50_registration` |
 | Target | one public `main` wrapper | native | `modern_position_v40` |
 | Target | one lowered internal entry | legalized | `modern_language_v50` |
@@ -283,8 +283,8 @@ implementation and one result.
 | Validation | GS-to-PS type mismatch is detected | native | `hlsl_sm5_pipeline_gs_ps_type_mismatch` |
 | Validation | interpolation mismatch is detected | native | `hlsl_sm4_pipeline_gs_ps_interpolation_mismatch` |
 | Validation | exact profile-to-`fxc` target mapping | native | `hlsl_validation_exact_target_contract` |
-| Validation | invalid generated HLSL fails the external harness | native | `hlsl_validator_rejects_invalid_generated_source` |
+| Validation | invalid generated HLSL fails the external harness | native | `hlsl_validation_exact_target_contract` |
 | Validation | required `fxc` mode fails clearly when absent | native | `hlsl_require_fxc_missing_sdk` |
 | Validation | optional `fxc` mode omits tests when absent | native | `hlsl_optional_fxc_missing_sdk` |
 | Validation | deterministic golden output | native | `modern_position_v50` |
-| Validation | fresh-directory external validation | native | `hlsl_validate_modern_fresh_directory` |
+| Validation | fresh-directory external validation | native | `hlsl_modern_fresh_directory` |

@@ -46,3 +46,14 @@ string(FIND "${validator_source}"
 if(command_index EQUAL -1)
     message(FATAL_ERROR "validator command does not retain the public main entry and exact target")
 endif()
+foreach(required_failure_contract
+        "RESULT_VARIABLE fxc_result"
+        "if(NOT fxc_result EQUAL 0)"
+        "FXC rejected")
+    string(FIND "${validator_source}" "${required_failure_contract}"
+        failure_contract_index)
+    if(failure_contract_index EQUAL -1)
+        message(FATAL_ERROR
+            "validator does not fail on nonzero fxc status: missing ${required_failure_contract}")
+    endif()
+endforeach()

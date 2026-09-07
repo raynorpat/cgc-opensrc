@@ -2013,6 +2013,10 @@ add_glsl_registration(glslv)
 add_glsl_registration(glslf)
 
 function(add_hlsl_validation_case name profile source packing)
+    if(profile MATCHES "^hlsl[vgf](40|50)$")
+        set_property(DIRECTORY APPEND PROPERTY
+            HLSL_MODERN_VALIDATION_CANDIDATES "${name}")
+    endif()
     if(FXC_EXECUTABLE)
         if(profile STREQUAL "hlslv")
             set(target vs_3_0)
@@ -2833,6 +2837,16 @@ add_test(
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslg50_registration.hlsl"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_nocode.cmake
 )
+foreach(model 40 50)
+    add_test(
+        NAME hlslg${model}_registration_output
+        COMMAND $<TARGET_FILE:cgc>
+            -quiet
+            -profile hlslg${model}
+            -po Vertices=1
+            -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslg${model}_registration_output.hlsl
+            ${PROJECT_SOURCE_DIR}/tests/hlsl/modern/empty_geometry.cg)
+endforeach()
 add_hlsl_validation_case(hlslg40_registration hlslg40
     tests/hlsl/modern/empty_geometry.cg "" "" "Vertices=1")
 add_hlsl_validation_case(hlslg50_registration hlslg50
@@ -3310,6 +3324,17 @@ add_test(NAME hlsl_link_fresh_directory
         "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
         -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/vp_link.cg
         -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/fp_link.cg
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
+
+add_test(NAME hlsl_modern_fresh_directory
+    COMMAND ${CMAKE_COMMAND}
+        -DMODE=compile
+        -DCGC=$<TARGET_FILE:cgc>
+        -DPROFILE=hlslv40
+        "-DCONFIG=$<CONFIG>"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-modern"
+        "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_passthrough.cg
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
 
 if(FXC_EXECUTABLE)
@@ -5344,9 +5369,12 @@ get_property(hlsl_registered_contracts DIRECTORY
     PROPERTY HLSL_FAILURE_CONTRACTS)
 get_property(hlsl_external_validation_cases DIRECTORY
     PROPERTY HLSL_EXTERNAL_VALIDATION_CASES)
+get_property(hlsl_modern_validation_candidates DIRECTORY
+    PROPERTY HLSL_MODERN_VALIDATION_CANDIDATES)
 set(hlsl_modern_witness_candidates
     hlsl_invariants_unit
     hlsl_link_mixed_modern_geometry_model
+    hlsl_modern_fresh_directory
     hlsl_optional_fxc_missing_sdk
     hlsl_require_fxc_missing_sdk
     hlsl_semantics_unit
@@ -5357,6 +5385,8 @@ set(hlsl_modern_witness_candidates
     hlsl_sm5_pipeline_geometry
     hlsl_sm5_pipeline_gs_ps_type_mismatch
     hlsl_sm5_pipeline_vertex_id
+    hlslg40_registration_output
+    hlslg50_registration_output
     hlsl_validation_exact_target_contract
     hlsl_validator_rejects_invalid_generated_source
     modern_semantic_case_output_conflict_v40)
@@ -5368,21 +5398,19 @@ foreach(hlsl_modern_witness IN LISTS hlsl_modern_witness_candidates)
         list(APPEND hlsl_modern_witness_tests "${hlsl_modern_witness}")
     endif()
 endforeach()
-foreach(hlsl_external_validation IN LISTS hlsl_external_validation_cases)
-    if(hlsl_external_validation MATCHES
-       "^([^|]+)[|]hlsl[vgf](40|50)[|]")
-        set(hlsl_external_name "${CMAKE_MATCH_1}")
-        foreach(hlsl_external_witness
-                "${hlsl_external_name}"
-                "hlsl_validate_${hlsl_external_name}")
-            list(FIND hlsl_registered_tests "${hlsl_external_witness}"
-                hlsl_external_witness_index)
-            if(NOT hlsl_external_witness_index EQUAL -1)
-                list(APPEND hlsl_modern_witness_tests
-                    "${hlsl_external_witness}")
-            endif()
-        endforeach()
-    endif()
+foreach(hlsl_modern_validation_name IN LISTS
+        hlsl_modern_validation_candidates)
+    foreach(hlsl_modern_validation_witness
+            "${hlsl_modern_validation_name}"
+            "hlsl_validate_${hlsl_modern_validation_name}")
+        list(FIND hlsl_registered_tests
+            "${hlsl_modern_validation_witness}"
+            hlsl_modern_validation_witness_index)
+        if(NOT hlsl_modern_validation_witness_index EQUAL -1)
+            list(APPEND hlsl_modern_witness_tests
+                "${hlsl_modern_validation_witness}")
+        endif()
+    endforeach()
 endforeach()
 list(REMOVE_DUPLICATES hlsl_modern_witness_tests)
 string(REPLACE ";" "\n" hlsl_registered_contract_lines
