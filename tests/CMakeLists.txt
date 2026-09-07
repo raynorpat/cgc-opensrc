@@ -1456,6 +1456,22 @@ add_test(
     COMMAND hlsl_ir_unit
 )
 
+add_test(
+    NAME hlsl_geometry_zero_self_reference
+    COMMAND hlsl_ir_unit --geometry-zero-self-reference
+)
+
+add_test(
+    NAME hlsl_geometry_zero_cyclic_list
+    COMMAND hlsl_ir_unit --geometry-zero-cyclic-list
+)
+
+set_tests_properties(
+    hlsl_geometry_zero_self_reference
+    hlsl_geometry_zero_cyclic_list
+    PROPERTIES TIMEOUT 3
+)
+
 # Real verified CgIR -> HLSL lowering coverage for geometry operations.
 # This intentionally drives HlslLowerProgramWithIR rather than constructing
 # HLSL nodes so source locations and structured control-flow ownership are

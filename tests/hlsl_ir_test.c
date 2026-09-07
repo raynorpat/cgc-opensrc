@@ -4344,6 +4344,57 @@ static void ConfigureGeometryFixture(ValidationFixture *fixture)
     input->semanticIndex = 0;
 }
 
+static HlslDecl *PrepareGeometryZeroInitializerFixture(
+    ValidationFixture *fixture)
+{
+    ConfigureGeometryFixture(fixture);
+    assert(HlslSetGeometryLayout(&fixture->module,
+        HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 1));
+    fixture->wrapper->parameters->type.arraySize = 1;
+    fixture->module.geometryOutputStruct = fixture->outputStruct;
+    assert(HlslLegalizeModule(&fixture->module,
+                              &HlslProfile_hlslg40));
+    assert(fixture->wrapper->geometryOutputRecord != NULL);
+    return fixture->wrapper->geometryOutputRecord;
+}
+
+static void TestGeometryZeroInitializerRejectsSelfReference(void)
+{
+    ValidationFixture fixture;
+    HlslDecl *record;
+    HlslExpr *initializer;
+
+    record = PrepareGeometryZeroInitializerFixture(&fixture);
+    initializer = record->initializer;
+    assert(initializer != NULL && initializer->kind == HLSL_EXPR_CAST);
+    initializer->u.cast.expression = initializer;
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
+    assert(fixture.module.errors > 0);
+    assert(fixture.module.errorKind == HLSL_ERROR_INVALID_IR);
+}
+
+static void TestGeometryZeroInitializerRejectsCyclicList(void)
+{
+    ValidationFixture fixture;
+    HlslDecl *record;
+    HlslExpr *construct;
+    HlslExpr *zero;
+
+    record = PrepareGeometryZeroInitializerFixture(&fixture);
+    construct = HlslNewExpr(&fixture.module, HLSL_EXPR_CONSTRUCT,
+                            record->type);
+    zero = HlslNewExpr(&fixture.module, HLSL_EXPR_INT,
+                       HlslNumericType(HLSL_BASE_INT, 1));
+    assert(construct != NULL && zero != NULL);
+    zero->u.literalInt = 0;
+    zero->next = zero;
+    construct->u.construct.arguments = zero;
+    record->initializer = construct;
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslg40));
+    assert(fixture.module.errors > 0);
+    assert(fixture.module.errorKind == HLSL_ERROR_INVALID_IR);
+}
+
 static void TestModernGeometryValidation(void)
 {
     ValidationFixture fixture;
@@ -6090,6 +6141,18 @@ int main(int argc, char **argv)
         if (!assertionsActive)
             return 2;
         puts("glsl-ir-assertions-active");
+        return 0;
+    }
+    if (argc == 2 &&
+        !strcmp(argv[1], "--geometry-zero-self-reference"))
+    {
+        TestGeometryZeroInitializerRejectsSelfReference();
+        return 0;
+    }
+    if (argc == 2 &&
+        !strcmp(argv[1], "--geometry-zero-cyclic-list"))
+    {
+        TestGeometryZeroInitializerRejectsCyclicList();
         return 0;
     }
 
