@@ -1540,7 +1540,7 @@ add_executable(hlsl_geometry_lower_unit
     ${PROJECT_SOURCE_DIR}/hlsl_hal.c
     ${PROJECT_SOURCE_DIR}/hlsl_ir.c
     ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
-    ${PROJECT_SOURCE_DIR}/hlsl_lower.c
+    ${CGC_HLSL_LOWER_SOURCES}
     ${PROJECT_SOURCE_DIR}/hlsl_modern.c
     ${PROJECT_SOURCE_DIR}/hlsl_validate.c
     ${PROJECT_SOURCE_DIR}/hlslv_hal.c

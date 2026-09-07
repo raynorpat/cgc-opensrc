@@ -7,6 +7,10 @@ include(CheckIncludeFile)
 
 check_include_file(stdint.h CGC_HAVE_STDINT_H)
 
+set(CGC_HLSL_LOWER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
+)
+
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
@@ -46,7 +50,7 @@ add_executable(cgc
     hlsl_bind.c
     hlsl_ir.c
     hlsl_modern.c
-    hlsl_lower.c
+    ${CGC_HLSL_LOWER_SOURCES}
     hlsl_legalize.c
     hlsl_validate.c
     hlsl_codegen.c
