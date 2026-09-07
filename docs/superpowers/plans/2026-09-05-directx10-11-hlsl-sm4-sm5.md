@@ -1652,7 +1652,12 @@ to run.
 
 ```powershell
 git diff --check
-rg -n "HlslSkeleton|Temporary HlslModule|Task [0-9]+ replaces" -g 'hlsl_*.c' -g 'hlsl_*.h' -g '*.md' .
+$incompleteHlsl = rg -n "HlslSkeleton|Temporary HlslModule|Task [0-9]+ replaces" -g 'hlsl_*.c' -g 'hlsl_*.h' .
+if ($LASTEXITCODE -eq 0) {
+    $incompleteHlsl
+    throw 'Incomplete-work marker found in HLSL implementation'
+}
+if ($LASTEXITCODE -ne 1) { throw 'HLSL marker audit failed to run' }
 $repositoryRoot = (Resolve-Path '.').Path
 $modernBuildRoot = (Resolve-Path 'build-hlsl-modern').Path
 if ((Split-Path -Parent $modernBuildRoot) -ne $repositoryRoot -or
@@ -1661,12 +1666,14 @@ if ((Split-Path -Parent $modernBuildRoot) -ne $repositoryRoot -or
 }
 Remove-Item -LiteralPath $modernBuildRoot -Recurse -Force
 git status --short
+git status --short --ignored -- docs/superpowers/plans/2026-09-05-directx10-11-hlsl-sm4-sm5.md.bak build-hlsl-modern
 ```
 
-Expected: no whitespace errors or incomplete-work markers. Status contains
-only intended documentation/test changes plus unrelated untracked paths that
-were already recorded at the Task 1 baseline; the plan-created
-`build-hlsl-modern` directory is gone.
+Expected: no whitespace errors or incomplete-work markers in HLSL
+implementation files. Status contains only intended documentation/test
+changes plus unrelated untracked paths that were already recorded at the Task
+1 baseline. The targeted ignored-path status is empty: neither the plan-created
+`build-hlsl-modern` directory nor a plan backup remains.
 
 - [x] **Step 9: Mark this plan complete and commit documentation**
 
