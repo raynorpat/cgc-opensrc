@@ -229,23 +229,35 @@ static void TestModernProfileDescriptors(void)
         HlslStage stage;
         HlslShaderModel model;
         unsigned int capabilities;
+        int inputs;
+        int outputs;
+        int colorOutputs;
+        int depthOutputs;
+        int geometryMaxVertices;
+        int geometryTotalOutputComponents;
     } expected[] = {
         { &HlslProfile_hlslv40, HLSL_STAGE_VERTEX, HLSL_SHADER_MODEL_4,
-          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS },
+          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS,
+          16, 16, 0, 0, 0, 0 },
         { &HlslProfile_hlslg40, HLSL_STAGE_GEOMETRY, HLSL_SHADER_MODEL_4,
           HLSL_CAP_GEOMETRY | HLSL_CAP_TEXTURE_METHODS |
-              HLSL_CAP_CBUFFERS },
+              HLSL_CAP_CBUFFERS,
+          16, 32, 0, 0, 1024, 1024 },
         { &HlslProfile_hlslf40, HLSL_STAGE_PIXEL, HLSL_SHADER_MODEL_4,
           HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS |
-              HLSL_CAP_DERIVATIVES | HLSL_CAP_DISCARD },
+              HLSL_CAP_DERIVATIVES | HLSL_CAP_DISCARD,
+          32, 8, 8, 1, 0, 0 },
         { &HlslProfile_hlslv50, HLSL_STAGE_VERTEX, HLSL_SHADER_MODEL_5,
-          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS },
+          HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS,
+          32, 32, 0, 0, 0, 0 },
         { &HlslProfile_hlslg50, HLSL_STAGE_GEOMETRY, HLSL_SHADER_MODEL_5,
           HLSL_CAP_GEOMETRY | HLSL_CAP_TEXTURE_METHODS |
-              HLSL_CAP_CBUFFERS },
+              HLSL_CAP_CBUFFERS,
+          32, 32, 0, 0, 1024, 1024 },
         { &HlslProfile_hlslf50, HLSL_STAGE_PIXEL, HLSL_SHADER_MODEL_5,
           HLSL_CAP_TEXTURE_METHODS | HLSL_CAP_CBUFFERS |
-              HLSL_CAP_DERIVATIVES | HLSL_CAP_DISCARD }
+              HLSL_CAP_DERIVATIVES | HLSL_CAP_DISCARD,
+          32, 8, 8, 1, 0, 0 }
     };
     const HlslProfileDesc *profile;
     int index;
@@ -261,6 +273,23 @@ static void TestModernProfileDescriptors(void)
         assert(profile->semanticPolicy == HLSL_SEMANTIC_POLICY_MODERN);
         assert(profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN);
         assert(profile->capabilities == expected[index].capabilities);
+        assert(profile->limits != NULL);
+        assert(profile->limits->inputs == expected[index].inputs);
+        assert(profile->limits->outputs == expected[index].outputs);
+        assert(profile->limits->floatConstants == 0);
+        assert(profile->limits->intConstants == 0);
+        assert(profile->limits->boolConstants == 0);
+        assert(profile->limits->samplers == 16);
+        assert(profile->limits->colorOutputs == expected[index].colorOutputs);
+        assert(profile->limits->depthOutputs == expected[index].depthOutputs);
+        assert(profile->limits->clipDistanceComponents == 8);
+        assert(profile->limits->constantBufferSlots == 14);
+        assert(profile->limits->constantBufferVectors == 4096);
+        assert(profile->limits->resources == 128);
+        assert(profile->limits->geometryMaxVertices ==
+               expected[index].geometryMaxVertices);
+        assert(profile->limits->geometryTotalOutputComponents ==
+               expected[index].geometryTotalOutputComponents);
     }
 }
 
@@ -3479,6 +3508,16 @@ static void TestModernIrBuilders(void)
     assert(HLSL_ERROR_RESOURCE_PAIR == HLSL_ERROR_CBUFFER + 1);
     assert(HLSL_ERROR_GEOMETRY_LAYOUT == HLSL_ERROR_RESOURCE_PAIR + 1);
     assert(HLSL_ERROR_GEOMETRY_LIMIT == HLSL_ERROR_GEOMETRY_LAYOUT + 1);
+    assert(HLSL_ERROR_PROFILE_STAGE == HLSL_ERROR_GEOMETRY_LIMIT + 1);
+    assert(HLSL_ERROR_MODEL_CAPABILITY == HLSL_ERROR_PROFILE_STAGE + 1);
+    assert(HLSL_ERROR_TEXTURE_STAGE == HLSL_ERROR_MODEL_CAPABILITY + 1);
+    assert(HLSL_ERROR_TEXTURE_SIGNATURE == HLSL_ERROR_TEXTURE_STAGE + 1);
+    assert(HLSL_ERROR_GEOMETRY_MISSING_MAX ==
+           HLSL_ERROR_TEXTURE_SIGNATURE + 1);
+    assert(HLSL_ERROR_GEOMETRY_MAX_LIMIT ==
+           HLSL_ERROR_GEOMETRY_MISSING_MAX + 1);
+    assert(HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT ==
+           HLSL_ERROR_GEOMETRY_MAX_LIMIT + 1);
     type = ModernObjectType(HLSL_BASE_TEXTURE1D);
     assert(!strcmp(HlslTypeName(&type), "Texture1D"));
     type = ModernObjectType(HLSL_BASE_TEXTURE2D);
@@ -5486,7 +5525,8 @@ static void TestHlslErrorMappingAndFirstFailure(void)
     static const int expectedCodes[] = {
         0, 6400, 6401, 6402, 6403, 6404, 6405,
         6406, 6407, 6408, 6409, 6410, 6411, 9013,
-        6412, 6413, 6414, 6415, 6416, 6417
+        6412, 6413, 6414, 6415, 6416, 6417,
+        6418, 6419, 6420, 6421, 6422, 6423, 6424
     };
     HlslModule module;
     HlslLoc firstLoc;
@@ -5494,8 +5534,9 @@ static void TestHlslErrorMappingAndFirstFailure(void)
     int i;
 
     assert((int) (sizeof(expectedCodes) / sizeof(expectedCodes[0])) ==
-           HLSL_ERROR_GEOMETRY_LIMIT + 1);
-    for (i = HLSL_ERROR_NONE; i <= HLSL_ERROR_GEOMETRY_LIMIT; i++)
+           HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT + 1);
+    for (i = HLSL_ERROR_NONE;
+         i <= HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT; i++)
         assert(HlslErrorCode((HlslErrorKind) i) == expectedCodes[i]);
     assert(HlslErrorCode((HlslErrorKind) -1) == 0);
     assert(HlslErrorCode((HlslErrorKind) 99) == 0);
