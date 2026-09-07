@@ -408,10 +408,13 @@ static HlslStmt *AssertIndexedSwizzleStore(HlslStmt *statement,
 static HlslStmt *AssertDeclarationInitializers(HlslStmt *statement,
                                                const Symbol *scalar,
                                                const Symbol *aggregate,
+                                               const Symbol *recursive,
                                                const Symbol *index,
                                                const Symbol *condition)
 {
     const HlslExpr *assignment;
+    const HlslExpr *target;
+    int i;
 
     assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
     assignment = statement->u.expression;
@@ -424,6 +427,19 @@ static HlslStmt *AssertDeclarationInitializers(HlslStmt *statement,
            assignment->u.binary.left->u.symbol->identity == aggregate &&
            assignment->u.binary.right->kind == HLSL_EXPR_CONSTRUCT);
     statement = statement->next;
+    for (i = 0; i < 2; i++) {
+        assert(statement != NULL &&
+               statement->kind == HLSL_STMT_EXPRESSION);
+        assignment = statement->u.expression;
+        target = assignment->u.binary.left;
+        assert(target->kind == HLSL_EXPR_INDEX &&
+               target->u.index.object->kind == HLSL_EXPR_SYMBOL &&
+               target->u.index.object->u.symbol->identity == recursive &&
+               target->u.index.index->kind == HLSL_EXPR_INT &&
+               target->u.index.index->u.literalInt == i &&
+               assignment->u.binary.right->kind == HLSL_EXPR_CONSTRUCT);
+        statement = statement->next;
+    }
     assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
     assignment = statement->u.expression;
     assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
@@ -766,14 +782,21 @@ int main(int argc, char **argv)
     CgIRAppendDecl(&sourceEntry->locals, sourceInitialized);
     memset(&intZero, 0, sizeof(intZero));
     intZero.kind = CG_SCALAR_INT;
+    arguments = NULL;
+    CgIRAppendExpr(&arguments,
+        NewConstantVector(&source, floatType, float4Type, lvalueLoc, 3.0f));
+    CgIRAppendExpr(&arguments,
+        NewConstantVector(&source, floatType, float4Type, lvalueLoc, 4.0f));
     sourceValues = CgIRNewDecl(&source, valuesSymbol, valuesSymbol->name,
         &valuesArrayType, CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0,
-        NULL, &lvalueLoc);
+        CgIRNewConstruct(&source, &valuesArrayType, &lvalueLoc, arguments),
+        &lvalueLoc);
     sourceIndex = CgIRNewDecl(&source, indexSymbol, indexSymbol->name,
         intType, CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0,
         CgIRNewConstant(&source, intType, &lvalueLoc, &intZero),
         &lvalueLoc);
-    assert(sourceValues != NULL && sourceIndex != NULL &&
+    assert(sourceValues != NULL && sourceValues->initializer != NULL &&
+           sourceIndex != NULL &&
            sourceIndex->initializer != NULL);
     CgIRAppendDecl(&sourceEntry->locals, sourceValues);
     CgIRAppendDecl(&sourceEntry->locals, sourceIndex);
@@ -983,8 +1006,8 @@ int main(int argc, char **argv)
            CountIRKind(sourceEntry->body, CGIR_STMT_GEOMETRY_RESTART));
 
     hIf = AssertDeclarationInitializers(entry->body, valueSymbol,
-                                        initializedSymbol, indexSymbol,
-                                        chooseSymbol);
+                                        initializedSymbol, valuesSymbol,
+                                        indexSymbol, chooseSymbol);
     hIf = AssertIndexedSwizzleStore(hIf, next, valuesSymbol,
                                     valueSymbol);
     hIf = AssertVectorConditional(hIf, selectedSymbol);
