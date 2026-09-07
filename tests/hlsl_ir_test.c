@@ -4677,7 +4677,7 @@ static void TestModernGeometryValidation(void)
     fixture.module.geometryInputCount = 1;
     fixture.module.geometryMaxVertices = 0;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
-                             HLSL_ERROR_GEOMETRY_LIMIT);
+                             HLSL_ERROR_GEOMETRY_MISSING_MAX);
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
@@ -4768,14 +4768,14 @@ static void TestModernGeometryValidation(void)
         HlslProfile_hlslg40.limits->geometryMaxVertices + 1));
     fixture.wrapper->parameters->type.arraySize = 1;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
-                             HLSL_ERROR_GEOMETRY_LIMIT);
+                             HLSL_ERROR_GEOMETRY_MAX_LIMIT);
 
     ConfigureGeometryFixture(&fixture);
     assert(HlslSetGeometryLayout(&fixture.module,
         HLSL_GEOMETRY_INPUT_POINT, HLSL_GEOMETRY_STREAM_POINT, 1, 300));
     fixture.wrapper->parameters->type.arraySize = 1;
     AssertModernInvalidWrite(&fixture, &HlslProfile_hlslg40,
-                             HLSL_ERROR_GEOMETRY_LIMIT);
+                             HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT);
 
     ConfigureGeometryFixture(&fixture);
     assert(HlslSetGeometryLayout(&fixture.module,

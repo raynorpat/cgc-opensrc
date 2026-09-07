@@ -1,0 +1,16 @@
+struct GeometryResult {
+    float4 position : POSITION;
+#if defined(FIVE_COMPONENT_OUTPUT)
+    float extra : TEXCOORD0;
+#endif
+};
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    GeometryResult result;
+    result.position = position[0];
+#if defined(FIVE_COMPONENT_OUTPUT)
+    result.extra = position[0].x;
+#endif
+    emitVertex(result);
+}

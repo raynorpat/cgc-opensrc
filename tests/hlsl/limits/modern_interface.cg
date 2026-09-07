@@ -1,0 +1,259 @@
+#ifndef INTERFACE_COUNT
+#define INTERFACE_COUNT 1
+#endif
+
+struct InterfaceValues {
+#if INTERFACE_COUNT >= 1
+    float4 value0 : TEXCOORD0;
+#endif
+#if INTERFACE_COUNT >= 2
+    float4 value1 : TEXCOORD1;
+#endif
+#if INTERFACE_COUNT >= 3
+    float4 value2 : TEXCOORD2;
+#endif
+#if INTERFACE_COUNT >= 4
+    float4 value3 : TEXCOORD3;
+#endif
+#if INTERFACE_COUNT >= 5
+    float4 value4 : TEXCOORD4;
+#endif
+#if INTERFACE_COUNT >= 6
+    float4 value5 : TEXCOORD5;
+#endif
+#if INTERFACE_COUNT >= 7
+    float4 value6 : TEXCOORD6;
+#endif
+#if INTERFACE_COUNT >= 8
+    float4 value7 : TEXCOORD7;
+#endif
+#if INTERFACE_COUNT >= 9
+    float4 value8 : TEXCOORD8;
+#endif
+#if INTERFACE_COUNT >= 10
+    float4 value9 : TEXCOORD9;
+#endif
+#if INTERFACE_COUNT >= 11
+    float4 value10 : TEXCOORD10;
+#endif
+#if INTERFACE_COUNT >= 12
+    float4 value11 : TEXCOORD11;
+#endif
+#if INTERFACE_COUNT >= 13
+    float4 value12 : TEXCOORD12;
+#endif
+#if INTERFACE_COUNT >= 14
+    float4 value13 : TEXCOORD13;
+#endif
+#if INTERFACE_COUNT >= 15
+    float4 value14 : TEXCOORD14;
+#endif
+#if INTERFACE_COUNT >= 16
+    float4 value15 : TEXCOORD15;
+#endif
+#if INTERFACE_COUNT >= 17
+    float4 value16 : TEXCOORD16;
+#endif
+#if INTERFACE_COUNT >= 18
+    float4 value17 : TEXCOORD17;
+#endif
+#if INTERFACE_COUNT >= 19
+    float4 value18 : TEXCOORD18;
+#endif
+#if INTERFACE_COUNT >= 20
+    float4 value19 : TEXCOORD19;
+#endif
+#if INTERFACE_COUNT >= 21
+    float4 value20 : TEXCOORD20;
+#endif
+#if INTERFACE_COUNT >= 22
+    float4 value21 : TEXCOORD21;
+#endif
+#if INTERFACE_COUNT >= 23
+    float4 value22 : TEXCOORD22;
+#endif
+#if INTERFACE_COUNT >= 24
+    float4 value23 : TEXCOORD23;
+#endif
+#if INTERFACE_COUNT >= 25
+    float4 value24 : TEXCOORD24;
+#endif
+#if INTERFACE_COUNT >= 26
+    float4 value25 : TEXCOORD25;
+#endif
+#if INTERFACE_COUNT >= 27
+    float4 value26 : TEXCOORD26;
+#endif
+#if INTERFACE_COUNT >= 28
+    float4 value27 : TEXCOORD27;
+#endif
+#if INTERFACE_COUNT >= 29
+    float4 value28 : TEXCOORD28;
+#endif
+#if INTERFACE_COUNT >= 30
+    float4 value29 : TEXCOORD29;
+#endif
+#if INTERFACE_COUNT >= 31
+    float4 value30 : TEXCOORD30;
+#endif
+#if INTERFACE_COUNT >= 32
+    float4 value31 : TEXCOORD31;
+#endif
+#if INTERFACE_COUNT >= 33
+    float4 value32 : TEXCOORD32;
+#endif
+};
+
+#if defined(TEST_VERTEX_OUTPUT)
+struct VertexResult {
+    float4 position : POSITION;
+#if INTERFACE_COUNT >= 2
+    float4 value1 : TEXCOORD1;
+#endif
+#if INTERFACE_COUNT >= 3
+    float4 value2 : TEXCOORD2;
+#endif
+#if INTERFACE_COUNT >= 4
+    float4 value3 : TEXCOORD3;
+#endif
+#if INTERFACE_COUNT >= 5
+    float4 value4 : TEXCOORD4;
+#endif
+#if INTERFACE_COUNT >= 6
+    float4 value5 : TEXCOORD5;
+#endif
+#if INTERFACE_COUNT >= 7
+    float4 value6 : TEXCOORD6;
+#endif
+#if INTERFACE_COUNT >= 8
+    float4 value7 : TEXCOORD7;
+#endif
+#if INTERFACE_COUNT >= 9
+    float4 value8 : TEXCOORD8;
+#endif
+#if INTERFACE_COUNT >= 10
+    float4 value9 : TEXCOORD9;
+#endif
+#if INTERFACE_COUNT >= 11
+    float4 value10 : TEXCOORD10;
+#endif
+#if INTERFACE_COUNT >= 12
+    float4 value11 : TEXCOORD11;
+#endif
+#if INTERFACE_COUNT >= 13
+    float4 value12 : TEXCOORD12;
+#endif
+#if INTERFACE_COUNT >= 14
+    float4 value13 : TEXCOORD13;
+#endif
+#if INTERFACE_COUNT >= 15
+    float4 value14 : TEXCOORD14;
+#endif
+#if INTERFACE_COUNT >= 16
+    float4 value15 : TEXCOORD15;
+#endif
+#if INTERFACE_COUNT >= 17
+    float4 value16 : TEXCOORD16;
+#endif
+#if INTERFACE_COUNT >= 18
+    float4 value17 : TEXCOORD17;
+#endif
+#if INTERFACE_COUNT >= 19
+    float4 value18 : TEXCOORD18;
+#endif
+#if INTERFACE_COUNT >= 20
+    float4 value19 : TEXCOORD19;
+#endif
+#if INTERFACE_COUNT >= 21
+    float4 value20 : TEXCOORD20;
+#endif
+#if INTERFACE_COUNT >= 22
+    float4 value21 : TEXCOORD21;
+#endif
+#if INTERFACE_COUNT >= 23
+    float4 value22 : TEXCOORD22;
+#endif
+#if INTERFACE_COUNT >= 24
+    float4 value23 : TEXCOORD23;
+#endif
+#if INTERFACE_COUNT >= 25
+    float4 value24 : TEXCOORD24;
+#endif
+#if INTERFACE_COUNT >= 26
+    float4 value25 : TEXCOORD25;
+#endif
+#if INTERFACE_COUNT >= 27
+    float4 value26 : TEXCOORD26;
+#endif
+#if INTERFACE_COUNT >= 28
+    float4 value27 : TEXCOORD27;
+#endif
+#if INTERFACE_COUNT >= 29
+    float4 value28 : TEXCOORD28;
+#endif
+#if INTERFACE_COUNT >= 30
+    float4 value29 : TEXCOORD29;
+#endif
+#if INTERFACE_COUNT >= 31
+    float4 value30 : TEXCOORD30;
+#endif
+#if INTERFACE_COUNT >= 32
+    float4 value31 : TEXCOORD31;
+#endif
+#if INTERFACE_COUNT >= 33
+    float4 value32 : TEXCOORD32;
+#endif
+};
+
+VertexResult main(float4 position : POSITION)
+{
+    VertexResult result;
+    result.position = position;
+    return result;
+}
+#elif defined(TEST_PIXEL_OUTPUT)
+struct PixelResult {
+    float4 color0 : COLOR0;
+#if INTERFACE_COUNT >= 2
+    float4 color1 : COLOR1;
+#endif
+#if INTERFACE_COUNT >= 3
+    float4 color2 : COLOR2;
+#endif
+#if INTERFACE_COUNT >= 4
+    float4 color3 : COLOR3;
+#endif
+#if INTERFACE_COUNT >= 5
+    float4 color4 : COLOR4;
+#endif
+#if INTERFACE_COUNT >= 6
+    float4 color5 : COLOR5;
+#endif
+#if INTERFACE_COUNT >= 7
+    float4 color6 : COLOR6;
+#endif
+#if INTERFACE_COUNT >= 8
+    float4 color7 : COLOR7;
+#endif
+#if INTERFACE_COUNT >= 9
+    float depth : DEPTH;
+#endif
+};
+
+PixelResult main(float4 color : COLOR0)
+{
+    PixelResult result;
+    result.color0 = color;
+    return result;
+}
+#elif defined(TEST_PIXEL_INPUT)
+float4 main(InterfaceValues input) : COLOR0
+{
+    return input.value0;
+}
+#else
+float4 main(InterfaceValues input) : POSITION
+{
+    return input.value0;
+}
+#endif

@@ -1,0 +1,57 @@
+#ifndef CBUFFER_VECTORS
+#define CBUFFER_VECTORS 1
+#endif
+
+uniform float4 values[CBUFFER_VECTORS];
+
+#if defined(TEST_SAMPLERS)
+float4 main(float4 color : COLOR0,
+            uniform sampler2D image0,
+            uniform sampler2D image1,
+            uniform sampler2D image2,
+            uniform sampler2D image3,
+            uniform sampler2D image4,
+            uniform sampler2D image5,
+            uniform sampler2D image6,
+            uniform sampler2D image7,
+            uniform sampler2D image8,
+            uniform sampler2D image9,
+            uniform sampler2D image10,
+            uniform sampler2D image11,
+            uniform sampler2D image12,
+            uniform sampler2D image13,
+            uniform sampler2D image14,
+            uniform sampler2D image15
+#if SAMPLER_COUNT >= 17
+            , uniform sampler2D image16
+#endif
+            ) : COLOR0
+{
+    float4 result = color;
+    result += tex2D(image0, color.xy);
+    result += tex2D(image1, color.xy);
+    result += tex2D(image2, color.xy);
+    result += tex2D(image3, color.xy);
+    result += tex2D(image4, color.xy);
+    result += tex2D(image5, color.xy);
+    result += tex2D(image6, color.xy);
+    result += tex2D(image7, color.xy);
+    result += tex2D(image8, color.xy);
+    result += tex2D(image9, color.xy);
+    result += tex2D(image10, color.xy);
+    result += tex2D(image11, color.xy);
+    result += tex2D(image12, color.xy);
+    result += tex2D(image13, color.xy);
+    result += tex2D(image14, color.xy);
+    result += tex2D(image15, color.xy);
+#if SAMPLER_COUNT >= 17
+    result += tex2D(image16, color.xy);
+#endif
+    return result;
+}
+#else
+float4 main(float4 position : POSITION) : POSITION
+{
+    return position + values[0] + values[CBUFFER_VECTORS - 1];
+}
+#endif
