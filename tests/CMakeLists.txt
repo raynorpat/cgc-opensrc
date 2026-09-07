@@ -2843,6 +2843,46 @@ set_property(TEST hlsl_link_mixed_modern_geometry_profile APPEND PROPERTY
     ENVIRONMENT
     "HLSL_EXPECT_LINK_MISMATCH=cannot mix legacy and modern HLSL link profiles")
 
+add_test(
+    NAME hlsl_link_mixed_modern_geometry_model
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DVERTEX_PROFILE=hlslv40
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/vp_geometry.cg
+        -DGEOMETRY_PROFILE=hlslg50
+        -DGEOMETRY_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/gp_geometry.cg
+        "-DGEOMETRY_OPTIONS=TRIANGLE\;TRIANGLE_OUT\;Vertices=1"
+        -DPIXEL_PROFILE=hlslf50
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/fp_geometry.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_geometry_model.vs.hlsl"
+        "-DGEOMETRY_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_geometry_model.gs.hlsl"
+        "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_geometry_model.ps.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_link.cmake)
+set_tests_properties(hlsl_link_mixed_modern_geometry_model PROPERTIES
+    WILL_FAIL TRUE)
+set_property(TEST hlsl_link_mixed_modern_geometry_model APPEND PROPERTY
+    ENVIRONMENT
+    "HLSL_EXPECT_LINK_MISMATCH=HLSL shader model mismatch: vertex hlslv40, geometry hlslg50, pixel hlslf50")
+
+add_test(
+    NAME hlsl_link_mixed_modern_two_stage_model
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DVERTEX_PROFILE=hlslv40
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/vp_link.cg
+        -DPIXEL_PROFILE=hlslf50
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/fp_link.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_two_stage_model.vs.hlsl"
+        "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_two_stage_model.ps.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_link.cmake)
+set_tests_properties(hlsl_link_mixed_modern_two_stage_model PROPERTIES
+    WILL_FAIL TRUE)
+set_property(TEST hlsl_link_mixed_modern_two_stage_model APPEND PROPERTY
+    ENVIRONMENT
+    "HLSL_EXPECT_LINK_MISMATCH=HLSL shader model mismatch: vertex hlslv40, pixel hlslf50")
+
 function(add_hlsl_modern_pipeline name model vertex_source geometry_source
         pixel_source geometry_options)
     if(model STREQUAL "40")
