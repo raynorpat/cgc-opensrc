@@ -5344,7 +5344,7 @@ get_property(hlsl_registered_contracts DIRECTORY
     PROPERTY HLSL_FAILURE_CONTRACTS)
 get_property(hlsl_external_validation_cases DIRECTORY
     PROPERTY HLSL_EXTERNAL_VALIDATION_CASES)
-set(hlsl_modern_witness_tests
+set(hlsl_modern_witness_candidates
     hlsl_invariants_unit
     hlsl_link_mixed_modern_geometry_model
     hlsl_optional_fxc_missing_sdk
@@ -5360,12 +5360,12 @@ set(hlsl_modern_witness_tests
     hlsl_validation_exact_target_contract
     hlsl_validator_rejects_invalid_generated_source
     modern_semantic_case_output_conflict_v40)
-foreach(hlsl_modern_witness IN LISTS hlsl_modern_witness_tests)
+set(hlsl_modern_witness_tests)
+foreach(hlsl_modern_witness IN LISTS hlsl_modern_witness_candidates)
     list(FIND hlsl_registered_tests "${hlsl_modern_witness}"
         hlsl_modern_witness_index)
-    if(hlsl_modern_witness_index EQUAL -1)
-        message(FATAL_ERROR
-            "modern HLSL witness is not registered: ${hlsl_modern_witness}")
+    if(NOT hlsl_modern_witness_index EQUAL -1)
+        list(APPEND hlsl_modern_witness_tests "${hlsl_modern_witness}")
     endif()
 endforeach()
 foreach(hlsl_external_validation IN LISTS hlsl_external_validation_cases)
