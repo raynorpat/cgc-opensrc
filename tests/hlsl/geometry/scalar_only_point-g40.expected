@@ -18,6 +18,7 @@ void cg_entry(int primitive, inout PointStream<cg_GeometryOut> cgc_stream, inout
     float4 temp1;
     {
         temp1 = float4((float) primitive, 0.0, 0.0, 1.0);
+        cgc_output = (cg_GeometryOut) 0;
         cgc_output.position = temp1;
         cgc_stream.Append(cgc_output);
     }

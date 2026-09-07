@@ -19,12 +19,14 @@ void cg_entry(float4 position[2], inout LineStream<cg_GeometryOut> cgc_stream, i
     float4 temp2;
     {
         temp1 = position[0];
+        cgc_output = (cg_GeometryOut) 0;
         cgc_output.position = temp1;
         cgc_stream.Append(cgc_output);
     }
     cgc_stream.RestartStrip();
     {
         temp2 = position[1];
+        cgc_output = (cg_GeometryOut) 0;
         cgc_output.position = temp2;
         cgc_stream.Append(cgc_output);
     }

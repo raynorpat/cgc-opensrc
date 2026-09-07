@@ -4095,6 +4095,7 @@ static HlslStmt *HlslLowerGeometryOperation(
     HlslExpr *left;
     HlslExpr *assignment;
     HlslExpr *record;
+    HlslExpr *zero;
     HlslStmt *statement;
     HlslStmt *body;
     HlslDecl **targets;
@@ -4202,6 +4203,20 @@ static HlslStmt *HlslLowerGeometryOperation(
         valueIndex++;
     }
     context->statementLoc = operation->loc;
+    if (operation->kind == CGIR_STMT_GEOMETRY_EMIT) {
+        left = HlslNewSymbolExpr(context,
+            context->function->geometryOutputRecord);
+        zero = HlslNewLiteral(context, HLSL_BASE_INT, 0, 0.0f);
+        record = HlslNewSourceExpr(context, HLSL_EXPR_CAST,
+            context->function->geometryOutputRecord->type);
+        if (record != NULL)
+            record->u.cast.expression = zero;
+        assignment = HlslNewAssignment(context, left, record);
+        statement = HlslNewExpressionStmt(context, assignment);
+        if (statement == NULL)
+            return NULL;
+        HlslAppendStmt(&body, statement);
+    }
     for (valueIndex = 0; valueIndex < valueCount; valueIndex++) {
         target = targets[valueIndex];
         if (operation->kind == CGIR_STMT_GEOMETRY_FLAT) {
@@ -4242,6 +4257,89 @@ static HlslStmt *HlslLowerGeometryOperation(
     }
     return statement;
 } // HlslLowerGeometryOperation
+
+static int HlslAppendIRInitializerCopy(HlslLowerContext *context,
+                                       const HlslType *type,
+                                       HlslExpr *target,
+                                       HlslExpr *source,
+                                       HlslStmt **list)
+{
+    HlslDecl *member;
+    HlslExpr *item;
+    int i;
+
+    if (context == NULL || type == NULL || target == NULL ||
+        source == NULL || list == NULL)
+    {
+        return 0;
+    }
+    if (type->arraySize > 0 && source->kind == HLSL_EXPR_CONSTRUCT) {
+        item = source->u.construct.arguments;
+        for (i = 0; i < type->arraySize; i++) {
+            if (item == NULL ||
+                !HlslIRTypeIsIdentical(type->elementType, &item->type) ||
+                !HlslAppendIRInitializerCopy(context, type->elementType,
+                    HlslCopyIndex(context, target, type->elementType, i),
+                    item, list))
+            {
+                return 0;
+            }
+            item = item->next;
+        }
+        return item == NULL;
+    }
+    if (type->base == HLSL_BASE_STRUCT &&
+        source->kind == HLSL_EXPR_CONSTRUCT)
+    {
+        item = source->u.construct.arguments;
+        for (member = type->members; member != NULL;
+             member = member->next)
+        {
+            if (item == NULL ||
+                !HlslIRTypeIsIdentical(&member->type, &item->type) ||
+                !HlslAppendIRInitializerCopy(context, &member->type,
+                    HlslCopyMember(context, target, member), item, list))
+            {
+                return 0;
+            }
+            item = item->next;
+        }
+        return item == NULL;
+    }
+    if (HlslTypeNeedsRecursiveCopy(type)) {
+        if (!HlslIsStableAggregateSource(source)) {
+            source = HlslCaptureValue(context, list, source);
+            if (source == NULL)
+                return 0;
+        }
+        return HlslAppendRecursiveCopy(context, type, target, source, list);
+    }
+    source = HlslNewAssignment(context, target, source);
+    return source != NULL && HlslAppendExpression(context, list, source);
+} // HlslAppendIRInitializerCopy
+
+static int HlslLowerIRDeclarationInitializer(
+    HlslLowerContext *context, const CgIRDecl *source, HlslStmt **list)
+{
+    HlslDecl *declaration;
+    HlslExpr *left;
+    HlslExpr *right;
+
+    if (context == NULL || source == NULL || source->initializer == NULL ||
+        list == NULL)
+    {
+        return 0;
+    }
+    declaration = HlslFindDecl(context, source->symbol);
+    right = HlslLowerIRExpr(context, source->initializer, list,
+                            HLSL_VALUE_RVALUE);
+    left = declaration != NULL ?
+        HlslNewSymbolExpr(context, declaration) : NULL;
+    if (left == NULL || right == NULL)
+        return 0;
+    return HlslAppendIRInitializerCopy(context, &declaration->type,
+                                       left, right, list);
+} // HlslLowerIRDeclarationInitializer
 
 static int HlslLowerStatements(HlslLowerContext *context, stmt *source,
                                HlslStmt **list)
@@ -4536,6 +4634,13 @@ static int HlslLowerIRStatements(HlslLowerContext *context,
         target = NULL;
         switch (source->kind) {
         case CGIR_STMT_DECL:
+            if (source->u.decl != NULL &&
+                source->u.decl->initializer != NULL &&
+                !HlslLowerIRDeclarationInitializer(context,
+                    source->u.decl, list))
+            {
+                return 0;
+            }
             continue;
         case CGIR_STMT_EXPR:
             target = HlslNewStmt(context->module, HLSL_STMT_EXPRESSION);
@@ -5479,19 +5584,19 @@ static int HlslCollectGeometryOutputStatements(HlslLowerContext *context,
             for (value = source->u.geometry.values; value != NULL;
                  value = value->next)
             {
+                canonical = GetAtomString(atable,
+                                          value->canonicalSemantic);
+                sourceSemantic = GetAtomString(atable,
+                                               value->sourceSemantic);
+                if (canonical == NULL ||
+                    !HlslGeometrySemanticInfo(context, value,
+                        &memberType, &semantic, &kind, &semanticIndex))
+                {
+                    return 0;
+                }
                 member = HlslGeometryOutputMember(context,
                                                    value->canonicalSemantic);
                 if (member == NULL) {
-                    canonical = GetAtomString(atable,
-                                              value->canonicalSemantic);
-                    sourceSemantic = GetAtomString(atable,
-                                                   value->sourceSemantic);
-                    if (canonical == NULL ||
-                        !HlslGeometrySemanticInfo(context, value,
-                            &memberType, &semantic, &kind, &semanticIndex))
-                    {
-                        return 0;
-                    }
                     name = HlslGeometryMemberName(context, canonical);
                     member = name != NULL ? HlslNewDecl(context->module,
                         HLSL_STORAGE_NONE, memberType, name) : NULL;
@@ -5509,6 +5614,14 @@ static int HlslCollectGeometryOutputStatements(HlslLowerContext *context,
                             memberType.base);
                     HlslSetLoc(&member->loc, &value->loc);
                     HlslAppendDecl(&structure->members, member);
+                } else if (!HlslIRTypeIsIdentical(&member->type,
+                                                   &memberType)) {
+                    HlslLoc conflictLoc;
+
+                    HlslSetLoc(&conflictLoc, &value->loc);
+                    return HlslFailRelated(context->module,
+                        HLSL_ERROR_INTERFACE_CONFLICT, &conflictLoc,
+                        &member->loc, canonical);
                 }
                 if (source->kind == CGIR_STMT_GEOMETRY_FLAT) {
                     member->geometryRole =

@@ -41,6 +41,7 @@ void cg_entry(float4 position[1], float4 color, inout PointStream<cg_GeometryOut
     {
         temp3 = position[0];
         temp4 = color * 0.25;
+        cgc_output = (cg_GeometryOut) 0;
         cgc_output.position = temp3;
         cgc_output.color0 = temp4;
         if (cgc_flat_color0_defined)
@@ -56,7 +57,7 @@ void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_st
 {
     float4 position[1];
     cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
-    float4 cgc_flat_color0 = (float4) 0;
+    float4 cgc_flat_color0 = float4(0.0, 0.0, 0.0, 0.0);
     bool cgc_flat_color0_defined = false;
     position[0] = input[0].position;
     cg_entry(position, cgc_color, cgc_stream, cgc_output, cgc_flat_color0, cgc_flat_color0_defined);

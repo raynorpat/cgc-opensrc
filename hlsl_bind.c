@@ -5401,8 +5401,7 @@ int HlslBuildEntryWrapper(HlslModule *module,
         HlslAppendExpr(&arguments, argument);
     }
 
-    if (geometry && inputStruct->members == NULL &&
-        geometryScalarInputs == NULL)
+    if (geometry && inputStruct->members == NULL)
     {
         memberName = HlslAllocateScopedSymbolName(module, inputStruct,
             &hlslGeometryInputPlaceholderIdentity, "cgc_placeholder");

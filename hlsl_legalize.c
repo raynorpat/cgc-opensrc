@@ -1068,16 +1068,60 @@ static HlslExpr *HlslGeometryInitializer(HlslModule *module,
 {
     HlslExpr *value;
     HlslExpr *cast;
+    HlslExpr *item;
+    HlslType scalarType;
+    int components;
+    int i;
 
-    value = HlslNewExpr(module,
-        boolean ? HLSL_EXPR_BOOL : HLSL_EXPR_INT,
-        HlslNumericType(boolean ? HLSL_BASE_BOOL : HLSL_BASE_INT, 1));
-    if (value == NULL)
-        return NULL;
     if (boolean) {
+        value = HlslNewExpr(module, HLSL_EXPR_BOOL,
+                            HlslNumericType(HLSL_BASE_BOOL, 1));
+        if (value == NULL)
+            return NULL;
         value->u.literalBool = 0;
         return value;
     }
+    components = type.rows > 0 && type.cols > 0 ?
+                 type.rows * type.cols : type.len;
+    if (type.arraySize == 0 && type.base != HLSL_BASE_STRUCT &&
+        components > 0)
+    {
+        scalarType = HlslNumericType(type.base, 1);
+        if (components > 1) {
+            value = HlslNewExpr(module, HLSL_EXPR_CONSTRUCT, type);
+            if (value == NULL)
+                return NULL;
+            for (i = 0; i < components; i++) {
+                item = HlslGeometryInitializer(module, scalarType, 0);
+                if (item == NULL)
+                    return NULL;
+                HlslAppendExpr(&value->u.construct.arguments, item);
+            }
+            return value;
+        }
+        if (type.base == HLSL_BASE_FLOAT) {
+            value = HlslNewExpr(module, HLSL_EXPR_FLOAT, scalarType);
+            if (value != NULL)
+                value->u.literalFloat = 0.0f;
+            return value;
+        }
+        if (type.base == HLSL_BASE_BOOL) {
+            value = HlslNewExpr(module, HLSL_EXPR_BOOL, scalarType);
+            if (value != NULL)
+                value->u.literalBool = 0;
+            return value;
+        }
+        if (type.base == HLSL_BASE_INT) {
+            value = HlslNewExpr(module, HLSL_EXPR_INT, scalarType);
+            if (value != NULL)
+                value->u.literalInt = 0;
+            return value;
+        }
+    }
+    value = HlslNewExpr(module, HLSL_EXPR_INT,
+                        HlslNumericType(HLSL_BASE_INT, 1));
+    if (value == NULL)
+        return NULL;
     value->u.literalInt = 0;
     cast = HlslNewExpr(module, HLSL_EXPR_CAST, type);
     if (cast != NULL)
@@ -1157,9 +1201,11 @@ static int HlslPrepareGeometryWrapper(HlslModule *module)
             return 0;
         shadow->geometryRole = HLSL_GEOMETRY_DECL_FLAT_SHADOW;
         defined->geometryRole = HLSL_GEOMETRY_DECL_FLAT_DEFINED;
+        shadow->initializer = HlslGeometryInitializer(module,
+                                                      shadow->type, 0);
         defined->initializer = HlslGeometryInitializer(module,
                                                        boolType, 1);
-        if (defined->initializer == NULL)
+        if (shadow->initializer == NULL || defined->initializer == NULL)
             return 0;
         HlslAppendDecl(&wrapper->locals, shadow);
         HlslAppendDecl(&wrapper->locals, defined);

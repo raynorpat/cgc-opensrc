@@ -1924,16 +1924,40 @@ static int HlslCountGeometryRole(const HlslDecl *list,
     return count;
 } // HlslCountGeometryRole
 
+static int HlslGeometryZeroExpression(const HlslExpr *expression)
+{
+    const HlslExpr *argument;
+
+    if (expression == NULL)
+        return 0;
+    switch (expression->kind) {
+    case HLSL_EXPR_INT:
+        return expression->u.literalInt == 0;
+    case HLSL_EXPR_FLOAT:
+        return expression->u.literalFloat == 0.0f;
+    case HLSL_EXPR_BOOL:
+        return expression->u.literalBool == 0;
+    case HLSL_EXPR_CAST:
+        return HlslGeometryZeroExpression(expression->u.cast.expression);
+    case HLSL_EXPR_CONSTRUCT:
+        argument = expression->u.construct.arguments;
+        if (argument == NULL)
+            return 0;
+        for (; argument != NULL; argument = argument->next) {
+            if (!HlslGeometryZeroExpression(argument))
+                return 0;
+        }
+        return 1;
+    default:
+        return 0;
+    }
+} // HlslGeometryZeroExpression
+
 static int HlslGeometryZeroInitializer(const HlslDecl *decl)
 {
-    const HlslExpr *initializer;
-
-    initializer = decl != NULL ? decl->initializer : NULL;
-    return initializer != NULL && initializer->kind == HLSL_EXPR_CAST &&
-           HlslTypesEqual(&initializer->type, &decl->type) &&
-           initializer->u.cast.expression != NULL &&
-           initializer->u.cast.expression->kind == HLSL_EXPR_INT &&
-           initializer->u.cast.expression->u.literalInt == 0;
+    return decl != NULL && decl->initializer != NULL &&
+           HlslTypesEqual(&decl->initializer->type, &decl->type) &&
+           HlslGeometryZeroExpression(decl->initializer);
 } // HlslGeometryZeroInitializer
 
 static int HlslGeometryFalseInitializer(const HlslDecl *decl)
@@ -2109,7 +2133,7 @@ static int HlslValidateGeometryFunctionState(HlslModule *module,
                                            state->shadow) ||
               !HlslDeclListContainsDirect(function->locals,
                                            state->defined) ||
-              state->shadow->initializer != NULL ||
+              !HlslGeometryZeroInitializer(state->shadow) ||
               !HlslGeometryFalseInitializer(state->defined))) ||
             (!wrapper &&
              (!HlslDeclListContainsDirect(function->parameters,

@@ -38,6 +38,7 @@ void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, 
         temp1 = cg_makeOutput(position[0]);
         temp2 = temp1.position;
         temp3 = temp1.color;
+        cgc_output = (cg_GeometryOut) 0;
         cgc_output.position = temp2;
         cgc_output.color0 = temp3;
         cgc_stream.Append(cgc_output);

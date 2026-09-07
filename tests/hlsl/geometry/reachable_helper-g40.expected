@@ -43,6 +43,7 @@ void cg_leaf(float4 position, float4 color, inout PointStream<cg_GeometryOut> cg
     {
         temp2 = position;
         temp3 = color * (float) 0.5;
+        cgc_output = (cg_GeometryOut) 0;
         cgc_output.position = temp2;
         cgc_output.color0 = temp3;
         if (cgc_flat_color0_defined)
@@ -63,7 +64,7 @@ void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_st
 {
     float4 position[1];
     cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
-    float4 cgc_flat_color0;
+    float4 cgc_flat_color0 = float4(0.0, 0.0, 0.0, 0.0);
     bool cgc_flat_color0_defined = false;
     position[0] = input[0].position;
     cg_entry(position, cgc_color, cgc_stream, cgc_output, cgc_flat_color0, cgc_flat_color0_defined);
