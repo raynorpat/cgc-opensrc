@@ -1924,12 +1924,20 @@ static int HlslCountGeometryRole(const HlslDecl *list,
     return count;
 } // HlslCountGeometryRole
 
-static int HlslGeometryZeroExpression(const HlslExpr *expression)
+static int HlslGeometryZeroExpression(const HlslExpr *expression,
+                                      const HlslPointerFrame *parent,
+                                      int depth)
 {
     const HlslExpr *argument;
+    HlslPointerFrame frame;
 
-    if (expression == NULL)
+    if (expression == NULL || depth > 512 ||
+        HlslFrameContains(parent, expression))
+    {
         return 0;
+    }
+    frame.parent = parent;
+    frame.pointer = expression;
     switch (expression->kind) {
     case HLSL_EXPR_INT:
         return expression->u.literalInt == 0;
@@ -1938,13 +1946,15 @@ static int HlslGeometryZeroExpression(const HlslExpr *expression)
     case HLSL_EXPR_BOOL:
         return expression->u.literalBool == 0;
     case HLSL_EXPR_CAST:
-        return HlslGeometryZeroExpression(expression->u.cast.expression);
+        return HlslGeometryZeroExpression(expression->u.cast.expression,
+                                           &frame, depth + 1);
     case HLSL_EXPR_CONSTRUCT:
         argument = expression->u.construct.arguments;
-        if (argument == NULL)
+        if (argument == NULL || HlslExprListHasCycle(argument))
             return 0;
         for (; argument != NULL; argument = argument->next) {
-            if (!HlslGeometryZeroExpression(argument))
+            if (!HlslGeometryZeroExpression(argument, &frame,
+                                             depth + 1))
                 return 0;
         }
         return 1;
@@ -1957,7 +1967,7 @@ static int HlslGeometryZeroInitializer(const HlslDecl *decl)
 {
     return decl != NULL && decl->initializer != NULL &&
            HlslTypesEqual(&decl->initializer->type, &decl->type) &&
-           HlslGeometryZeroExpression(decl->initializer);
+           HlslGeometryZeroExpression(decl->initializer, NULL, 0);
 } // HlslGeometryZeroInitializer
 
 static int HlslGeometryFalseInitializer(const HlslDecl *decl)
