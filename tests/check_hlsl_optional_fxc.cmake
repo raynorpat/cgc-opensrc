@@ -41,7 +41,7 @@ if(NOT list_result EQUAL 0)
     message(FATAL_ERROR
         "could not list optional missing-fxc tests:\n${list_stdout}${list_stderr}")
 endif()
-if(list_stdout MATCHES "Test +#[0-9]+: validate_")
+if(list_stdout MATCHES "Test +#[0-9]+: hlsl_validate_")
     message(FATAL_ERROR
         "external validation test was registered without fxc.exe:\n${list_stdout}")
 endif()
