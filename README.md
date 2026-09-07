@@ -271,10 +271,12 @@ numeric index (`tN` and `sN`). Supported calls select `.Sample`,
 and legal stage.
 
 `fxc.exe` is optional. When found, CTest first runs `cgc`, then compiles every
-practical successful fixture through public `main` with `/WX /Ges` and the
-exact `/T` target. Ordinary configuration omits these external tests when the
-Windows SDK compiler is absent. A dedicated qualification environment can
-require it and fail configuration clearly:
+tracked successful modern fixture and every individually compilable pipeline
+stage through public `main` with `/WX /Ges` and the exact `/T` target. An
+executable inventory audit prevents a tracked source/profile/options
+combination from being omitted. Ordinary configuration omits these external
+tests when the Windows SDK compiler is absent. A dedicated qualification
+environment can require it and fail configuration clearly:
 
 ```powershell
 cmake -S . -B build -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
@@ -283,9 +285,10 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 The [Shader Model 4 and 5 compatibility matrix](docs/hlsl-sm4-sm5-compatibility.md)
-classifies every exposed Cg 2.0 type, qualifier, expression/operator family,
-statement, semantic, intrinsic, texture form, binding form, resource limit,
-and geometry feature with a registered test.
+classifies every exposed Cg 2.0 type, aggregate, qualifier, default,
+expression/operator family, statement, function, semantic, intrinsic, texture
+form, binding form, resource limit, geometry feature, target, and validation
+contract with a registered test.
 
 ## OpenGL ARB Profiles
 
