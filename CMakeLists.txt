@@ -27,6 +27,7 @@ set(CGC_GLSL_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_legacy_stmt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_ir_expr.c
     ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_ir_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_geometry.c
 )
 
 if(BUILD_TESTING)
