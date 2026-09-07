@@ -1,0 +1,6 @@
+// Ordinary Cg intrinsics in geometry values lower from verified Cg IR.
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    emitVertex(abs(position[0]) : POSITION);
+}

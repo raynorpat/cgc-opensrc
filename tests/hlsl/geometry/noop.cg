@@ -1,0 +1,6 @@
+// Geometry profiles always expose their complete public stream ABI.
+
+POINT POINT_OUT void main(void)
+{
+    return;
+}

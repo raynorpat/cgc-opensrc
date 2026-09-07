@@ -1101,7 +1101,7 @@ static int HlslPrepareGeometryWrapper(HlslModule *module)
 
     entry = module->entry;
     wrapper = module->wrapper;
-    if (entry == NULL || wrapper == NULL || !entry->geometryEffect)
+    if (entry == NULL || wrapper == NULL)
         return 1;
     if (module->geometryOutputStruct == NULL)
         return 0;

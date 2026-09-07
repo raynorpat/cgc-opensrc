@@ -3,6 +3,11 @@
 // cgc-bind interface in position float4 SV_Position SV_Position system default
 // cgc-bind interface in vertexId int CG_VERTEXID0 CG_VERTEXID0 user nointerpolation
 
+struct cg_GeometryOut
+{
+    float cgc_placeholder : TEXCOORD0;
+};
+
 struct cg_GeometryIn
 {
     float4 position : SV_Position;
@@ -14,10 +19,12 @@ void cg_entry(float4 position[1], int vertexId[1])
     return;
 }
 
-void main(cg_GeometryIn input[1])
+[maxvertexcount(4)]
+void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_stream)
 {
     float4 position[1];
     int vertexId[1];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
     position[0] = input[0].position;
     vertexId[0] = input[0].vertexId;
     cg_entry(position, vertexId);

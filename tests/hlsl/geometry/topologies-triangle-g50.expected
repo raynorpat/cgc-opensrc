@@ -2,6 +2,11 @@
 // target gs_5_0
 // cgc-bind interface in position float4 SV_Position SV_Position system default
 
+struct cg_GeometryOut
+{
+    float cgc_placeholder : TEXCOORD0;
+};
+
 struct cg_GeometryIn
 {
     float4 position : SV_Position;
@@ -12,9 +17,11 @@ void cg_entry(float4 position[3])
     return;
 }
 
-void main(cg_GeometryIn input[3])
+[maxvertexcount(4)]
+void main(triangle cg_GeometryIn input[3], inout TriangleStream<cg_GeometryOut> cgc_stream)
 {
     float4 position[3];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
     position[0] = input[0].position;
     position[1] = input[1].position;
     position[2] = input[2].position;

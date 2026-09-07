@@ -266,6 +266,7 @@ static void InitHAL_HAL(slHAL *fHAL)
     fHAL->BindVaryingUnbound = BindVaryingUnbound_HAL;
     fHAL->PrintCodeHeader = PrintCodeHeader_HAL;
     fHAL->GenerateCode = GenerateCode_HAL;
+    fHAL->GenerateCodeIR = NULL;
 
     // IR hooks: no profile support until a profile opts in.
 

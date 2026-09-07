@@ -4792,6 +4792,7 @@ static int hlslPixelInputIdentity;
 static int hlslPixelOutputIdentity;
 static int hlslGeometryInputIdentity;
 static int hlslGeometryOutputIdentity;
+static int hlslGeometryInputPlaceholderIdentity;
 
 typedef struct HlslGeometryArrayCopy_Rec {
     struct HlslGeometryArrayCopy_Rec *next;
@@ -5170,7 +5171,8 @@ int HlslBuildEntryWrapper(HlslModule *module,
         return HlslBindFailure(module, NULL, HLSL_ERROR_INVALID_IR,
                                "invalid HLSL wrapper module");
     }
-    if (HlslWrapperIsEmptyEntry(module))
+    if (module->stage != HLSL_STAGE_GEOMETRY &&
+        HlslWrapperIsEmptyEntry(module))
         return 1;
     entry = module->entry;
     geometry = module->stage == HLSL_STAGE_GEOMETRY;
@@ -5399,6 +5401,25 @@ int HlslBuildEntryWrapper(HlslModule *module,
         HlslAppendExpr(&arguments, argument);
     }
 
+    if (geometry && inputStruct->members == NULL &&
+        geometryScalarInputs == NULL)
+    {
+        memberName = HlslAllocateScopedSymbolName(module, inputStruct,
+            &hlslGeometryInputPlaceholderIdentity, "cgc_placeholder");
+        inputMember = memberName != NULL ? HlslNewDecl(module,
+            HLSL_STORAGE_NONE, HlslNumericType(HLSL_BASE_FLOAT, 1),
+            memberName) : NULL;
+        if (inputMember == NULL)
+            return 0;
+        inputMember->identity = &hlslGeometryInputPlaceholderIdentity;
+        inputMember->semantic = HlslWrapperCopyText(module, "TEXCOORD0");
+        inputMember->canonicalSemantic = inputMember->semantic;
+        inputMember->semanticKind = HLSL_SEMANTIC_USER;
+        inputMember->geometryRole = HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER;
+        if (inputMember->semantic == NULL)
+            return 0;
+        HlslAppendDecl(&inputStruct->members, inputMember);
+    }
     inputStruct->type.members = inputStruct->members;
     outputStruct->type.members = outputStruct->members;
     inputType.members = inputStruct->members;

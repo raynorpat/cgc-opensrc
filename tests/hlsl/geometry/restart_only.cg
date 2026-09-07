@@ -1,0 +1,6 @@
+// Restart is a geometry effect even when the program never emits a vertex.
+
+POINT POINT_OUT void main(void)
+{
+    restartStrip();
+}

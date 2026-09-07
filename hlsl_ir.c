@@ -675,8 +675,10 @@ const char *HlslSourceTypeName(const HlslSourceType *type)
 
 #define HLSL_BUILTIN_STAGE_VERTEX 0x01
 #define HLSL_BUILTIN_STAGE_PIXEL  0x02
+#define HLSL_BUILTIN_STAGE_GEOMETRY 0x04
 #define HLSL_BUILTIN_STAGE_BOTH   \
-    (HLSL_BUILTIN_STAGE_VERTEX | HLSL_BUILTIN_STAGE_PIXEL)
+    (HLSL_BUILTIN_STAGE_VERTEX | HLSL_BUILTIN_STAGE_PIXEL | \
+     HLSL_BUILTIN_STAGE_GEOMETRY)
 
 #define HLSL_BUILTIN_BASE_FLOAT 0x01
 #define HLSL_BUILTIN_BASE_INT   0x02
@@ -1459,6 +1461,8 @@ HlslBuiltin HlslLookupBuiltin(HlslStage stage, const char *name,
         stageMask = HLSL_BUILTIN_STAGE_VERTEX;
     else if (stage == HLSL_STAGE_PIXEL)
         stageMask = HLSL_BUILTIN_STAGE_PIXEL;
+    else if (stage == HLSL_STAGE_GEOMETRY)
+        stageMask = HLSL_BUILTIN_STAGE_GEOMETRY;
     else
         return HLSL_BUILTIN_NONE;
     if (name == NULL)
@@ -1487,6 +1491,8 @@ HlslBuiltin HlslLookupSourceBuiltin(HlslStage stage, const char *name,
         stageMask = HLSL_BUILTIN_STAGE_VERTEX;
     else if (stage == HLSL_STAGE_PIXEL)
         stageMask = HLSL_BUILTIN_STAGE_PIXEL;
+    else if (stage == HLSL_STAGE_GEOMETRY)
+        stageMask = HLSL_BUILTIN_STAGE_GEOMETRY;
     else
         return HLSL_BUILTIN_NONE;
     if (name == NULL)
@@ -1563,6 +1569,8 @@ int HlslBuiltinAccepts(HlslStage stage, HlslBuiltin builtin,
         stageMask = HLSL_BUILTIN_STAGE_VERTEX;
     else if (stage == HLSL_STAGE_PIXEL)
         stageMask = HLSL_BUILTIN_STAGE_PIXEL;
+    else if (stage == HLSL_STAGE_GEOMETRY)
+        stageMask = HLSL_BUILTIN_STAGE_GEOMETRY;
     else
         return 0;
     return (desc->stageMask & stageMask) != 0 &&

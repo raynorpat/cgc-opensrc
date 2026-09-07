@@ -1344,6 +1344,14 @@ int HlslLegalizeModule(HlslModule *module,
     return 0;
 }
 
+int HlslLowerProgramWithIR(HlslModule *module,
+    const HlslProfileDesc *profile, SourceLoc *loc, Scope *scope,
+    Symbol *program, const CgIRModule *sourceIR)
+{
+    (void) sourceIR;
+    return HlslLowerProgram(module, profile, loc, scope, program);
+}
+
 int HlslLegalizeModernTextureAbi(HlslModule *module,
                                  const HlslProfileDesc *profile)
 {

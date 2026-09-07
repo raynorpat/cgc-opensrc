@@ -4804,6 +4804,15 @@ static void AssertModernGeometrySystemOutputWrapper(
 
     assert(HlslBuildEntryWrapper(&module, profile));
     output = module.structs;
+    assert(output != NULL && output->storage == HLSL_STORAGE_INPUT);
+    assert(output->members != NULL && output->members->next == NULL);
+    assert(output->members->geometryRole ==
+           HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER);
+    assert(output->members->publicName == NULL);
+    assert(output->members->inputSemantic == NULL);
+    assert(!strcmp(output->members->semantic, "TEXCOORD0"));
+    while (output != NULL && output->storage != HLSL_STORAGE_OUTPUT)
+        output = output->next;
     assert(output != NULL && output->storage == HLSL_STORAGE_OUTPUT);
     member = output->members;
     assert(member != NULL && member->type.base == HLSL_BASE_UINT);

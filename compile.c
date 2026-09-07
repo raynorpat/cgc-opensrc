@@ -3330,7 +3330,15 @@ int CompileProgram(CgStruct *Cg, SourceLoc *loc, Scope *fScope)
                     OutputBindings(Cg->options.outfd, theHAL, program);
                 if (GetErrorCount() == 0) {
                     if (!Cg->options.NoCodeGen) {
-                        theHAL->GenerateCode(loc, fScope, program);
+                        if (Cg->options.languageVersion ==
+                                CG_LANGUAGE_2_0 &&
+                            theHAL->GenerateCodeIR != NULL)
+                        {
+                            theHAL->GenerateCodeIR(loc, fScope, program,
+                                                   &irModule);
+                        } else {
+                            theHAL->GenerateCode(loc, fScope, program);
+                        }
                     }
                 }
 

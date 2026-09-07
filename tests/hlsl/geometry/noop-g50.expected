@@ -1,7 +1,5 @@
 // profile hlslg50
 // target gs_5_0
-// cgc-bind interface in position float4 SV_Position SV_Position system default
-
 struct cg_GeometryOut
 {
     float cgc_placeholder : TEXCOORD0;
@@ -9,20 +7,18 @@ struct cg_GeometryOut
 
 struct cg_GeometryIn
 {
-    float4 position : SV_Position;
+    float cgc_placeholder : TEXCOORD0;
 };
 
-void cg_entry(float4 position[1])
+void cg_entry()
 {
     return;
 }
 
-[maxvertexcount(4)]
+[maxvertexcount(1024)]
 void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_stream)
 {
-    float4 position[1];
     cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
-    position[0] = input[0].position;
-    cg_entry(position);
+    cg_entry();
     return;
 }

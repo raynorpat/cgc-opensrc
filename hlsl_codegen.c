@@ -1327,6 +1327,13 @@ static int HlslWriteInterfaceMetadata(FILE *out, const HlslModule *module,
         for (member = structure->members; member != NULL;
              member = member->next)
         {
+            if (member->geometryRole ==
+                    HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER ||
+                member->geometryRole ==
+                    HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER)
+            {
+                continue;
+            }
             publicName = member->publicName != NULL &&
                          member->publicName[0] != '\0' ?
                          member->publicName : member->name;

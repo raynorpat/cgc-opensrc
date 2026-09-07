@@ -1456,6 +1456,65 @@ add_test(
     COMMAND hlsl_ir_unit
 )
 
+# Real verified CgIR -> HLSL lowering coverage for geometry operations.
+# This intentionally drives HlslLowerProgramWithIR rather than constructing
+# HLSL nodes so source locations and structured control-flow ownership are
+# checked at the IR transfer boundary.
+add_executable(hlsl_geometry_lower_unit
+    ${PROJECT_SOURCE_DIR}/atom.c
+    ${PROJECT_SOURCE_DIR}/binding.c
+    ${PROJECT_SOURCE_DIR}/cg_geometry.c
+    ${PROJECT_SOURCE_DIR}/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
+    ${PROJECT_SOURCE_DIR}/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/cg_types.c
+    ${PROJECT_SOURCE_DIR}/cgstruct.c
+    ${PROJECT_SOURCE_DIR}/hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
+    ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
+    ${PROJECT_SOURCE_DIR}/hlsl_lower.c
+    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
+    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
+    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslg40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf40_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslv50_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslg50_hal.c
+    ${PROJECT_SOURCE_DIR}/hlslf50_hal.c
+    ${PROJECT_SOURCE_DIR}/language.c
+    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/symbols.c
+    hlsl_geometry_lower_test.c
+)
+
+target_include_directories(hlsl_geometry_lower_unit PRIVATE
+    ${PROJECT_SOURCE_DIR}
+)
+
+set_target_properties(hlsl_geometry_lower_unit PROPERTIES
+    C_STANDARD 90
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS YES
+)
+
+add_test(
+    NAME hlsl_geometry_lower_unit
+    COMMAND hlsl_geometry_lower_unit
+)
+
+add_test(
+    NAME hlsl_geometry_lower_assertions_active
+    COMMAND ${CMAKE_COMMAND}
+        -DUNIT=$<TARGET_FILE:hlsl_geometry_lower_unit>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
+)
+
 add_executable(hlsl_profile_identity_unit
     ${PROJECT_SOURCE_DIR}/atom.c
     ${PROJECT_SOURCE_DIR}/hal.c
@@ -2235,6 +2294,9 @@ add_hlsl_geometry_operation(restart LINE LINE_OUT 2)
 add_hlsl_geometry_operation(flat POINT POINT_OUT 1)
 add_hlsl_geometry_operation(conditional_flat POINT POINT_OUT 2)
 add_hlsl_geometry_operation(reachable_helper POINT POINT_OUT 1)
+add_hlsl_geometry_operation(noop POINT POINT_OUT 1024)
+add_hlsl_geometry_operation(restart_only POINT POINT_OUT 1)
+add_hlsl_geometry_operation(intrinsic POINT POINT_OUT 1)
 
 foreach(profile hlslv40 hlslv50)
     string(SUBSTRING "${profile}" 4 3 model_suffix)

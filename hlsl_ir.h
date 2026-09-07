@@ -320,7 +320,11 @@ typedef enum HlslGeometryDeclRole_Enum {
     HLSL_GEOMETRY_DECL_OUTPUT_RECORD,
     HLSL_GEOMETRY_DECL_FLAT_TARGET,
     HLSL_GEOMETRY_DECL_FLAT_SHADOW,
-    HLSL_GEOMETRY_DECL_FLAT_DEFINED
+    HLSL_GEOMETRY_DECL_FLAT_DEFINED,
+    /* Internal-only field used to keep no-op and restart-only geometry
+     * stream element types legal.  It never represents a source binding. */
+    HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER,
+    HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER
 } HlslGeometryDeclRole;
 
 typedef enum HlslExprKind_Enum {

@@ -189,6 +189,14 @@ struct slHAL_Rec {
     int (*PrintCodeHeader)(FILE *out);
     int (*GenerateCode)(SourceLoc *loc, Scope *fScope, Symbol *program);
 
+    // Legacy-tree generation with direct access to the authoritative,
+    // already verified Cg IR.  This is for profiles whose mature backend
+    // still consumes frontend declarations but needs selected-program IR
+    // metadata or statements; it is never called for Cg 1.1.
+
+    int (*GenerateCodeIR)(SourceLoc *loc, Scope *fScope, Symbol *program,
+                          const CgIRModule *module);
+
     // Cg 2.0 IR hooks: invoked with a verified module only when the
     // language version is 2.0.  Profiles leave them NULL unless they
     // intentionally accept every verified module; the compiler keeps

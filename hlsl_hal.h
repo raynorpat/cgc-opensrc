@@ -224,6 +224,9 @@ int HlslProfileIsValid(const HlslProfileDesc *profile);
 // HLSL backend phases:
 int HlslLowerProgram(HlslModule *module, const HlslProfileDesc *profile,
     SourceLoc *loc, Scope *scope, Symbol *program);
+int HlslLowerProgramWithIR(HlslModule *module,
+    const HlslProfileDesc *profile, SourceLoc *loc, Scope *scope,
+    Symbol *program, const CgIRModule *sourceIR);
 int HlslBuildEntryWrapper(HlslModule *module,
     const HlslProfileDesc *profile);
 int HlslLegalizeModule(HlslModule *module,

@@ -304,6 +304,11 @@ int HlslProfileAllowsBuiltin(const HlslProfileDesc *profile,
 {
     if (profile == NULL || builtin == HLSL_BUILTIN_NONE)
         return 0;
+    if (profile->stage == HLSL_STAGE_GEOMETRY &&
+        HlslBuiltinIsTexture(builtin))
+    {
+        return 0;
+    }
     if (profile->model == HLSL_SHADER_MODEL_3 &&
         profile->stage != HLSL_STAGE_PIXEL &&
         HlslBuiltinIsTexture(builtin) &&
@@ -376,6 +381,9 @@ static int BindVaryingUnbound_hlsl(SourceLoc *loc, Symbol *fSymb, int name,
                                    int IsOutVal);
 static int PrintCodeHeader_hlsl(FILE *out);
 static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program);
+static int GenerateCodeIR_hlsl(SourceLoc *loc, Scope *fScope,
+                               Symbol *program,
+                               const CgIRModule *sourceIR);
 static void *HlslCompilerAlloc(void *arg, size_t size);
 static int ReportHlslFailure(const HlslModule *module,
                              const HlslProfileDesc *profile,
@@ -431,6 +439,7 @@ int InitHAL_hlsl_profile(slHAL *fHAL, const HlslProfileDesc *profile)
     fHAL->BindVaryingUnbound = BindVaryingUnbound_hlsl;
     fHAL->PrintCodeHeader = PrintCodeHeader_hlsl;
     fHAL->GenerateCode = GenerateCode_hlsl;
+    fHAL->GenerateCodeIR = GenerateCodeIR_hlsl;
 
     // Data members:
     fHAL->vendor = VENDOR_STRING_HLSL;
@@ -1520,13 +1529,23 @@ int HlslReportFailureForTesting(const HlslModule *module,
 
 static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
 {
+    return GenerateCodeIR_hlsl(loc, fScope, program, NULL);
+} // GenerateCode_hlsl
+
+static int GenerateCodeIR_hlsl(SourceLoc *loc, Scope *fScope,
+                               Symbol *program,
+                               const CgIRModule *sourceIR)
+{
     HlslModule module;
     const HlslProfileDesc *profile;
 
     profile = GetHlslProfile();
     HlslInitModule(&module, profile->stage, HlslCompilerAlloc,
                    CurrentScope->pool);
-    if (!HlslLowerProgram(&module, profile, loc, fScope, program) ||
+    if (!((profile->stage == HLSL_STAGE_GEOMETRY && sourceIR != NULL) ?
+          HlslLowerProgramWithIR(&module, profile, loc, fScope, program,
+                                 sourceIR) :
+          HlslLowerProgram(&module, profile, loc, fScope, program)) ||
         !HlslBuildEntryWrapper(&module, profile) ||
         !HlslLegalizeModule(&module, profile) ||
         !HlslValidateSamplerUsage(&module, profile) ||
@@ -1539,7 +1558,7 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
     if (!HlslWriteModule(Cg->options.outfd, &module, profile))
         return ReportHlslFailure(&module, profile, program);
     return 1;
-} // GenerateCode_hlsl
+} // GenerateCodeIR_hlsl
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////// InitHAL_hlslv / InitHAL_hlslf ////////////////////////

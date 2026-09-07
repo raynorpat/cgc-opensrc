@@ -797,7 +797,7 @@ static int HlslDeclShapeIsValid(const HlslDecl *decl)
         decl->parameterQualifier < HLSL_PARAMETER_IN ||
         decl->parameterQualifier > HLSL_PARAMETER_INOUT ||
         decl->geometryRole < HLSL_GEOMETRY_DECL_NONE ||
-        decl->geometryRole > HLSL_GEOMETRY_DECL_FLAT_DEFINED ||
+        decl->geometryRole > HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER ||
         ((decl->type.base == HLSL_BASE_GEOMETRY_STREAM) !=
          (decl->geometryRole == HLSL_GEOMETRY_DECL_STREAM)) ||
         !HlslTypeIsValid(&decl->type, 0) ||
@@ -1174,6 +1174,14 @@ static int HlslGeometryOutputComponentsInner(const HlslType *type,
         return -1;
     components = 0;
     for (member = type->members; member != NULL; member = member->next) {
+        /* The placeholder exists only to make an otherwise empty HLSL
+         * stream element type legal.  It is not a Cg output and must not
+         * consume the source profile's component budget. */
+        if (member->geometryRole ==
+                HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER)
+        {
+            continue;
+        }
         count = HlslGeometryOutputComponentsInner(&member->type, &frame,
                                                    depth + 1);
         if (count < 0 || components > INT_MAX - count)
@@ -2840,7 +2848,9 @@ static int HlslValidateModernInterfaceSemantics(HlslModule *module,
     HlslInterpolation required;
 
     for (left = members; left != NULL; left = left->next) {
-        if (left->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+        if (left->geometryRole == HLSL_GEOMETRY_DECL_STREAM ||
+            left->geometryRole == HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER ||
+            left->geometryRole == HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER)
             continue;
         required = left->geometryRole == HLSL_GEOMETRY_DECL_FLAT_TARGET ?
             HLSL_INTERPOLATION_NOINTERPOLATION :
@@ -2853,7 +2863,11 @@ static int HlslValidateModernInterfaceSemantics(HlslModule *module,
                             HlslBindingReason(NULL, left->semantic));
         }
         for (right = left->next; right != NULL; right = right->next) {
-            if (right->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+            if (right->geometryRole == HLSL_GEOMETRY_DECL_STREAM ||
+                right->geometryRole ==
+                    HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER ||
+                right->geometryRole ==
+                    HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER)
                 continue;
             if ((left->name != NULL && right->name != NULL &&
                  !strcmp(left->name, right->name)) ||
@@ -2875,10 +2889,16 @@ static int HlslValidateModernInterfaceListsDistinct(HlslModule *module,
     const HlslDecl *right;
 
     for (left = members; left != NULL; left = left->next) {
-        if (left->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+        if (left->geometryRole == HLSL_GEOMETRY_DECL_STREAM ||
+            left->geometryRole == HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER ||
+            left->geometryRole == HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER)
             continue;
         for (right = otherMembers; right != NULL; right = right->next) {
-            if (right->geometryRole == HLSL_GEOMETRY_DECL_STREAM)
+            if (right->geometryRole == HLSL_GEOMETRY_DECL_STREAM ||
+                right->geometryRole ==
+                    HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER ||
+                right->geometryRole ==
+                    HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER)
                 continue;
             if ((left->name != NULL && right->name != NULL &&
                  !strcmp(left->name, right->name)) ||
@@ -3030,6 +3050,48 @@ static int HlslHasPosition(const HlslProfileDesc *profile,
     return 0;
 } // HlslHasPosition
 
+static int HlslValidateGeometryPlaceholder(HlslModule *module,
+                                            const HlslDecl *structure,
+                                            HlslGeometryDeclRole role)
+{
+    const HlslDecl *member;
+
+    if (structure == NULL)
+        return 1;
+    for (member = structure->members; member != NULL;
+         member = member->next)
+    {
+        if ((member->geometryRole ==
+                 HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER ||
+             member->geometryRole ==
+                 HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER) &&
+            member->geometryRole != role)
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &member->loc,
+                            "misplaced HLSL geometry placeholder");
+        }
+        if (member->geometryRole != role)
+            continue;
+        if (member != structure->members || member->next != NULL ||
+            member->identity == NULL || member->publicName != NULL ||
+            member->inputSemantic != NULL || member->semantic == NULL ||
+            member->canonicalSemantic == NULL ||
+            strcmp(member->semantic, "TEXCOORD0") ||
+            strcmp(member->canonicalSemantic, "TEXCOORD0") ||
+            member->semanticKind != HLSL_SEMANTIC_USER ||
+            member->semanticIndex != 0 ||
+            member->interpolation != HLSL_INTERPOLATION_DEFAULT ||
+            member->type.base != HLSL_BASE_FLOAT || member->type.len != 1 ||
+            member->type.rows != 0 || member->type.cols != 0 ||
+            member->type.arraySize != 0)
+        {
+            return HlslFail(module, HLSL_ERROR_INVALID_IR, &member->loc,
+                            "invalid HLSL geometry placeholder");
+        }
+    }
+    return 1;
+} // HlslValidateGeometryPlaceholder
+
 static int HlslValidateInterfaces(HlslModule *module,
                                   const HlslProfileDesc *profile)
 {
@@ -3068,6 +3130,14 @@ static int HlslValidateInterfaces(HlslModule *module,
     {
         return HlslFail(module, HLSL_ERROR_ENTRY_ABI, NULL,
                         "HLSL interface structures");
+    }
+    if (profile->stage == HLSL_STAGE_GEOMETRY &&
+        (!HlslValidateGeometryPlaceholder(module, input,
+             HLSL_GEOMETRY_DECL_INPUT_PLACEHOLDER) ||
+         !HlslValidateGeometryPlaceholder(module, output,
+             HLSL_GEOMETRY_DECL_OUTPUT_PLACEHOLDER)))
+    {
+        return 0;
     }
     wrapperInput = module->wrapper->parameters;
     geometryScalars = NULL;

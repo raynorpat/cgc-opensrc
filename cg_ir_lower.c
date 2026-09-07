@@ -1013,6 +1013,57 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
 
 static int lLowerStmtList(CgIRLower *L, stmt *fStmt, CgIRStmt **list);
 
+static expr *lGeometryValueRoot(expr *value)
+{
+    while (value != NULL && value->common.kind == BINARY_N &&
+           value->bin.op == MEMBER_SELECTOR_OP &&
+           value->bin.left != NULL && value->bin.right != NULL &&
+           value->bin.right->common.kind == SYMB_N &&
+           value->bin.right->sym.op == MEMBER_OP)
+    {
+        value = value->bin.left;
+    }
+    return value;
+} // lGeometryValueRoot
+
+static CgIRExpr *lGeometryIRValueRoot(CgIRExpr *value)
+{
+    while (value != NULL && value->kind == CGIR_EXPR_MEMBER)
+        value = value->u.member.object;
+    return value;
+} // lGeometryIRValueRoot
+
+static CgIRExpr *lLowerGeometryMemberPath(CgIRLower *L, expr *value,
+                                          expr *root,
+                                          CgIRExpr *loweredRoot)
+{
+    CgIRExpr *object;
+    CgIRExpr *result;
+
+    if (value == root)
+        return loweredRoot;
+    if (value == NULL || value->common.kind != BINARY_N ||
+        value->bin.op != MEMBER_SELECTOR_OP ||
+        value->bin.left == NULL || value->bin.right == NULL ||
+        value->bin.right->common.kind != SYMB_N ||
+        value->bin.right->sym.op != MEMBER_OP ||
+        value->bin.right->sym.symbol == NULL)
+    {
+        lUnlowerable(L, "geometry aggregate member path");
+        return NULL;
+    }
+    object = lLowerGeometryMemberPath(L, value->bin.left, root,
+                                      loweredRoot);
+    result = object != NULL ? CgIRNewMember(L->module,
+        value->common.type, &L->loc, object,
+        value->bin.right->sym.symbol) : NULL;
+    if (result != NULL) {
+        result->isLvalue = value->common.IsLValue;
+        result->sideEffects = value->common.HasSideEffects;
+    }
+    return result;
+} // lLowerGeometryMemberPath
+
 /*
  * CgIRLowerGeometryStatement() - One classified frontend geometry
  *          operation becomes exactly one emit, flat, or restart Cg IR
@@ -1036,11 +1087,31 @@ static CgIRStmt *CgIRLowerGeometryStatement(CgIRLower *L,
     for (sourceValue = operation->values; sourceValue != NULL;
          sourceValue = sourceValue->next)
     {
+        const CgGeometryValue *priorSource;
+        CgIRGeometryValue *priorValue;
+        expr *sourceRoot;
+        CgIRExpr *loweredRoot;
         CgIRExpr *lowered;
         CgIRGeometryValue *copy;
 
         L->loc = sourceValue->loc;
-        lowered = lLowerExpr(L, sourceValue->value);
+        sourceRoot = lGeometryValueRoot(sourceValue->value);
+        loweredRoot = NULL;
+        priorSource = operation->values;
+        priorValue = values;
+        while (priorSource != sourceValue && priorValue != NULL) {
+            if (lGeometryValueRoot(priorSource->value) == sourceRoot) {
+                loweredRoot = lGeometryIRValueRoot(priorValue->value);
+                break;
+            }
+            priorSource = priorSource->next;
+            priorValue = priorValue->next;
+        }
+        if (loweredRoot == NULL)
+            loweredRoot = lLowerExpr(L, sourceRoot);
+        lowered = loweredRoot != NULL ?
+            lLowerGeometryMemberPath(L, sourceValue->value, sourceRoot,
+                                     loweredRoot) : NULL;
         if (lowered == NULL)
             return NULL;
         copy = CgIRNewGeometryValue(L->module,

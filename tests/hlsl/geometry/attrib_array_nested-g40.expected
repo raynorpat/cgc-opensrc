@@ -7,6 +7,11 @@
 // cgc-bind interface in weights float2 ATTRIB3 ATTRIB3 user default
 // cgc-bind interface in code int ATTRIB6 ATTRIB6 user nointerpolation
 
+struct cg_GeometryOut
+{
+    float cgc_placeholder : TEXCOORD0;
+};
+
 struct cg_Nested
 {
     int code;
@@ -37,9 +42,11 @@ void cg_entry(cg_Vertex vertices[3])
     code = vertices[2].nested.code;
 }
 
-void main(cg_GeometryIn input[3])
+[maxvertexcount(4)]
+void main(triangle cg_GeometryIn input[3], inout TriangleStream<cg_GeometryOut> cgc_stream)
 {
     cg_Vertex vertices[3];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
     vertices[0].position = input[0].vertices_position;
     vertices[1].position = input[1].vertices_position;
     vertices[2].position = input[2].vertices_position;
