@@ -159,7 +159,7 @@ file(GLOB_RECURSE repository_files RELATIVE "${SOURCE_ROOT}"
     "${SOURCE_ROOT}/*.c"
     "${SOURCE_ROOT}/*.h")
 foreach(relative IN LISTS repository_files)
-    if(relative MATCHES "(^|/)(build[^/]*|cmake-build[^/]*|generated[^/]*)(/|$)")
+    if(relative MATCHES "(^|/)(\.worktrees|build[^/]*|cmake-build[^/]*|generated[^/]*)(/|$)")
         continue()
     endif()
 
@@ -183,7 +183,7 @@ foreach(relative IN LISTS repository_files)
     if(NOT relative MATCHES "\\.c$")
         continue()
     endif()
-    if(relative MATCHES "(^|/)(build[^/]*|cmake-build[^/]*|generated[^/]*)(/|$)")
+    if(relative MATCHES "(^|/)(\.worktrees|build[^/]*|cmake-build[^/]*|generated[^/]*)(/|$)")
         continue()
     endif()
     if(relative MATCHES "^tests/")

@@ -222,3 +222,13 @@ int HlslLowerProgramWithIR(void)
 }
 ]=])
 ExpectStructureSuccess()
+
+file(MAKE_DIRECTORY "${fixture_root}/.worktrees/other")
+file(WRITE "${fixture_root}/.worktrees/other/hlsl_lower.c" [=[
+#include "hlsl_lower_internal.h"
+int HlslLowerProgramWithIR(void)
+{
+    return 0;
+}
+]=])
+ExpectStructureSuccess()
