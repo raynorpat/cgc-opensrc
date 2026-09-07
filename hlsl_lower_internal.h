@@ -142,4 +142,14 @@ HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
                           HlslStmt **prefix,
                           HlslValueMode valueMode);
 
+HlslStmt *HlslNewBoolAssignment(HlslLowerContext *context,
+                                HlslDecl *decl, int value);
+int HlslLowerStatements(HlslLowerContext *context, stmt *source,
+                        HlslStmt **list);
+int HlslLowerIRStatements(HlslLowerContext *context,
+                          const CgIRStmt *source,
+                          HlslStmt **list);
+HlslStmt *HlslLowerGeometryOperation(HlslLowerContext *context,
+                                     const CgIRStmt *operation);
+
 #endif // __HLSL_LOWER_INTERNAL_H
