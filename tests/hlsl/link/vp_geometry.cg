@@ -1,0 +1,19 @@
+struct VertexOutput {
+    float4 position : POSITION;
+    float2 uv : TEXCOORD0;
+    float4 color : COLOR0;
+    int material : TEXCOORD1;
+};
+
+VertexOutput main(float4 position : POSITION,
+                  float2 uv : TEXCOORD0,
+                  float4 color : COLOR0,
+                  int material : TEXCOORD1)
+{
+    VertexOutput result;
+    result.position = position;
+    result.uv = uv;
+    result.color = color;
+    result.material = material;
+    return result;
+}

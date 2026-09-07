@@ -1,0 +1,8 @@
+POINT POINT_OUT void main(
+    AttribArray<float4> position : POSITION,
+    AttribArray<float2> uv : TEXCOORD0,
+    uniform sampler2D image : TEXUNIT0)
+{
+    float4 sample = tex2D(image, uv[0]);
+    emitVertex(position[0] + sample * 0.0 : POSITION);
+}

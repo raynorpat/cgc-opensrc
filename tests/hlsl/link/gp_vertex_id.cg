@@ -1,0 +1,6 @@
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION,
+                          AttribArray<int> vertexId : VERTEXID)
+{
+    emitVertex(position[0] : POSITION,
+               float4((float) vertexId[0], 0.0, 0.0, 1.0) : COLOR0);
+}

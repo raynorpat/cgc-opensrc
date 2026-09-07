@@ -2821,6 +2821,124 @@ set_tests_properties(hlsl_link_interface_mismatch PROPERTIES WILL_FAIL TRUE)
 set_property(TEST hlsl_link_interface_mismatch APPEND PROPERTY
     ENVIRONMENT "HLSL_EXPECT_LINK_MISMATCH=COLOR0 type mismatch")
 
+function(add_hlsl_modern_pipeline name model vertex_source geometry_source
+        pixel_source geometry_options)
+    if(model STREQUAL "40")
+        set(model_name sm4)
+    elseif(model STREQUAL "50")
+        set(model_name sm5)
+    else()
+        message(FATAL_ERROR "unsupported HLSL pipeline model ${model}")
+    endif()
+    string(REPLACE ";" "\\;" geometry_options_escaped
+        "${geometry_options}")
+    set(test_name hlsl_${model_name}_pipeline_${name})
+    add_test(
+        NAME ${test_name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DVERTEX_PROFILE=hlslv${model}
+            -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/${vertex_source}
+            -DGEOMETRY_PROFILE=hlslg${model}
+            -DGEOMETRY_SOURCE=${PROJECT_SOURCE_DIR}/${geometry_source}
+            "-DGEOMETRY_OPTIONS=${geometry_options_escaped}"
+            -DPIXEL_PROFILE=hlslf${model}
+            -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/${pixel_source}
+            "-DCONFIG=$<CONFIG>"
+            "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${test_name}.vs.hlsl"
+            "-DGEOMETRY_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${test_name}.gs.hlsl"
+            "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${test_name}.ps.hlsl"
+            ${ARGN}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_link.cmake)
+endfunction()
+
+foreach(model 40 50)
+    add_hlsl_modern_pipeline(geometry ${model}
+        tests/hlsl/link/vp_geometry.cg
+        tests/hlsl/link/gp_geometry.cg
+        tests/hlsl/link/fp_geometry.cg
+        "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(vertex_id ${model}
+        tests/hlsl/link/vp_vertex_id.cg
+        tests/hlsl/link/gp_vertex_id.cg
+        tests/hlsl/link/fp_vertex_id.cg
+        "POINT;POINT_OUT;Vertices=1" -DASSERT_VERTEX_ID_BRIDGE=TRUE)
+
+    add_hlsl_modern_pipeline(vs_gs_type_mismatch ${model}
+        tests/hlsl/link/vp_geometry.cg
+        tests/hlsl/link/gp_type_mismatch.cg
+        tests/hlsl/link/fp_geometry.cg
+        "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(gs_ps_type_mismatch ${model}
+        tests/hlsl/link/vp_geometry.cg
+        tests/hlsl/link/gp_geometry.cg
+        tests/hlsl/link/fp_type_mismatch.cg
+        "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(vs_gs_interpolation_mismatch ${model}
+        tests/hlsl/link/vp_geometry.cg
+        tests/hlsl/link/gp_interpolation_mismatch.cg
+        tests/hlsl/link/fp_geometry.cg
+        "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(gs_ps_interpolation_mismatch ${model}
+        tests/hlsl/link/vp_geometry.cg
+        tests/hlsl/link/gp_flat_output.cg
+        tests/hlsl/link/fp_interpolation_mismatch.cg
+        "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+
+    if(model STREQUAL "40")
+        set(model_name sm4)
+    else()
+        set(model_name sm5)
+    endif()
+    foreach(kind vs_gs_type gs_ps_type vs_gs_interpolation
+                 gs_ps_interpolation)
+        set(mismatch_test hlsl_${model_name}_pipeline_${kind}_mismatch)
+        set_tests_properties(${mismatch_test} PROPERTIES WILL_FAIL TRUE)
+        string(REPLACE "_" "->" boundary "${kind}")
+    endforeach()
+    set_property(TEST hlsl_${model_name}_pipeline_vs_gs_type_mismatch
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=VS->GS TEXCOORD0 type mismatch: producer .*float2.*, consumer .*float3.*")
+    set_property(TEST hlsl_${model_name}_pipeline_gs_ps_type_mismatch
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=GS->PS TEXCOORD0 type mismatch: producer .*float2.*, consumer .*float3.*")
+    set_property(TEST hlsl_${model_name}_pipeline_vs_gs_interpolation_mismatch
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=VS->GS TEXCOORD0 interpolation mismatch: producer .*default.*, consumer .*nointerpolation.*")
+    set_property(TEST hlsl_${model_name}_pipeline_gs_ps_interpolation_mismatch
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=GS->PS COLOR0 interpolation mismatch: producer .*nointerpolation.*, consumer .*default.*")
+
+    string(SUBSTRING "g${model}" 0 3 model_suffix)
+    add_test(
+        NAME hlsl_${model_name}_pipeline_geometry_textures
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=hlslg${model}
+            -DENTRY=main
+            "-DPROFILE_OPTIONS=POINT\\;POINT_OUT\\;Vertices=1"
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/textures.cg
+            -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/hlsl/geometry/textures-${model_suffix}.expected
+            -DUPDATE_EXPECTED=${CGC_UPDATE_HLSL_EXPECTED}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_${model_name}_pipeline_geometry_textures.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+    add_test(
+        NAME hlsl_${model_name}_pipeline_geometry_texture_stage
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=hlslg${model}
+            -DENTRY=main
+            "-DPROFILE_OPTIONS=POINT\\;POINT_OUT\\;Vertices=1"
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/modern_texture_geometry_stage.cg
+            -DCODE=6402
+            -DEXPECTED_LINE=6
+            -DMESSAGE=tex2D
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_${model_name}_pipeline_geometry_texture_stage.hlsl"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+endforeach()
+
 add_test(NAME hlsl_link_fresh_directory
     COMMAND ${CMAKE_COMMAND}
         -DMODE=link

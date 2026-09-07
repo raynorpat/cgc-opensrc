@@ -1,0 +1,11 @@
+TRIANGLE TRIANGLE_OUT void main(
+    AttribArray<float4> position : POSITION,
+    AttribArray<int> uv : TEXCOORD0,
+    AttribArray<float4> color : COLOR0,
+    AttribArray<int> material : TEXCOORD1)
+{
+    emitVertex(position[0] : POSITION,
+               float2((float) uv[0], 0.0) : TEXCOORD0,
+               color[0] : COLOR0,
+               material[0] : TEXCOORD1);
+}
