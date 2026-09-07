@@ -1427,14 +1427,14 @@ input uses `SV_VertexID`, the VS→GS bridge uses one matching
 `nointerpolation CG_VERTEXID0`, and the pixel interface does not expose the
 bridge unless source explicitly forwards it.
 
-- [ ] **Step 4: Add exact negative pipelines**
+- [x] **Step 4: Add exact negative pipelines**
 
 Register one type mismatch and one interpolation mismatch at each boundary.
 The runner must report the canonical key and both conflicting declarations.
 Each individual shader must still pass compiler generation and optional
 external validation; only the repository cross-stage check fails.
 
-- [ ] **Step 5: Run all pipeline tests**
+- [x] **Step 5: Run all pipeline tests**
 
 ```powershell
 cmake --build build-hlsl-modern --config Debug --target cgc
@@ -1444,7 +1444,7 @@ ctest --test-dir build-hlsl-modern -C Debug -R 'hlsl_(sm4|sm5)_pipeline' --outpu
 Expected: matching and vertex-ID pipelines pass; mismatch tests pass by
 observing their exact expected link failure.
 
-- [ ] **Step 6: Commit pipeline qualification**
+- [x] **Step 6: Commit pipeline qualification**
 
 ```powershell
 git add -- tests/check_hlsl_link.cmake tests/CMakeLists.txt tests/hlsl/link tests/hlsl/geometry tests/hlsl/diagnostics
@@ -1584,7 +1584,7 @@ Continue preserving compiler and `fxc` stdout/stderr on failure. Add a
 external tests as today; when the option is `ON`, fail configuration with a
 clear Windows SDK requirement instead of silently omitting them.
 
-- [ ] **Step 2: Register all six target validators**
+- [x] **Step 2: Register all six target validators**
 
 Validate every tracked successful modern Cg fixture through the existing
 compile-then-`fxc` runner and its exact target. At minimum, register one bundled
@@ -1607,7 +1607,7 @@ Update `README.md` with the six names/targets, source-only boundary, public
 `main`, example commands, required geometry options, modern system semantics,
 cbuffer policy, same-index `tN/sN` sampler pairs, and optional `fxc` behavior.
 
-- [ ] **Step 5: Prove generated sources are reproducible**
+- [x] **Step 5: Prove generated sources are reproducible**
 
 Run parser and standard-library regeneration and require no tracked diff:
 
@@ -1618,7 +1618,7 @@ git diff -- parser.c parser.h stdlib.c
 
 Expected: no output.
 
-- [ ] **Step 6: Manually qualify representative output**
+- [x] **Step 6: Manually qualify representative output**
 
 ```powershell
 $cgcModern = Resolve-Path 'build-hlsl-modern\Release\cgc.exe'
@@ -1634,7 +1634,7 @@ if ($LASTEXITCODE -ne 0) { throw 'modern HLSL manual qualification failed' }
 Expected: six readable files with exact profile/target metadata, stable
 bindings, valid resources, internal entry, and one public `main`.
 
-- [ ] **Step 7: Run complete Release and Debug qualification**
+- [x] **Step 7: Run complete Release and Debug qualification**
 
 ```powershell
 cmake --build build-hlsl-modern --config Release
@@ -1648,7 +1648,7 @@ Windows SDK qualification environment, configure with
 `-DCGC_REQUIRE_FXC=ON` and require every registered external validation test
 to run.
 
-- [ ] **Step 8: Run final repository audit**
+- [x] **Step 8: Run final repository audit**
 
 ```powershell
 git diff --check
@@ -1675,7 +1675,7 @@ changes plus unrelated untracked paths that were already recorded at the Task
 1 baseline. The targeted ignored-path status is empty: neither the plan-created
 `build-hlsl-modern` directory nor a plan backup remains.
 
-- [ ] **Step 9: Mark this plan complete and commit documentation**
+- [x] **Step 9: Mark this plan complete and commit documentation**
 
 Change every completed checkbox in this file to `[x]`, then run:
 
@@ -1689,7 +1689,7 @@ git commit -m "Document Shader Model 4 and 5 HLSL profiles"
 - [x] The DirectX 9 HLSL plan is complete and all SM3 goldens remain stable.
 - [x] Profile IDs 14–22 and connector IDs 18–35 are unique and pinned.
 - [x] All six modern profiles register with exact stage, target, and model.
-- [ ] Every representable current Cg 2.0 construct emits verified deterministic
+- [x] Every representable current Cg 2.0 construct emits verified deterministic
   HLSL; every unsupported construct has one precise diagnostic.
 - [x] Modern system-value types, interpolation, and cross-stage keys match the
   design specification.
@@ -1701,12 +1701,12 @@ git commit -m "Document Shader Model 4 and 5 HLSL profiles"
   updates, and multiple appends.
 - [x] Exact SM4/SM5 resource boundaries pass and one-over cases fail
   transactionally.
-- [ ] Matching SM4 and SM5 vertex–geometry–pixel pipelines pass; deliberate
+- [x] Matching SM4 and SM5 vertex–geometry–pixel pipelines pass; deliberate
   type, semantic, interpolation, and bridge mismatches fail.
-- [ ] Every external qualification shader compiles under its exact `fxc`
+- [x] Every external qualification shader compiles under its exact `fxc`
   target when `fxc` is available.
 - [x] The compatibility matrix has no blank classification or test cell.
-- [ ] Parser and standard-library regeneration leave no diff.
-- [ ] Complete Debug and Release suites report zero failures.
-- [ ] `git diff --check` reports no errors and `git status --short` contains no
+- [x] Parser and standard-library regeneration leave no diff.
+- [x] Complete Debug and Release suites report zero failures.
+- [x] `git diff --check` reports no errors and `git status --short` contains no
   unintended plan-created files; baseline unrelated paths remain untouched.
