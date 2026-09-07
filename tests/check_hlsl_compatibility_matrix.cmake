@@ -8,10 +8,18 @@ if(NOT DEFINED REGISTERED_CONTRACTS OR NOT EXISTS "${REGISTERED_CONTRACTS}")
     message(FATAL_ERROR
         "registered-test contract inventory is missing: ${REGISTERED_CONTRACTS}")
 endif()
+if(DEFINED MODE AND MODE STREQUAL "modern" AND
+   (NOT DEFINED MODERN_WITNESSES OR NOT EXISTS "${MODERN_WITNESSES}"))
+    message(FATAL_ERROR
+        "registered modern-test inventory is missing: ${MODERN_WITNESSES}")
+endif()
 
 file(STRINGS "${REGISTERED_TESTS}" registered_tests)
 file(STRINGS "${REGISTERED_CONTRACTS}" registered_contracts)
 file(STRINGS "${MATRIX}" matrix_lines)
+if(DEFINED MODE AND MODE STREQUAL "modern")
+    file(STRINGS "${MODERN_WITNESSES}" modern_witnesses)
+endif()
 
 if(DEFINED MODE AND MODE STREQUAL "modern")
     if(NOT DEFINED SURFACE_INVENTORY OR
@@ -92,10 +100,20 @@ foreach(line IN LISTS matrix_lines)
     endif()
     if(DEFINED MODE AND MODE STREQUAL "modern" AND
        NOT status STREQUAL "not exposed" AND
-       NOT status MATCHES "^rejected C" AND
-       test_name MATCHES "^cg20_")
-        message(FATAL_ERROR
-            "modern HLSL claim uses generic-only witness '${test_name}': ${line}")
+       NOT status MATCHES "^rejected C")
+        if(test_name MATCHES "^cg20_" OR
+           test_name MATCHES "^hlslv_" OR
+           test_name MATCHES "^hlslf_" OR
+           test_name STREQUAL "hlsl_validate_fresh_directory" OR
+           test_name MATCHES "^hlslg(40|50)_registration$")
+            message(FATAL_ERROR
+                "modern HLSL claim uses a legacy, generic, or no-code witness '${test_name}': ${line}")
+        endif()
+        list(FIND modern_witnesses "${test_name}" modern_witness_index)
+        if(modern_witness_index EQUAL -1)
+            message(FATAL_ERROR
+                "modern HLSL claim is not backed by a registered modern execution '${test_name}': ${line}")
+        endif()
     endif()
     list(FIND registered_tests "${test_name}" test_index)
     if(test_index EQUAL -1)

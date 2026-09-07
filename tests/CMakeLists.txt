@@ -5327,6 +5327,7 @@ add_test(NAME hlsl_sm4_sm5_compatibility_matrix
         -DSURFACE_INVENTORY=${CMAKE_CURRENT_SOURCE_DIR}/hlsl-sm4-sm5-surface.txt
         "-DREGISTERED_TESTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-tests.txt"
         "-DREGISTERED_CONTRACTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
+        "-DMODERN_WITNESSES=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-modern-witness-tests.txt"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_compatibility_matrix.cmake)
 if(FXC_EXECUTABLE)
     add_test(NAME hlsl_modern_fxc_coverage
@@ -5340,6 +5341,46 @@ get_property(hlsl_registered_contracts DIRECTORY
     PROPERTY HLSL_FAILURE_CONTRACTS)
 get_property(hlsl_external_validation_cases DIRECTORY
     PROPERTY HLSL_EXTERNAL_VALIDATION_CASES)
+set(hlsl_modern_witness_tests
+    hlsl_invariants_unit
+    hlsl_link_mixed_modern_geometry_model
+    hlsl_optional_fxc_missing_sdk
+    hlsl_require_fxc_missing_sdk
+    hlsl_semantics_unit
+    hlsl_sm4_pipeline_geometry
+    hlsl_sm4_pipeline_gs_ps_interpolation_mismatch
+    hlsl_sm4_pipeline_vertex_id
+    hlsl_sm4_pipeline_vs_gs_type_mismatch
+    hlsl_sm5_pipeline_geometry
+    hlsl_sm5_pipeline_gs_ps_type_mismatch
+    hlsl_sm5_pipeline_vertex_id
+    hlsl_validation_exact_target_contract
+    hlsl_validator_rejects_invalid_generated_source)
+foreach(hlsl_modern_witness IN LISTS hlsl_modern_witness_tests)
+    list(FIND hlsl_registered_tests "${hlsl_modern_witness}"
+        hlsl_modern_witness_index)
+    if(hlsl_modern_witness_index EQUAL -1)
+        message(FATAL_ERROR
+            "modern HLSL witness is not registered: ${hlsl_modern_witness}")
+    endif()
+endforeach()
+foreach(hlsl_external_validation IN LISTS hlsl_external_validation_cases)
+    if(hlsl_external_validation MATCHES
+       "^([^|]+)[|]hlsl[vgf](40|50)[|]")
+        set(hlsl_external_name "${CMAKE_MATCH_1}")
+        foreach(hlsl_external_witness
+                "${hlsl_external_name}"
+                "hlsl_validate_${hlsl_external_name}")
+            list(FIND hlsl_registered_tests "${hlsl_external_witness}"
+                hlsl_external_witness_index)
+            if(NOT hlsl_external_witness_index EQUAL -1)
+                list(APPEND hlsl_modern_witness_tests
+                    "${hlsl_external_witness}")
+            endif()
+        endforeach()
+    endif()
+endforeach()
+list(REMOVE_DUPLICATES hlsl_modern_witness_tests)
 string(REPLACE ";" "\n" hlsl_registered_contract_lines
     "${hlsl_registered_contracts}")
 string(APPEND hlsl_registered_contract_lines "\n")
@@ -5356,3 +5397,8 @@ string(REPLACE ";" "\n" hlsl_external_validation_lines
 file(GENERATE
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-external-validation-cases.txt"
     CONTENT "${hlsl_external_validation_lines}\n")
+string(REPLACE ";" "\n" hlsl_modern_witness_lines
+    "${hlsl_modern_witness_tests}")
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-modern-witness-tests.txt"
+    CONTENT "${hlsl_modern_witness_lines}\n")
