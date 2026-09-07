@@ -40,6 +40,14 @@ add_test(NAME hlsl_optional_fxc_missing_sdk
         -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
         "-DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/optional-fxc-missing"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_optional_fxc.cmake)
+add_test(NAME hlsl_modern_raw_output_determinism
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/modern/textures.cg
+        -DLEGACY_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/fp_passthrough.cg
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/raw-determinism"
+        "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_modern_raw_determinism.cmake)
 
 add_executable(hlsl_invalid_generator hlsl_invalid_generator.c)
 set_target_properties(hlsl_invalid_generator PROPERTIES
