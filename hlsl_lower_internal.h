@@ -83,4 +83,21 @@ HlslDecl *HlslFindDecl(HlslLowerContext *context, const void *identity);
 HlslFunction *HlslFindFunction(HlslModule *module, const void *identity);
 char *HlslCopyText(HlslLowerContext *context, const char *text);
 
+int HlslLowerType(HlslLowerContext *context, Type *source,
+                  HlslType *target, const SourceLoc *loc);
+int HlslEnsureType(HlslLowerContext *context, Type *type);
+const char *HlslFunctionSemantic(HlslLowerContext *context,
+                                 Symbol *symbol);
+int HlslRejectStorage(HlslLowerContext *context, Symbol *symbol);
+int HlslSortStructs(HlslLowerContext *context);
+int HlslCollectUniformList(HlslLowerContext *context, SymbolList *list);
+int HlslCollectUniformTree(HlslLowerContext *context, Symbol *symbol);
+int HlslCollectDefaults(HlslLowerContext *context);
+int HlslCollectParameters(HlslLowerContext *context,
+                          Symbol *formal, int isEntry);
+int HlslCollectLocals(HlslLowerContext *context, Symbol *symbol);
+HlslDecl *HlslNewSourceDecl(HlslLowerContext *context,
+    Symbol *symbol, const void *nameSpace);
+void HlslInsertDecl(HlslDecl **list, HlslDecl *decl);
+
 #endif // __HLSL_LOWER_INTERNAL_H

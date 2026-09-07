@@ -10,6 +10,7 @@ check_include_file(stdint.h CGC_HAVE_STDINT_H)
 set(CGC_HLSL_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_decl.c
 )
 
 if(BUILD_TESTING)
