@@ -100,4 +100,46 @@ HlslDecl *HlslNewSourceDecl(HlslLowerContext *context,
     Symbol *symbol, const void *nameSpace);
 void HlslInsertDecl(HlslDecl **list, HlslDecl *decl);
 
+int HlslResolveBuiltinSymbol(HlslLowerContext *context,
+                             Symbol *symbol,
+                             const SourceLoc *callLoc,
+                             HlslBuiltin *builtin,
+                             HlslType *result,
+                             HlslType *params, int *paramCount);
+HlslExpr *HlslNewLiteral(HlslLowerContext *context, HlslBase base,
+                         int intValue, float floatValue);
+HlslExpr *HlslNewSymbolExpr(HlslLowerContext *context, HlslDecl *decl);
+HlslDecl *HlslNewTemporary(HlslLowerContext *context,
+                           const HlslType *type);
+HlslStmt *HlslNewExpressionStmt(HlslLowerContext *context,
+                                HlslExpr *expression);
+HlslExpr *HlslNewAssignment(HlslLowerContext *context,
+                            HlslExpr *left, HlslExpr *right);
+int HlslAppendExpression(HlslLowerContext *context, HlslStmt **list,
+                         HlslExpr *expression);
+HlslExpr *HlslCaptureValue(HlslLowerContext *context,
+                           HlslStmt **list, HlslExpr *value);
+int HlslTypeNeedsRecursiveCopy(const HlslType *type);
+int HlslIsStableAggregateSource(const HlslExpr *expression);
+HlslExpr *HlslCopyMember(HlslLowerContext *context,
+                         HlslExpr *object, HlslDecl *member);
+HlslExpr *HlslCopyIndex(HlslLowerContext *context,
+                        HlslExpr *object, const HlslType *elementType,
+                        int index);
+int HlslAppendRecursiveCopy(HlslLowerContext *context,
+                            const HlslType *type,
+                            HlslExpr *target, HlslExpr *source,
+                            HlslStmt **statements);
+HlslExpr *HlslScalarizeVectorCondition(HlslLowerContext *context,
+                                       HlslStmt **prefix,
+                                       HlslExpr *condition);
+HlslExpr *HlslLowerExpr(HlslLowerContext *context, expr *source,
+                        HlslStmt **prefix, HlslValueMode valueMode);
+int HlslIRTypeIsIdentical(const HlslType *left,
+                          const HlslType *right);
+HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
+                          const CgIRExpr *source,
+                          HlslStmt **prefix,
+                          HlslValueMode valueMode);
+
 #endif // __HLSL_LOWER_INTERNAL_H
