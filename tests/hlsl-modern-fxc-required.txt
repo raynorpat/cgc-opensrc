@@ -17,6 +17,7 @@ hlsl_sm4_pipeline_geometry_geometry|hlslg40|tests/hlsl/link/gp_geometry.cg|||TRI
 hlsl_sm4_pipeline_geometry_pixel|hlslf40|tests/hlsl/link/fp_geometry.cg||||
 hlsl_sm4_pipeline_geometry_textures|hlslg40|tests/hlsl/geometry/textures.cg||main|POINT,POINT_OUT,Vertices=1|
 hlsl_sm4_pipeline_geometry_vertex|hlslv40|tests/hlsl/link/vp_geometry.cg||||
+hlsl_sm4_pipeline_gs_ps_semantic_mismatch_pixel|hlslf40|tests/hlsl/link/fp_semantic_mismatch.cg||||
 hlsl_sm4_pipeline_gs_ps_interpolation_mismatch_geometry|hlslg40|tests/hlsl/link/gp_flat_output.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlsl_sm4_pipeline_gs_ps_interpolation_mismatch_pixel|hlslf40|tests/hlsl/link/fp_interpolation_mismatch.cg||||
 hlsl_sm4_pipeline_gs_ps_type_mismatch_pixel|hlslf40|tests/hlsl/link/fp_type_mismatch.cg||||
@@ -24,12 +25,16 @@ hlsl_sm4_pipeline_mixed_two_stage_vertex|hlslv40|tests/hlsl/link/vp_link.cg||||
 hlsl_sm4_pipeline_vertex_id_geometry|hlslg40|tests/hlsl/link/gp_vertex_id.cg|||POINT,POINT_OUT,Vertices=1|
 hlsl_sm4_pipeline_vertex_id_pixel|hlslf40|tests/hlsl/link/fp_vertex_id.cg||||
 hlsl_sm4_pipeline_vertex_id_vertex|hlslv40|tests/hlsl/link/vp_vertex_id.cg||||
+hlsl_sm4_pipeline_vertex_id_bridge_mismatch_geometry|hlslg40|tests/hlsl/link/gp_vertex_id_bridge_mismatch.cg|||POINT,POINT_OUT,Vertices=1|
+hlsl_sm4_pipeline_vertex_id_missing_vertex|hlslv40|tests/hlsl/link/vp_position_only.cg||||
 hlsl_sm4_pipeline_vs_gs_interpolation_mismatch_geometry|hlslg40|tests/hlsl/link/gp_interpolation_mismatch.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
+hlsl_sm4_pipeline_vs_gs_semantic_mismatch_geometry|hlslg40|tests/hlsl/link/gp_semantic_mismatch.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlsl_sm4_pipeline_vs_gs_type_mismatch_geometry|hlslg40|tests/hlsl/link/gp_type_mismatch.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlsl_sm5_pipeline_geometry_geometry|hlslg50|tests/hlsl/link/gp_geometry.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlsl_sm5_pipeline_geometry_pixel|hlslf50|tests/hlsl/link/fp_geometry.cg||||
 hlsl_sm5_pipeline_geometry_textures|hlslg50|tests/hlsl/geometry/textures.cg||main|POINT,POINT_OUT,Vertices=1|
 hlsl_sm5_pipeline_geometry_vertex|hlslv50|tests/hlsl/link/vp_geometry.cg||||
+hlsl_sm5_pipeline_gs_ps_semantic_mismatch_pixel|hlslf50|tests/hlsl/link/fp_semantic_mismatch.cg||||
 hlsl_sm5_pipeline_gs_ps_interpolation_mismatch_geometry|hlslg50|tests/hlsl/link/gp_flat_output.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlsl_sm5_pipeline_gs_ps_interpolation_mismatch_pixel|hlslf50|tests/hlsl/link/fp_interpolation_mismatch.cg||||
 hlsl_sm5_pipeline_gs_ps_type_mismatch_pixel|hlslf50|tests/hlsl/link/fp_type_mismatch.cg||||
@@ -37,7 +42,10 @@ hlsl_sm5_pipeline_mixed_two_stage_pixel|hlslf50|tests/hlsl/link/fp_link.cg||||
 hlsl_sm5_pipeline_vertex_id_geometry|hlslg50|tests/hlsl/link/gp_vertex_id.cg|||POINT,POINT_OUT,Vertices=1|
 hlsl_sm5_pipeline_vertex_id_pixel|hlslf50|tests/hlsl/link/fp_vertex_id.cg||||
 hlsl_sm5_pipeline_vertex_id_vertex|hlslv50|tests/hlsl/link/vp_vertex_id.cg||||
+hlsl_sm5_pipeline_vertex_id_bridge_mismatch_geometry|hlslg50|tests/hlsl/link/gp_vertex_id_bridge_mismatch.cg|||POINT,POINT_OUT,Vertices=1|
+hlsl_sm5_pipeline_vertex_id_missing_vertex|hlslv50|tests/hlsl/link/vp_position_only.cg||||
 hlsl_sm5_pipeline_vs_gs_interpolation_mismatch_geometry|hlslg50|tests/hlsl/link/gp_interpolation_mismatch.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
+hlsl_sm5_pipeline_vs_gs_semantic_mismatch_geometry|hlslg50|tests/hlsl/link/gp_semantic_mismatch.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlsl_sm5_pipeline_vs_gs_type_mismatch_geometry|hlslg50|tests/hlsl/link/gp_type_mismatch.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlslf40_boundary_color_depth|hlslf40|tests/hlsl/limits/modern_interface.cg||||INTERFACE_COUNT=8,TEST_PIXEL_OUTPUT=1,TEST_PIXEL_DEPTH=1
 hlslf40_boundary_inputs|hlslf40|tests/hlsl/limits/modern_interface.cg||||INTERFACE_COUNT=32,TEST_PIXEL_INPUT=1
