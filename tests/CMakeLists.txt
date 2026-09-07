@@ -2155,6 +2155,46 @@ add_hlsl_fixture(hlslv50_registration hlslv50
 add_hlsl_fixture(hlslf50_registration hlslf50
     tests/hlsl/modern/empty.cg tests/hlsl/modern/empty-p50.expected)
 
+function(add_hlsl_modern_source_fixture name profile source)
+    add_test(
+        NAME ${name}
+        COMMAND $<TARGET_FILE:cgc>
+            -quiet
+            -profile ${profile}
+            -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl
+            ${PROJECT_SOURCE_DIR}/${source})
+    add_hlsl_validation(${name} ${profile} ${source})
+endfunction()
+
+# Modern executions for Cg frontend forms that were previously witnessed only
+# by the legacy Shader Model 3 profile.
+add_hlsl_modern_source_fixture(modern_aliased_out_v40 hlslv40
+    tests/hlsl/aggregates/vp_aliased_out.cg)
+add_hlsl_modern_source_fixture(modern_declaration_forms_v40 hlslv40
+    tests/hlsl/profile/vp_declaration_forms.cg)
+add_hlsl_modern_source_fixture(modern_inline_helper_v40 hlslv40
+    tests/hlsl/functions/vp_inline_helper.cg)
+add_hlsl_modern_source_fixture(modern_annotation_v40 hlslv40
+    tests/hlsl/profile/vp_annotation.cg)
+add_hlsl_modern_source_fixture(modern_defaults_v40 hlslv40
+    tests/hlsl/bindings/vp_defaults.cg)
+add_hlsl_modern_source_fixture(modern_empty_control_v40 hlslv40
+    tests/hlsl/control/vp_empty_control.cg)
+add_hlsl_modern_source_fixture(modern_loop_prefixes_v40 hlslv40
+    tests/hlsl/control/vp_loop_prefixes.cg)
+add_hlsl_modern_source_fixture(modern_helpers_v40 hlslv40
+    tests/hlsl/functions/vp_helpers.cg)
+add_hlsl_modern_source_fixture(modern_intrinsic_user_same_name_v40 hlslv40
+    tests/hlsl/intrinsics/vp_user_same_name.cg)
+add_hlsl_modern_source_fixture(modern_explicit_c_register_v40 hlslv40
+    tests/hlsl/matrices/vp_matrix_order.cg)
+add_hlsl_modern_source_fixture(modern_explicit_s_register_p40 hlslf40
+    tests/hlsl/bindings/fp_samplers.cg)
+add_hlsl_modern_source_fixture(modern_texture_aliases_p40 hlslf40
+    tests/hlsl/textures/fp_all_texture_forms.cg)
+add_hlsl_modern_source_fixture(modern_pragma_register_array_v40 hlslv40
+    tests/hlsl/bindings/vp_pragma_bindings.cg)
+
 function(add_hlsl_modern_semantic name profile expected entry)
     add_test(
         NAME ${name}
@@ -2737,6 +2777,29 @@ add_hlsl_modern_semantic_failure(modern_intrinsic_v40 hlslv40
 add_hlsl_modern_semantic_failure(modern_intrinsic_v50 hlslv50
     tests/hlsl/diagnostics/vp_unsupported_intrinsic_angle.cg main 6410 3
     "HLSL Shader Model 5 has no exact intrinsic for \"degrees\"")
+add_hlsl_modern_semantic_failure(modern_matrix_cast_v40 hlslv40
+    tests/hlsl/diagnostics/vp_struct_cast.cg main 6401 19
+    "aggregate cast")
+add_hlsl_modern_semantic_failure(modern_interface_implementation_v40 hlslv40
+    tests/cg20/interfaces/conformance.cg main 6400 4
+    "does not support type \"interface\"")
+add_hlsl_modern_semantic_failure(modern_connector_tag_v40 hlslv40
+    tests/glsl/profile/unsupported_connector.cg main 5001 4
+    "connector type")
+add_hlsl_modern_semantic_failure(modern_attrib_array_stage_v40 hlslv40
+    tests/cg20/diagnostics/geometry_attrib_array_non_geometry.cg main 6309 6
+    "AttribArray requires a geometry program")
+add_hlsl_modern_semantic_failure(modern_intrinsic_bad_overload_v40 hlslv40
+    tests/hlsl/diagnostics/vp_bad_intrinsic.cg main 6410 1
+    "cross.*float2.*float2")
+add_hlsl_modern_semantic_failure(modern_intrinsic_scalar_kind_v40 hlslv40
+    tests/hlsl/diagnostics/vp_bad_intrinsic_uint.cg main 6410 1
+    "abs.*unsupported")
+add_hlsl_modern_semantic_failure(modern_explicit_i_register_v40 hlslv40
+    tests/hlsl/bindings/vp_int_bank_aggregate_shapes.cg main 6414 20
+    scalarLimit)
+add_hlsl_modern_semantic_failure(modern_explicit_b_register_v40 hlslv40
+    tests/hlsl/bindings/vp_bool_bank_shapes.cg main 6414 14 flags)
 
 add_test(
     NAME hlslg40_registration
@@ -3260,6 +3323,21 @@ if(FXC_EXECUTABLE)
             "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
             -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_passthrough.cg
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
+    add_test(NAME hlsl_validate_modern_fresh_directory
+        COMMAND ${CMAKE_COMMAND}
+            -DMODE=validate
+            -DCGC=$<TARGET_FILE:cgc>
+            -DFXC=${FXC_EXECUTABLE}
+            -DPROFILE=hlslv40
+            -DTARGET=vs_4_0
+            -DLEGACY_SYNTAX=FALSE
+            "-DCONFIG=$<CONFIG>"
+            "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/fresh-validate-modern"
+            "-DTEST_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
+            -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/profile/vp_passthrough.cg
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_fresh_directory.cmake)
+    set_property(DIRECTORY APPEND PROPERTY HLSL_EXTERNAL_VALIDATION_CASES
+        "modern_fresh_directory|hlslv40|tests/hlsl/profile/vp_passthrough.cg||||")
 endif()
 
 add_test(NAME hlsl_fresh_directory_cleanup_safety

@@ -1,4 +1,18 @@
 # name|profile|source|packing|entry|profile-options|defines
+modern_aliased_out_v40|hlslv40|tests/hlsl/aggregates/vp_aliased_out.cg||||
+modern_annotation_v40|hlslv40|tests/hlsl/profile/vp_annotation.cg||||
+modern_declaration_forms_v40|hlslv40|tests/hlsl/profile/vp_declaration_forms.cg||||
+modern_defaults_v40|hlslv40|tests/hlsl/bindings/vp_defaults.cg||||
+modern_empty_control_v40|hlslv40|tests/hlsl/control/vp_empty_control.cg||||
+modern_explicit_c_register_v40|hlslv40|tests/hlsl/matrices/vp_matrix_order.cg||||
+modern_explicit_s_register_p40|hlslf40|tests/hlsl/bindings/fp_samplers.cg||||
+modern_fresh_directory|hlslv40|tests/hlsl/profile/vp_passthrough.cg||||
+modern_helpers_v40|hlslv40|tests/hlsl/functions/vp_helpers.cg||||
+modern_inline_helper_v40|hlslv40|tests/hlsl/functions/vp_inline_helper.cg||||
+modern_intrinsic_user_same_name_v40|hlslv40|tests/hlsl/intrinsics/vp_user_same_name.cg||||
+modern_loop_prefixes_v40|hlslv40|tests/hlsl/control/vp_loop_prefixes.cg||||
+modern_pragma_register_array_v40|hlslv40|tests/hlsl/bindings/vp_pragma_bindings.cg||||
+modern_texture_aliases_p40|hlslf40|tests/hlsl/textures/fp_all_texture_forms.cg||||
 hlsl_sm4_pipeline_geometry_geometry|hlslg40|tests/hlsl/link/gp_geometry.cg|||TRIANGLE,TRIANGLE_OUT,Vertices=1|
 hlsl_sm4_pipeline_geometry_pixel|hlslf40|tests/hlsl/link/fp_geometry.cg||||
 hlsl_sm4_pipeline_geometry_textures|hlslg40|tests/hlsl/geometry/textures.cg||main|POINT,POINT_OUT,Vertices=1|

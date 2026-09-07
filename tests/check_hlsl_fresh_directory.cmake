@@ -8,7 +8,8 @@ get_filename_component(test_root "${TEST_BINARY_ROOT}" REALPATH)
 get_filename_component(work_absolute "${WORK_DIR}" ABSOLUTE)
 get_filename_component(work_name "${work_absolute}" NAME)
 if(NOT work_name STREQUAL "fresh-link" AND
-   NOT work_name STREQUAL "fresh-validate")
+   NOT work_name STREQUAL "fresh-validate" AND
+   NOT work_name STREQUAL "fresh-validate-modern")
     message(FATAL_ERROR
         "refusing to clear unexpected fresh-directory probe ${WORK_DIR}")
 endif()
