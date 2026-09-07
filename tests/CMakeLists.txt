@@ -1777,7 +1777,7 @@ add_executable(glsl_lower_ir_unit
     ${PROJECT_SOURCE_DIR}/glsl_codegen.c
     ${PROJECT_SOURCE_DIR}/glsl_hal.c
     ${PROJECT_SOURCE_DIR}/glsl_ir.c
-    ${PROJECT_SOURCE_DIR}/glsl_lower.c
+    ${CGC_GLSL_LOWER_SOURCES}
     ${PROJECT_SOURCE_DIR}/glsl_verify.c
     ${PROJECT_SOURCE_DIR}/glslf_hal.c
     ${PROJECT_SOURCE_DIR}/glslg_hal.c

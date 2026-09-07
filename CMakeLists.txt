@@ -17,6 +17,10 @@ set(CGC_HLSL_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_function.c
 )
 
+set(CGC_GLSL_LOWER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower.c
+)
+
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
@@ -46,7 +50,7 @@ add_executable(cgc
     generic_hal.c
     glsl_ir.c
     glsl_verify.c
-    glsl_lower.c
+    ${CGC_GLSL_LOWER_SOURCES}
     glsl_codegen.c
     glsl_hal.c
     glslv_hal.c

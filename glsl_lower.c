@@ -50,94 +50,10 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <float.h>
 #include <limits.h>
 
-#include "slglobals.h"
-#include "glsl_hal.h"
-#include "cg_stdlib.h"
-#include "cg_ir.h"
+#include "glsl_lower_internal.h"
 
-#define GLSL_MATRIX_MAX_ARGUMENTS 16
 
-typedef struct GlslMatrixHelper_Rec {
-    struct GlslMatrixHelper_Rec *next;
-    GlslFunction *function;
-    GlslType result;
-    GlslType parameters[GLSL_MATRIX_MAX_ARGUMENTS];
-    int parameterCount;
-} GlslMatrixHelper;
-
-typedef enum GlslMatrixSelectorHelperKind_Enum {
-    GLSL_MATRIX_SELECTOR_GET,
-    GLSL_MATRIX_SELECTOR_SET
-} GlslMatrixSelectorHelperKind;
-
-typedef struct GlslMatrixSelectorHelper_Rec {
-    struct GlslMatrixSelectorHelper_Rec *next;
-    GlslFunction *function;
-    GlslMatrixSelectorHelperKind kind;
-    GlslType matrixType;
-    GlslType valueType;
-    int count;
-    int mask;
-} GlslMatrixSelectorHelper;
-
-typedef struct GlslInterfaceSource_Rec {
-    struct GlslInterfaceSource_Rec *next;
-    const Symbol *source;
-    const char *interfaceKey;
-    const char *reservedName;
-    int isOutput;
-} GlslInterfaceSource;
-
-typedef struct GlslGeometryFlat_Rec {
-    struct GlslGeometryFlat_Rec *next;
-    int semantic;
-    GlslDecl *target;
-    GlslDecl *shadow;
-    GlslDecl *defined;
-} GlslGeometryFlat;
-
-typedef struct GlslGeometryInputBinding_Rec {
-    struct GlslGeometryInputBinding_Rec *next;
-    const Symbol *source;
-    GlslDecl *declaration;
-} GlslGeometryInputBinding;
-
-typedef struct GlslGeometryOutputBinding_Rec {
-    struct GlslGeometryOutputBinding_Rec *next;
-    const char *interfaceKey;
-    GlslDecl *declaration;
-} GlslGeometryOutputBinding;
-
-typedef struct GlslLowerContext_Rec {
-    GlslModule *module;
-    const GlslProfileDesc *profile;
-    /* Legacy -version 1.1 tree path only; the Cg IR lowering never
-     * reads frontend scopes (see GlslLowerCgIR below). */
-    Scope *scope;
-    /* Verified Cg IR module consumed by the Cg 2.0 lowering path. */
-    const CgIRModule *source;
-    const CgIRFunction *entry;
-    GlslFunction *function;
-    GlslMatrixHelper *matrixHelpers;
-    GlslMatrixHelper *lastMatrixHelper;
-    GlslMatrixSelectorHelper *selectorHelpers;
-    GlslMatrixSelectorHelper *lastSelectorHelper;
-    GlslInterfaceSource *interfaceSources;
-    GlslGeometryFlat *geometryFlat;
-    GlslGeometryFlat *lastGeometryFlat;
-    GlslGeometryInputBinding *geometryInputs;
-    GlslGeometryOutputBinding *geometryOutputs;
-    SourceLoc statementLoc;
-    int loopDepth;
-} GlslLowerContext;
-
-static int GlslLowerTypeAuto(GlslLowerContext *context, Type *source,
-                             GlslType *target, const SourceLoc *loc);
-static int GlslEnsureTypeAuto(GlslLowerContext *context, Type *type,
-                              const SourceLoc *loc);
-static GlslInterpolation GlslInterpolationForType(const GlslType *type);
-
-static void GlslSetLoc(GlslLoc *target, const SourceLoc *source)
+void GlslSetLoc(GlslLoc *target, const SourceLoc *source)
 {
     if (source != NULL) {
         target->file = source->file;
@@ -145,7 +61,7 @@ static void GlslSetLoc(GlslLoc *target, const SourceLoc *source)
     }
 }
 
-static const char *GlslAllocateSymbolNameForSource(
+const char *GlslAllocateSymbolNameForSource(
     GlslLowerContext *context, const void *identity, const char *source,
     const SourceLoc *loc)
 {
@@ -157,7 +73,7 @@ static const char *GlslAllocateSymbolNameForSource(
                                     loc != NULL ? &glslLoc : NULL);
 }
 
-static const char *GlslAllocateNameForSource(GlslLowerContext *context,
+const char *GlslAllocateNameForSource(GlslLowerContext *context,
     const char *source, const SourceLoc *loc)
 {
     GlslLoc glslLoc;
@@ -168,7 +84,7 @@ static const char *GlslAllocateNameForSource(GlslLowerContext *context,
                               loc != NULL ? &glslLoc : NULL);
 }
 
-static const char *GlslAllocateDistinctNameForSource(
+const char *GlslAllocateDistinctNameForSource(
     GlslLowerContext *context, const char *source, const SourceLoc *loc)
 {
     GlslLoc glslLoc;
@@ -179,7 +95,7 @@ static const char *GlslAllocateDistinctNameForSource(
                                       loc != NULL ? &glslLoc : NULL);
 }
 
-static const char *GlslAllocateScopedSymbolNameForSource(
+const char *GlslAllocateScopedSymbolNameForSource(
     GlslLowerContext *context, const void *nameSpace, const void *identity,
     const char *source, const SourceLoc *loc)
 {
@@ -192,13 +108,13 @@ static const char *GlslAllocateScopedSymbolNameForSource(
                                           loc != NULL ? &glslLoc : NULL);
 }
 
-static int GlslLowerError(GlslLowerContext *context)
+int GlslLowerError(GlslLowerContext *context)
 {
     context->module->errors++;
     return 0;
 }
 
-static void GlslRecordFailure(GlslLowerContext *context, const char *reason)
+void GlslRecordFailure(GlslLowerContext *context, const char *reason)
 {
     if (context->module->errorReason != NULL)
         return;
@@ -211,7 +127,7 @@ static void GlslRecordFailure(GlslLowerContext *context, const char *reason)
         context->function != NULL ? context->function->identity : NULL;
 }
 
-static void GlslRecordFailureKind(GlslLowerContext *context,
+void GlslRecordFailureKind(GlslLowerContext *context,
                                   GlslErrorKind kind,
                                   const char *reason)
 {
@@ -221,7 +137,7 @@ static void GlslRecordFailureKind(GlslLowerContext *context,
     GlslRecordFailure(context, reason);
 }
 
-static void GlslRecordFailureKindAt(GlslLowerContext *context,
+void GlslRecordFailureKindAt(GlslLowerContext *context,
                                     GlslErrorKind kind,
                                     const char *reason,
                                     const SourceLoc *loc)
@@ -238,7 +154,7 @@ static void GlslRecordFailureKindAt(GlslLowerContext *context,
     context->statementLoc = savedLoc;
 }
 
-static const char *GlslUnsupportedExprReason(const expr *source)
+const char *GlslUnsupportedExprReason(const expr *source)
 {
     if (source != NULL && source->common.kind == BINARY_N) {
         switch (source->bin.op) {
@@ -259,7 +175,7 @@ static const char *GlslUnsupportedExprReason(const expr *source)
     return "GLSL profile expression";
 }
 
-static char *GlslCopyText(GlslModule *module, const char *text)
+char *GlslCopyText(GlslModule *module, const char *text)
 {
     char *copy;
     size_t size;
@@ -271,7 +187,7 @@ static char *GlslCopyText(GlslModule *module, const char *text)
     return copy;
 }
 
-static int GlslTypesEqual(const GlslType *left, const GlslType *right)
+int GlslTypesEqual(const GlslType *left, const GlslType *right)
 {
     if (left == NULL || right == NULL || left->base != right->base ||
         left->len != right->len || left->rows != right->rows ||
@@ -290,7 +206,7 @@ static int GlslTypesEqual(const GlslType *left, const GlslType *right)
     return GlslTypeName(left) != NULL && GlslTypeName(right) != NULL;
 }
 
-static int GlslIsSamplerType(const GlslType *type)
+int GlslIsSamplerType(const GlslType *type)
 {
     if (type == NULL || type->len != 1 || type->rows != 0 ||
         type->cols != 0 || type->arraySize != 0 ||
@@ -316,7 +232,7 @@ static GlslDecl *GlslFindDeclList(GlslDecl *list, const void *identity)
     return NULL;
 }
 
-static GlslDecl *GlslFindDecl(GlslLowerContext *context,
+GlslDecl *GlslFindDecl(GlslLowerContext *context,
                               const void *identity)
 {
     GlslDecl *decl;
@@ -358,7 +274,7 @@ static GlslDecl *GlslFindDecl(GlslLowerContext *context,
     return NULL;
 }
 
-static GlslFunction *GlslFindFunction(GlslModule *module,
+GlslFunction *GlslFindFunction(GlslModule *module,
                                       const void *identity)
 {
     GlslFunction *function;
@@ -423,7 +339,7 @@ static GlslDecl *GlslFindStruct(GlslLowerContext *context, Type *type)
     return NULL;
 }
 
-static int GlslLowerType(GlslLowerContext *context, Type *source,
+int GlslLowerType(GlslLowerContext *context, Type *source,
                          GlslType *target, const SourceLoc *loc)
 {
     GlslDecl *structDecl;
@@ -582,7 +498,7 @@ static int GlslDeclComesBefore(const GlslDecl *left, const GlslDecl *right)
     return strcmp(left->name, right->name) < 0;
 }
 
-static void GlslInsertDecl(GlslDecl **list, GlslDecl *decl)
+void GlslInsertDecl(GlslDecl **list, GlslDecl *decl)
 {
     GlslDecl **place;
 
@@ -642,7 +558,7 @@ static int GlslCollectMembers(GlslLowerContext *context, Scope *memberScope,
 
 static int GlslEnsureType(GlslLowerContext *context, Type *type);
 
-static int GlslEnsureTypeAt(GlslLowerContext *context, Type *type,
+int GlslEnsureTypeAt(GlslLowerContext *context, Type *type,
                             const SourceLoc *loc)
 {
     SourceLoc savedLoc;
@@ -657,7 +573,7 @@ static int GlslEnsureTypeAt(GlslLowerContext *context, Type *type,
     return result;
 }
 
-static int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
+int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
 {
     const char *name;
 
@@ -682,7 +598,7 @@ static int GlslEnsureSymbolTypes(GlslLowerContext *context, Symbol *symbol)
     return GlslEnsureSymbolTypes(context, symbol->right);
 }
 
-static int GlslEnsureParameterTypes(GlslLowerContext *context,
+int GlslEnsureParameterTypes(GlslLowerContext *context,
                                     Symbol *formal)
 {
     for (; formal != NULL; formal = formal->next) {
@@ -793,7 +709,7 @@ static int GlslStructReady(const GlslDecl *decl,
     return 1;
 }
 
-static int GlslSortStructs(GlslLowerContext *context)
+int GlslSortStructs(GlslLowerContext *context)
 {
     GlslDecl *remaining;
     GlslDecl *ordered;
@@ -829,7 +745,6 @@ static int GlslSortStructs(GlslLowerContext *context)
     return 1;
 }
 
-static void GlslInsertBinding(GlslBinding **list, GlslBinding *binding);
 
 static int GlslSamplerDeclComesBefore(const GlslDecl *left,
                                       const GlslDecl *right)
@@ -858,7 +773,7 @@ static void GlslInsertSamplerDecl(GlslDecl **list, GlslDecl *decl)
     *place = decl;
 }
 
-static int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
+int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
                                  int entry)
 {
     GlslDecl *decl;
@@ -891,7 +806,7 @@ static int GlslCollectParameters(GlslLowerContext *context, Symbol *formal,
     return 1;
 }
 
-static GlslBinding *GlslFindUniformBinding(GlslModule *module,
+GlslBinding *GlslFindUniformBinding(GlslModule *module,
                                            const Symbol *symbol)
 {
     GlslBinding *binding;
@@ -1057,7 +972,7 @@ static int GlslCollectUniformsInStatements(GlslLowerContext *context,
     return 1;
 }
 
-static int GlslCollectUniforms(GlslLowerContext *context, Symbol *program)
+int GlslCollectUniforms(GlslLowerContext *context, Symbol *program)
 {
     GlslFunction *function;
     Symbol *symbol;
@@ -1080,7 +995,7 @@ static int GlslCollectUniforms(GlslLowerContext *context, Symbol *program)
     return 1;
 }
 
-static int GlslValidateUniformLimit(GlslLowerContext *context)
+int GlslValidateUniformLimit(GlslLowerContext *context)
 {
     GlslBinding *binding;
     const char *resourceName;
@@ -1244,7 +1159,7 @@ static int GlslValidateGeometryInterfaceLimits(
     return 1;
 }
 
-static int GlslValidateInterfaceLimits(GlslLowerContext *context)
+int GlslValidateInterfaceLimits(GlslLowerContext *context)
 {
     GlslBinding *binding;
     int attributes;
@@ -1349,7 +1264,7 @@ static int GlslValidateInterfaceLimits(GlslLowerContext *context)
     return 1;
 }
 
-static int GlslAllocateTextureUnits(GlslLowerContext *context)
+int GlslAllocateTextureUnits(GlslLowerContext *context)
 {
     GlslBinding *binding;
     Binding *sourceBinding;
@@ -1450,7 +1365,7 @@ static GlslDefaultBaseClass GlslDefaultBaseClassOf(int base)
     }
 }
 
-static int GlslFiniteDefaultFloat(float value)
+int GlslFiniteDefaultFloat(float value)
 {
     return value == value && value <= FLT_MAX && value >= -FLT_MAX;
 }
@@ -1756,7 +1671,7 @@ static int GlslStoreDefaultType(GlslLowerContext *context,
                                 capacity, index, values, count);
 }
 
-static int GlslCollectDefaults(GlslLowerContext *context)
+int GlslCollectDefaults(GlslLowerContext *context)
 {
     BindingList *item;
     GlslBinding *binding;
@@ -1839,7 +1754,7 @@ static int GlslCollectDefaults(GlslLowerContext *context)
     return 1;
 }
 
-static int GlslCollectLocals(GlslLowerContext *context, Symbol *symbol,
+int GlslCollectLocals(GlslLowerContext *context, Symbol *symbol,
                              int entry)
 {
     const char *name;
@@ -1879,7 +1794,7 @@ static int GlslBindingComesBefore(const GlslBinding *left,
     return strcmp(left->name, right->name) < 0;
 }
 
-static void GlslInsertBinding(GlslBinding **list, GlslBinding *binding)
+void GlslInsertBinding(GlslBinding **list, GlslBinding *binding)
 {
     GlslBinding **place;
 
@@ -1924,7 +1839,7 @@ static const char *GlslReservedInterfaceName(GlslLowerContext *context,
     return NULL;
 }
 
-static GlslDecl *GlslLowerInterface(GlslLowerContext *context,
+GlslDecl *GlslLowerInterface(GlslLowerContext *context,
                                     Symbol *member)
 {
     Binding *sourceBinding;
@@ -2040,7 +1955,7 @@ static void GlslInsertFunction(GlslFunction **list, GlslFunction *function)
 
 static int GlslCollectCallsInExpr(GlslLowerContext *context, expr *source);
 
-static int GlslCollectCallsInStatements(GlslLowerContext *context,
+int GlslCollectCallsInStatements(GlslLowerContext *context,
                                         stmt *source)
 {
     for (; source != NULL; source = source->commonst.next) {
@@ -2231,7 +2146,7 @@ static int GlslBuildSignature(GlslLowerContext *context,
     return 1;
 }
 
-static int GlslAssignHelperNames(GlslLowerContext *context)
+int GlslAssignHelperNames(GlslLowerContext *context)
 {
     GlslFunction *function;
     GlslFunction *previous;
@@ -2389,7 +2304,7 @@ static void GlslMarkForwardCallsInStatements(GlslLowerContext *context,
     }
 }
 
-static void GlslMarkForwardCalls(GlslLowerContext *context)
+void GlslMarkForwardCalls(GlslLowerContext *context)
 {
     GlslFunction *function;
     Symbol *symbol;
@@ -2403,7 +2318,7 @@ static void GlslMarkForwardCalls(GlslLowerContext *context)
     }
 }
 
-static void GlslAppendExpr(GlslExpr **list, GlslExpr *expression)
+void GlslAppendExpr(GlslExpr **list, GlslExpr *expression)
 {
     GlslExpr *last;
 
@@ -2416,9 +2331,8 @@ static void GlslAppendExpr(GlslExpr **list, GlslExpr *expression)
     last->next = expression;
 }
 
-static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source);
 
-static GlslExpr *GlslLowerExprChain(GlslLowerContext *context, expr *source,
+GlslExpr *GlslLowerExprChain(GlslLowerContext *context, expr *source,
                                     opcode listOp)
 {
     GlslExpr *list;
@@ -2484,7 +2398,7 @@ static GlslExpr *GlslLowerTextureArguments(GlslLowerContext *context,
     return sampler;
 }
 
-static GlslExpr *GlslNewLiteral(GlslLowerContext *context, GlslBase base,
+GlslExpr *GlslNewLiteral(GlslLowerContext *context, GlslBase base,
     int intValue, float floatValue)
 {
     GlslExprKind kind;
@@ -2550,7 +2464,7 @@ static GlslExpr *GlslLowerConstant(GlslLowerContext *context, expr *source,
     return target;
 }
 
-static GlslExpr *GlslNewSwizzle(GlslLowerContext *context, GlslExpr *object,
+GlslExpr *GlslNewSwizzle(GlslLowerContext *context, GlslExpr *object,
     const GlslType *type, const char *mask)
 {
     GlslExpr *target;
@@ -2638,7 +2552,7 @@ static GlslExpr *GlslMatrixComponent(GlslLowerContext *context,
     return GlslNewIndexLiteral(context, columnExpr, &scalarType, row);
 }
 
-static int GlslMatrixSelectorCount(const expr *source)
+int GlslMatrixSelectorCount(const expr *source)
 {
     int count;
 
@@ -2661,7 +2575,7 @@ static GlslExpr *GlslMatrixMaskComponent(GlslLowerContext *context,
     return GlslMatrixComponent(context, matrix, row, column);
 }
 
-static GlslExpr *GlslMatrixSelectorComponent(GlslLowerContext *context,
+GlslExpr *GlslMatrixSelectorComponent(GlslLowerContext *context,
     GlslExpr *matrix, const expr *selectorSource, int component)
 {
     if (selectorSource == NULL)
@@ -2670,12 +2584,8 @@ static GlslExpr *GlslMatrixSelectorComponent(GlslLowerContext *context,
         SUBOP_GET_MASK16(selectorSource->un.subop), component);
 }
 
-static GlslMatrixSelectorHelper *GlslGetMatrixSelectorHelper(
-    GlslLowerContext *context, GlslMatrixSelectorHelperKind kind,
-    const GlslType *matrixType, const GlslType *valueType, int count,
-    int mask);
 
-static GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
+GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
     expr *source, const GlslType *type)
 {
     GlslExpr *object;
@@ -2731,7 +2641,7 @@ static GlslExpr *GlslLowerMatrixSwizzle(GlslLowerContext *context,
     return target;
 }
 
-static int GlslMatrixNumericParameterType(const GlslType *type)
+int GlslMatrixNumericParameterType(const GlslType *type)
 {
     return type != NULL &&
            (type->base == GLSL_BASE_FLOAT ||
@@ -2984,7 +2894,7 @@ static GlslMatrixSelectorHelper *GlslCreateMatrixSelectorHelper(
     return helper;
 }
 
-static GlslMatrixSelectorHelper *GlslGetMatrixSelectorHelper(
+GlslMatrixSelectorHelper *GlslGetMatrixSelectorHelper(
     GlslLowerContext *context, GlslMatrixSelectorHelperKind kind,
     const GlslType *matrixType, const GlslType *valueType, int count,
     int mask)
@@ -3088,7 +2998,7 @@ static GlslMatrixHelper *GlslCreateMatrixHelper(GlslLowerContext *context,
     return helper;
 }
 
-static GlslExpr *GlslLowerImpureMatrixConstructor(
+GlslExpr *GlslLowerImpureMatrixConstructor(
     GlslLowerContext *context, GlslExpr *arguments, const GlslType *type)
 {
     GlslType parameters[GLSL_MATRIX_MAX_ARGUMENTS];
@@ -3133,7 +3043,7 @@ static GlslExpr *GlslLowerImpureMatrixConstructor(
     return target;
 }
 
-static GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
+GlslExpr *GlslLowerMatrixConstructor(GlslLowerContext *context,
     expr *source, const GlslType *type)
 {
     GlslExpr *arguments[16];
@@ -3280,7 +3190,7 @@ static const char *GlslVectorComparisonName(opcode op)
     }
 }
 
-static int GlslValidateTextureCall(GlslLowerContext *context,
+int GlslValidateTextureCall(GlslLowerContext *context,
     GlslBuiltin builtin, const GlslType *result, GlslExpr *arguments)
 {
     GlslType samplerType;
@@ -3398,7 +3308,7 @@ static int GlslValidateTextureCall(GlslLowerContext *context,
  *        identities to textureLod.
  */
 
-static GlslBuiltin GlslIntrinsicBuiltin(CgIntrinsic intrinsic)
+GlslBuiltin GlslIntrinsicBuiltin(CgIntrinsic intrinsic)
 {
     switch (intrinsic) {
     case CG_INTRINSIC_MUL:       return GLSL_BUILTIN_MUL;
@@ -3716,7 +3626,7 @@ static GlslExpr *GlslLowerConditional(GlslLowerContext *context,
     return target;
 }
 
-static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
+GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
 {
     GlslExpr *target;
     GlslExpr *operand;
@@ -3888,8 +3798,6 @@ static GlslExpr *GlslLowerExpr(GlslLowerContext *context, expr *source)
     return NULL;
 }
 
-static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
-                                  GlslStmt **list);
 
 static int GlslLowerMatrixAssignment(GlslLowerContext *context,
     expr *source, const SourceLoc *loc, GlslStmt **list)
@@ -4009,7 +3917,7 @@ static int GlslLowerForPart(GlslLowerContext *context, stmt *source,
     return 1;
 }
 
-static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
+int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
                                   GlslStmt **list)
 {
     GlslStmt *target;
@@ -4191,7 +4099,7 @@ static int GlslLowerStatementList(GlslLowerContext *context, stmt *source,
     return 1;
 }
 
-static int GlslLowerHelper(GlslLowerContext *context,
+int GlslLowerHelper(GlslLowerContext *context,
                            GlslFunction *function)
 {
     Symbol *symbol;
@@ -4206,7 +4114,7 @@ static int GlslLowerHelper(GlslLowerContext *context,
     return 1;
 }
 
-static void GlslPrependMatrixHelpers(GlslLowerContext *context)
+void GlslPrependMatrixHelpers(GlslLowerContext *context)
 {
     GlslMatrixHelper *helper;
     GlslFunction *first;
@@ -4229,7 +4137,7 @@ static void GlslPrependMatrixHelpers(GlslLowerContext *context)
     }
 }
 
-static void GlslPrependMatrixSelectorHelpers(GlslLowerContext *context)
+void GlslPrependMatrixSelectorHelpers(GlslLowerContext *context)
 {
     GlslMatrixSelectorHelper *helper;
     GlslFunction *first;
@@ -4327,7 +4235,7 @@ static int GlslValidateInterfaceType(GlslLowerContext *context,
     return 1;
 }
 
-static int GlslValidateEntryInterfaces(GlslLowerContext *context,
+int GlslValidateEntryInterfaces(GlslLowerContext *context,
                                        Symbol *program)
 {
     Symbol *formal;
@@ -4471,20 +4379,16 @@ int GlslLowerLegacyProgram(GlslModule *module, const GlslProfileDesc *profile,
  *     that used to run ahead of tree lowering.
  */
 
-static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
-                                 const CgIRExpr *expr);
 static GlslExpr *GlslIRLowerExprList(GlslLowerContext *context,
                                      const CgIRExpr *args);
 static int GlslIRLowerStatement(GlslLowerContext *context,
                                 const CgIRStmt *stmt, GlslStmt **list);
-static int GlslIRBlockBody(GlslLowerContext *context,
-                           const CgIRStmt *stmt, GlslStmt **out);
 static int GlslIRBranch(GlslLowerContext *context, const CgIRStmt *branch,
                         GlslStmt **out);
 static int GlslIRForPart(GlslLowerContext *context, const CgIRStmt *init,
                          GlslStmt **out);
 
-static int GlslIRInstallGeometryInfo(GlslLowerContext *context)
+int GlslIRInstallGeometryInfo(GlslLowerContext *context)
 {
     const CgIRGeometryInfo *source;
     GlslGeometryInfo *target;
@@ -4546,7 +4450,7 @@ static int GlslIRInstallGeometryInfo(GlslLowerContext *context)
     return 1;
 }
 
-static GlslInterpolation GlslInterpolationForType(const GlslType *type)
+GlslInterpolation GlslInterpolationForType(const GlslType *type)
 {
     while (type != NULL && type->elementType != NULL)
         type = type->elementType;
@@ -4558,7 +4462,7 @@ static GlslInterpolation GlslInterpolationForType(const GlslType *type)
     return GLSL_INTERPOLATION_DEFAULT;
 }
 
-static int GlslIRRegisterGeometryInput(GlslLowerContext *context,
+int GlslIRRegisterGeometryInput(GlslLowerContext *context,
     const CgIRDecl *param)
 {
     const char *interfaceName;
@@ -4723,7 +4627,7 @@ static GlslDecl *GlslIRGeometryOutputDecl(GlslLowerContext *context,
     return decl;
 }
 
-static GlslStmt *GlslIRGeometryAssignments(
+GlslStmt *GlslIRGeometryAssignments(
     GlslLowerContext *context, const CgIRGeometryValue *value)
 {
     GlslStmt *list;
@@ -4796,7 +4700,7 @@ static GlslStmt *GlslIRAssignDecl(GlslLowerContext *context,
     return stmt;
 }
 
-static GlslStmt *GlslIRGeometryFlatAssignments(
+GlslStmt *GlslIRGeometryFlatAssignments(
     GlslLowerContext *context, const CgIRGeometryValue *value)
 {
     GlslStmt *list;
@@ -4834,7 +4738,7 @@ static GlslStmt *GlslIRGeometryFlatAssignments(
     return list;
 }
 
-static GlslFlatReplay *GlslIRGeometryFlatReplay(
+GlslFlatReplay *GlslIRGeometryFlatReplay(
     GlslLowerContext *context)
 {
     GlslGeometryFlat *flat;
@@ -4859,18 +4763,8 @@ static GlslFlatReplay *GlslIRGeometryFlatReplay(
     return list;
 }
 
-static int GlslIRCollectGeometryFlatState(GlslLowerContext *context);
-static int GlslIRLocalDeclaration(GlslLowerContext *context,
-                                  const CgIRStmt *stmt,
-                                  const CgIRStmt **nextOut, GlslStmt **out);
 static int GlslIRCollectHelper(GlslLowerContext *context,
                                const Symbol *symbol);
-static int GlslIRLowerAggregateAssign(GlslLowerContext *context,
-                                      const CgIRExpr *assign,
-                                      GlslStmt **list);
-static GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
-                                     GlslExpr *matrix, int row,
-                                     int column);
 
 /*
  * GlslLowerTypeAuto() - Shared helpers run under both lowering paths;
@@ -4878,7 +4772,7 @@ static GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
  *          tree path and the IR registration map on the Cg 2.0 path.
  */
 
-static int GlslLowerTypeAuto(GlslLowerContext *context, Type *source,
+int GlslLowerTypeAuto(GlslLowerContext *context, Type *source,
                              GlslType *target, const SourceLoc *loc)
 {
     if (context->source != NULL)
@@ -4886,7 +4780,7 @@ static int GlslLowerTypeAuto(GlslLowerContext *context, Type *source,
     return GlslLowerType(context, source, target, loc);
 } // GlslLowerTypeAuto
 
-static int GlslEnsureTypeAuto(GlslLowerContext *context, Type *type,
+int GlslEnsureTypeAuto(GlslLowerContext *context, Type *type,
                               const SourceLoc *loc)
 {
     if (context->source != NULL)
@@ -4900,7 +4794,7 @@ static int GlslEnsureTypeAuto(GlslLowerContext *context, Type *type,
  *          diagnostic and return zero.
  */
 
-static int GlslIRScalarBase(GlslLowerContext *context, CgScalarKind kind,
+int GlslIRScalarBase(GlslLowerContext *context, CgScalarKind kind,
                             GlslBase *base, const SourceLoc *loc)
 {
     switch (kind) {
@@ -4930,7 +4824,7 @@ static int GlslIRScalarBase(GlslLowerContext *context, CgScalarKind kind,
  *          typedef bases never appear in Cg 2.0 IR.
  */
 
-static int GlslIRIsSamplerValue(const Type *type)
+int GlslIRIsSamplerValue(const Type *type)
 {
     if (type == NULL || GetCategory(type) != TYPE_CATEGORY_SAMPLER)
         return 0;
@@ -5030,7 +4924,7 @@ static int GlslIRRegisterStruct(GlslLowerContext *context, Type *type,
  *          6200-family diagnostics.
  */
 
-static int GlslIRType(GlslLowerContext *context, Type *source,
+int GlslIRType(GlslLowerContext *context, Type *source,
                       GlslType *target, const SourceLoc *loc)
 {
     GlslDecl *structDecl;
@@ -5265,7 +5159,7 @@ static int GlslIREnsureType(GlslLowerContext *context, Type *type,
     return 0;
 } // GlslIREnsureType
 
-static int GlslIREnsureTypeAt(GlslLowerContext *context, Type *type,
+int GlslIREnsureTypeAt(GlslLowerContext *context, Type *type,
                               const SourceLoc *loc)
 {
     SourceLoc savedLoc;
@@ -5288,7 +5182,7 @@ static int GlslIREnsureTypeAt(GlslLowerContext *context, Type *type,
  *          rules deliberately allow plain sampler formals.
  */
 
-static int GlslIRSamplerPlacementCheck(GlslLowerContext *context,
+int GlslIRSamplerPlacementCheck(GlslLowerContext *context,
                                        const CgIRDecl *decl)
 {
     if (decl->symbol == NULL || decl->symbol->type == NULL)
@@ -5507,7 +5401,7 @@ static int GlslIRCollectUniformsInStmt(GlslLowerContext *context,
  *          callee identity.
  */
 
-static const CgIRFunction *GlslIRFindIRFunction(const CgIRModule *source,
+const CgIRFunction *GlslIRFindIRFunction(const CgIRModule *source,
                                                 const Symbol *symbol)
 {
     const CgIRFunction *function;
@@ -5594,7 +5488,7 @@ static int GlslIRCollectCallsInExpr(GlslLowerContext *context,
     }
 } // GlslIRCollectCallsInExpr
 
-static int GlslIRCollectCallsInStmt(GlslLowerContext *context,
+int GlslIRCollectCallsInStmt(GlslLowerContext *context,
                                     const CgIRStmt *stmt)
 {
     if (stmt == NULL)
@@ -5752,7 +5646,7 @@ static int GlslIRCollectGeometryFlatInStmt(GlslLowerContext *context,
     }
 }
 
-static int GlslIRCollectGeometryFlatState(GlslLowerContext *context)
+int GlslIRCollectGeometryFlatState(GlslLowerContext *context)
 {
     GlslFunction *function;
 
@@ -5992,7 +5886,7 @@ static void GlslIRMarkForwardCallsInExpr(GlslLowerContext *context,
     }
 } // GlslIRMarkForwardCallsInExpr
 
-static void GlslIRMarkForwardCallsInStmt(GlslLowerContext *context,
+void GlslIRMarkForwardCallsInStmt(GlslLowerContext *context,
                                          GlslFunction *caller,
                                          const CgIRStmt *stmt)
 {
@@ -6067,7 +5961,7 @@ static void GlslIRMarkForwardCallsInStmt(GlslLowerContext *context,
  *          $vout writes and conflict-check live.
  */
 
-static int GlslIRValidateEntryInterfaces(GlslLowerContext *context,
+int GlslIRValidateEntryInterfaces(GlslLowerContext *context,
                                          const CgIRFunction *entry)
 {
     const CgIRDecl *param;
@@ -6194,7 +6088,7 @@ static int GlslIRValidateEntryInterfaces(GlslLowerContext *context,
  *          evaluate through a temporary before leaf fan-out shares it.
  */
 
-static int GlslIRNeedsMaterialization(const CgIRExpr *expr)
+int GlslIRNeedsMaterialization(const CgIRExpr *expr)
 {
     const CgIRExpr *argument;
 
@@ -6338,7 +6232,7 @@ static int GlslIRPostNormalizeNeedsMaterialization(const CgIRExpr *expr)
  *          legacy AssignAggregate duplicated its operands.
  */
 
-static GlslExpr *GlslCloneExpr(GlslModule *module, const GlslExpr *expr)
+GlslExpr *GlslCloneExpr(GlslModule *module, const GlslExpr *expr)
 {
     GlslExpr *clone;
     GlslExpr *last;
@@ -6559,7 +6453,7 @@ static Symbol *GlslIRNewTempSymbol(GlslLowerContext *context,
  *          insertion reproduces the legacy locals ordering.
  */
 
-static GlslDecl *GlslIRAddLocal(GlslLowerContext *context, Symbol *symbol,
+GlslDecl *GlslIRAddLocal(GlslLowerContext *context, Symbol *symbol,
                                 Type *type, const SourceLoc *loc)
 {
     GlslDecl *decl;
@@ -6846,7 +6740,7 @@ static GlslDecl *GlslIRNewAggregateTemp(GlslLowerContext *context,
  *          assignment per scalar/vector/matrix leaf.
  */
 
-static int GlslIRLowerAggregateAssign(GlslLowerContext *context,
+int GlslIRLowerAggregateAssign(GlslLowerContext *context,
                                       const CgIRExpr *assign,
                                       GlslStmt **list)
 {
@@ -6979,7 +6873,7 @@ static GlslOperator GlslIRCompoundOperator(CgIROp op)
  *          selector groups; user-written duplicates never share nodes.
  */
 
-static int GlslIRSharedSelection(const CgIRExpr *expr,
+int GlslIRSharedSelection(const CgIRExpr *expr,
                                  const CgIRExpr **objectOut,
                                  int *countOut, int *maskOut)
 {
@@ -7537,7 +7431,7 @@ static GlslExpr *GlslIRLowerIncrement(GlslLowerContext *context,
     return target;
 } // GlslIRLowerIncrement
 
-static const CgIRDecl *GlslIRGeometryEntryParameter(
+const CgIRDecl *GlslIRGeometryEntryParameter(
     const GlslLowerContext *context, const Symbol *symbol)
 {
     const CgIRDecl *param;
@@ -7556,7 +7450,7 @@ static const CgIRDecl *GlslIRGeometryEntryParameter(
     return NULL;
 }
 
-static GlslExpr *GlslIRGeometryBuiltinElement(
+GlslExpr *GlslIRGeometryBuiltinElement(
     GlslLowerContext *context, const CgIRDecl *param,
     GlslExpr *indexExpr, const GlslType *resultType,
     const SourceLoc *loc)
@@ -7605,7 +7499,7 @@ static GlslExpr *GlslIRGeometryBuiltinElement(
     return memberExpr;
 }
 
-static GlslExpr *GlslIRGeometryBuiltinArray(
+GlslExpr *GlslIRGeometryBuiltinArray(
     GlslLowerContext *context, const CgIRExpr *expr,
     const GlslType *type)
 {
@@ -7646,7 +7540,7 @@ static GlslExpr *GlslIRGeometryBuiltinArray(
  *          kind; no four-bit subop is ever decoded here.
  */
 
-static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
+GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
                                  const CgIRExpr *expr)
 {
     GlslExpr *target;
@@ -8100,7 +7994,7 @@ static GlslExpr *GlslIRLowerExpr(GlslLowerContext *context,
 ////////////////////////// Cg IR statement lowering (Cg 2.0) //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
-static const char *GlslIRDeclNameText(const CgIRDecl *decl)
+const char *GlslIRDeclNameText(const CgIRDecl *decl)
 {
     return GetAtomString(atable, decl->name);
 } // GlslIRDeclNameText
@@ -8181,7 +8075,7 @@ static int GlslIRIsTempMove(const CgIRExpr *expr, const void *identity,
     return 1;
 } // GlslIRIsTempMove
 
-static GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
+GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
                                      GlslExpr *matrix, int row,
                                      int column)
 {
@@ -8218,7 +8112,7 @@ static GlslExpr *GlslIRMatrixElement(GlslLowerContext *context,
  *          -1 on lowering failure.
  */
 
-static int GlslIRTryGroupWrite(GlslLowerContext *context,
+int GlslIRTryGroupWrite(GlslLowerContext *context,
                                const CgIRStmt *head,
                                const CgIRStmt **nextOut, GlslStmt **list)
 {
@@ -8796,7 +8690,7 @@ static int GlslIRLowerStatement(GlslLowerContext *context,
  *          open a group-write pattern that consumes their statements.
  */
 
-static int GlslIRLocalDeclaration(GlslLowerContext *context,
+int GlslIRLocalDeclaration(GlslLowerContext *context,
                                   const CgIRStmt *stmt,
                                   const CgIRStmt **nextOut, GlslStmt **out)
 {
@@ -8832,7 +8726,7 @@ static int GlslIRLocalDeclaration(GlslLowerContext *context,
  *          else lowers statement by statement.
  */
 
-static int GlslIRBlockBody(GlslLowerContext *context,
+int GlslIRBlockBody(GlslLowerContext *context,
                            const CgIRStmt *stmt, GlslStmt **out)
 {
     while (stmt != NULL) {
@@ -8918,7 +8812,7 @@ static int GlslIRForPart(GlslLowerContext *context, const CgIRStmt *init,
  *          through the HAL uniform scan exactly as in the legacy path.
  */
 
-static int GlslIRLowerFunctionBody(GlslLowerContext *context,
+int GlslIRLowerFunctionBody(GlslLowerContext *context,
                                    const CgIRFunction *irFunction)
 {
     GlslFunction *function;
@@ -9010,7 +8904,7 @@ static int GlslIRLowerFunctionBody(GlslLowerContext *context,
  *          collected helper body, mirroring the legacy scan order.
  */
 
-static int GlslIRCollectUniforms(GlslLowerContext *context,
+int GlslIRCollectUniforms(GlslLowerContext *context,
                                  const CgIRFunction *entry)
 {
     GlslFunction *function;
@@ -9042,7 +8936,7 @@ static int GlslIRCollectUniforms(GlslLowerContext *context,
  *          ensured during call collection.
  */
 
-static int GlslIREnsureEntryLocals(GlslLowerContext *context,
+int GlslIREnsureEntryLocals(GlslLowerContext *context,
                                    const CgIRFunction *entry)
 {
     const CgIRStmt *stmt;
