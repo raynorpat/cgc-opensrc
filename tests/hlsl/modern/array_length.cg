@@ -1,0 +1,8 @@
+float4 main(float4 position : POSITION) : POSITION
+{
+    float values[3];
+    values[0] = position.x;
+    values[1] = position.y;
+    values[2] = position.z;
+    return position + float4(float(values.length), values[1], 0.0, 0.0) * 0.0;
+}

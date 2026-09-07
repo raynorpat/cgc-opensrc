@@ -1,0 +1,12 @@
+struct Element
+{
+    float4 value;
+};
+
+float4 main(float4 position : POSITION) : POSITION
+{
+    Element values[2];
+    values[0].value = position;
+    values[1].value = position.wzyx;
+    return values[0].value + values[1].value * 0.0;
+}

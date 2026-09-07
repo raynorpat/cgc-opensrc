@@ -35,6 +35,11 @@ add_test(NAME hlsl_require_fxc_missing_sdk
         -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
         "-DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/require-fxc-missing"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_require_fxc.cmake)
+add_test(NAME hlsl_optional_fxc_missing_sdk
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+        "-DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/optional-fxc-missing"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_optional_fxc.cmake)
 
 add_executable(hlsl_invalid_generator hlsl_invalid_generator.c)
 set_target_properties(hlsl_invalid_generator PROPERTIES
@@ -2227,6 +2232,28 @@ add_hlsl_modern_language(modern_language_v50 hlslv50
 add_hlsl_modern_language(modern_language_p50 hlslf50
     language-p50.expected language_pixel)
 
+function(add_hlsl_modern_array_fixture name source)
+    foreach(model 40 50)
+        set(test_name modern_${name}_v${model})
+        set(profile hlslv${model})
+        add_test(
+            NAME ${test_name}
+            COMMAND $<TARGET_FILE:cgc>
+                -quiet
+                -profile ${profile}
+                -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${test_name}.hlsl
+                ${PROJECT_SOURCE_DIR}/${source})
+        add_hlsl_validation(${test_name} ${profile} ${source})
+    endforeach()
+endfunction()
+
+add_hlsl_modern_array_fixture(multidimensional_array
+    tests/hlsl/modern/multidimensional_array.cg)
+add_hlsl_modern_array_fixture(struct_array
+    tests/hlsl/modern/struct_array.cg)
+add_hlsl_modern_array_fixture(array_length
+    tests/hlsl/modern/array_length.cg)
+
 function(add_hlsl_modern_bitwise name profile expected entry)
     add_test(
         NAME ${name}
@@ -2405,14 +2432,9 @@ function(add_hlsl_geometry_operation name input output vertices)
                 "-DCONFIG=$<CONFIG>"
                 "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${profile}_${name}.hlsl"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
-        # fxc reports X3557 for the intentionally one-iteration loop-order
-        # fixture.  /WX is part of the qualification contract, so that one
-        # source remains covered by its golden and direct lowering tests.
-        if(NOT name STREQUAL "loop_order")
-            add_hlsl_validation_case(${profile}_${name} ${profile}
-                tests/hlsl/geometry/${name}.cg "" main
-                "${geometry_options_escaped}")
-        endif()
+        add_hlsl_validation_case(${profile}_${name} ${profile}
+            tests/hlsl/geometry/${name}.cg "" main
+            "${geometry_options_escaped}")
     endforeach()
 endfunction()
 
@@ -3199,14 +3221,8 @@ function(add_hlsl_modern_boundary_success name profile source defines
     string(REPLACE ";" "\\;" boundary_validation_defines "${defines}")
     string(REPLACE ";" "\\;" boundary_validation_options
         "${profile_options}")
-    # The signature-only geometry output boundary fixture intentionally does
-    # not initialize its synthetic 32-field output record, which fxc rejects.
-    # Its cgc boundary test remains registered; executable geometry fixtures
-    # cover exact external compilation.
-    if(NOT name MATCHES "^hlslg(40|50)_boundary_outputs$")
-        add_hlsl_validation_case(${name} ${profile} ${source} "" ""
-            "${boundary_validation_options}" "${boundary_validation_defines}")
-    endif()
+    add_hlsl_validation_case(${name} ${profile} ${source} "" ""
+        "${boundary_validation_options}" "${boundary_validation_defines}")
 endfunction()
 
 function(add_hlsl_modern_boundary_failure name profile source code line
