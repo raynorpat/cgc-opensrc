@@ -56,17 +56,20 @@ if(DEFINED ENV{HLSL_EXPECT_LINK_MISMATCH} AND NOT HLSL_LINK_CHILD)
         OUTPUT_VARIABLE child_stdout
         ERROR_VARIABLE child_stderr)
     set(child_output "${child_stdout}${child_stderr}")
+    string(REGEX REPLACE "[ \t\r\n]+" " " child_output_for_match
+        "${child_output}")
     if(child_result EQUAL 0)
         message(STATUS "mismatched HLSL interfaces unexpectedly linked")
         return()
     endif()
-    if(NOT child_output MATCHES "$ENV{HLSL_EXPECT_LINK_MISMATCH}")
+    if(NOT child_output_for_match MATCHES
+       "$ENV{HLSL_EXPECT_LINK_MISMATCH}")
         message(STATUS "unexpected HLSL link failure:\n${child_output}")
         return()
     endif()
     string(REGEX MATCH
         "$ENV{HLSL_EXPECT_LINK_MISMATCH}[^\n]*" mismatch_diagnostic
-        "${child_output}")
+        "${child_output_for_match}")
     message(FATAL_ERROR "${mismatch_diagnostic}")
 endif()
 

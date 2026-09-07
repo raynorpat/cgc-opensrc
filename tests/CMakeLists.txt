@@ -3211,6 +3211,26 @@ foreach(model 40 50)
         tests/hlsl/link/gp_flat_output.cg
         tests/hlsl/link/fp_interpolation_mismatch.cg
         "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(vs_gs_semantic_mismatch ${model}
+        tests/hlsl/link/vp_geometry.cg
+        tests/hlsl/link/gp_semantic_mismatch.cg
+        tests/hlsl/link/fp_geometry.cg
+        "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(gs_ps_semantic_mismatch ${model}
+        tests/hlsl/link/vp_geometry.cg
+        tests/hlsl/link/gp_geometry.cg
+        tests/hlsl/link/fp_semantic_mismatch.cg
+        "TRIANGLE;TRIANGLE_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(vertex_id_missing ${model}
+        tests/hlsl/link/vp_position_only.cg
+        tests/hlsl/link/gp_vertex_id.cg
+        tests/hlsl/link/fp_vertex_id.cg
+        "POINT;POINT_OUT;Vertices=1")
+    add_hlsl_modern_pipeline(vertex_id_bridge_mismatch ${model}
+        tests/hlsl/link/vp_vertex_id.cg
+        tests/hlsl/link/gp_vertex_id_bridge_mismatch.cg
+        tests/hlsl/link/fp_vertex_id.cg
+        "POINT;POINT_OUT;Vertices=1")
 
     if(model STREQUAL "40")
         set(model_name sm4)
@@ -3218,10 +3238,14 @@ foreach(model 40 50)
         set(model_name sm5)
     endif()
     foreach(kind vs_gs_type gs_ps_type vs_gs_interpolation
-                 gs_ps_interpolation)
+                 gs_ps_interpolation vs_gs_semantic gs_ps_semantic
+                 vertex_id_bridge)
         set(mismatch_test hlsl_${model_name}_pipeline_${kind}_mismatch)
         set_tests_properties(${mismatch_test} PROPERTIES WILL_FAIL TRUE)
     endforeach()
+    set_tests_properties(
+        hlsl_${model_name}_pipeline_vertex_id_missing
+        PROPERTIES WILL_FAIL TRUE)
     set_property(TEST hlsl_${model_name}_pipeline_vs_gs_type_mismatch
         APPEND PROPERTY ENVIRONMENT
         "HLSL_EXPECT_LINK_MISMATCH=VS->GS TEXCOORD0 type mismatch: producer .*float2.*, consumer .*float3.*")
@@ -3234,6 +3258,18 @@ foreach(model 40 50)
     set_property(TEST hlsl_${model_name}_pipeline_gs_ps_interpolation_mismatch
         APPEND PROPERTY ENVIRONMENT
         "HLSL_EXPECT_LINK_MISMATCH=GS->PS COLOR0 interpolation mismatch: producer .*nointerpolation.*, consumer .*default.*")
+    set_property(TEST hlsl_${model_name}_pipeline_vs_gs_semantic_mismatch
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=VS->GS TEXCOORD2 missing producer for consumer uv float2 TEXCOORD2 TEXCOORD2 user default")
+    set_property(TEST hlsl_${model_name}_pipeline_gs_ps_semantic_mismatch
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=GS->PS TEXCOORD2 missing producer for consumer uv float2 TEXCOORD2 TEXCOORD2 user default")
+    set_property(TEST hlsl_${model_name}_pipeline_vertex_id_missing
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=VS->GS CG_VERTEXID0 missing producer for consumer vertexId int CG_VERTEXID0 CG_VERTEXID0 user nointerpolation")
+    set_property(TEST hlsl_${model_name}_pipeline_vertex_id_bridge_mismatch
+        APPEND PROPERTY ENVIRONMENT
+        "HLSL_EXPECT_LINK_MISMATCH=VS->GS CG_VERTEXID0 type mismatch: producer vertexId int CG_VERTEXID0 CG_VERTEXID0 user nointerpolation, consumer vertexId int2 CG_VERTEXID0 CG_VERTEXID0 user nointerpolation")
 
     string(SUBSTRING "g${model}" 0 3 model_suffix)
     add_test(
@@ -3288,6 +3324,20 @@ foreach(model 40 50)
     add_hlsl_validation_case(
         hlsl_${model_name}_pipeline_gs_ps_interpolation_mismatch_pixel
         hlslf${model} tests/hlsl/link/fp_interpolation_mismatch.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vs_gs_semantic_mismatch_geometry
+        hlslg${model} tests/hlsl/link/gp_semantic_mismatch.cg "" ""
+        "TRIANGLE\;TRIANGLE_OUT\;Vertices=1")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_gs_ps_semantic_mismatch_pixel
+        hlslf${model} tests/hlsl/link/fp_semantic_mismatch.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vertex_id_missing_vertex
+        hlslv${model} tests/hlsl/link/vp_position_only.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vertex_id_bridge_mismatch_geometry
+        hlslg${model} tests/hlsl/link/gp_vertex_id_bridge_mismatch.cg "" ""
+        "POINT\;POINT_OUT\;Vertices=1")
     add_hlsl_validation_case(
         hlsl_${model_name}_pipeline_geometry_textures hlslg${model}
         tests/hlsl/geometry/textures.cg "" main
