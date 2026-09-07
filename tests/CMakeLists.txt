@@ -5245,8 +5245,8 @@ add_test(NAME hlsl_compatibility_matrix
 add_test(NAME hlsl_sm4_sm5_compatibility_matrix
     COMMAND ${CMAKE_COMMAND}
         -DMODE=modern
-        -DEXPECTED_ROWS=261
         -DMATRIX=${PROJECT_SOURCE_DIR}/docs/hlsl-sm4-sm5-compatibility.md
+        -DSURFACE_INVENTORY=${CMAKE_CURRENT_SOURCE_DIR}/hlsl-sm4-sm5-surface.txt
         "-DREGISTERED_TESTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-tests.txt"
         "-DREGISTERED_CONTRACTS=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-registered-test-contracts.txt"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_compatibility_matrix.cmake)

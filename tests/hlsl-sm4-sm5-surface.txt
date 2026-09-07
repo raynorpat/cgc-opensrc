@@ -1,0 +1,275 @@
+# Canonical Cg 2.0 surface required by the Shader Model 4/5 matrix
+# Format: Category|Feature. Every key must appear exactly once.
+Aggregate|`AttribArray<T>`
+Aggregate|`AttribArray<T>` outside geometry input
+Aggregate|aliased aggregate `out` arguments
+Aggregate|anonymous structure value
+Aggregate|connector-tagged structure declaration
+Aggregate|interface dispatch
+Aggregate|multidimensional sized arrays
+Aggregate|nested output aggregates
+Aggregate|nested structure members
+Aggregate|sized arrays
+Aggregate|structure and array initialization
+Aggregate|structure arrays
+Aggregate|structure forward declaration
+Aggregate|structure implements interface
+Aggregate|tagged structure declaration and value
+Aggregate|unsized array value
+Binding|`#pragma bind` register-array form
+Binding|`TEXUNITn` reserves both resource slots
+Binding|arrays and structures reserve complete spans
+Binding|cbuffer overlap
+Binding|cbuffer vector exhaustion
+Binding|default values preserve logical identity
+Binding|deterministic HLSL cbuffer packing
+Binding|explicit `B#` register binding
+Binding|explicit `C#` register binding
+Binding|explicit `I#` register binding
+Binding|explicit `packoffset(cN.component)`
+Binding|explicit `S#` register binding
+Binding|explicit bindings reserve before implicit bindings
+Binding|explicit compiled-bytecode output
+Binding|implicit sampler pair uses first fit
+Binding|local sampler object
+Binding|multiple generated cbuffers
+Binding|one generated application cbuffer at `b0`
+Binding|resource array binding
+Binding|sampler array
+Binding|sampler becomes same-index `tN` and `sN` pair
+Binding|sampler pair collision
+Binding|sampler pair exhaustion
+Binding|UAV register binding
+Default|`#pragma bind` numeric default
+Default|`cgc-default` metadata
+Default|array entry default
+Default|helper default argument
+Default|matrix entry default
+Default|scalar entry default
+Default|structure entry default
+Default|vector entry default
+Function|`out` and `inout` copy behavior
+Function|default parameters
+Function|direct recursion
+Function|mutual recursion
+Function|overloaded helpers
+Function|profile-qualified overload resolution
+Function|prototype and definition
+Function|sampler helper parameter
+Function|scalar, vector, matrix, array, and structure parameters
+Function|user helper sharing intrinsic spelling
+Geometry|`AttribArray<T>` reconstruction
+Geometry|`emitVertex` becomes complete-record `Append`
+Geometry|`flatAttrib` uses path-correct shadow state
+Geometry|`LINE_ADJ` input topology and extent 4
+Geometry|`LINE_OUT` uses `LineStream`
+Geometry|`LINE` input topology and extent 2
+Geometry|`POINT_OUT` uses `PointStream`
+Geometry|`POINT` input topology and extent 1
+Geometry|`restartStrip` becomes `RestartStrip`
+Geometry|`TRIANGLE_ADJ` input topology and extent 6
+Geometry|`TRIANGLE_OUT` uses `TriangleStream`
+Geometry|`TRIANGLE` input topology and extent 3
+Geometry|1024 total output component budget
+Geometry|geometry helpers receive hidden stream state
+Geometry|geometry invocations
+Geometry|geometry side effects preserve source order
+Geometry|hull, domain, and compute stages
+Geometry|maximum vertex limit 1024
+Geometry|maximum vertex one-over
+Geometry|missing or zero maximum
+Geometry|multiple output streams
+Geometry|per-primitive scalar system input
+Geometry|positive `Vertices=N` becomes `[maxvertexcount(N)]`
+Geometry|total output component one-over
+Intrinsic|`any` and `all` reductions
+Intrinsic|`cross`, `normalize`, `reflect`, and `refract`
+Intrinsic|`ddx` and `ddy`
+Intrinsic|`degrees` and `radians`
+Intrinsic|`determinant` and `transpose`
+Intrinsic|`frexp`, `ldexp`, `sincos`, and `modf` families
+Intrinsic|`min`, `max`, `clamp`, `lerp`, `step`, and `smoothstep`
+Intrinsic|`mul` matrix and vector products
+Intrinsic|`rsqrt` portable helper
+Intrinsic|`saturate`
+Intrinsic|arithmetic and geometric intrinsic families
+Intrinsic|compute and barrier intrinsics
+Intrinsic|derivative in vertex stage
+Intrinsic|exponential and logarithmic family
+Intrinsic|floating classification family
+Intrinsic|implicit-derivative sample in geometry stage
+Intrinsic|miscellaneous `lit`, `noise`, `debug`, and `faceforward` family
+Intrinsic|rounding and fractional family
+Intrinsic|tessellation intrinsics
+Intrinsic|trigonometric and hyperbolic family
+Intrinsic|unsupported overload or scalar-kind combination
+Operator|`.length` constant fold
+Operator|add and subtract
+Operator|aggregate assignment
+Operator|aggregate cast
+Operator|array constructor
+Operator|array, vector, and matrix indexing
+Operator|bitwise and, xor, and or
+Operator|bitwise not
+Operator|compound assignment family
+Operator|equality and inequality
+Operator|explicit matrix cast
+Operator|floating literal suffix family
+Operator|helper call
+Operator|identifiers, scoped names, and parentheses
+Operator|integer and floating literals
+Operator|integer literal suffix family
+Operator|interface constructor
+Operator|left and right shift
+Operator|logical and and or
+Operator|logical not
+Operator|matrix constructors
+Operator|member selection and swizzle
+Operator|multiply, divide, and remainder
+Operator|nested side effects preserve source order
+Operator|postfix increment and decrement
+Operator|prefix increment and decrement
+Operator|relational operators
+Operator|sampler cast
+Operator|sampler constructor
+Operator|scalar and vector cast
+Operator|scalar and vector constructors
+Operator|scalar conditional expression
+Operator|scalar, vector, and matrix assignment
+Operator|structure constructor
+Operator|unary plus and minus
+Operator|vector conditional expression
+Qualifier|`const` storage
+Qualifier|`extern` storage
+Qualifier|`in` parameter
+Qualifier|`inline`
+Qualifier|`inout` parameter
+Qualifier|`out` parameter
+Qualifier|`packed`
+Qualifier|`static` storage
+Qualifier|`typedef`
+Qualifier|`uniform` program domain
+Qualifier|`varying` program domain
+Qualifier|declarator annotation
+Qualifier|geometry input topology modifier
+Qualifier|geometry output topology modifier
+Qualifier|profile-qualified declaration
+Qualifier|source `__internal` function
+Resource|128 shader-resource slots remain sampler-pair constrained
+Resource|16 sampler pairs
+Resource|4096 cbuffer vectors
+Resource|clip-distance component accounting
+Resource|eight pixel render targets plus depth
+Resource|failed resource translation publishes no target
+Resource|geometry input limits 16 in SM4 and 32 in SM5
+Resource|geometry input one-over
+Resource|geometry output one-over
+Resource|geometry output register limit 32
+Resource|ninth pixel render target
+Resource|pixel input one-over
+Resource|pixel input register limit 32
+Resource|SM4 vertex input register limit 16
+Resource|SM5 vertex input register limit 32
+Resource|vertex input one-over
+Semantic|`centroid` interpolation
+Semantic|`FOG`, `COLORn`, `TEXCOORDn`, and `ATTRn` user varyings
+Semantic|`noperspective` interpolation
+Semantic|`PSIZE` rasterizer output
+Semantic|clip distance output maps to `SV_ClipDistance`
+Semantic|duplicate canonical semantic
+Semantic|flat geometry output gets `nointerpolation`
+Semantic|geometry `LAYER` maps to `SV_RenderTargetArrayIndex`
+Semantic|geometry `PRIMITIVEID` maps to `SV_PrimitiveID`
+Semantic|geometry scalar `INSTANCEID` maps to `SV_PrimitiveID`
+Semantic|integral varying gets `nointerpolation`
+Semantic|invalid stage-direction semantic
+Semantic|pixel `COLORn` output maps to `SV_Targetn`
+Semantic|pixel `DEPTH` output maps to `SV_Depth`
+Semantic|pixel `FACE` maps to `SV_IsFrontFace`
+Semantic|pixel `WPOS` or position input maps to `SV_Position`
+Semantic|reserved `SV_` source semantic
+Semantic|semantic identity is case-insensitive
+Semantic|system-value base or width mismatch
+Semantic|tangent, binormal, blend, and ordinary user values
+Semantic|vertex `INSTANCEID` maps to `SV_InstanceID`
+Semantic|vertex `POSITION` input and output
+Semantic|vertex `VERTEXID` maps to `SV_VertexID`
+Semantic|vertex-ID bridge agreement is checked across stages
+Semantic|vertex-ID bridge user semantic
+Statement|`break`
+Statement|`continue`
+Statement|`do while` loop
+Statement|`for` loop
+Statement|`if` and `if else`
+Statement|`while` loop
+Statement|comma-separated `for` expressions
+Statement|compound block
+Statement|declaration
+Statement|empty statement
+Statement|expression
+Statement|scalar and vector `discard`
+Statement|switch statement
+Statement|valued `return`
+Statement|vertex-stage `discard`
+Statement|void `return`
+Target|`hlslf40` emits `ps_4_0`
+Target|`hlslf50` emits `ps_5_0`
+Target|`hlslg40` emits `gs_4_0`
+Target|`hlslg50` emits `gs_5_0`
+Target|`hlslv40` emits `vs_4_0`
+Target|`hlslv50` emits `vs_5_0`
+Target|mixed SM4/SM5 pipeline is detected before external compilation
+Target|one lowered internal entry
+Target|one public `main` wrapper
+Target|profile, target, and entry metadata
+Texture|`sampler1D` lowers to `Texture1D` plus `SamplerState`
+Texture|`sampler2D` lowers to `Texture2D` plus `SamplerState`
+Texture|`sampler3D` lowers to `Texture3D` plus `SamplerState`
+Texture|`samplerCUBE` lowers to `TextureCube` plus `SamplerState`
+Texture|bias uses `.SampleBias`
+Texture|comparison sampling
+Texture|coordinate mismatch
+Texture|dimension mismatch
+Texture|explicit gradients use `.SampleGrad`
+Texture|explicit LOD uses `.SampleLevel`
+Texture|geometry explicit-level and gradient samples
+Texture|geometry implicit derivative sample
+Texture|load, gather, multisample, and resource-array forms
+Texture|non-rectangle `h4tex*` and `x4tex*` aliases
+Texture|ordinary pixel sample uses `.Sample`
+Texture|projected sample divides coordinates once
+Texture|vertex implicit derivative sample
+Type|`bool` and `bool1` through `bool4`
+Type|`cfloat` source spellings
+Type|`char` and `uchar` source spellings
+Type|`cint` source spellings
+Type|`double` source spellings do not create an SM5-only contract
+Type|`fixed` source spellings use portable promotion
+Type|`float` and `float1` through `float4`
+Type|`half` source spellings use portable promotion
+Type|`int` and `int1` through `int4`
+Type|`long` and `ulong` source spellings
+Type|`sampler1D`, `sampler2D`, `sampler3D`, and `samplerCUBE`
+Type|`samplerRECT`
+Type|`short` and `ushort` source spellings
+Type|`uint` source spellings and vectors
+Type|`void` helper result
+Type|comparison sampler object
+Type|deprecated base `sampler`
+Type|explicit `row_major` matrix policy
+Type|multisample texture object
+Type|rectangular matrices
+Type|scalar `unsigned` aliases
+Type|square float matrices
+Validation|deterministic golden output
+Validation|exact profile-to-`fxc` target mapping
+Validation|exact SM4 three-stage pipeline
+Validation|exact SM5 three-stage pipeline
+Validation|fresh-directory external validation
+Validation|GS-to-PS type mismatch is detected
+Validation|interpolation mismatch is detected
+Validation|invalid generated HLSL fails the external harness
+Validation|optional `fxc` mode omits tests when absent
+Validation|required `fxc` mode fails clearly when absent
+Validation|verified IR gates all source output
+Validation|VS-to-GS type mismatch is detected

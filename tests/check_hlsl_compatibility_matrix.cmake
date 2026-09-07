@@ -14,6 +14,29 @@ file(STRINGS "${REGISTERED_CONTRACTS}" registered_contracts)
 file(STRINGS "${MATRIX}" matrix_lines)
 
 if(DEFINED MODE AND MODE STREQUAL "modern")
+    if(NOT DEFINED SURFACE_INVENTORY OR
+       NOT EXISTS "${SURFACE_INVENTORY}")
+        message(FATAL_ERROR
+            "modern HLSL surface inventory is missing: ${SURFACE_INVENTORY}")
+    endif()
+    file(STRINGS "${SURFACE_INVENTORY}" surface_inventory_lines)
+    set(required_features)
+    foreach(surface_line IN LISTS surface_inventory_lines)
+        if(surface_line STREQUAL "" OR surface_line MATCHES "^#")
+            continue()
+        endif()
+        if(NOT surface_line MATCHES
+           "^(Target|Type|Aggregate|Qualifier|Default|Operator|Statement|Function|Semantic|Binding|Intrinsic|Texture|Resource|Geometry|Validation)[|][^|]+$")
+            message(FATAL_ERROR
+                "invalid modern HLSL surface key: ${surface_line}")
+        endif()
+        list(FIND required_features "${surface_line}" surface_index)
+        if(NOT surface_index EQUAL -1)
+            message(FATAL_ERROR
+                "duplicate modern HLSL surface key: ${surface_line}")
+        endif()
+        list(APPEND required_features "${surface_line}")
+    endforeach()
     set(required_categories
         Target Type Aggregate Qualifier Default Operator Statement Function
         Semantic Binding Intrinsic Texture Resource Geometry Validation)
@@ -99,7 +122,23 @@ foreach(line IN LISTS matrix_lines)
     math(EXPR row_count "${row_count} + 1")
 endforeach()
 
-if(DEFINED EXPECTED_ROWS)
+if(DEFINED MODE AND MODE STREQUAL "modern")
+    foreach(required_feature IN LISTS required_features)
+        list(FIND seen_features "${required_feature}" feature_index)
+        if(feature_index EQUAL -1)
+            message(FATAL_ERROR
+                "modern HLSL matrix is missing canonical surface key: ${required_feature}")
+        endif()
+    endforeach()
+    foreach(seen_feature IN LISTS seen_features)
+        list(FIND required_features "${seen_feature}" feature_index)
+        if(feature_index EQUAL -1)
+            message(FATAL_ERROR
+                "modern HLSL matrix has noncanonical surface key: ${seen_feature}")
+        endif()
+    endforeach()
+    list(LENGTH required_features expected_rows)
+elseif(DEFINED EXPECTED_ROWS)
     set(expected_rows ${EXPECTED_ROWS})
 else()
     set(expected_rows 286)
