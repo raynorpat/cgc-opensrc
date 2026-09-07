@@ -184,6 +184,15 @@ ExpectStructureFailure(
     "unrelated.c includes hlsl_lower_internal.h")
 
 file(WRITE "${fixture_root}/unrelated.c" [=[
+int HlslLowerProgramWithIR(void)
+{
+    return 0;
+}
+]=])
+ExpectStructureFailure(
+    "unrelated.c defines HlslLowerProgramWithIR; only hlsl_lower.c may define it")
+
+file(WRITE "${fixture_root}/unrelated.c" [=[
 int HlslLowerProgram(void);
 // int HlslLowerProgramWithIR(void) { return 0; }
 /*
@@ -205,5 +214,11 @@ ExpectStructureFailure(
 
 file(WRITE "${fixture_root}/hlsl_lower_support.c" [=[
 #include "hlsl_lower_internal.h"
+]=])
+file(WRITE "${fixture_root}/tests/hlsl_lower_stub.c" [=[
+int HlslLowerProgramWithIR(void)
+{
+    return 0;
+}
 ]=])
 ExpectStructureSuccess()

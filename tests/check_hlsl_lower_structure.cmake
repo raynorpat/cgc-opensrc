@@ -186,6 +186,9 @@ foreach(relative IN LISTS repository_files)
     if(relative MATCHES "(^|/)(build[^/]*|cmake-build[^/]*|generated[^/]*)(/|$)")
         continue()
     endif()
+    if(relative MATCHES "^tests/")
+        continue()
+    endif()
 
     file(READ "${SOURCE_ROOT}/${relative}" source_content)
     string(REGEX REPLACE "//[^\r\n]*" "" source_content
