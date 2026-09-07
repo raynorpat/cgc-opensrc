@@ -19,6 +19,17 @@ if(NOT FXC_EXECUTABLE)
     message(STATUS "fxc not found; HLSL SM3 validation tests are disabled")
 endif()
 
+add_test(NAME hlsl_validation_exact_target_contract
+    COMMAND ${CMAKE_COMMAND}
+        -DCMAKE_LISTS=${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt
+        -DVALIDATOR=${CMAKE_CURRENT_SOURCE_DIR}/validate_hlsl.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_validation_contract.cmake)
+add_test(NAME hlsl_require_fxc_missing_sdk
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+        "-DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/require-fxc-missing"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_require_fxc.cmake)
+
 # Golden regeneration switch (Task 8 Step 7): used only by the fixture
 # registration below; flip to ON to rewrite the tracked GLSL
 # expectations, inspect every diff before committing, then turn it off.
