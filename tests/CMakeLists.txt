@@ -2133,10 +2133,10 @@ function(add_hlsl_fixture name profile source expected)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
-    # Registration goldens intentionally exercise a void profile skeleton.
-    # Valid bytecode requires stage outputs, so registration-only fixtures
-    # cannot run via FXC.
-    if(NOT name MATCHES "_registration$")
+    # Legacy registration goldens intentionally exercise a void profile
+    # skeleton. Modern registration fixtures produce a valid stage function
+    # and must satisfy the same exact-target FXC contract as other fixtures.
+    if(NOT name MATCHES "^hlsl(v|f)_registration$")
         add_hlsl_validation(${name} ${profile} ${source})
     endif()
 endfunction()
@@ -2767,6 +2767,10 @@ add_test(
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlslg50_registration.hlsl"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_nocode.cmake
 )
+add_hlsl_validation_case(hlslg40_registration hlslg40
+    tests/hlsl/modern/empty_geometry.cg "" "" "Vertices=1")
+add_hlsl_validation_case(hlslg50_registration hlslg50
+    tests/hlsl/modern/empty_geometry.cg "" "" "Vertices=1")
 
 # Registration metadata must make the SM3 profiles answer to their
 # stage-family wildcard selectors.  The shared overload fixture gives
@@ -3165,6 +3169,49 @@ foreach(model 40 50)
             "-DCONFIG=$<CONFIG>"
             "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_${model_name}_pipeline_geometry_textures.hlsl"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl.cmake)
+
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_geometry_vertex hlslv${model}
+        tests/hlsl/link/vp_geometry.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_geometry_geometry hlslg${model}
+        tests/hlsl/link/gp_geometry.cg "" ""
+        "TRIANGLE\;TRIANGLE_OUT\;Vertices=1")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_geometry_pixel hlslf${model}
+        tests/hlsl/link/fp_geometry.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vertex_id_vertex hlslv${model}
+        tests/hlsl/link/vp_vertex_id.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vertex_id_geometry hlslg${model}
+        tests/hlsl/link/gp_vertex_id.cg "" ""
+        "POINT\;POINT_OUT\;Vertices=1")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vertex_id_pixel hlslf${model}
+        tests/hlsl/link/fp_vertex_id.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vs_gs_type_mismatch_geometry hlslg${model}
+        tests/hlsl/link/gp_type_mismatch.cg "" ""
+        "TRIANGLE\;TRIANGLE_OUT\;Vertices=1")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_gs_ps_type_mismatch_pixel hlslf${model}
+        tests/hlsl/link/fp_type_mismatch.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_vs_gs_interpolation_mismatch_geometry
+        hlslg${model} tests/hlsl/link/gp_interpolation_mismatch.cg "" ""
+        "TRIANGLE\;TRIANGLE_OUT\;Vertices=1")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_gs_ps_interpolation_mismatch_geometry
+        hlslg${model} tests/hlsl/link/gp_flat_output.cg "" ""
+        "TRIANGLE\;TRIANGLE_OUT\;Vertices=1")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_gs_ps_interpolation_mismatch_pixel
+        hlslf${model} tests/hlsl/link/fp_interpolation_mismatch.cg "")
+    add_hlsl_validation_case(
+        hlsl_${model_name}_pipeline_geometry_textures hlslg${model}
+        tests/hlsl/geometry/textures.cg "" main
+        "POINT\;POINT_OUT\;Vertices=1")
     add_test(
         NAME hlsl_${model_name}_pipeline_geometry_texture_stage
         COMMAND ${CMAKE_COMMAND}
@@ -3182,6 +3229,11 @@ foreach(model 40 50)
     set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
         "hlsl_${model_name}_pipeline_geometry_texture_stage|6420")
 endforeach()
+
+add_hlsl_validation_case(hlsl_sm4_pipeline_mixed_two_stage_vertex hlslv40
+    tests/hlsl/link/vp_link.cg "")
+add_hlsl_validation_case(hlsl_sm5_pipeline_mixed_two_stage_pixel hlslf50
+    tests/hlsl/link/fp_link.cg "")
 
 add_test(NAME hlsl_link_fresh_directory
     COMMAND ${CMAKE_COMMAND}
