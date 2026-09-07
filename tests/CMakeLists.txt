@@ -1803,6 +1803,13 @@ add_test(
 )
 
 add_test(
+    NAME glsl_lower_structure
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_ROOT=${PROJECT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_glsl_lower_structure.cmake
+)
+
+add_test(
     NAME glsl_lower_ir_assertions_active
     COMMAND ${CMAKE_COMMAND}
         -DUNIT=$<TARGET_FILE:glsl_lower_ir_unit>
