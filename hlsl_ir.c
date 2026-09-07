@@ -362,12 +362,20 @@ static const int hlslErrorCodes[] = {
     6414,
     6415,
     6416,
-    6417
+    6417,
+    6418,
+    6419,
+    6420,
+    6421,
+    6422,
+    6423,
+    6424
 };
 
 int HlslErrorCode(HlslErrorKind kind)
 {
-    if (kind < HLSL_ERROR_NONE || kind > HLSL_ERROR_GEOMETRY_LIMIT)
+    if (kind < HLSL_ERROR_NONE ||
+        kind > HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT)
         return 0;
     return hlslErrorCodes[(int) kind];
 } // HlslErrorCode

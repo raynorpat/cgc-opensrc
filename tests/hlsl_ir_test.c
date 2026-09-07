@@ -2215,6 +2215,7 @@ static void TestTextureBuiltinSignatures(void)
             &sf4, sourceParams, 2) == HLSL_BUILTIN_NONE);
     }
     assert(HlslIsTextureName("texRECT"));
+    assert(HlslIsTextureName("tex2D"));
     assert(HlslIsTextureName("h4texRECTproj"));
     assert(!HlslIsTextureName("texture2D"));
 }
@@ -2845,7 +2846,7 @@ static void TestModernSamplerPairAllocation(void)
     profile.limits = &limits;
     assert(!HlslAllocateBindings(&module, &profile));
     assert(module.errors == 1 &&
-           module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+           module.errorKind == HLSL_ERROR_RESOURCE_PAIR);
     assert(!strcmp(module.resourceName, "sampler pairs"));
     assert(module.resourceUsed == HLSL_MAX_SAMPLERS + 1 &&
            module.resourceAvailable == HLSL_MAX_SAMPLERS);
@@ -2974,7 +2975,7 @@ static void TestModernConstantBufferBinding(void)
     overlap->physical.regno = 2;
     assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
     assert(module.errors == 1);
-    assert(module.errorKind == HLSL_ERROR_REGISTER_COLLISION);
+    assert(module.errorKind == HLSL_ERROR_CBUFFER);
     assert(!strcmp(module.errorReason, "overlap at c2"));
 
     HlslInitModule(&module, HLSL_STAGE_VERTEX, TestAlloc, NULL);
@@ -3034,7 +3035,7 @@ static void TestModernConstantBufferBinding(void)
     implicit = AddModernUniformBinding(&module, hugeArray, "hugeArray", 0);
     assert(!HlslAllocateBindings(&module, &HlslProfile_hlslv40));
     assert(module.errorKind == HLSL_ERROR_INVALID_IR ||
-           module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+           module.errorKind == HLSL_ERROR_CBUFFER);
     assert(!implicit->isAllocated && implicit->leafBindings == NULL);
     assert(module.resources == NULL && module.allocatedBindings == NULL &&
            module.names == NULL);
@@ -4226,6 +4227,13 @@ static void TestModernResourceValidation(void)
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     ConfigureModernValidationFixture(&fixture);
+    resource = AddModernCbuffer(&fixture.module, NULL,
+        HlslProfile_hlslv40.limits->constantBufferSlots - 1);
+    assert(resource != NULL);
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
     resource = AddModernCbuffer(&fixture.module, NULL, 0);
     resource->binding.slot =
         HlslProfile_hlslv40.limits->constantBufferSlots;
@@ -5009,7 +5017,9 @@ static void AssertModernSemanticIdentityRejected(ValidationFixture *fixture)
 {
     assert(!HlslValidateModule(&fixture->module,
                                &HlslProfile_hlslv40));
-    assert(fixture->module.errorKind == HLSL_ERROR_SEMANTIC);
+    assert(fixture->module.errorKind ==
+        (fixture->outputStruct->members->semanticKind == HLSL_SEMANTIC_USER ?
+            HLSL_ERROR_SEMANTIC : HLSL_ERROR_SYSTEM_SEMANTIC));
     assert(fixture->module.errors == 1);
     AssertWriteFailureLeavesEmpty(&fixture->module,
                                   &HlslProfile_hlslv40);
@@ -5397,6 +5407,12 @@ static void TestTargetValidatorRejectsImpossibleProfiles(void)
     HlslProfileDesc profile;
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslf40));
+    assert(fixture.module.errorKind == HLSL_ERROR_PROFILE_STAGE);
+    assert(fixture.module.errors == 1);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
     profile = HlslProfile_hlslv;
     profile.model = HLSL_SHADER_MODEL_4;
     AssertInvalidValidationFixture(&fixture, &profile);
@@ -5782,9 +5798,13 @@ static void TestTargetValidatorInterfaceLimits(void)
     };
     ValidationFixture fixture;
     HlslDecl *local;
+    HlslDecl *clip0;
+    HlslDecl *clip1;
     HlslExpr *derivative;
     HlslExpr *argument;
     char names[16][16];
+    HlslLimits clippedLimits;
+    HlslProfileDesc clippedProfile;
     int i;
 
     InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
@@ -5829,6 +5849,53 @@ static void TestTargetValidatorInterfaceLimits(void)
     fixture.entry->locals = local;
     assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslv));
     assert(fixture.module.errorKind == HLSL_ERROR_STAGE_OPERATION);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    fixture.outputStruct->members->type.len = 3;
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+    assert(fixture.module.errorKind == HLSL_ERROR_SYSTEM_SEMANTIC);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    fixture.outputStruct->members->interpolation =
+        HLSL_INTERPOLATION_NOINTERPOLATION;
+    assert(!HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+    assert(fixture.module.errorKind == HLSL_ERROR_INTERPOLATION);
+
+    InitValidationFixture(&fixture, HLSL_STAGE_VERTEX);
+    ConfigureModernValidationFixture(&fixture);
+    clip0 = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                        HlslNumericType(HLSL_BASE_FLOAT, 4), "clip0");
+    clip1 = HlslNewDecl(&fixture.module, HLSL_STORAGE_NONE,
+                        HlslNumericType(HLSL_BASE_FLOAT, 4), "clip1");
+    assert(clip0 != NULL && clip1 != NULL);
+    clip0->inputSemantic = "CLP0";
+    clip0->semantic = "SV_ClipDistance0";
+    clip0->canonicalSemantic = "SV_ClipDistance0";
+    clip0->semanticKind = HLSL_SEMANTIC_SV_CLIP_DISTANCE;
+    clip1->inputSemantic = "CLP1";
+    clip1->semantic = "SV_ClipDistance1";
+    clip1->canonicalSemantic = "SV_ClipDistance1";
+    clip1->semanticKind = HLSL_SEMANTIC_SV_CLIP_DISTANCE;
+    clip1->semanticIndex = 1;
+    HlslAppendDecl(&fixture.outputStruct->members, clip0);
+    HlslAppendDecl(&fixture.outputStruct->members, clip1);
+    assert(HlslValidateModule(&fixture.module, &HlslProfile_hlslv40));
+
+    clippedProfile = HlslProfile_hlslv40;
+    clippedLimits = *clippedProfile.limits;
+    clippedLimits.clipDistanceComponents = 7;
+    clippedProfile.limits = &clippedLimits;
+    fixture.module.errors = 0;
+    fixture.module.errorKind = HLSL_ERROR_NONE;
+    fixture.module.errorReason = NULL;
+    assert(!HlslValidateModule(&fixture.module, &clippedProfile));
+    assert(fixture.module.errorKind == HLSL_ERROR_RESOURCE_LIMIT);
+    assert(!strcmp(fixture.module.resourceName,
+                   "clip/cull distance components"));
+    assert(fixture.module.resourceUsed == 8);
+    assert(fixture.module.resourceAvailable == 7);
 }
 
 static void TestStructuralValidatorRejectsCyclicSignatureGraphs(void)

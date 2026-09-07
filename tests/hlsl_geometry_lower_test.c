@@ -66,6 +66,11 @@ void SemanticError(SourceLoc *loc, int number, const char *message, ...)
     (void) loc; (void) number; (void) message;
 }
 
+int GetErrorCount(void)
+{
+    return 0;
+}
+
 void SemanticWarning(SourceLoc *loc, int number, const char *message, ...)
 {
     (void) loc; (void) number; (void) message;

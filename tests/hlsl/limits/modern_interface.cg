@@ -104,7 +104,7 @@ struct InterfaceValues {
 #endif
 };
 
-#if defined(TEST_VERTEX_OUTPUT)
+#if defined(TEST_VERTEX_OUTPUT) || defined(TEST_GEOMETRY_OUTPUT)
 struct VertexResult {
     float4 position : POSITION;
 #if INTERFACE_COUNT >= 2
@@ -205,12 +205,21 @@ struct VertexResult {
 #endif
 };
 
+#if defined(TEST_GEOMETRY_OUTPUT)
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    VertexResult result;
+    result.position = position[0];
+    emitVertex(result);
+}
+#else
 VertexResult main(float4 position : POSITION)
 {
     VertexResult result;
     result.position = position;
     return result;
 }
+#endif
 #elif defined(TEST_PIXEL_OUTPUT)
 struct PixelResult {
     float4 color0 : COLOR0;
@@ -245,6 +254,17 @@ PixelResult main(float4 color : COLOR0)
     PixelResult result;
     result.color0 = color;
     return result;
+}
+#elif defined(TEST_GEOMETRY_INPUT)
+struct GeometryResult {
+    float4 position : POSITION;
+};
+
+POINT POINT_OUT void main(AttribArray<InterfaceValues> input)
+{
+    GeometryResult result;
+    result.position = input[0].value0;
+    emitVertex(result);
 }
 #elif defined(TEST_PIXEL_INPUT)
 float4 main(InterfaceValues input) : COLOR0

@@ -4338,12 +4338,13 @@ expr *NewVectorConstructor(SourceLoc *loc, Type *fType, expr *fExpr)
         } else {
             SemanticError(loc, ERROR___INVALID_TYPE_FUNCTION);
             rType = UndefinedType;
+            HasError = 1;
         }
     } else {
         rType = UndefinedType;
     }
     lExpr = fExpr;
-    while (lExpr) {
+    while (lExpr && !HasError) {
         vlen = 0;
         lType = lExpr->common.type;
         lkind = GetScalarKind(lType);

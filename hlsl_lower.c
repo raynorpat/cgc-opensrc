@@ -562,6 +562,9 @@ static int HlslResolveBuiltinSymbol(HlslLowerContext *context,
         }
         if (otherStage != HLSL_BUILTIN_NONE) {
             HlslLowerFailure(context,
+                context->profile->syntax == HLSL_SYNTAX_MODERN &&
+                HlslBuiltinIsTexture(otherStage) ?
+                    HLSL_ERROR_TEXTURE_STAGE :
                 HlslBuiltinIsTexture(otherStage) &&
                 !HlslProfileHasCapability(context->profile,
                                            HLSL_CAP_TEXTURE_METHODS) ?
@@ -690,6 +693,9 @@ static int HlslResolveBuiltinSignature(HlslLowerContext *context,
         }
         if (otherStage != HLSL_BUILTIN_NONE) {
             HlslLowerFailure(context,
+                context->profile->syntax == HLSL_SYNTAX_MODERN &&
+                HlslBuiltinIsTexture(otherStage) ?
+                    HLSL_ERROR_TEXTURE_STAGE :
                 HlslBuiltinIsTexture(otherStage) &&
                 !HlslProfileHasCapability(context->profile,
                                            HLSL_CAP_TEXTURE_METHODS) ?
@@ -6032,7 +6038,8 @@ int HlslLowerProgramWithIR(HlslModule *module,
         if (!sourceIR->geometry->hasMaxOutputVertices ||
             sourceIR->geometry->maxOutputVertices == 0)
         {
-            return HlslLowerFailure(&context, HLSL_ERROR_ENTRY_ABI,
+            return HlslLowerFailure(&context,
+                                    HLSL_ERROR_GEOMETRY_MISSING_MAX,
                                     "Vertices=N", &program->loc);
         }
         if (sourceIR->geometry->maxOutputVertices > (unsigned int) INT_MAX ||

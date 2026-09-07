@@ -1213,6 +1213,7 @@ static int HlslValidateGeometryLayout(HlslModule *module,
 {
     int hasLayout;
     int outputComponents;
+    int totalOutputComponents;
 
     hasLayout = module->geometryInput != HLSL_GEOMETRY_INPUT_POINT ||
                 module->geometryStream != HLSL_GEOMETRY_STREAM_POINT ||
@@ -1226,8 +1227,12 @@ static int HlslValidateGeometryLayout(HlslModule *module,
     }
     if (profile->model < HLSL_SHADER_MODEL_4 ||
         profile->syntax != HLSL_SYNTAX_MODERN ||
-        !HlslProfileHasCapability(profile, HLSL_CAP_GEOMETRY) ||
-        module->geometryInput < HLSL_GEOMETRY_INPUT_POINT ||
+        !HlslProfileHasCapability(profile, HLSL_CAP_GEOMETRY))
+    {
+        return HlslFail(module, HLSL_ERROR_MODEL_CAPABILITY, NULL,
+                        "geometry shaders");
+    }
+    if (module->geometryInput < HLSL_GEOMETRY_INPUT_POINT ||
         module->geometryInput > HLSL_GEOMETRY_INPUT_TRIANGLE_ADJ ||
         module->geometryStream < HLSL_GEOMETRY_STREAM_POINT ||
         module->geometryStream > HLSL_GEOMETRY_STREAM_TRIANGLE ||
@@ -1237,13 +1242,22 @@ static int HlslValidateGeometryLayout(HlslModule *module,
         return HlslFail(module, HLSL_ERROR_GEOMETRY_LAYOUT, NULL,
                         "invalid geometry layout");
     }
-    if (module->geometryMaxVertices <= 0 || profile->limits == NULL ||
-        profile->limits->geometryMaxVertices <= 0 ||
-        module->geometryMaxVertices >
-            profile->limits->geometryMaxVertices)
+    if (module->geometryMaxVertices <= 0)
     {
-        return HlslFail(module, HLSL_ERROR_GEOMETRY_LIMIT, NULL,
-                        "geometry maximum vertices");
+        return HlslFail(module, HLSL_ERROR_GEOMETRY_MISSING_MAX, NULL,
+                        "Vertices");
+    }
+    if (profile->limits == NULL ||
+        profile->limits->geometryMaxVertices <= 0 ||
+        module->geometryMaxVertices > profile->limits->geometryMaxVertices)
+    {
+        if (module->errors == 0) {
+            module->resourceUsed = module->geometryMaxVertices;
+            module->resourceAvailable = profile->limits != NULL ?
+                profile->limits->geometryMaxVertices : 0;
+        }
+        return HlslFail(module, HLSL_ERROR_GEOMETRY_MAX_LIMIT, NULL,
+                        "Vertices");
     }
     outputComponents = HlslGeometryOutputComponents(module);
     if (outputComponents < 0)
@@ -1255,8 +1269,16 @@ static int HlslValidateGeometryLayout(HlslModule *module,
              profile->limits->geometryTotalOutputComponents /
              outputComponents))
     {
-        return HlslFail(module, HLSL_ERROR_GEOMETRY_LIMIT, NULL,
-                        "geometry total output components");
+        totalOutputComponents =
+            module->geometryMaxVertices > INT_MAX / outputComponents ?
+                INT_MAX : module->geometryMaxVertices * outputComponents;
+        if (module->errors == 0) {
+            module->resourceUsed = totalOutputComponents;
+            module->resourceAvailable =
+                profile->limits->geometryTotalOutputComponents;
+        }
+        return HlslFail(module, HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT,
+                        NULL, "output signature");
     }
     return 1;
 } // HlslValidateGeometryLayout
@@ -2890,12 +2912,18 @@ static int HlslValidateModernInterfaceSemantics(HlslModule *module,
             HLSL_INTERPOLATION_NOINTERPOLATION :
             HlslModernRequiredTargetInterpolation(left->type.base);
         if (!HlslModernSemanticIdentityIsValid(profile, left, isOutput) ||
-            !HlslModernInterfaceTypeIsValid(left) ||
-            left->interpolation != required)
+            !HlslModernInterfaceTypeIsValid(left))
         {
-            return HlslFail(module, HLSL_ERROR_SEMANTIC, &left->loc,
+            return HlslFail(module,
+                left->semanticKind == HLSL_SEMANTIC_USER ?
+                    HLSL_ERROR_SEMANTIC : HLSL_ERROR_SYSTEM_SEMANTIC,
+                &left->loc,
                             HlslBindingReason(NULL, left->semantic));
         }
+        if (left->interpolation != required)
+            return HlslFail(module, HLSL_ERROR_INTERPOLATION,
+                            &left->loc,
+                            HlslBindingReason(NULL, left->semantic));
         for (right = left->next; right != NULL; right = right->next) {
             if (right->geometryRole == HLSL_GEOMETRY_DECL_STREAM ||
                 right->geometryRole ==
@@ -3066,6 +3094,26 @@ static int HlslColorOutputUsage(const HlslProfileDesc *profile,
     return used;
 } // HlslColorOutputUsage
 
+static int HlslClipCullComponentUsage(const HlslDecl *members,
+                                      const HlslLoc **failureLoc)
+{
+    int components;
+    int used;
+
+    used = 0;
+    for (; members != NULL; members = members->next) {
+        if (members->semanticKind != HLSL_SEMANTIC_SV_CLIP_DISTANCE)
+            continue;
+        components = HlslTypeComponentCount(&members->type);
+        if (components < 0 || used > INT_MAX - components)
+            return INT_MAX;
+        used += components;
+        if (failureLoc != NULL)
+            *failureLoc = &members->loc;
+    }
+    return used;
+} // HlslClipCullComponentUsage
+
 static int HlslHasPosition(const HlslProfileDesc *profile,
                            const HlslDecl *members)
 {
@@ -3135,8 +3183,10 @@ static int HlslValidateInterfaces(HlslModule *module,
     HlslDecl *wrapperInput;
     HlslDecl *geometryScalars;
     const HlslLoc *colorLoc;
+    const HlslLoc *clipLoc;
     int used;
     int colors;
+    int clipCullComponents;
 
     input = NULL;
     output = NULL;
@@ -3260,6 +3310,13 @@ static int HlslValidateInterfaces(HlslModule *module,
     if (used > profile->limits->outputs)
         return HlslSetResourceFailure(module, "outputs", used,
             profile->limits->outputs, HlslLastDeclLoc(output->members));
+    clipLoc = NULL;
+    clipCullComponents = HlslClipCullComponentUsage(
+        output != NULL ? output->members : NULL, &clipLoc);
+    if (clipCullComponents > profile->limits->clipDistanceComponents)
+        return HlslSetResourceFailure(module,
+            "clip/cull distance components", clipCullComponents,
+            profile->limits->clipDistanceComponents, clipLoc);
     if (profile->stage == HLSL_STAGE_PIXEL) {
         colorLoc = NULL;
         colors = HlslColorOutputUsage(profile,
@@ -4504,11 +4561,18 @@ int HlslValidateModule(HlslModule *module,
     if ((module->stage != HLSL_STAGE_VERTEX &&
          module->stage != HLSL_STAGE_PIXEL &&
          module->stage != HLSL_STAGE_GEOMETRY) ||
-        module->stage != profile->stage || module->entry == NULL ||
-        module->errors != 0)
+        module->entry == NULL || module->errors != 0)
     {
         return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
                         "invalid HLSL module");
+    }
+    if (module->stage != profile->stage) {
+        const char *stage;
+
+        stage = module->stage == HLSL_STAGE_VERTEX ? "vertex" :
+                module->stage == HLSL_STAGE_GEOMETRY ? "geometry" :
+                                                       "pixel";
+        return HlslFail(module, HLSL_ERROR_PROFILE_STAGE, NULL, stage);
     }
     if (!HlslDeclListShapeIsValid(module->structs, 0))
         return HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,

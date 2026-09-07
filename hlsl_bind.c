@@ -3445,7 +3445,7 @@ static int HlslModernBufferLimitFailure(HlslModule *module,
         module->resourceUsed = used;
         module->resourceAvailable = limit;
     }
-    return HlslBindFailure(module, binding, HLSL_ERROR_RESOURCE_LIMIT,
+    return HlslBindFailure(module, binding, HLSL_ERROR_CBUFFER,
                            binding != NULL ? binding->name : NULL);
 } // HlslModernBufferLimitFailure
 
@@ -3518,7 +3518,7 @@ static int HlslModernPlanExplicit(HlslModule *module,
     if (!HlslModernRangeIsFree(used, limit, &offset)) {
         collision = HlslModernFirstCollision(used, &offset);
         return HlslBindFailure(module, plan->binding,
-            HLSL_ERROR_REGISTER_COLLISION,
+            HLSL_ERROR_CBUFFER,
             HlslCollisionReason(module, HlslPublicBindingName(plan->binding),
                                 HLSL_REGISTER_C, collision / 4));
     }
@@ -4217,7 +4217,7 @@ static int HlslAllocateModernSamplerBindings(HlslModule *module,
                 module->resourceAvailable = limit;
             }
             return HlslBindFailure(module, plans[i].binding,
-                HLSL_ERROR_RESOURCE_LIMIT, plans[i].binding->name);
+                HLSL_ERROR_RESOURCE_PAIR, plans[i].binding->name);
         }
         plans[i].slot = slot;
         textureUsed[slot] = 1;

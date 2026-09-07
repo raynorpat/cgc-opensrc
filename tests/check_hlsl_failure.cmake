@@ -19,9 +19,16 @@ if(DEFINED PROFILE_OPTIONS)
         list(APPEND cgc_profile_args -po "${hlsl_option}")
     endforeach()
 endif()
+set(cgc_define_args)
+if(DEFINED DEFINES)
+    string(REPLACE "\\;" ";" hlsl_defines "${DEFINES}")
+    foreach(hlsl_define IN LISTS hlsl_defines)
+        list(APPEND cgc_define_args "-D${hlsl_define}")
+    endforeach()
+endif()
 execute_process(
     COMMAND "${CGC}" -quiet -profile "${PROFILE}" ${cgc_entry_args}
-        ${cgc_profile_args}
+        ${cgc_profile_args} ${cgc_define_args}
         -o "${ACTUAL}" "${SOURCE}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout
@@ -35,10 +42,7 @@ set(diagnostics "${stdout}${stderr}")
 string(REGEX MATCHALL "error C[0-9][0-9][0-9][0-9]:" matches
     "${diagnostics}")
 list(LENGTH matches match_count)
-if(NOT DEFINED EXPECTED_ERROR_COUNT)
-    set(EXPECTED_ERROR_COUNT 1)
-endif()
-if(NOT match_count EQUAL EXPECTED_ERROR_COUNT)
+if(NOT match_count EQUAL 1)
     message(FATAL_ERROR
         "${PROFILE} reported ${match_count} compiler errors:\n${diagnostics}")
 endif()
@@ -62,13 +66,19 @@ if(NOT diagnostics MATCHES "${MESSAGE}")
     message(FATAL_ERROR
         "${PROFILE} did not match message ${MESSAGE}:\n${diagnostics}")
 endif()
-if(DEFINED SECONDARY_CODE AND NOT diagnostics MATCHES "error C${SECONDARY_CODE}:")
-    message(FATAL_ERROR
-        "${PROFILE} did not report secondary C${SECONDARY_CODE}:\n${diagnostics}")
-endif()
-if(DEFINED SECONDARY_MESSAGE AND NOT diagnostics MATCHES "${SECONDARY_MESSAGE}")
-    message(FATAL_ERROR
-        "${PROFILE} did not match secondary message ${SECONDARY_MESSAGE}:\n${diagnostics}")
+if(DEFINED NOTES)
+    string(REPLACE "\\;" ";" NOTES "${NOTES}")
+    string(REPLACE "\"" "" clean_diagnostics "${diagnostics}")
+    set(remaining_notes "${clean_diagnostics}")
+    foreach(note IN LISTS NOTES)
+        string(FIND "${remaining_notes}" "${note}" note_index)
+        if(note_index EQUAL -1)
+            message(FATAL_ERROR
+                "${PROFILE} did not report ordered note ${note}:\n${diagnostics}")
+        endif()
+        string(SUBSTRING "${remaining_notes}" ${note_index} -1
+            remaining_notes)
+    endforeach()
 endif()
 if(DEFINED NOTE_CODE)
     string(REGEX MATCHALL "notice C${NOTE_CODE}:" note_matches "${diagnostics}")
@@ -94,12 +104,16 @@ endif()
 # failed compile may leave no content at all.  Comments can carry binding or
 # default metadata and are therefore content too; never discard them here.
 if(EXISTS "${ACTUAL}")
+    file(SIZE "${ACTUAL}" published_size)
     file(READ "${ACTUAL}" published)
     string(REPLACE "\r\n" "\n" published "${published}")
     string(REPLACE "\r" "\n" published "${published}")
-    string(REGEX REPLACE "[ \t\n]" "" payload "${published}")
-    if(NOT payload STREQUAL "")
+    if(published MATCHES "cgc-bind|cbuffer|Texture[A-Za-z0-9]*[ \t]|struct[ \t]+|[A-Za-z_][A-Za-z0-9_]*[ \t]*\\([^;]*\\)[ \t\r\n]*\\{")
         message(FATAL_ERROR
             "failed compilation published HLSL content:\n${published}")
+    endif()
+    if(NOT published_size EQUAL 0)
+        message(FATAL_ERROR
+            "failed compilation published a nonempty output file:\n${published}")
     endif()
 endif()

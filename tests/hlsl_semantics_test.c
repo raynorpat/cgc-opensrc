@@ -1122,6 +1122,48 @@ static int RunFailureReporter(int argc, char **argv)
     return 1;
 } // RunFailureReporter
 
+static void CheckModernFailureDiagnosticMappings(void)
+{
+    static const struct {
+        HlslErrorKind kind;
+        int code;
+    } expected[] = {
+        { HLSL_ERROR_SYSTEM_SEMANTIC, 6412 },
+        { HLSL_ERROR_INTERPOLATION, 6413 },
+        { HLSL_ERROR_CBUFFER, 6414 },
+        { HLSL_ERROR_RESOURCE_PAIR, 6415 },
+        { HLSL_ERROR_GEOMETRY_LAYOUT, 6416 },
+        { HLSL_ERROR_GEOMETRY_LIMIT, 6417 },
+        { HLSL_ERROR_PROFILE_STAGE, 6418 },
+        { HLSL_ERROR_MODEL_CAPABILITY, 6419 },
+        { HLSL_ERROR_TEXTURE_STAGE, 6420 },
+        { HLSL_ERROR_TEXTURE_SIGNATURE, 6421 },
+        { HLSL_ERROR_GEOMETRY_MISSING_MAX, 6422 },
+        { HLSL_ERROR_GEOMETRY_MAX_LIMIT, 6423 },
+        { HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT, 6424 }
+    };
+    HlslModule module;
+    int i;
+
+    for (i = 0; i < NUMELS(expected); i++) {
+        HlslInitModule(&module, HLSL_STAGE_GEOMETRY, NULL, NULL);
+        module.errors = 1;
+        module.errorKind = expected[i].kind;
+        module.errorReason = "test reason";
+        module.errorLoc.file = 7;
+        module.errorLoc.line = 23;
+        module.resourceUsed = 1025;
+        module.resourceAvailable = 1024;
+        semanticErrorCount = 0;
+        assert(!HlslReportFailureForTesting(&module,
+                                            &HlslProfile_hlslg40,
+                                            NULL));
+        assert(semanticErrorCount == 1);
+        assert(lastSemanticError == expected[i].code);
+        assert(lastSemanticLoc.file == 7 && lastSemanticLoc.line == 23);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int reporterResult;
@@ -1155,6 +1197,7 @@ int main(int argc, char **argv)
         CheckFreshHALIsolation();
     else {
         CheckProfileInitializerPreflight();
+        CheckModernFailureDiagnosticMappings();
         CheckParser();
         CheckCanonicalization();
         CheckConnectors();
@@ -1296,6 +1339,11 @@ void SemanticError(SourceLoc *loc, int number, const char *message, ...)
         va_end(args);
         fputc('\n', stderr);
     }
+}
+
+int GetErrorCount(void)
+{
+    return semanticErrorCount;
 }
 
 void SemanticNote(SourceLoc *loc, int number, const char *message, ...)

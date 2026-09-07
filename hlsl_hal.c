@@ -348,7 +348,20 @@ static const HlslDiagnosticMap hlslDiagnosticMap[] = {
     { HLSL_ERROR_SAMPLER,               ERROR_S_HLSL_SAMPLER },
     { HLSL_ERROR_INTRINSIC,             ERROR_S_HLSL_INTRINSIC },
     { HLSL_ERROR_NAME_COLLISION,        ERROR_S_HLSL_NAME_COLLISION },
+    { HLSL_ERROR_SYSTEM_SEMANTIC,       ERROR_S_HLSL_SYSTEM_SEMANTIC },
+    { HLSL_ERROR_INTERPOLATION,         ERROR_S_HLSL_INTERPOLATION },
+    { HLSL_ERROR_CBUFFER,               ERROR_S_HLSL_CBUFFER },
     { HLSL_ERROR_RESOURCE_PAIR,         ERROR_S_HLSL_RESOURCE_PAIR },
+    { HLSL_ERROR_GEOMETRY_LAYOUT,       ERROR_S_HLSL_GEOMETRY_LAYOUT },
+    { HLSL_ERROR_GEOMETRY_LIMIT,        ERROR_S_HLSL_GEOMETRY_LIMIT },
+    { HLSL_ERROR_PROFILE_STAGE,         ERROR_SS_HLSL_PROFILE_STAGE },
+    { HLSL_ERROR_MODEL_CAPABILITY,      ERROR_SS_HLSL_MODEL_CAPABILITY },
+    { HLSL_ERROR_TEXTURE_STAGE,         ERROR_SS_HLSL_TEXTURE_STAGE },
+    { HLSL_ERROR_TEXTURE_SIGNATURE,     ERROR_S_HLSL_TEXTURE_SIGNATURE },
+    { HLSL_ERROR_GEOMETRY_MISSING_MAX,  ERROR___HLSL_GEOMETRY_MISSING_MAX },
+    { HLSL_ERROR_GEOMETRY_MAX_LIMIT,    ERROR_SII_HLSL_GEOMETRY_MAX_LIMIT },
+    { HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT,
+                                         ERROR_SII_HLSL_GEOMETRY_TOTAL_LIMIT },
     { HLSL_ERROR_INVALID_IR,            ERROR___HLSL_INVALID_IR }
 };
 
@@ -791,6 +804,20 @@ static void ReportHlslModelDiagnostic(SourceLoc *loc,
     }
 } // ReportHlslModelDiagnostic
 
+static void ReportHlslTextureDiagnostic(SourceLoc *loc,
+    const HlslProfileDesc *profile, HlslErrorKind kind, const char *reason)
+{
+    if (profile != NULL && profile->syntax == HLSL_SYNTAX_MODERN) {
+        if (kind == HLSL_ERROR_TEXTURE_STAGE)
+            SemanticError(loc, ERROR_SS_HLSL_TEXTURE_STAGE,
+                          profile->name, reason);
+        else
+            SemanticError(loc, ERROR_S_HLSL_TEXTURE_SIGNATURE, reason);
+        return;
+    }
+    ReportHlslModelDiagnostic(loc, profile, HLSL_ERROR_SAMPLER, reason);
+} // ReportHlslTextureDiagnostic
+
 static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
 {
     const HlslProfileDesc *profile;
@@ -844,13 +871,15 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
         HlslBuiltin otherStage;
 
         otherStage = HlslLookupSourceBuiltin(
-            profile->stage == HLSL_STAGE_VERTEX ?
-            HLSL_STAGE_PIXEL : HLSL_STAGE_VERTEX,
+            profile->stage == HLSL_STAGE_PIXEL ?
+            HLSL_STAGE_VERTEX : HLSL_STAGE_PIXEL,
             name, &result, params, count);
         if (otherStage != HLSL_BUILTIN_NONE) {
-            if (HlslBuiltinIsTexture(otherStage))
-                ReportHlslModelDiagnostic(&fSymb->loc, profile,
-                                          HLSL_ERROR_SAMPLER, name);
+            if (HlslBuiltinIsTexture(otherStage) ||
+                HlslIsTextureName(name))
+                ReportHlslTextureDiagnostic(&fSymb->loc, profile,
+                                            HLSL_ERROR_TEXTURE_STAGE,
+                                            name);
             else
                 SemanticError(&fSymb->loc, ERROR_SS_HLSL_STAGE_OPERATION,
                               profile->name, name);
@@ -858,8 +887,8 @@ static int CheckInternalFunction_hlsl(Symbol *fSymb, int *group)
         }
     }
     if (HlslIsTextureName(name)) {
-        ReportHlslModelDiagnostic(&fSymb->loc, profile,
-                                  HLSL_ERROR_SAMPLER, name);
+        ReportHlslTextureDiagnostic(&fSymb->loc, profile,
+                                    HLSL_ERROR_TEXTURE_SIGNATURE, name);
         return 0;
     }
 
@@ -925,8 +954,8 @@ static int HandleParameterTypeError_hlsl(SourceLoc *loc,
             return 0;
         }
     }
-    ReportHlslModelDiagnostic(loc, GetHlslProfile(),
-                              HLSL_ERROR_SAMPLER, name);
+    ReportHlslTextureDiagnostic(loc, GetHlslProfile(),
+                                HLSL_ERROR_TEXTURE_SIGNATURE, name);
     return 1;
 } // HandleParameterTypeError_hlsl
 
@@ -1114,6 +1143,10 @@ static int ReportHlslInterfaceError(SourceLoc *loc, HlslErrorKind kind,
     RecordHlslHALError(data, loc, kind, reason);
     if (kind == HLSL_ERROR_INTERFACE_CONFLICT)
         SemanticError(loc, ERROR_S_HLSL_INTERFACE_CONFLICT, reason);
+    else if (kind == HLSL_ERROR_SYSTEM_SEMANTIC)
+        SemanticError(loc, ERROR_S_HLSL_SYSTEM_SEMANTIC, reason);
+    else if (kind == HLSL_ERROR_INTERPOLATION)
+        SemanticError(loc, ERROR_S_HLSL_INTERPOLATION, reason);
     else
         SemanticError(loc, ERROR_S_HLSL_SEMANTIC, reason);
     return 0;
@@ -1275,7 +1308,9 @@ static int BindModernVaryingSemantic(HlslHALData *data, SourceLoc *loc,
         isOutput ? HLSL_DIRECTION_OUTPUT : HLSL_DIRECTION_INPUT,
         root, index);
     if (kind == HLSL_SEMANTIC_UNSUPPORTED)
-        return ReportHlslInterfaceError(loc, HLSL_ERROR_SEMANTIC, source);
+        return ReportHlslInterfaceError(loc,
+                                        HLSL_ERROR_SYSTEM_SEMANTIC,
+                                        source);
     slot = HlslModernSemanticSlot(kind, index);
     if (slot >= 0 && !ClaimHlslSemantic(data, symbol, slot, isOutput)) {
         return ReportHlslInterfaceError(loc, HLSL_ERROR_INTERFACE_CONFLICT,
@@ -1495,8 +1530,61 @@ static int ReportHlslFailure(const HlslModule *module,
     case HLSL_ERROR_NAME_COLLISION:
         SemanticError(&failureLoc, ERROR_S_HLSL_NAME_COLLISION, reason);
         break;
+    case HLSL_ERROR_SYSTEM_SEMANTIC:
+        SemanticError(&failureLoc, ERROR_S_HLSL_SYSTEM_SEMANTIC, reason);
+        break;
+    case HLSL_ERROR_INTERPOLATION:
+        SemanticError(&failureLoc, ERROR_S_HLSL_INTERPOLATION, reason);
+        break;
+    case HLSL_ERROR_CBUFFER:
+        if (module->resourceName != NULL)
+            SemanticError(&failureLoc, ERROR_SII_HLSL_CBUFFER_LIMIT,
+                          module->resourceName, module->resourceUsed,
+                          module->resourceAvailable);
+        else
+            SemanticError(&failureLoc, ERROR_S_HLSL_CBUFFER, reason);
+        break;
     case HLSL_ERROR_RESOURCE_PAIR:
-        SemanticError(&failureLoc, ERROR_S_HLSL_RESOURCE_PAIR, reason);
+        if (module->resourceName != NULL)
+            SemanticError(&failureLoc, ERROR_SII_HLSL_RESOURCE_PAIR_LIMIT,
+                          module->resourceName, module->resourceUsed,
+                          module->resourceAvailable);
+        else
+            SemanticError(&failureLoc, ERROR_S_HLSL_RESOURCE_PAIR, reason);
+        break;
+    case HLSL_ERROR_GEOMETRY_LAYOUT:
+        SemanticError(&failureLoc, ERROR_S_HLSL_GEOMETRY_LAYOUT, reason);
+        break;
+    case HLSL_ERROR_GEOMETRY_LIMIT:
+        SemanticError(&failureLoc, ERROR_S_HLSL_GEOMETRY_LIMIT, reason);
+        break;
+    case HLSL_ERROR_PROFILE_STAGE:
+        SemanticError(&failureLoc, ERROR_SS_HLSL_PROFILE_STAGE,
+                      profile->name, reason);
+        break;
+    case HLSL_ERROR_MODEL_CAPABILITY:
+        SemanticError(&failureLoc, ERROR_SS_HLSL_MODEL_CAPABILITY,
+                      HlslShaderModelDiagnosticName(profile), reason);
+        break;
+    case HLSL_ERROR_TEXTURE_STAGE:
+        SemanticError(&failureLoc, ERROR_SS_HLSL_TEXTURE_STAGE,
+                      profile->name, reason);
+        break;
+    case HLSL_ERROR_TEXTURE_SIGNATURE:
+        SemanticError(&failureLoc, ERROR_S_HLSL_TEXTURE_SIGNATURE, reason);
+        break;
+    case HLSL_ERROR_GEOMETRY_MISSING_MAX:
+        SemanticError(&failureLoc, ERROR___HLSL_GEOMETRY_MISSING_MAX);
+        break;
+    case HLSL_ERROR_GEOMETRY_MAX_LIMIT:
+        SemanticError(&failureLoc, ERROR_SII_HLSL_GEOMETRY_MAX_LIMIT,
+                      reason, module->resourceUsed,
+                      module->resourceAvailable);
+        break;
+    case HLSL_ERROR_GEOMETRY_TOTAL_OUTPUT_LIMIT:
+        SemanticError(&failureLoc, ERROR_SII_HLSL_GEOMETRY_TOTAL_LIMIT,
+                      reason, module->resourceUsed,
+                      module->resourceAvailable);
         break;
     case HLSL_ERROR_INVALID_IR:
         InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
@@ -1508,11 +1596,6 @@ static int ReportHlslFailure(const HlslModule *module,
         break;
     case HLSL_ERROR_NONE:
     case HLSL_ERROR_RESOURCE_LIMIT:
-    case HLSL_ERROR_SYSTEM_SEMANTIC:
-    case HLSL_ERROR_INTERPOLATION:
-    case HLSL_ERROR_CBUFFER:
-    case HLSL_ERROR_GEOMETRY_LAYOUT:
-    case HLSL_ERROR_GEOMETRY_LIMIT:
     default:
         InternalError(&failureLoc, ERROR___HLSL_INVALID_IR);
         break;
@@ -1537,31 +1620,64 @@ static int GenerateCode_hlsl(SourceLoc *loc, Scope *fScope, Symbol *program)
     return GenerateCodeIR_hlsl(loc, fScope, program, NULL);
 } // GenerateCode_hlsl
 
+static int ReportHlslPhaseFailure(HlslModule *module,
+    const HlslProfileDesc *profile, const Symbol *program,
+    int errorsBefore)
+{
+    if (GetErrorCount() != errorsBefore)
+        return 0;
+    if (module->errors == 0)
+        HlslFail(module, HLSL_ERROR_INVALID_IR, NULL,
+                 "HLSL backend phase failed without a reason");
+    return ReportHlslFailure(module, profile, program);
+} // ReportHlslPhaseFailure
+
 static int GenerateCodeIR_hlsl(SourceLoc *loc, Scope *fScope,
                                Symbol *program,
                                const CgIRModule *sourceIR)
 {
     HlslModule module;
     const HlslProfileDesc *profile;
+    int errorsBefore;
 
     profile = GetHlslProfile();
     HlslInitModule(&module, profile->stage, HlslCompilerAlloc,
                    CurrentScope->pool);
+    errorsBefore = GetErrorCount();
     if (!((profile->stage == HLSL_STAGE_GEOMETRY && sourceIR != NULL) ?
           HlslLowerProgramWithIR(&module, profile, loc, fScope, program,
                                  sourceIR) :
-          HlslLowerProgram(&module, profile, loc, fScope, program)) ||
-        !HlslBuildEntryWrapper(&module, profile) ||
-        !HlslLegalizeModule(&module, profile) ||
-        !HlslValidateSamplerUsage(&module, profile) ||
-        !HlslAllocateBindings(&module, profile) ||
-        !HlslLegalizeModernTextureAbi(&module, profile) ||
-        !HlslValidateModule(&module, profile))
-    {
-        return ReportHlslFailure(&module, profile, program);
-    }
+          HlslLowerProgram(&module, profile, loc, fScope, program)))
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
+    errorsBefore = GetErrorCount();
+    if (!HlslBuildEntryWrapper(&module, profile))
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
+    errorsBefore = GetErrorCount();
+    if (!HlslLegalizeModule(&module, profile))
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
+    errorsBefore = GetErrorCount();
+    if (!HlslValidateSamplerUsage(&module, profile))
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
+    errorsBefore = GetErrorCount();
+    if (!HlslAllocateBindings(&module, profile))
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
+    errorsBefore = GetErrorCount();
+    if (!HlslLegalizeModernTextureAbi(&module, profile))
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
+    errorsBefore = GetErrorCount();
+    if (!HlslValidateModule(&module, profile))
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
+    errorsBefore = GetErrorCount();
     if (!HlslWriteModule(Cg->options.outfd, &module, profile))
-        return ReportHlslFailure(&module, profile, program);
+        return ReportHlslPhaseFailure(&module, profile, program,
+                                      errorsBefore);
     return 1;
 } // GenerateCodeIR_hlsl
 

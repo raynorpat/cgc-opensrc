@@ -2417,7 +2417,8 @@ function(add_hlsl_geometry_failure_with_note name source code line reason
 endfunction()
 
 add_hlsl_geometry_failure(geometry_missing_vertices
-    tests/hlsl/diagnostics/geometry_missing_vertices.cg 6406 1 "Vertices=N"
+    tests/hlsl/diagnostics/geometry_missing_vertices.cg 6422 1
+    "positive Vertices maximum"
     "POINT;POINT_OUT")
 add_hlsl_geometry_failure(geometry_zero_vertices
     tests/hlsl/diagnostics/geometry_missing_vertices.cg 6300 3
@@ -2504,7 +2505,7 @@ function(add_hlsl_modern_semantic_failure name profile source entry code line re
 endfunction()
 
 add_hlsl_modern_semantic_failure(modern_psize hlslv40
-    tests/hlsl/diagnostics/modern_psize.cg bad_psize 6403 3 PSIZE)
+    tests/hlsl/diagnostics/modern_psize.cg bad_psize 6412 3 PSIZE)
 add_hlsl_modern_semantic_failure(modern_system_conflict hlslv40
     tests/hlsl/diagnostics/modern_system_conflict.cg bad_systems 6404 3
     SV_Position)
@@ -2513,25 +2514,25 @@ add_hlsl_modern_semantic_failure(modern_pixel_user_semantic hlslf40
     6403 1 FOO0)
 add_hlsl_modern_semantic_failure(modern_reserved_semantic hlslv40
     tests/hlsl/diagnostics/modern_reserved_semantic.cg bad_reserved
-    6403 2 SV_Position)
+    6412 2 SV_Position)
 add_hlsl_modern_semantic_failure(modern_packoffset_conflict hlslv40
     tests/hlsl/diagnostics/modern_packoffset_conflict.cg
-    packoffset_conflict 6407 2 "overlap at c3")
+    packoffset_conflict 6414 2 "overlap at c3")
 add_hlsl_modern_semantic_failure(modern_texture_pair_conflict hlslf40
     tests/hlsl/diagnostics/modern_texture_pair_conflict.cg main
     6415 2 cubeImage)
 add_hlsl_modern_semantic_failure(modern_texture_stage hlslv40
     tests/hlsl/diagnostics/modern_texture_stage.cg main
-    6402 4 tex2D)
+    6420 4 tex2D)
 add_hlsl_modern_semantic_failure(modern_texture_unit_range hlslf40
     tests/hlsl/diagnostics/modern_texture_unit_range.cg main
     6415 1 image)
 add_hlsl_modern_semantic_failure(modern_texture_dimension hlslf40
     tests/hlsl/diagnostics/modern_texture_dimension.cg main
-    6409 5 tex2D)
+    6421 5 tex2D)
 add_hlsl_modern_semantic_failure(modern_texture_coordinate hlslf40
     tests/hlsl/diagnostics/fp_sampler_coord_mismatch.cg main
-    6409 4 tex2D)
+    6421 4 tex2D)
 add_hlsl_modern_semantic_failure(modern_derivative_stage_v40 hlslv40
     tests/hlsl/diagnostics/vp_derivative.cg main 6402 3 ddx)
 add_hlsl_modern_semantic_failure(modern_derivative_stage_v50 hlslv50
@@ -2992,7 +2993,7 @@ foreach(model 40 50)
             -DENTRY=main
             "-DPROFILE_OPTIONS=POINT\\;POINT_OUT\\;Vertices=1"
             -DSOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/diagnostics/modern_texture_geometry_stage.cg
-            -DCODE=6402
+            -DCODE=6420
             -DEXPECTED_LINE=6
             -DMESSAGE=tex2D
             "-DCONFIG=$<CONFIG>"
@@ -3047,15 +3048,6 @@ add_test(NAME hlsl_positive_oracle_contract_unit
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_oracle_positive.cmake)
 
 function(add_hlsl_failure name profile source code line reason)
-    set(extra_failure_args)
-    if(ARGC GREATER 6)
-        list(APPEND extra_failure_args -DEXPECTED_ERROR_COUNT=${ARGV6})
-    endif()
-    if(ARGC GREATER 8)
-        list(APPEND extra_failure_args
-            -DSECONDARY_CODE=${ARGV7}
-            "-DSECONDARY_MESSAGE=${ARGV8}")
-    endif()
     add_test(
         NAME ${name}
         COMMAND ${CMAKE_COMMAND}
@@ -3067,7 +3059,6 @@ function(add_hlsl_failure name profile source code line reason)
             -DCODE=${code}
             -DEXPECTED_LINE=${line}
             -DMESSAGE=${reason}
-            ${extra_failure_args}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
     set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
         "${name}|${code}")
@@ -3084,6 +3075,183 @@ function(add_hlsl_limit_success name profile source)
     )
     add_hlsl_validation(${name} ${profile} ${source})
 endfunction()
+
+function(add_hlsl_modern_boundary_success name profile source defines
+        profile_options)
+    set(boundary_define_args)
+    foreach(boundary_define IN LISTS defines)
+        list(APPEND boundary_define_args "-D${boundary_define}")
+    endforeach()
+    set(boundary_profile_args)
+    foreach(boundary_option IN LISTS profile_options)
+        list(APPEND boundary_profile_args -po "${boundary_option}")
+    endforeach()
+    add_test(
+        NAME ${name}
+        COMMAND $<TARGET_FILE:cgc>
+            -quiet
+            -profile ${profile}
+            ${boundary_define_args}
+            ${boundary_profile_args}
+            -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl
+            ${PROJECT_SOURCE_DIR}/${source})
+endfunction()
+
+function(add_hlsl_modern_boundary_failure name profile source code line
+        message defines profile_options)
+    string(REPLACE ";" "\\;" boundary_defines "${defines}")
+    string(REPLACE ";" "\\;" boundary_options "${profile_options}")
+    add_test(
+        NAME ${name}
+        COMMAND ${CMAKE_COMMAND}
+            -DCGC=$<TARGET_FILE:cgc>
+            -DPROFILE=${profile}
+            -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
+            "-DCONFIG=$<CONFIG>"
+            "-DACTUAL=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${name}.hlsl"
+            -DCODE=${code}
+            -DEXPECTED_LINE=${line}
+            "-DMESSAGE=${message}"
+            "-DDEFINES=${boundary_defines}"
+            "-DPROFILE_OPTIONS=${boundary_options}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_failure.cmake)
+    set_property(DIRECTORY APPEND PROPERTY HLSL_FAILURE_CONTRACTS
+        "${name}|${code}")
+endfunction()
+
+foreach(model 40 50)
+    if(model STREQUAL "40")
+        set(vertex_limit 16)
+        set(geometry_input_limit 16)
+        set(stage_input_line 55)
+    else()
+        set(vertex_limit 32)
+        set(geometry_input_limit 32)
+        set(stage_input_line 103)
+    endif()
+    math(EXPR vertex_over "${vertex_limit} + 1")
+    math(EXPR geometry_input_over "${geometry_input_limit} + 1")
+
+    add_hlsl_modern_boundary_success(
+        hlslv${model}_boundary_inputs hlslv${model}
+        tests/hlsl/limits/modern_interface.cg
+        "INTERFACE_COUNT=${vertex_limit}" "")
+    add_hlsl_modern_boundary_failure(
+        hlslv${model}_limit_inputs hlslv${model}
+        tests/hlsl/limits/modern_interface.cg 6408 ${stage_input_line}
+        "inputs limit exceeded: ${vertex_over} used, ${vertex_limit} available"
+        "INTERFACE_COUNT=${vertex_over}" "")
+
+    add_hlsl_modern_boundary_success(
+        hlslv${model}_boundary_outputs hlslv${model}
+        tests/hlsl/limits/modern_interface.cg
+        "INTERFACE_COUNT=${vertex_limit};TEST_VERTEX_OUTPUT=1" "")
+    if(model STREQUAL "40")
+        set(vertex_output_line 156)
+    else()
+        set(vertex_output_line 204)
+    endif()
+    add_hlsl_modern_boundary_failure(
+        hlslv${model}_limit_outputs hlslv${model}
+        tests/hlsl/limits/modern_interface.cg 6408 ${vertex_output_line}
+        "outputs limit exceeded: ${vertex_over} used, ${vertex_limit} available"
+        "INTERFACE_COUNT=${vertex_over};TEST_VERTEX_OUTPUT=1" "")
+
+    add_hlsl_modern_boundary_success(
+        hlslg${model}_boundary_inputs hlslg${model}
+        tests/hlsl/limits/modern_interface.cg
+        "INTERFACE_COUNT=${geometry_input_limit};TEST_GEOMETRY_INPUT=1"
+        "POINT;POINT_OUT;Vertices=1")
+    add_hlsl_modern_boundary_failure(
+        hlslg${model}_limit_inputs hlslg${model}
+        tests/hlsl/limits/modern_interface.cg 6408 ${stage_input_line}
+        "inputs limit exceeded: ${geometry_input_over} used, ${geometry_input_limit} available"
+        "INTERFACE_COUNT=${geometry_input_over};TEST_GEOMETRY_INPUT=1"
+        "POINT;POINT_OUT;Vertices=1")
+
+    add_hlsl_modern_boundary_success(
+        hlslg${model}_boundary_outputs hlslg${model}
+        tests/hlsl/limits/modern_interface.cg
+        "INTERFACE_COUNT=32;TEST_GEOMETRY_OUTPUT=1"
+        "POINT;POINT_OUT;Vertices=1")
+    add_hlsl_modern_boundary_failure(
+        hlslg${model}_limit_outputs hlslg${model}
+        tests/hlsl/limits/modern_interface.cg 6408 204
+        "outputs limit exceeded: 33 used, 32 available"
+        "INTERFACE_COUNT=33;TEST_GEOMETRY_OUTPUT=1"
+        "POINT;POINT_OUT;Vertices=1")
+
+    add_hlsl_modern_boundary_success(
+        hlslf${model}_boundary_inputs hlslf${model}
+        tests/hlsl/limits/modern_interface.cg
+        "INTERFACE_COUNT=32;TEST_PIXEL_INPUT=1" "")
+    add_hlsl_modern_boundary_failure(
+        hlslf${model}_limit_inputs hlslf${model}
+        tests/hlsl/limits/modern_interface.cg 6408 103
+        "inputs limit exceeded: 33 used, 32 available"
+        "INTERFACE_COUNT=33;TEST_PIXEL_INPUT=1" "")
+
+    add_hlsl_modern_boundary_success(
+        hlslf${model}_boundary_outputs hlslf${model}
+        tests/hlsl/limits/modern_interface.cg
+        "INTERFACE_COUNT=8;TEST_PIXEL_OUTPUT=1" "")
+    add_hlsl_modern_boundary_failure(
+        hlslf${model}_limit_outputs hlslf${model}
+        tests/hlsl/limits/modern_interface.cg 6408 248
+        "outputs limit exceeded: 9 used, 8 available"
+        "INTERFACE_COUNT=9;TEST_PIXEL_OUTPUT=1" "")
+
+    add_hlsl_modern_boundary_success(
+        hlslv${model}_boundary_cbuffer hlslv${model}
+        tests/hlsl/limits/modern_resources.cg "CBUFFER_VECTORS=4096" "")
+    add_hlsl_modern_boundary_failure(
+        hlslv${model}_limit_cbuffer hlslv${model}
+        tests/hlsl/limits/modern_resources.cg 6414 5
+        "cbuffer vectors limit exceeded: 4097 used, 4096 available"
+        "CBUFFER_VECTORS=4097" "")
+
+    add_hlsl_modern_boundary_success(
+        hlslf${model}_boundary_sampler_pairs hlslf${model}
+        tests/hlsl/limits/modern_resources.cg
+        "TEST_SAMPLERS=1;SAMPLER_COUNT=16" "")
+    add_hlsl_modern_boundary_failure(
+        hlslf${model}_limit_sampler_pairs hlslf${model}
+        tests/hlsl/limits/modern_resources.cg 6415 26
+        "sampler pairs limit exceeded: 17 used, 16 available"
+        "TEST_SAMPLERS=1;SAMPLER_COUNT=17" "")
+
+    add_hlsl_modern_boundary_success(
+        hlslg${model}_boundary_max_vertices hlslg${model}
+        tests/hlsl/geometry/noop.cg "" "POINT;POINT_OUT;Vertices=1024")
+    add_hlsl_modern_boundary_failure(
+        hlslg${model}_limit_max_vertices hlslg${model}
+        tests/hlsl/geometry/noop.cg 6423 3
+        "maximum vertices limit exceeded: Vertices uses 1025, 1024 available"
+        "" "POINT;POINT_OUT;Vertices=1025")
+
+    add_hlsl_modern_boundary_success(
+        hlslg${model}_boundary_total_output hlslg${model}
+        tests/hlsl/limits/modern_geometry.cg ""
+        "POINT;POINT_OUT;Vertices=256")
+    add_hlsl_modern_boundary_failure(
+        hlslg${model}_limit_total_output hlslg${model}
+        tests/hlsl/limits/modern_geometry.cg 6424 8
+        "total output component limit exceeded: output signature uses 1025, 1024 available"
+        "FIVE_COMPONENT_OUTPUT=1" "POINT;POINT_OUT;Vertices=205")
+
+    add_hlsl_modern_boundary_failure(
+        hlslg${model}_diagnostic_missing_max hlslg${model}
+        tests/hlsl/limits/modern_geometry.cg 6422 8
+        "requires a positive Vertices maximum" "" "POINT;POINT_OUT")
+    add_hlsl_modern_boundary_failure(
+        hlslv${model}_diagnostic_wrong_stage hlslv${model}
+        tests/hlsl/diagnostics/modern_wrong_stage.cg 6402 3
+        "profile does not support operation.*discard" "" "")
+    add_hlsl_modern_boundary_failure(
+        hlslv${model}_diagnostic_unsupported hlslv${model}
+        tests/hlsl/diagnostics/modern_unsupported.cg 6401 1
+        "does not support operation.*static storage" "" "")
+endforeach()
 
 function(add_hlsl_bank_boundary name source expected bank type count)
     add_test(
@@ -3205,8 +3373,7 @@ add_hlsl_failure(hlslv_diagnostic_array_constructor hlslv
     "invalid type in type constructor")
 add_hlsl_failure(hlslv_diagnostic_interface_constructor hlslv
     tests/hlsl/diagnostics/vp_interface_constructor.cg 1066 8
-    "invalid type in type constructor" 2 5503
-    "non-scalar not allowed in vector constructor")
+    "invalid type in type constructor")
 add_hlsl_failure(hlslf_diagnostic_sampler_constructor hlslf
     tests/hlsl/diagnostics/fp_sampler_constructor.cg 5502 4
     "constructed vector requires numeric or bool elements")
