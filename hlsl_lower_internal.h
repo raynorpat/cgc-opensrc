@@ -151,5 +151,9 @@ int HlslLowerIRStatements(HlslLowerContext *context,
                           HlslStmt **list);
 HlslStmt *HlslLowerGeometryOperation(HlslLowerContext *context,
                                      const CgIRStmt *operation);
+const CgIRFunction *HlslFindSourceIRFunction(
+    const HlslLowerContext *context, const Symbol *symbol);
+int HlslCollectGeometryOutput(HlslLowerContext *context);
+int HlslPrepareGeometryFunctions(HlslLowerContext *context);
 
 #endif // __HLSL_LOWER_INTERNAL_H
