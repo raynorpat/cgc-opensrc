@@ -2821,6 +2821,28 @@ set_tests_properties(hlsl_link_interface_mismatch PROPERTIES WILL_FAIL TRUE)
 set_property(TEST hlsl_link_interface_mismatch APPEND PROPERTY
     ENVIRONMENT "HLSL_EXPECT_LINK_MISMATCH=COLOR0 type mismatch")
 
+add_test(
+    NAME hlsl_link_mixed_modern_geometry_profile
+    COMMAND ${CMAKE_COMMAND}
+        -DCGC=$<TARGET_FILE:cgc>
+        -DVERTEX_PROFILE=hlslv
+        -DVERTEX_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/vp_link.cg
+        -DGEOMETRY_PROFILE=hlslg40
+        -DGEOMETRY_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/gp_geometry.cg
+        "-DGEOMETRY_OPTIONS=TRIANGLE\;TRIANGLE_OUT\;Vertices=1"
+        -DPIXEL_PROFILE=hlslf
+        -DFRAGMENT_SOURCE=${PROJECT_SOURCE_DIR}/tests/hlsl/link/fp_link.cg
+        "-DCONFIG=$<CONFIG>"
+        "-DVERTEX_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_geometry_profile.vs.hlsl"
+        "-DGEOMETRY_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_geometry_profile.gs.hlsl"
+        "-DFRAGMENT_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl_link_mixed_modern_geometry_profile.ps.hlsl"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_hlsl_link.cmake)
+set_tests_properties(hlsl_link_mixed_modern_geometry_profile PROPERTIES
+    WILL_FAIL TRUE)
+set_property(TEST hlsl_link_mixed_modern_geometry_profile APPEND PROPERTY
+    ENVIRONMENT
+    "HLSL_EXPECT_LINK_MISMATCH=cannot mix legacy and modern HLSL link profiles")
+
 function(add_hlsl_modern_pipeline name model vertex_source geometry_source
         pixel_source geometry_options)
     if(model STREQUAL "40")
