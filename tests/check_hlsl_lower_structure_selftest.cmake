@@ -148,6 +148,23 @@ ExpectStructureFailure(
 
 file(WRITE "${fixture_root}/CMakeLists.txt" [=[
 set(CGC_HLSL_LOWER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/wrong-directory/hlsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/wrong-directory/hlsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/wrong-directory/hlsl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/wrong-directory/hlsl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/wrong-directory/hlsl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/wrong-directory/hlsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/wrong-directory/hlsl_lower_function.c
+)
+add_executable(cgc
+    ${CGC_HLSL_LOWER_SOURCES}
+)
+]=])
+ExpectStructureFailure(
+    "CGC_HLSL_LOWER_SOURCES must contain hlsl_lower.c exactly once")
+
+file(WRITE "${fixture_root}/CMakeLists.txt" [=[
+set(CGC_HLSL_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_support.c
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_decl.c
