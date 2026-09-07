@@ -1,0 +1,7 @@
+typedef float4 Position;
+
+Position main(Position position : POSITION) : POSITION
+{
+    Position result = position;
+    return result;
+}

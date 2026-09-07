@@ -2254,6 +2254,43 @@ add_hlsl_modern_array_fixture(struct_array
 add_hlsl_modern_array_fixture(array_length
     tests/hlsl/modern/array_length.cg)
 
+function(add_hlsl_modern_frontend_fixture name stage source entry)
+    foreach(model 40 50)
+        if(stage STREQUAL "p")
+            set(profile hlslf${model})
+        else()
+            set(profile hlslv${model})
+        endif()
+        set(test_name modern_${name}_${stage}${model})
+        add_test(
+            NAME ${test_name}
+            COMMAND $<TARGET_FILE:cgc>
+                -quiet
+                -profile ${profile}
+                -entry ${entry}
+                -o ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${test_name}.hlsl
+                ${PROJECT_SOURCE_DIR}/${source})
+        add_hlsl_validation(${test_name} ${profile} ${source} ${entry})
+    endforeach()
+endfunction()
+
+add_hlsl_modern_frontend_fixture(scalar_types v
+    tests/hlsl/modern/scalar_types.cg main)
+add_hlsl_modern_frontend_fixture(compile_time p
+    tests/cg20/types/compile_time.cg main)
+add_hlsl_modern_frontend_fixture(typedef v
+    tests/hlsl/modern/typedef.cg main)
+add_hlsl_modern_frontend_fixture(profile_overload v
+    tests/cg20/overloads/profile.cg mainV)
+add_hlsl_modern_frontend_fixture(default_arguments v
+    tests/cg20/overloads/defaults.cg main)
+add_hlsl_modern_frontend_fixture(literal_suffixes v
+    tests/cg20/literals/suffixes.cg main)
+add_hlsl_modern_frontend_fixture(literal_int_forms p
+    tests/cg20/literals/int_forms.cg main)
+add_hlsl_modern_frontend_fixture(literal_float_forms p
+    tests/cg20/literals/float_forms.cg main)
+
 function(add_hlsl_modern_bitwise name profile expected entry)
     add_test(
         NAME ${name}

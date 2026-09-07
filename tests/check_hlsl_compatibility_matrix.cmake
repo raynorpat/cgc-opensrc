@@ -67,6 +67,13 @@ foreach(line IN LISTS matrix_lines)
         message(FATAL_ERROR
             "matrix row has invalid status '${status}': ${line}")
     endif()
+    if(DEFINED MODE AND MODE STREQUAL "modern" AND
+       NOT status STREQUAL "not exposed" AND
+       NOT status MATCHES "^rejected C" AND
+       test_name MATCHES "^cg20_")
+        message(FATAL_ERROR
+            "modern HLSL claim uses generic-only witness '${test_name}': ${line}")
+    endif()
     list(FIND registered_tests "${test_name}" test_index)
     if(test_index EQUAL -1)
         message(FATAL_ERROR

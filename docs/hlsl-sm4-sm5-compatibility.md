@@ -30,15 +30,15 @@ implementation and one result.
 | Type | `bool` and `bool1` through `bool4` | native | `modern_language_v40` |
 | Type | `int` and `int1` through `int4` | native | `modern_language_v40` |
 | Type | `uint` source spellings and vectors | native | `modern_bitwise_v40` |
-| Type | `cfloat` source spellings | legalized | `cg20_scalar_types` |
-| Type | `cint` source spellings | legalized | `cg20_scalar_types` |
+| Type | `cfloat` source spellings | legalized | `modern_compile_time_p40` |
+| Type | `cint` source spellings | legalized | `modern_compile_time_p40` |
 | Type | `half` source spellings use portable promotion | legalized | `modern_uniform_v40` |
-| Type | `fixed` source spellings use portable promotion | legalized | `cg20_scalar_types` |
-| Type | `double` source spellings do not create an SM5-only contract | legalized | `cg20_scalar_types` |
-| Type | `char` and `uchar` source spellings | legalized | `cg20_scalar_types` |
-| Type | `short` and `ushort` source spellings | legalized | `cg20_scalar_types` |
-| Type | `long` and `ulong` source spellings | legalized | `cg20_scalar_types` |
-| Type | scalar `unsigned` aliases | legalized | `cg20_scalar_types` |
+| Type | `fixed` source spellings use portable promotion | legalized | `modern_scalar_types_v40` |
+| Type | `double` source spellings do not create an SM5-only contract | legalized | `modern_scalar_types_v40` |
+| Type | `char` and `uchar` source spellings | legalized | `modern_scalar_types_v40` |
+| Type | `short` and `ushort` source spellings | legalized | `modern_scalar_types_v40` |
+| Type | `long` and `ulong` source spellings | legalized | `modern_scalar_types_v40` |
+| Type | scalar `unsigned` aliases | legalized | `modern_scalar_types_v40` |
 | Type | square float matrices | native | `modern_uniform_v40` |
 | Type | rectangular matrices | native | `modern_reflection_v40` |
 | Type | explicit `row_major` matrix policy | legalized | `modern_reflection_v50` |
@@ -50,8 +50,8 @@ implementation and one result.
 | Aggregate | tagged structure declaration and value | native | `modern_language_v40` |
 | Aggregate | nested structure members | native | `hlslg40_attrib_array_nested` |
 | Aggregate | sized arrays | native | `modern_language_v50` |
-| Aggregate | multidimensional sized arrays | native | `cg20_arrays_nested_struct` |
-| Aggregate | structure arrays | native | `cg20_arrays_nested_struct` |
+| Aggregate | multidimensional sized arrays | native | `modern_multidimensional_array_v40` |
+| Aggregate | structure arrays | native | `modern_struct_array_v40` |
 | Aggregate | structure and array initialization | legalized | `modern_uniform_v40` |
 | Aggregate | nested output aggregates | legalized | `hlslg40_attrib_array_nested` |
 | Aggregate | aliased aggregate `out` arguments | legalized | `hlslv_aliased_out` |
@@ -66,9 +66,9 @@ implementation and one result.
 | Qualifier | `in` parameter | native | `modern_language_v40` |
 | Qualifier | `out` parameter | legalized | `modern_language_p40` |
 | Qualifier | `inout` parameter | legalized | `modern_language_v50` |
-| Qualifier | `typedef` | legalized | `cg20_type_compile_time` |
+| Qualifier | `typedef` | legalized | `modern_typedef_v40` |
 | Qualifier | `inline` | legalized | `hlslv_inline_helper` |
-| Qualifier | profile-qualified declaration | legalized | `cg20_profile_overload_vertex` |
+| Qualifier | profile-qualified declaration | legalized | `modern_profile_overload_v40` |
 | Qualifier | declarator annotation | legalized | `hlslv_annotation` |
 | Qualifier | source `__internal` function | rejected C5201 | `hlslv_diagnostic_internal_function` |
 | Qualifier | `static` storage | rejected C6401 | `modern_unsupported_operation_v40` |
@@ -80,13 +80,13 @@ implementation and one result.
 | Default | matrix entry default | legalized | `modern_uniform_v40` |
 | Default | array entry default | legalized | `hlslv_defaults` |
 | Default | structure entry default | legalized | `hlslv_defaults` |
-| Default | helper default argument | legalized | `cg20_overload_defaults` |
+| Default | helper default argument | legalized | `modern_default_arguments_v40` |
 | Default | `#pragma bind` numeric default | legalized | `modern_uniform_v40` |
 | Default | `cgc-default` metadata | legalized | `modern_uniform_v50` |
 | Operator | identifiers, scoped names, and parentheses | native | `modern_language_v40` |
-| Operator | integer and floating literals | native | `cg20_literal_suffixes` |
-| Operator | integer literal suffix family | legalized | `cg20_literal_int_forms` |
-| Operator | floating literal suffix family | legalized | `cg20_literal_float_forms` |
+| Operator | integer and floating literals | native | `modern_literal_suffixes_v40` |
+| Operator | integer literal suffix family | legalized | `modern_literal_int_forms_p40` |
+| Operator | floating literal suffix family | legalized | `modern_literal_float_forms_p40` |
 | Operator | scalar and vector constructors | native | `modern_language_v40` |
 | Operator | matrix constructors | native | `modern_uniform_v40` |
 | Operator | structure constructor | rejected C1066 | `hlslv_diagnostic_struct_constructor` |
@@ -95,7 +95,7 @@ implementation and one result.
 | Operator | sampler constructor | rejected C5502 | `hlslf_diagnostic_sampler_constructor` |
 | Operator | member selection and swizzle | native | `modern_language_v40` |
 | Operator | array, vector, and matrix indexing | native | `modern_language_v50` |
-| Operator | `.length` constant fold | legalized | `cg20_array_length` |
+| Operator | `.length` constant fold | legalized | `modern_array_length_v40` |
 | Operator | helper call | native | `modern_language_v40` |
 | Operator | prefix increment and decrement | legalized | `modern_language_v40` |
 | Operator | postfix increment and decrement | legalized | `modern_language_v50` |
@@ -139,8 +139,8 @@ implementation and one result.
 | Function | scalar, vector, matrix, array, and structure parameters | native | `modern_language_v50` |
 | Function | sampler helper parameter | legalized | `modern_texture_p40` |
 | Function | `out` and `inout` copy behavior | legalized | `modern_language_v40` |
-| Function | default parameters | legalized | `cg20_overload_defaults` |
-| Function | profile-qualified overload resolution | legalized | `cg20_profile_overload_vertex` |
+| Function | default parameters | legalized | `modern_default_arguments_v40` |
+| Function | profile-qualified overload resolution | legalized | `modern_profile_overload_v40` |
 | Function | direct recursion | rejected C6401 | `hlslv_recursion` |
 | Function | mutual recursion | rejected C6401 | `hlslv_inline_mutual_recursion` |
 | Function | user helper sharing intrinsic spelling | native | `hlslv_intrinsic_user_same_name` |
@@ -273,6 +273,6 @@ implementation and one result.
 | Validation | exact profile-to-`fxc` target mapping | native | `hlsl_validation_exact_target_contract` |
 | Validation | invalid generated HLSL fails the external harness | native | `hlsl_validator_rejects_invalid_generated_source` |
 | Validation | required `fxc` mode fails clearly when absent | native | `hlsl_require_fxc_missing_sdk` |
-| Validation | optional `fxc` mode omits tests when absent | native | `hlsl_validation_exact_target_contract` |
+| Validation | optional `fxc` mode omits tests when absent | native | `hlsl_optional_fxc_missing_sdk` |
 | Validation | deterministic golden output | native | `modern_position_v50` |
 | Validation | fresh-directory external validation | native | `hlsl_validate_fresh_directory` |
