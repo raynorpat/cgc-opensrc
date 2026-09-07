@@ -4,6 +4,8 @@ if(NOT GLSLANG_VALIDATOR)
         "glslangValidator not found; GLSL source validation tests are disabled")
 endif()
 
+option(CGC_REQUIRE_FXC
+    "Require fxc.exe from the Windows SDK for HLSL source validation" OFF)
 find_program(FXC_EXECUTABLE NAMES fxc fxc.exe)
 if(WIN32 AND NOT FXC_EXECUTABLE)
     file(GLOB FXC_EXECUTABLE_CANDIDATES
@@ -15,8 +17,12 @@ if(WIN32 AND NOT FXC_EXECUTABLE)
             "DirectX HLSL compiler used for SM3 validation" FORCE)
     endif()
 endif()
-if(NOT FXC_EXECUTABLE)
-    message(STATUS "fxc not found; HLSL SM3 validation tests are disabled")
+if(CGC_REQUIRE_FXC AND NOT FXC_EXECUTABLE)
+    message(FATAL_ERROR
+        "CGC_REQUIRE_FXC requires fxc.exe from the Windows SDK")
+elseif(NOT FXC_EXECUTABLE)
+    message(STATUS
+        "fxc not found; external HLSL validation tests are disabled")
 endif()
 
 add_test(NAME hlsl_validation_exact_target_contract
@@ -1988,16 +1994,31 @@ function(add_hlsl_validation_case name profile source packing)
     if(FXC_EXECUTABLE)
         if(profile STREQUAL "hlslv")
             set(target vs_3_0)
+            set(legacy_syntax TRUE)
+        elseif(profile STREQUAL "hlslf")
+            set(target ps_3_0)
+            set(legacy_syntax TRUE)
         elseif(profile STREQUAL "hlslv40")
             set(target vs_4_0)
-        elseif(profile STREQUAL "hlslv50")
-            set(target vs_5_0)
+            set(legacy_syntax FALSE)
+        elseif(profile STREQUAL "hlslg40")
+            set(target gs_4_0)
+            set(legacy_syntax FALSE)
         elseif(profile STREQUAL "hlslf40")
             set(target ps_4_0)
+            set(legacy_syntax FALSE)
+        elseif(profile STREQUAL "hlslv50")
+            set(target vs_5_0)
+            set(legacy_syntax FALSE)
+        elseif(profile STREQUAL "hlslg50")
+            set(target gs_5_0)
+            set(legacy_syntax FALSE)
         elseif(profile STREQUAL "hlslf50")
             set(target ps_5_0)
+            set(legacy_syntax FALSE)
         else()
-            set(target ps_3_0)
+            message(FATAL_ERROR
+                "No exact fxc target is defined for HLSL profile ${profile}")
         endif()
         # These vertex limit fixtures intentionally do not write POSITION;
         # cgc reports only the known C7005 boundary warning for them.
@@ -2010,6 +2031,11 @@ function(add_hlsl_validation_case name profile source packing)
         if(ARGC GREATER 4)
             list(APPEND hlsl_validation_entry -DENTRY=${ARGV4})
         endif()
+        set(hlsl_validation_options)
+        if(ARGC GREATER 5)
+            list(APPEND hlsl_validation_options
+                "-DPROFILE_OPTIONS=${ARGV5}")
+        endif()
         add_test(
             NAME hlsl_validate_${name}
             COMMAND ${CMAKE_COMMAND}
@@ -2017,11 +2043,13 @@ function(add_hlsl_validation_case name profile source packing)
                 -DFXC=${FXC_EXECUTABLE}
                 -DPROFILE=${profile}
                 -DTARGET=${target}
+                -DLEGACY_SYNTAX=${legacy_syntax}
                 -DSOURCE=${PROJECT_SOURCE_DIR}/${source}
                 "-DCONFIG=$<CONFIG>"
                 -DPACKING=${packing}
                 -DSUPPRESS_WARNINGS=${suppress_warnings}
                 ${hlsl_validation_entry}
+                ${hlsl_validation_options}
                 "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.hlsl"
                 "-DBYTECODE=${CMAKE_CURRENT_BINARY_DIR}/validated/$<CONFIG>/${name}.fxc"
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/validate_hlsl.cmake)

@@ -40,7 +40,9 @@ if(NOT validator_source MATCHES
    "set\\(syntax_mode /Gec\\)[^\n]*\n[ \t]*else\\(\\)[^\n]*\n[ \t]*set\\(syntax_mode /Ges\\)")
     message(FATAL_ERROR "validator does not select exact /Gec and /Ges modes")
 endif()
-if(NOT validator_source MATCHES
-   "set\\(fxc_arguments /nologo /WX \\${syntax_mode} /E main /T \"\\${TARGET}\"")
+string(FIND "${validator_source}"
+    [=[set(fxc_arguments /nologo /WX ${syntax_mode} /E main /T "${TARGET}")]=]
+    command_index)
+if(command_index EQUAL -1)
     message(FATAL_ERROR "validator command does not retain the public main entry and exact target")
 endif()

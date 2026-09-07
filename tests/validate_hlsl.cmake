@@ -1,4 +1,4 @@
-foreach(required CGC FXC PROFILE TARGET SOURCE OUTPUT BYTECODE CONFIG)
+foreach(required CGC FXC PROFILE TARGET SOURCE OUTPUT BYTECODE CONFIG LEGACY_SYNTAX)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} must be defined")
     endif()
@@ -16,6 +16,11 @@ if(DEFINED SUPPRESS_WARNINGS AND SUPPRESS_WARNINGS)
 endif()
 if(DEFINED ENTRY AND NOT ENTRY STREQUAL "")
     list(APPEND cgc_arguments -entry "${ENTRY}")
+endif()
+if(DEFINED PROFILE_OPTIONS AND NOT PROFILE_OPTIONS STREQUAL "")
+    foreach(profile_option IN LISTS PROFILE_OPTIONS)
+        list(APPEND cgc_arguments -po "${profile_option}")
+    endforeach()
 endif()
 list(APPEND cgc_arguments -profile "${PROFILE}" -o "${OUTPUT}" "${SOURCE}")
 execute_process(
@@ -40,8 +45,13 @@ endif()
 
 # /Ges rejects the legal legacy sampler1D/sampler2D/sampler3D/samplerCUBE
 # syntax required by DirectX 9 (X3086).  /Gec keeps that DX9-compatible
-# syntax while /WX still makes every validator warning fatal.
-set(fxc_arguments /nologo /Gec /WX /T "${TARGET}" /E main)
+# syntax; modern profiles use strict /Ges.  /WX keeps every warning fatal.
+if(LEGACY_SYNTAX)
+    set(syntax_mode /Gec)
+else()
+    set(syntax_mode /Ges)
+endif()
+set(fxc_arguments /nologo /WX ${syntax_mode} /E main /T "${TARGET}")
 if(DEFINED PACKING AND NOT PACKING STREQUAL "")
     list(APPEND fxc_arguments "${PACKING}")
 endif()
