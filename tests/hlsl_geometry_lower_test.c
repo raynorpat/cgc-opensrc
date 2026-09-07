@@ -408,7 +408,8 @@ static HlslStmt *AssertIndexedSwizzleStore(HlslStmt *statement,
 static HlslStmt *AssertDeclarationInitializers(HlslStmt *statement,
                                                const Symbol *scalar,
                                                const Symbol *aggregate,
-                                               const Symbol *index)
+                                               const Symbol *index,
+                                               const Symbol *condition)
 {
     const HlslExpr *assignment;
 
@@ -427,6 +428,12 @@ static HlslStmt *AssertDeclarationInitializers(HlslStmt *statement,
     assignment = statement->u.expression;
     assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
            assignment->u.binary.left->u.symbol->identity == index);
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
+           assignment->u.binary.left->u.symbol->identity == condition &&
+           assignment->u.binary.right->kind == HLSL_EXPR_CONSTRUCT);
     return statement->next;
 }
 
@@ -976,7 +983,8 @@ int main(int argc, char **argv)
            CountIRKind(sourceEntry->body, CGIR_STMT_GEOMETRY_RESTART));
 
     hIf = AssertDeclarationInitializers(entry->body, valueSymbol,
-                                        initializedSymbol, indexSymbol);
+                                        initializedSymbol, indexSymbol,
+                                        chooseSymbol);
     hIf = AssertIndexedSwizzleStore(hIf, next, valuesSymbol,
                                     valueSymbol);
     hIf = AssertVectorConditional(hIf, selectedSymbol);
@@ -1043,6 +1051,7 @@ int main(int argc, char **argv)
     assert(append->loc.file == emitLoc.file &&
            append->loc.line == emitLoc.line);
     assert(append->u.append.replay == entry->geometryFlatState);
+    assert(HlslBuildEntryWrapper(&target, &HlslProfile_hlslg40));
     assert(HlslLegalizeModule(&target, &HlslProfile_hlslg40));
     assert(target.wrapper != NULL &&
            target.wrapper->geometryFlatState != NULL &&
