@@ -690,8 +690,10 @@ static int HlslResolveBuiltinSignature(HlslLowerContext *context,
         }
         if (otherStage != HLSL_BUILTIN_NONE) {
             HlslLowerFailure(context,
-                HlslBuiltinIsTexture(otherStage) ? HLSL_ERROR_SAMPLER :
-                                                   HLSL_ERROR_STAGE_OPERATION,
+                HlslBuiltinIsTexture(otherStage) &&
+                !HlslProfileHasCapability(context->profile,
+                                           HLSL_CAP_TEXTURE_METHODS) ?
+                    HLSL_ERROR_SAMPLER : HLSL_ERROR_STAGE_OPERATION,
                 signature->name, callLoc);
         } else {
             HlslLowerFailure(context,
@@ -3446,10 +3448,28 @@ static HlslExpr *HlslLowerIRCall(HlslLowerContext *context,
         return NULL;
     }
     if (builtinStatus > 0) {
-        if (HlslBuiltinIsTexture(builtin)) {
-            HlslLowerFailure(context, HLSL_ERROR_SAMPLER,
-                             HlslBuiltinSpelling(builtin), &source->loc);
-            return NULL;
+        HlslTextureForm textureForm;
+        HlslExpr *coordinate;
+        HlslExpr *coordinateNext;
+
+        textureForm = HlslBuiltinTextureForm(builtin);
+        if (context->profile->resourcePolicy ==
+                HLSL_RESOURCE_POLICY_MODERN &&
+            (textureForm == HLSL_TEXTURE_PROJECTED ||
+             textureForm == HLSL_TEXTURE_BIAS ||
+             textureForm == HLSL_TEXTURE_LOD))
+        {
+            coordinate = target->u.call.arguments != NULL ?
+                target->u.call.arguments->next : NULL;
+            if (coordinate == NULL)
+                return NULL;
+            coordinateNext = coordinate->next;
+            coordinate->next = NULL;
+            coordinate = HlslCaptureValue(context, prefix, coordinate);
+            if (coordinate == NULL)
+                return NULL;
+            coordinate->next = coordinateNext;
+            target->u.call.arguments->next = coordinate;
         }
         lowering = HlslBuiltinLoweringKind(builtin);
         if (lowering == HLSL_BUILTIN_LOWER_NATIVE) {
@@ -3486,17 +3506,15 @@ static HlslExpr *HlslLowerIRIntrinsic(HlslLowerContext *context,
     HlslType builtinResult;
     HlslType builtinParams[HLSL_MAX_BUILTIN_ARGS];
     int builtinParamCount;
+    HlslTextureForm textureForm;
+    HlslExpr *coordinate;
+    HlslExpr *coordinateNext;
 
     if (source->u.intrinsicCall.signature == NULL ||
         HlslResolveBuiltinSignature(context,
             source->u.intrinsicCall.signature, &source->loc, &builtin,
             &builtinResult, builtinParams, &builtinParamCount) <= 0)
     {
-        return NULL;
-    }
-    if (HlslBuiltinIsTexture(builtin)) {
-        HlslLowerFailure(context, HLSL_ERROR_SAMPLER,
-                         HlslBuiltinSpelling(builtin), &source->loc);
         return NULL;
     }
     target = HlslNewSourceExpr(context, HLSL_EXPR_CALL, *type);
@@ -3509,6 +3527,24 @@ static HlslExpr *HlslLowerIRIntrinsic(HlslLowerContext *context,
         target->u.call.arguments == NULL)
     {
         return NULL;
+    }
+    textureForm = HlslBuiltinTextureForm(builtin);
+    if (context->profile->resourcePolicy == HLSL_RESOURCE_POLICY_MODERN &&
+        (textureForm == HLSL_TEXTURE_PROJECTED ||
+         textureForm == HLSL_TEXTURE_BIAS ||
+         textureForm == HLSL_TEXTURE_LOD))
+    {
+        coordinate = target->u.call.arguments != NULL ?
+            target->u.call.arguments->next : NULL;
+        if (coordinate == NULL)
+            return NULL;
+        coordinateNext = coordinate->next;
+        coordinate->next = NULL;
+        coordinate = HlslCaptureValue(context, prefix, coordinate);
+        if (coordinate == NULL)
+            return NULL;
+        coordinate->next = coordinateNext;
+        target->u.call.arguments->next = coordinate;
     }
     lowering = HlslBuiltinLoweringKind(builtin);
     if (lowering == HLSL_BUILTIN_LOWER_NATIVE) {

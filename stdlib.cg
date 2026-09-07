@@ -28,10 +28,16 @@
 #ifdef PROFILE_HLSLV40
 #define PROFILE_HLSL 1
 #endif
+#ifdef PROFILE_HLSLG40
+#define PROFILE_HLSL 1
+#endif
 #ifdef PROFILE_HLSLF40
 #define PROFILE_HLSL 1
 #endif
 #ifdef PROFILE_HLSLV50
+#define PROFILE_HLSL 1
+#endif
+#ifdef PROFILE_HLSLG50
 #define PROFILE_HLSL 1
 #endif
 #ifdef PROFILE_HLSLF50

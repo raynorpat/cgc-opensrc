@@ -2894,7 +2894,6 @@ foreach(model 40 50)
                  gs_ps_interpolation)
         set(mismatch_test hlsl_${model_name}_pipeline_${kind}_mismatch)
         set_tests_properties(${mismatch_test} PROPERTIES WILL_FAIL TRUE)
-        string(REPLACE "_" "->" boundary "${kind}")
     endforeach()
     set_property(TEST hlsl_${model_name}_pipeline_vs_gs_type_mismatch
         APPEND PROPERTY ENVIRONMENT

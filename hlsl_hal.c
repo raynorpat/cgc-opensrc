@@ -307,7 +307,12 @@ int HlslProfileAllowsBuiltin(const HlslProfileDesc *profile,
     if (profile->stage == HLSL_STAGE_GEOMETRY &&
         HlslBuiltinIsTexture(builtin))
     {
-        return 0;
+        HlslTextureForm form;
+
+        form = HlslBuiltinTextureForm(builtin);
+        return HlslProfileHasCapability(profile, HLSL_CAP_TEXTURE_METHODS) &&
+               (form == HLSL_TEXTURE_LOD ||
+                form == HLSL_TEXTURE_GRADIENT);
     }
     if (profile->model == HLSL_SHADER_MODEL_3 &&
         profile->stage != HLSL_STAGE_PIXEL &&

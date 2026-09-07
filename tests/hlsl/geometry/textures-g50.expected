@@ -1,0 +1,54 @@
+// profile hlslg50
+// target gs_5_0
+// cgc-bind interface out POSITION float4 SV_Position SV_Position system default
+// cgc-bind interface out TEXCOORD0 float2 TEXCOORD0 TEXCOORD0 user default
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+// cgc-bind interface in uv float2 TEXCOORD0 TEXCOORD0 user default
+
+// cgc-bind sampler image sampler2D t0 s0
+
+Texture2D<float4> cgc_texture_image : register(t0);
+SamplerState cgc_sampler_image : register(s0);
+
+struct cg_GeometryOut
+{
+    float4 position : SV_Position;
+    float2 texcoord0 : TEXCOORD0;
+};
+
+struct cg_GeometryIn
+{
+    float4 position : SV_Position;
+    float2 uv : TEXCOORD0;
+};
+
+void cg_entry(float4 position[1], float2 uv[1], Texture2D<float4> cgc_texture_image, SamplerState cgc_sampler_image, inout PointStream<cg_GeometryOut> cgc_stream, inout cg_GeometryOut cgc_output)
+{
+    float4 cg_sample;
+    float4 temp1;
+    float4 temp2;
+    float2 temp3;
+    temp1 = float4(uv[0].x, uv[0].y, 0.0, 0.0);
+    cg_sample = cgc_texture_image.SampleLevel(cgc_sampler_image, temp1.xy, temp1.w);
+    cg_sample += cgc_texture_image.SampleGrad(cgc_sampler_image, uv[0], float2(1.0, 0.0), float2(0.0, 1.0));
+    {
+        temp2 = position[0] + cg_sample * 0.0;
+        temp3 = uv[0];
+        cgc_output = (cg_GeometryOut) 0;
+        cgc_output.position = temp2;
+        cgc_output.texcoord0 = temp3;
+        cgc_stream.Append(cgc_output);
+    }
+}
+
+[maxvertexcount(1)]
+void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_stream)
+{
+    float4 position[1];
+    float2 uv[1];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
+    position[0] = input[0].position;
+    uv[0] = input[0].uv;
+    cg_entry(position, uv, cgc_texture_image, cgc_sampler_image, cgc_stream, cgc_output);
+    return;
+}
