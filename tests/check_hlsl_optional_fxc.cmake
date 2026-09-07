@@ -49,3 +49,17 @@ if(list_stdout MATCHES "hlsl_validator_rejects_invalid_generated_source")
     message(FATAL_ERROR
         "invalid-HLSL fxc harness test was registered without fxc.exe:\n${list_stdout}")
 endif()
+
+execute_process(
+    COMMAND "${CMAKE_CTEST_COMMAND}"
+        --test-dir "${BUILD_DIR}"
+        -C Release
+        -R "^hlsl_sm4_sm5_compatibility_matrix$"
+        --output-on-failure
+    RESULT_VARIABLE matrix_result
+    OUTPUT_VARIABLE matrix_stdout
+    ERROR_VARIABLE matrix_stderr)
+if(NOT matrix_result EQUAL 0)
+    message(FATAL_ERROR
+        "modern HLSL matrix failed without fxc.exe:\n${matrix_stdout}${matrix_stderr}")
+endif()
