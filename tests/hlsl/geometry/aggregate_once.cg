@@ -1,0 +1,23 @@
+// An aggregate-returning call evaluates its root exactly once.
+
+struct Pair {
+    float values[2];
+};
+
+Pair makePair(float value)
+{
+    Pair result;
+    result.values[0] = value + 1.0;
+    result.values[1] = value + 2.0;
+    return result;
+}
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    float value = 0.0;
+    Pair pair;
+    pair = makePair(value);
+    emitVertex(position[0] +
+               float4(pair.values[0], pair.values[1], value, 0.0)
+               : POSITION);
+}

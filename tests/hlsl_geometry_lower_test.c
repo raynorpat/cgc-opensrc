@@ -117,24 +117,38 @@ static Symbol *NewTestSymbol(symbolkind kind, const char *name, Type *type,
     return symbol;
 }
 
-static CgIRExpr *NewVector(CgIRModule *module, Type *scalar, Type *vector,
-                           SourceLoc loc, float value)
+static CgIRExpr *NewOrderedVector(CgIRModule *module, Type *scalar,
+                                  Type *vector, SourceLoc loc,
+                                  Symbol *bump, Symbol *value)
 {
-    CgNumericValue number;
+    CgNumericValue zero;
     CgIRExpr *arguments;
+    CgIRExpr *callArguments;
     CgIRExpr *item;
     int i;
 
-    memset(&number, 0, sizeof(number));
-    number.kind = CG_SCALAR_FLOAT;
-    number.value.f = value;
     arguments = NULL;
-    for (i = 0; i < 4; i++) {
-        item = CgIRNewConstant(module, scalar, &loc, &number);
+    for (i = 0; i < 2; i++) {
+        callArguments = CgIRNewSymbol(module, scalar, &loc, value);
+        assert(callArguments != NULL);
+        callArguments->isLvalue = 1;
+        item = CgIRNewCall(module, scalar, &loc, bump, callArguments);
         assert(item != NULL);
+        item->sideEffects = 1;
         CgIRAppendExpr(&arguments, item);
     }
-    return CgIRNewConstruct(module, vector, &loc, arguments);
+    item = CgIRNewSymbol(module, scalar, &loc, value);
+    assert(item != NULL);
+    CgIRAppendExpr(&arguments, item);
+    memset(&zero, 0, sizeof(zero));
+    zero.kind = CG_SCALAR_FLOAT;
+    item = CgIRNewConstant(module, scalar, &loc, &zero);
+    assert(item != NULL);
+    CgIRAppendExpr(&arguments, item);
+    item = CgIRNewConstruct(module, vector, &loc, arguments);
+    assert(item != NULL);
+    item->sideEffects = 1;
+    return item;
 }
 
 static int CountKind(const HlslStmt *statement, HlslStmtKind kind)
@@ -222,10 +236,60 @@ static HlslStmt *FindAssignment(const HlslStmt *statement,
     return NULL;
 }
 
+static void AssertOrderedBundlePrefix(const HlslStmt *statement,
+                                      const Symbol *bump,
+                                      const Symbol *value)
+{
+    const HlslExpr *assignment;
+    const HlslExpr *arguments;
+    const HlslDecl *first;
+    const HlslDecl *second;
+
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.op == HLSL_OP_ASSIGN);
+    assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL);
+    first = assignment->u.binary.left->u.symbol;
+    assert(assignment->u.binary.right->kind == HLSL_EXPR_CALL &&
+           assignment->u.binary.right->u.call.function != NULL &&
+           assignment->u.binary.right->u.call.function->identity == bump);
+
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.op == HLSL_OP_ASSIGN);
+    assert(assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL);
+    second = assignment->u.binary.left->u.symbol;
+    assert(assignment->u.binary.right->kind == HLSL_EXPR_CALL &&
+           assignment->u.binary.right->u.call.function != NULL &&
+           assignment->u.binary.right->u.call.function->identity == bump);
+
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.op == HLSL_OP_ASSIGN &&
+           assignment->u.binary.right->kind == HLSL_EXPR_CONSTRUCT);
+    arguments = assignment->u.binary.right->u.construct.arguments;
+    assert(arguments != NULL && arguments->kind == HLSL_EXPR_SYMBOL &&
+           arguments->u.symbol == first);
+    arguments = arguments->next;
+    assert(arguments != NULL && arguments->kind == HLSL_EXPR_SYMBOL &&
+           arguments->u.symbol == second);
+    arguments = arguments->next;
+    assert(arguments != NULL && arguments->kind == HLSL_EXPR_SYMBOL &&
+           arguments->u.symbol->identity == value);
+}
+
 int main(int argc, char **argv)
 {
     CgIRModule source;
     CgIRFunction *sourceEntry;
+    CgIRFunction *sourceBump;
+    CgIRDecl *sourceValue;
+    CgIRDecl *sourceBumpValue;
     CgIRGeometryInfo geometry;
     CgIRGeometryValue *value;
     CgIRStmt *root;
@@ -237,6 +301,7 @@ int main(int argc, char **argv)
     CgIRStmt *operation;
     CgIRExpr *condition;
     CgNumericValue boolean;
+    CgNumericValue initialValue;
     CgIRVerifyDiagnostic diagnostic;
     HlslModule target;
     HlslFunction *entry;
@@ -249,17 +314,25 @@ int main(int argc, char **argv)
     HlslStmt *assignment;
     CgStruct compiler;
     Type functionType;
+    Type bumpFunctionType;
+    Type inoutFloatType;
+    TypeList bumpParameterType;
     Type *floatType;
     Type *float4Type;
     Type *boolType;
     Symbol *program;
+    Symbol *bump;
+    Symbol *valueSymbol;
+    Symbol *bumpValueSymbol;
     Scope locals;
+    Scope bumpLocals;
     SourceLoc entryLoc;
     SourceLoc ifLoc;
     SourceLoc flatLoc;
     SourceLoc restartLoc;
     SourceLoc whileLoc;
     SourceLoc emitLoc;
+    SourceLoc bumpLoc;
 
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
         int assertionsActive;
@@ -292,6 +365,7 @@ int main(int argc, char **argv)
     memset(&restartLoc, 0, sizeof(restartLoc)); restartLoc.file = 41; restartLoc.line = 10;
     memset(&whileLoc, 0, sizeof(whileLoc)); whileLoc.file = 41; whileLoc.line = 12;
     memset(&emitLoc, 0, sizeof(emitLoc)); emitLoc.file = 41; emitLoc.line = 13;
+    memset(&bumpLoc, 0, sizeof(bumpLoc)); bumpLoc.file = 41; bumpLoc.line = 2;
 
     memset(&functionType, 0, sizeof(functionType));
     functionType.fun.properties = TYPE_CATEGORY_FUNCTION | TYPE_MISC_PROGRAM;
@@ -301,6 +375,25 @@ int main(int argc, char **argv)
     program->properties |= SYMB_IS_DEFINED;
     memset(&locals, 0, sizeof(locals));
     program->details.fun.locals = &locals;
+
+    inoutFloatType = *floatType;
+    inoutFloatType.properties |= TYPE_QUALIFIER_INOUT;
+    memset(&bumpParameterType, 0, sizeof(bumpParameterType));
+    bumpParameterType.type = &inoutFloatType;
+    memset(&bumpFunctionType, 0, sizeof(bumpFunctionType));
+    bumpFunctionType.fun.properties = TYPE_CATEGORY_FUNCTION;
+    bumpFunctionType.fun.rettype = floatType;
+    bumpFunctionType.fun.paramtypes = &bumpParameterType;
+    bump = NewTestSymbol(FUNCTION_S, "bump", &bumpFunctionType, bumpLoc);
+    valueSymbol = NewTestSymbol(VARIABLE_S, "value", floatType, entryLoc);
+    bumpValueSymbol = NewTestSymbol(VARIABLE_S, "value", &inoutFloatType,
+                                    bumpLoc);
+    assert(bump != NULL && valueSymbol != NULL && bumpValueSymbol != NULL);
+    bump->properties |= SYMB_IS_DEFINED;
+    bump->details.fun.params = bumpValueSymbol;
+    memset(&bumpLocals, 0, sizeof(bumpLocals));
+    bump->details.fun.locals = &bumpLocals;
+    locals.symbols = valueSymbol;
 
     CgIRInitModule(&source, TestAlloc, NULL);
     assert(CgIRSetStage(&source, CGIR_STAGE_GEOMETRY));
@@ -320,6 +413,26 @@ int main(int argc, char **argv)
     source.entry = sourceEntry;
     CgIRAppendFunction(&source.functions, sourceEntry);
 
+    sourceBump = CgIRNewFunction(&source, bump, floatType, &bumpLoc);
+    sourceBumpValue = CgIRNewDecl(&source, bumpValueSymbol,
+        bumpValueSymbol->name, &inoutFloatType, CGIR_STORAGE_NONE,
+        CGIR_DOMAIN_NONE, 0, NULL, &bumpLoc);
+    assert(sourceBump != NULL && sourceBumpValue != NULL);
+    CgIRAppendDecl(&sourceBump->parameters, sourceBumpValue);
+    sourceBump->body = CgIRNewReturnStmt(&source, &bumpLoc,
+        CgIRNewSymbol(&source, floatType, &bumpLoc, bumpValueSymbol));
+    assert(sourceBump->body != NULL);
+    CgIRAppendFunction(&source.functions, sourceBump);
+
+    memset(&initialValue, 0, sizeof(initialValue));
+    initialValue.kind = CG_SCALAR_FLOAT;
+    sourceValue = CgIRNewDecl(&source, valueSymbol, valueSymbol->name,
+        floatType, CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0,
+        CgIRNewConstant(&source, floatType, &entryLoc, &initialValue),
+        &entryLoc);
+    assert(sourceValue != NULL && sourceValue->initializer != NULL);
+    CgIRAppendDecl(&sourceEntry->locals, sourceValue);
+
     memset(&boolean, 0, sizeof(boolean));
     boolean.kind = CG_SCALAR_BOOL;
     boolean.value.i = 1;
@@ -329,7 +442,8 @@ int main(int argc, char **argv)
     value = CgIRNewGeometryValue(&source,
         LookUpAddString(atable, "COLOR0"),
         LookUpAddString(atable, "COLOR0"), float4Type,
-        NewVector(&source, floatType, float4Type, flatLoc, 0.5f), flatLoc);
+        NewOrderedVector(&source, floatType, float4Type, flatLoc,
+                         bump, valueSymbol), flatLoc);
     operation = CgIRNewGeometryFlat(&source, value, flatLoc);
     assert(condition != NULL && trueBlock != NULL && falseBlock != NULL);
     assert(operation != NULL);
@@ -346,7 +460,8 @@ int main(int argc, char **argv)
     value = CgIRNewGeometryValue(&source,
         LookUpAddString(atable, "POSITION"),
         LookUpAddString(atable, "POSITION"), float4Type,
-        NewVector(&source, floatType, float4Type, emitLoc, 1.0f), emitLoc);
+        NewOrderedVector(&source, floatType, float4Type, emitLoc,
+                         bump, valueSymbol), emitLoc);
     operation = CgIRNewGeometryEmit(&source, value, emitLoc);
     assert(condition != NULL && whileBlock != NULL && operation != NULL);
     CgIRAppendStmt(&whileBlock->u.block, operation);
@@ -357,6 +472,8 @@ int main(int argc, char **argv)
 
     root = CgIRNewBlockStmt(&source, &entryLoc);
     assert(root != NULL);
+    CgIRAppendStmt(&root->u.block,
+                   CgIRNewDeclStmt(&source, &entryLoc, sourceValue));
     CgIRAppendStmt(&root->u.block, ifStmt);
     CgIRAppendStmt(&root->u.block, whileStmt);
     sourceEntry->body = root;
@@ -397,6 +514,7 @@ int main(int argc, char **argv)
     assert(flatBlock != NULL && flatBlock->kind == HLSL_STMT_BLOCK);
     assert(flatBlock->loc.file == flatLoc.file &&
            flatBlock->loc.line == flatLoc.line);
+    AssertOrderedBundlePrefix(flatBlock->u.block, bump, valueSymbol);
     assignment = FindAssignment(flatBlock->u.block,
                                 entry->geometryFlatState->shadow);
     assert(assignment != NULL && assignment->kind == HLSL_STMT_EXPRESSION);
@@ -427,6 +545,7 @@ int main(int argc, char **argv)
     assert(emitBlock != NULL && emitBlock->kind == HLSL_STMT_BLOCK);
     assert(emitBlock->loc.file == emitLoc.file &&
            emitBlock->loc.line == emitLoc.line);
+    AssertOrderedBundlePrefix(emitBlock->u.block, bump, valueSymbol);
     append = emitBlock->u.block;
     while (append != NULL && append->kind != HLSL_STMT_APPEND)
         append = append->next;

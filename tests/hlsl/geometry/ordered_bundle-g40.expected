@@ -1,0 +1,76 @@
+// profile hlslg40
+// target gs_4_0
+// cgc-bind interface out POSITION float4 SV_Position SV_Position system default
+// cgc-bind interface out COLOR0 float4 COLOR0 COLOR0 user nointerpolation
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+
+struct cg_GeometryOut
+{
+    float4 position : SV_Position;
+    nointerpolation float4 color0 : COLOR0;
+};
+
+struct cg_GeometryIn
+{
+    float4 position : SV_Position;
+};
+
+float cg_bump(inout float value)
+{
+    value = value + (float) 1.0;
+    return value;
+}
+
+void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, inout cg_GeometryOut cgc_output, inout float4 cgc_flat_color0, inout bool cgc_flat_color0_defined)
+{
+    float value;
+    float temp1;
+    float temp2;
+    float4 temp3;
+    float4 temp4;
+    float temp5;
+    float temp6;
+    float4 temp7;
+    float4 temp8;
+    value = 0.0;
+    {
+        temp3 = position[0];
+        temp2 = cg_bump(value);
+        temp1 = cg_bump(value);
+        temp4 = temp3 + float4(temp2, temp1, value, 0.0);
+        cgc_output.position = temp4;
+        if (cgc_flat_color0_defined)
+        {
+            cgc_output.color0 = cgc_flat_color0;
+        }
+        cgc_stream.Append(cgc_output);
+    }
+    {
+        temp6 = cg_bump(value);
+        temp5 = cg_bump(value);
+        temp7 = float4(temp6, temp5, value, 0.0);
+        cgc_flat_color0 = temp7;
+        cgc_flat_color0_defined = true;
+    }
+    {
+        temp8 = position[0];
+        cgc_output.position = temp8;
+        if (cgc_flat_color0_defined)
+        {
+            cgc_output.color0 = cgc_flat_color0;
+        }
+        cgc_stream.Append(cgc_output);
+    }
+}
+
+[maxvertexcount(2)]
+void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_stream)
+{
+    float4 position[1];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
+    float4 cgc_flat_color0;
+    bool cgc_flat_color0_defined = false;
+    position[0] = input[0].position;
+    cg_entry(position, cgc_stream, cgc_output, cgc_flat_color0, cgc_flat_color0_defined);
+    return;
+}

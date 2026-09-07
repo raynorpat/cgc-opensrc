@@ -1,0 +1,16 @@
+// Side effects and later reads inside one geometry value keep Cg order.
+
+float bump(inout float value)
+{
+    value = value + 1.0;
+    return value;
+}
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    float value = 0.0;
+    emitVertex(position[0] +
+               float4(bump(value), bump(value), value, 0.0) : POSITION);
+    flatAttrib(float4(bump(value), bump(value), value, 0.0) : COLOR0);
+    emitVertex(position[0] : POSITION);
+}

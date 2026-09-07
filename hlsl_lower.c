@@ -2170,6 +2170,17 @@ static int HlslTypeNeedsRecursiveCopy(const HlslType *type)
     return 0;
 } // HlslTypeNeedsRecursiveCopy
 
+static int HlslIsStableAggregateSource(const HlslExpr *expression)
+{
+    if (expression == NULL)
+        return 0;
+    if (expression->kind == HLSL_EXPR_SYMBOL)
+        return 1;
+    if (expression->kind == HLSL_EXPR_MEMBER)
+        return HlslIsStableAggregateSource(expression->u.member.object);
+    return 0;
+} // HlslIsStableAggregateSource
+
 static int HlslIsNativeAggregateTempAssignment(const expr *source)
 {
     const expr *left;
@@ -3296,22 +3307,75 @@ static HlslOperator HlslIROperator(CgIROp op)
     return HLSL_OP_NONE;
 } // HlslIROperator
 
+/*
+ * HlslLowerIRExprList() - Lower a CgIR argument/constructor list while
+ *         making its left-to-right evaluation explicit.  A value is captured
+ *         before any later prefix or side effect can observe changed state;
+ *         writable actuals keep their lvalue and only stabilize its address.
+ */
+
 static HlslExpr *HlslLowerIRExprList(HlslLowerContext *context,
                                       const CgIRExpr *source,
-                                      HlslStmt **prefix)
+                                      HlslStmt **prefix,
+                                      const Symbol *formal,
+                                      const TypeList *formalType)
 {
     HlslExpr *head;
     HlslExpr *item;
+    HlslExpr *rest;
+    HlslStmt *itemPrefix;
+    HlslStmt *restPrefix;
+    const CgIRExpr *cursor;
+    int laterSideEffects;
+    int preserveLvalue;
 
-    head = NULL;
-    for (; source != NULL; source = source->next) {
-        item = HlslLowerIRExpr(context, source, prefix,
-                               HLSL_VALUE_RVALUE);
-        if (item == NULL)
+    if (source == NULL)
+        return NULL;
+    itemPrefix = NULL;
+    restPrefix = NULL;
+    preserveLvalue =
+        (formal != NULL &&
+         (GetQualifiers(formal->type) & TYPE_QUALIFIER_OUT)) ||
+        (formalType != NULL &&
+         (GetQualifiers(formalType->type) & TYPE_QUALIFIER_OUT));
+    item = HlslLowerIRExpr(context, source, &itemPrefix,
+        preserveLvalue ? HLSL_VALUE_LVALUE : HLSL_VALUE_RVALUE);
+    if (item == NULL)
+        return NULL;
+    rest = NULL;
+    if (source->next != NULL) {
+        rest = HlslLowerIRExprList(context, source->next, &restPrefix,
+            formal != NULL ? formal->next : NULL,
+            formalType != NULL ? formalType->next : NULL);
+        if (rest == NULL)
             return NULL;
-        item->next = NULL;
-        HlslAppendExpr(&head, item);
     }
+    HlslAppendStmt(prefix, itemPrefix);
+    if (source->next != NULL) {
+        laterSideEffects = 0;
+        for (cursor = source->next; cursor != NULL; cursor = cursor->next) {
+            if (cursor->sideEffects) {
+                laterSideEffects = 1;
+                break;
+            }
+        }
+        if (preserveLvalue &&
+            (restPrefix != NULL || laterSideEffects))
+        {
+            if (!HlslStabilizeLvalueAddress(context, prefix, item))
+                return NULL;
+        } else if (!preserveLvalue &&
+                   (source->sideEffects || restPrefix != NULL ||
+                    laterSideEffects))
+        {
+            item = HlslCaptureValue(context, prefix, item);
+            if (item == NULL)
+                return NULL;
+        }
+    }
+    HlslAppendStmt(prefix, restPrefix);
+    head = item;
+    HlslAppendExpr(&head, rest);
     return head;
 } // HlslLowerIRExprList
 
@@ -3374,7 +3438,8 @@ static HlslExpr *HlslLowerIRCall(HlslLowerContext *context,
     if (target == NULL)
         return NULL;
     target->u.call.arguments = HlslLowerIRExprList(
-        context, source->u.call.arguments, prefix);
+        context, source->u.call.arguments, prefix,
+        symbol != NULL ? symbol->details.fun.params : NULL, NULL);
     if (source->u.call.arguments != NULL &&
         target->u.call.arguments == NULL)
     {
@@ -3438,7 +3503,8 @@ static HlslExpr *HlslLowerIRIntrinsic(HlslLowerContext *context,
     if (target == NULL)
         return NULL;
     target->u.call.arguments = HlslLowerIRExprList(context,
-        source->u.intrinsicCall.arguments, prefix);
+        source->u.intrinsicCall.arguments, prefix, NULL,
+        source->u.intrinsicCall.signature->parameters);
     if (source->u.intrinsicCall.arguments != NULL &&
         target->u.call.arguments == NULL)
     {
@@ -3471,12 +3537,17 @@ static HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
     HlslExpr *left;
     HlslExpr *right;
     HlslDecl *decl;
+    HlslDecl *temporary;
     HlslOperator op;
     HlslType type;
+    HlslStmt *leftPrefix;
+    HlslStmt *rightPrefix;
+    HlslStmt *truePrefix;
+    HlslStmt *falsePrefix;
+    HlslStmt *copies;
     char mask[5];
     int index;
 
-    (void) valueMode;
     if (context == NULL || source == NULL ||
         !HlslLowerType(context, source->type, &type, &source->loc))
     {
@@ -3491,7 +3562,8 @@ static HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
         return decl != NULL ? HlslNewSymbolExpr(context, decl) : NULL;
     case CGIR_EXPR_MEMBER:
         left = HlslLowerIRExpr(context, source->u.member.object, prefix,
-            source->isLvalue ? HLSL_VALUE_LVALUE : HLSL_VALUE_RVALUE);
+            valueMode == HLSL_VALUE_LVALUE ? HLSL_VALUE_LVALUE :
+                                             HLSL_VALUE_RVALUE);
         decl = HlslFindDecl(context, source->u.member.member);
         target = left != NULL && decl != NULL ?
             HlslNewSourceExpr(context, HLSL_EXPR_MEMBER, type) : NULL;
@@ -3502,13 +3574,32 @@ static HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
         }
         break;
     case CGIR_EXPR_INDEX:
-        left = HlslLowerIRExpr(context, source->u.index.object, prefix,
-            source->isLvalue ? HLSL_VALUE_LVALUE : HLSL_VALUE_RVALUE);
-        right = HlslLowerIRExpr(context, source->u.index.index, prefix,
+        leftPrefix = NULL;
+        rightPrefix = NULL;
+        left = HlslLowerIRExpr(context, source->u.index.object, &leftPrefix,
+            valueMode == HLSL_VALUE_LVALUE ? HLSL_VALUE_LVALUE :
+                                             HLSL_VALUE_RVALUE);
+        right = HlslLowerIRExpr(context, source->u.index.index, &rightPrefix,
                                 HLSL_VALUE_RVALUE);
         target = left != NULL && right != NULL ?
             HlslNewSourceExpr(context, HLSL_EXPR_INDEX, type) : NULL;
         if (target != NULL) {
+            HlslAppendStmt(prefix, leftPrefix);
+            if (valueMode != HLSL_VALUE_LVALUE &&
+                (source->u.index.object->sideEffects ||
+                 rightPrefix != NULL ||
+                 source->u.index.index->sideEffects))
+            {
+                left = HlslCaptureValue(context, prefix, left);
+                if (left == NULL)
+                    return NULL;
+            }
+            if (source->u.index.index->sideEffects) {
+                right = HlslCaptureValue(context, &rightPrefix, right);
+                if (right == NULL)
+                    return NULL;
+            }
+            HlslAppendStmt(prefix, rightPrefix);
             target->u.index.object = left;
             target->u.index.index = right;
         }
@@ -3544,7 +3635,8 @@ static HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
         target = HlslNewSourceExpr(context, HLSL_EXPR_CONSTRUCT, type);
         if (target != NULL)
             target->u.construct.arguments = HlslLowerIRExprList(
-                context, source->u.construct.arguments, prefix);
+                context, source->u.construct.arguments, prefix,
+                NULL, NULL);
         if (target == NULL || (source->u.construct.arguments != NULL &&
                                target->u.construct.arguments == NULL))
         {
@@ -3584,13 +3676,68 @@ static HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
         break;
     case CGIR_EXPR_BINARY:
         op = HlslIROperator(source->u.binary.op);
-        left = HlslLowerIRExpr(context, source->u.binary.left, prefix,
+        leftPrefix = NULL;
+        rightPrefix = NULL;
+        left = HlslLowerIRExpr(context, source->u.binary.left, &leftPrefix,
                                HLSL_VALUE_RVALUE);
-        right = HlslLowerIRExpr(context, source->u.binary.right, prefix,
+        right = HlslLowerIRExpr(context, source->u.binary.right, &rightPrefix,
                                 HLSL_VALUE_RVALUE);
         target = left != NULL && right != NULL && op != HLSL_OP_NONE ?
             HlslNewSourceExpr(context, HLSL_EXPR_BINARY, type) : NULL;
         if (target != NULL) {
+            HlslAppendStmt(prefix, leftPrefix);
+            if ((op == HLSL_OP_LOGICAL_AND ||
+                 op == HLSL_OP_LOGICAL_OR) && rightPrefix != NULL)
+            {
+                HlslStmt *guard;
+                HlslExpr *condition;
+
+                temporary = HlslNewTemporary(context, &type);
+                target = HlslNewAssignment(context,
+                    temporary != NULL ?
+                    HlslNewSymbolExpr(context, temporary) : NULL, left);
+                if (temporary == NULL || target == NULL ||
+                    !HlslAppendExpression(context, prefix, target))
+                {
+                    return NULL;
+                }
+                guard = HlslNewStmt(context->module, HLSL_STMT_IF);
+                condition = HlslNewSymbolExpr(context, temporary);
+                if (guard == NULL || condition == NULL)
+                    return NULL;
+                if (op == HLSL_OP_LOGICAL_OR) {
+                    target = HlslNewSourceExpr(context, HLSL_EXPR_UNARY,
+                                               type);
+                    if (target == NULL)
+                        return NULL;
+                    target->u.unary.op = HLSL_OP_LOGICAL_NOT;
+                    target->u.unary.operand = condition;
+                    condition = target;
+                }
+                guard->u.ifStmt.condition = condition;
+                guard->u.ifStmt.trueBranch = rightPrefix;
+                target = HlslNewAssignment(context,
+                    HlslNewSymbolExpr(context, temporary), right);
+                if (target == NULL || !HlslAppendExpression(context,
+                    &guard->u.ifStmt.trueBranch, target))
+                {
+                    return NULL;
+                }
+                HlslSetLoc(&guard->loc, &source->loc);
+                HlslAppendStmt(prefix, guard);
+                target = HlslNewSymbolExpr(context, temporary);
+                if (target == NULL)
+                    return NULL;
+                break;
+            }
+            if (source->u.binary.left->sideEffects ||
+                rightPrefix != NULL || source->u.binary.right->sideEffects)
+            {
+                left = HlslCaptureValue(context, prefix, left);
+                if (left == NULL)
+                    return NULL;
+            }
+            HlslAppendStmt(prefix, rightPrefix);
             target->u.binary.op = op;
             target->u.binary.left = left;
             target->u.binary.right = right;
@@ -3598,35 +3745,151 @@ static HlslExpr *HlslLowerIRExpr(HlslLowerContext *context,
         break;
     case CGIR_EXPR_ASSIGN:
         op = HlslIROperator(source->u.assign.op);
-        left = HlslLowerIRExpr(context, source->u.assign.target, prefix,
+        leftPrefix = NULL;
+        rightPrefix = NULL;
+        left = HlslLowerIRExpr(context, source->u.assign.target, &leftPrefix,
                                HLSL_VALUE_LVALUE);
-        right = HlslLowerIRExpr(context, source->u.assign.value, prefix,
+        right = HlslLowerIRExpr(context, source->u.assign.value, &rightPrefix,
                                 HLSL_VALUE_RVALUE);
-        target = left != NULL && right != NULL && op != HLSL_OP_NONE ?
-            HlslNewSourceExpr(context, HLSL_EXPR_BINARY, type) : NULL;
-        if (target != NULL) {
-            target->u.binary.op = op;
-            target->u.binary.left = left;
-            target->u.binary.right = right;
+        if (left == NULL || right == NULL || op == HLSL_OP_NONE)
+            return NULL;
+        HlslAppendStmt(prefix, leftPrefix);
+        if ((rightPrefix != NULL || source->u.assign.value->sideEffects) &&
+            !HlslStabilizeLvalueAddress(context, prefix, left))
+        {
+            return NULL;
         }
+        HlslAppendStmt(prefix, rightPrefix);
+        if (op == HLSL_OP_ASSIGN && HlslTypeNeedsRecursiveCopy(&type)) {
+            if (!HlslStabilizeLvalueAddress(context, prefix, left))
+                return NULL;
+            if (!HlslIsStableAggregateSource(right)) {
+                right = HlslCaptureValue(context, prefix, right);
+                if (right == NULL)
+                    return NULL;
+            }
+            copies = NULL;
+            if (valueMode == HLSL_VALUE_RVALUE) {
+                temporary = HlslNewTemporary(context, &type);
+                if (temporary == NULL ||
+                    !HlslAppendRecursiveCopy(context, &type,
+                        HlslNewSymbolExpr(context, temporary), right,
+                        &copies) ||
+                    !HlslAppendRecursiveCopy(context, &type, left,
+                        HlslNewSymbolExpr(context, temporary), &copies))
+                {
+                    return NULL;
+                }
+                HlslAppendStmt(prefix, copies);
+                return HlslNewSymbolExpr(context, temporary);
+            }
+            if (!HlslAppendRecursiveCopy(context, &type, left, right,
+                                         &copies))
+            {
+                return NULL;
+            }
+            target = HlslDetachLastExpression(&copies);
+            HlslAppendStmt(prefix, copies);
+            return target;
+        }
+        if (op == HLSL_OP_ASSIGN && valueMode == HLSL_VALUE_RVALUE) {
+            right = HlslCaptureValue(context, prefix, right);
+            target = HlslNewAssignment(context, left, right);
+            if (target == NULL ||
+                !HlslAppendExpression(context, prefix, target))
+            {
+                return NULL;
+            }
+            return right != NULL && right->kind == HLSL_EXPR_SYMBOL ?
+                   HlslNewSymbolExpr(context, right->u.symbol) : NULL;
+        }
+        target = HlslNewSourceExpr(context, HLSL_EXPR_BINARY, type);
+        if (target == NULL)
+            return NULL;
+        target->u.binary.op = op;
+        target->u.binary.left = left;
+        target->u.binary.right = right;
         break;
     case CGIR_EXPR_CONDITIONAL:
+        leftPrefix = NULL;
+        truePrefix = NULL;
+        falsePrefix = NULL;
         target = HlslNewSourceExpr(context, HLSL_EXPR_CONDITIONAL, type);
         if (target != NULL) {
             target->u.conditional.condition = HlslLowerIRExpr(context,
-                source->u.conditional.condition, prefix,
+                source->u.conditional.condition, &leftPrefix,
                 HLSL_VALUE_RVALUE);
             target->u.conditional.trueExpr = HlslLowerIRExpr(context,
-                source->u.conditional.trueExpr, prefix,
+                source->u.conditional.trueExpr, &truePrefix,
                 HLSL_VALUE_RVALUE);
             target->u.conditional.falseExpr = HlslLowerIRExpr(context,
-                source->u.conditional.falseExpr, prefix,
+                source->u.conditional.falseExpr, &falsePrefix,
                 HLSL_VALUE_RVALUE);
             if (target->u.conditional.condition == NULL ||
                 target->u.conditional.trueExpr == NULL ||
                 target->u.conditional.falseExpr == NULL)
             {
                 return NULL;
+            }
+            HlslAppendStmt(prefix, leftPrefix);
+            if (truePrefix != NULL || falsePrefix != NULL) {
+                HlslStmt *guard;
+                HlslExpr *branchValue;
+
+                temporary = HlslNewTemporary(context, &type);
+                guard = HlslNewStmt(context->module, HLSL_STMT_IF);
+                if (temporary == NULL || guard == NULL)
+                    return NULL;
+                guard->u.ifStmt.condition = target->u.conditional.condition;
+                guard->u.ifStmt.trueBranch = truePrefix;
+                branchValue = target->u.conditional.trueExpr;
+                if (HlslTypeNeedsRecursiveCopy(&type)) {
+                    branchValue = HlslCaptureValue(context,
+                        &guard->u.ifStmt.trueBranch, branchValue);
+                    if (branchValue == NULL ||
+                        !HlslAppendRecursiveCopy(context, &type,
+                            HlslNewSymbolExpr(context, temporary),
+                            branchValue, &guard->u.ifStmt.trueBranch))
+                    {
+                        return NULL;
+                    }
+                } else {
+                    branchValue = HlslNewAssignment(context,
+                        HlslNewSymbolExpr(context, temporary), branchValue);
+                    if (branchValue == NULL ||
+                        !HlslAppendExpression(context,
+                            &guard->u.ifStmt.trueBranch, branchValue))
+                    {
+                        return NULL;
+                    }
+                }
+                guard->u.ifStmt.falseBranch = falsePrefix;
+                branchValue = target->u.conditional.falseExpr;
+                if (HlslTypeNeedsRecursiveCopy(&type)) {
+                    branchValue = HlslCaptureValue(context,
+                        &guard->u.ifStmt.falseBranch, branchValue);
+                    if (branchValue == NULL ||
+                        !HlslAppendRecursiveCopy(context, &type,
+                            HlslNewSymbolExpr(context, temporary),
+                            branchValue, &guard->u.ifStmt.falseBranch))
+                    {
+                        return NULL;
+                    }
+                } else {
+                    branchValue = HlslNewAssignment(context,
+                        HlslNewSymbolExpr(context, temporary), branchValue);
+                    if (branchValue == NULL ||
+                        !HlslAppendExpression(context,
+                            &guard->u.ifStmt.falseBranch, branchValue))
+                    {
+                        return NULL;
+                    }
+                }
+                HlslSetLoc(&guard->loc, &source->loc);
+                HlslAppendStmt(prefix, guard);
+                target = HlslNewSymbolExpr(context, temporary);
+                if (target == NULL)
+                    return NULL;
             }
         }
         break;
