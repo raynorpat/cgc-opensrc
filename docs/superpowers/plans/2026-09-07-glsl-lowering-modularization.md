@@ -49,7 +49,7 @@ not cleanup tasks.
 
 **Files:** Read source and tests only; create ignored build artifacts.
 
-- [ ] **Step 1: Pin baseline and create independent worktrees.** Run from the main checkout.
+- [x] **Step 1: Pin baseline and create independent worktrees.** Run from the main checkout.
 Choose these exact unused paths; if a path already exists, inspect it instead of overwriting it.
 
 ```powershell
@@ -64,7 +64,7 @@ if ($LASTEXITCODE -ne 0) { throw 'candidate worktree failed' }
 
 Record the full baseline SHA. Preserve user changes in the main checkout.
 
-- [ ] **Step 2: Build the pristine baseline in both configurations.**
+- [x] **Step 2: Build the pristine baseline in both configurations.**
 Run inside `.worktrees/glsl-lower-pristine`.
 
 ```powershell
@@ -85,7 +85,7 @@ Expected: all registered tests pass. Require actual glslangValidator and FXC pat
 not NOTFOUND. Record any ARB WGL skip (return 77) separately from a pass. Do not
 claim driver validation for a skipped smoke test.
 
-- [ ] **Step 3: Snapshot test inventory and artifacts.**
+- [x] **Step 3: Snapshot test inventory and artifacts.**
 Keep the baseline build untouched afterward. Read CTest JSON with
 `ctest --test-dir build-cg20-glsl-baseline -C Release --show-only=json-v1`.
 Record sorted test names, commands, validator locations and complete artifact paths.
@@ -96,7 +96,7 @@ Do not copy compiler binaries or generated outputs into tracked source.
 
 **Files:** Modify `glsl_lower.c`, `CMakeLists.txt`, `tests/CMakeLists.txt`; create `glsl_lower_internal.h`.
 
-- [ ] **Step 1: Move the original private types into the following header.**
+- [x] **Step 1: Move the original private types into the following header.**
 Copy the complete original NVIDIA notice verbatim above the include guard; the
 comment below is an instruction, not replacement license text. Standard library
 includes remain before the private header in every C translation unit.
@@ -354,7 +354,7 @@ int GlslIREnsureEntryLocals(GlslLowerContext *context,
 
 The moved block includes GLSL_MATRIX_MAX_ARGUMENTS and the matrix/interface/geometry/context types. Keep GlslDefaultValue and GlslDefaultBaseClass local to declaration lowering.
 
-- [ ] **Step 2: Establish linkage before extraction.**
+- [x] **Step 2: Establish linkage before extraction.**
 For precisely the declarations above, remove `static` from definitions and any
 retained matching forward declarations, even while their bodies still reside in
 the facade. Remove redundant cross-module forwards now supplied by the header.
@@ -371,7 +371,7 @@ Replace the existing project header includes in the facade with:
 Preserve the existing standard-library includes and their order. Remove only the
 private type block moved to the header.
 
-- [ ] **Step 3: Wire the initial one-file canonical source list.**
+- [x] **Step 3: Wire the initial one-file canonical source list.**
 Before `add_subdirectory(tests)` in root CMake:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -384,7 +384,7 @@ Replace the direct `glsl_lower.c` source in `cgc` with:
 ```
 In `glsl_lower_ir_unit`, replace `${PROJECT_SOURCE_DIR}/glsl_lower.c` with `${CGC_GLSL_LOWER_SOURCES}`.
 
-- [ ] **Step 4: Configure/build/test the candidate.**
+- [x] **Step 4: Configure/build/test the candidate.**
 Run from `.worktrees/glsl-lower-modularization`.
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
@@ -400,7 +400,7 @@ git diff --check
 Expected: build/link success and all selected tests pass, with nonzero selected
 inventory. Audit that every promoted name is unique across repository definitions.
 
-- [ ] **Step 5: Commit only the preparation files.**
+- [x] **Step 5: Commit only the preparation files.**
 ```powershell
 git add glsl_lower.c glsl_lower_internal.h CMakeLists.txt tests/CMakeLists.txt
 git commit -m "Prepare GLSL lowering module interfaces"
@@ -410,7 +410,7 @@ git commit -m "Prepare GLSL lowering module interfaces"
 
 **Files:** Create `glsl_lower_support.c`; modify `glsl_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -450,7 +450,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_GLSL_LOWER_SOURCES
@@ -459,7 +459,7 @@ set(CGC_GLSL_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -467,7 +467,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-glsl-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -483,7 +483,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 14's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add glsl_lower.c glsl_lower_support.c CMakeLists.txt
 git commit -m "Extract GLSL support lowering"
@@ -1915,7 +1915,34 @@ moves, which avoids temporary reverse-dependency link failures.
 | GlslIRCollectUniforms | interface | GlslLowerCgIR (facade) |
 | GlslIREnsureEntryLocals | decl | GlslLowerCgIR (facade) |
 
-## Review checklist
+## Execution checkpoint: Tasks 1–3 complete
+
+Implementation branch: `codex/glsl-lower-modularization`.
+Pristine baseline: `7774767b115522c4d9c21c9ee49c6471bd1f1a3f`.
+Candidate started from `0af222e`, which adds only the two implementation plans.
+Preparation commit: `5605167`; support extraction commit: `fb407bb`.
+Both implementation tasks passed independent spec and quality reviews.
+
+- Pristine Debug and Release: 1,370 tests passed each, no skips; both WGL checks passed.
+- Candidate Debug/Release targets build; 490 selected tests and four additional
+  output-producing tests pass. All 205 original function bodies remain unchanged.
+- Complete 204-file GLSL artifact set matches: 3 raw-identical, 201 identical
+  after precisely recorded build timestamp and command-comment root substitutions.
+- Evidence and reusable audits are ignored under `build-cg20-glsl-preflight/`;
+  pristine evidence is frozen under the sibling baseline's `build-cg20-glsl-baseline/`.
+- The selected test filter requires five additional unit executables on a fresh
+  build: `glsl_ir_unit`, `hlsl_ir_unit`, `hlsl_geometry_lower_unit`,
+  `glsl_semantics_unit`, and `cg_geometry_unit`.
+- Complete output comparison additionally runs `cg20_profile_overload_vertex`,
+  `cg20_profile_overload_fragment`, `cg20_profile_overload_open`, and
+  `cg20_unreachable_profile_feature`. Compare exactly `tests/Release` and
+  `tests/validated/Release`; `tests/validator-failure/Release/probe.glsl` is scratch
+  outside these roots, not an additional shader artifact.
+
+Next: Task 4, declaration lowering. Tasks 4–14 and all ARB implementation remain
+pending. Final qualification, integration, and push have not been performed.
+
+## Final review checklist
 
 - [ ] Approved responsibilities all have explicit function ownership.
 - [ ] Every shared declaration matches its definition and callers.
