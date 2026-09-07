@@ -1,0 +1,18 @@
+// Vector conditions select each result component without vector HLSL control flow.
+
+float bump(inout float value)
+{
+    value = value + 1.0;
+    return value;
+}
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    float value = 0.0;
+    bool2 choose = position[0].xy > float2(0.0, 0.0);
+    float2 selected = choose
+        ? float2(bump(value), bump(value))
+        : float2(bump(value), bump(value));
+    emitVertex(position[0] +
+               float4(selected.x, selected.y, value, 0.0) : POSITION);
+}

@@ -1,0 +1,29 @@
+// Loop conditions and steps evaluate their prefixes on every source path.
+
+float bump(inout float value)
+{
+    value = value + 1.0;
+    return value;
+}
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    float value = 0.0;
+    int i = 0;
+    while (bump(value) + bump(value) < 4.0) {
+        if (value > 3.0)
+            continue;
+    }
+    do {
+        value = value + 1.0;
+    } while (bump(value) + bump(value) < 8.0);
+    for (i = 0; bump(value) + bump(value) < 12.0;
+         i = int(bump(value)) + int(bump(value))) {
+        if (i > 20)
+            break;
+        if (i > 10)
+            continue;
+        value = value + 1.0;
+    }
+    emitVertex(position[0] + float4(value, i, 0.0, 0.0) : POSITION);
+}

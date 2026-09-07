@@ -151,6 +151,60 @@ static CgIRExpr *NewOrderedVector(CgIRModule *module, Type *scalar,
     return item;
 }
 
+static CgIRExpr *NewOrderedPair(CgIRModule *module, Type *scalar,
+                                Type *pair, SourceLoc loc,
+                                Symbol *bump, Symbol *value)
+{
+    CgIRExpr *arguments;
+    CgIRExpr *callArguments;
+    CgIRExpr *item;
+    int i;
+
+    arguments = NULL;
+    for (i = 0; i < 2; i++) {
+        callArguments = CgIRNewSymbol(module, scalar, &loc, value);
+        assert(callArguments != NULL);
+        callArguments->isLvalue = 1;
+        item = CgIRNewCall(module, scalar, &loc, bump, callArguments);
+        assert(item != NULL);
+        item->sideEffects = 1;
+        CgIRAppendExpr(&arguments, item);
+    }
+    item = CgIRNewConstruct(module, pair, &loc, arguments);
+    assert(item != NULL);
+    item->sideEffects = 1;
+    return item;
+}
+
+static CgIRExpr *NewBumpCondition(CgIRModule *module, Type *scalar,
+                                  Type *booleanType, SourceLoc loc,
+                                  Symbol *bump, Symbol *value,
+                                  float limit)
+{
+    CgNumericValue number;
+    CgIRExpr *left;
+    CgIRExpr *right;
+
+    left = NewOrderedPair(module, scalar,
+        GetStandardTypeKind(CG_SCALAR_FLOAT, 2, 0), loc, bump, value);
+    right = left->u.construct.arguments;
+    left->u.construct.arguments = NULL;
+    left = CgIRNewBinary(module, scalar, &loc, CGIR_OP_ADD,
+                         right, right->next);
+    assert(left != NULL);
+    left->u.binary.left->next = NULL;
+    left->sideEffects = 1;
+    memset(&number, 0, sizeof(number));
+    number.kind = CG_SCALAR_FLOAT;
+    number.value.f = limit;
+    right = CgIRNewConstant(module, scalar, &loc, &number);
+    left = CgIRNewBinary(module, booleanType, &loc, CGIR_OP_LESS,
+                         left, right);
+    assert(left != NULL);
+    left->sideEffects = 1;
+    return left;
+}
+
 static int CountKind(const HlslStmt *statement, HlslStmtKind kind)
 {
     int count;
@@ -283,13 +337,147 @@ static void AssertOrderedBundlePrefix(const HlslStmt *statement,
            arguments->u.symbol->identity == value);
 }
 
+static HlslStmt *AssertIndexedSwizzleStore(HlslStmt *statement,
+                                           const Symbol *next,
+                                           const Symbol *values,
+                                           const Symbol *observed)
+{
+    const HlslExpr *assignment;
+    const HlslExpr *target;
+    const HlslExpr *read;
+    const HlslDecl *indexTemp;
+
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.op == HLSL_OP_ASSIGN &&
+           assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
+           assignment->u.binary.right->kind == HLSL_EXPR_CALL &&
+           assignment->u.binary.right->u.call.function->identity == next);
+    indexTemp = assignment->u.binary.left->u.symbol;
+
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    target = assignment != NULL ? assignment->u.binary.left : NULL;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.op == HLSL_OP_ASSIGN && target != NULL &&
+           target->kind == HLSL_EXPR_SWIZZLE &&
+           target->u.swizzle.object->kind == HLSL_EXPR_INDEX &&
+           target->u.swizzle.object->u.index.object->kind ==
+               HLSL_EXPR_SYMBOL &&
+           target->u.swizzle.object->u.index.object->u.symbol->identity ==
+               values &&
+           target->u.swizzle.object->u.index.index->kind ==
+               HLSL_EXPR_SYMBOL &&
+           target->u.swizzle.object->u.index.index->u.symbol == indexTemp);
+
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    assignment = statement->u.expression;
+    read = assignment != NULL ? assignment->u.binary.right : NULL;
+    assert(assignment != NULL && assignment->kind == HLSL_EXPR_BINARY &&
+           assignment->u.binary.left->kind == HLSL_EXPR_SYMBOL &&
+           assignment->u.binary.left->u.symbol->identity == observed &&
+           read != NULL && read->kind == HLSL_EXPR_SWIZZLE &&
+           read->u.swizzle.object->kind == HLSL_EXPR_INDEX &&
+           read->u.swizzle.object->u.index.object->kind == HLSL_EXPR_SYMBOL &&
+           read->u.swizzle.object->u.index.object->u.symbol->identity ==
+               values);
+    return statement->next;
+}
+
+static HlslStmt *AssertVectorConditional(HlslStmt *statement,
+                                         const Symbol *selected)
+{
+    const HlslExpr *assignment;
+    const HlslExpr *item;
+
+    for (; statement != NULL; statement = statement->next) {
+        assert(statement->kind != HLSL_STMT_IF);
+        if (statement->kind != HLSL_STMT_EXPRESSION)
+            continue;
+        assignment = statement->u.expression;
+        if (assignment == NULL || assignment->kind != HLSL_EXPR_BINARY ||
+            assignment->u.binary.op != HLSL_OP_ASSIGN ||
+            assignment->u.binary.left->kind != HLSL_EXPR_SYMBOL ||
+            assignment->u.binary.left->u.symbol->identity != selected)
+        {
+            continue;
+        }
+        assert(assignment->u.binary.right->kind == HLSL_EXPR_CONSTRUCT);
+        item = assignment->u.binary.right->u.construct.arguments;
+        assert(item != NULL && item->kind == HLSL_EXPR_CONDITIONAL);
+        item = item->next;
+        assert(item != NULL && item->kind == HLSL_EXPR_CONDITIONAL &&
+               item->next == NULL);
+        return statement->next;
+    }
+    assert(0);
+    return NULL;
+}
+
+static HlslStmt *AssertLoopPrefixes(HlslStmt *statement,
+                                    const Symbol *bump)
+{
+    const HlslStmt *body;
+    const HlslExpr *assignment;
+
+    assert(statement != NULL && statement->kind == HLSL_STMT_WHILE);
+    assert(statement->u.loop.condition->kind == HLSL_EXPR_BOOL &&
+           statement->u.loop.condition->u.literalBool);
+    body = statement->u.loop.body;
+    assignment = body != NULL ? body->u.expression : NULL;
+    assert(body != NULL && body->kind == HLSL_STMT_EXPRESSION &&
+           assignment->u.binary.right->kind == HLSL_EXPR_CALL &&
+           assignment->u.binary.right->u.call.function->identity == bump);
+
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_EXPRESSION);
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_WHILE &&
+           statement->u.loop.body != NULL &&
+           statement->u.loop.body->kind == HLSL_STMT_IF &&
+           statement->u.loop.body->u.ifStmt.trueBranch != NULL);
+    body = statement->u.loop.body->u.ifStmt.trueBranch;
+    assert(body->kind == HLSL_STMT_EXPRESSION &&
+           body->u.expression->u.binary.right->kind == HLSL_EXPR_CALL &&
+           body->u.expression->u.binary.right->u.call.function->identity ==
+               bump);
+
+    statement = statement->next;
+    assert(statement != NULL && statement->kind == HLSL_STMT_FOR &&
+           statement->u.forStmt.condition == NULL &&
+           statement->u.forStmt.body != NULL &&
+           statement->u.forStmt.step != NULL);
+    body = statement->u.forStmt.body;
+    assert(body->kind == HLSL_STMT_EXPRESSION &&
+           body->u.expression->u.binary.right->kind == HLSL_EXPR_CALL &&
+           body->u.expression->u.binary.right->u.call.function->identity ==
+               bump);
+    body = statement->u.forStmt.step;
+    assert(body->kind == HLSL_STMT_EXPRESSION &&
+           body->u.expression->u.binary.right->kind == HLSL_EXPR_CALL &&
+           body->u.expression->u.binary.right->u.call.function->identity ==
+               bump);
+    assert(CountKind(statement->u.forStmt.body, HLSL_STMT_BREAK) > 0 &&
+           CountKind(statement->u.forStmt.body, HLSL_STMT_CONTINUE) > 0);
+    return statement->next;
+}
+
 int main(int argc, char **argv)
 {
     CgIRModule source;
     CgIRFunction *sourceEntry;
     CgIRFunction *sourceBump;
+    CgIRFunction *sourceNext;
     CgIRDecl *sourceValue;
     CgIRDecl *sourceBumpValue;
+    CgIRDecl *sourceValues;
+    CgIRDecl *sourceIndex;
+    CgIRDecl *sourceNextIndex;
+    CgIRDecl *sourceChoose;
+    CgIRDecl *sourceSelected;
     CgIRGeometryInfo geometry;
     CgIRGeometryValue *value;
     CgIRStmt *root;
@@ -300,8 +488,23 @@ int main(int argc, char **argv)
     CgIRStmt *whileBlock;
     CgIRStmt *operation;
     CgIRExpr *condition;
+    CgIRExpr *lvalueTarget;
+    CgIRExpr *lvalueValue;
+    CgIRExpr *arguments;
+    CgIRExpr *arrayRef;
+    CgIRExpr *indexExpr;
+    CgIRStmt *lvalueStmt;
+    CgIRStmt *readStmt;
+    CgIRStmt *vectorStmt;
+    CgIRStmt *loopWhileStmt;
+    CgIRStmt *loopDoStmt;
+    CgIRStmt *loopForStmt;
+    CgIRStmt *loopBody;
     CgNumericValue boolean;
     CgNumericValue initialValue;
+    CgNumericValue intZero;
+    CgNumericValue floatOne;
+    CgNumericValue floatTwo;
     CgIRVerifyDiagnostic diagnostic;
     HlslModule target;
     HlslFunction *entry;
@@ -315,17 +518,31 @@ int main(int argc, char **argv)
     CgStruct compiler;
     Type functionType;
     Type bumpFunctionType;
+    Type nextFunctionType;
     Type inoutFloatType;
+    Type inoutIntType;
+    Type valuesArrayType;
     TypeList bumpParameterType;
+    TypeList nextParameterType;
     Type *floatType;
+    Type *float2Type;
     Type *float4Type;
+    Type *intType;
     Type *boolType;
+    Type *bool2Type;
     Symbol *program;
     Symbol *bump;
+    Symbol *next;
     Symbol *valueSymbol;
     Symbol *bumpValueSymbol;
+    Symbol *valuesSymbol;
+    Symbol *indexSymbol;
+    Symbol *nextIndexSymbol;
+    Symbol *chooseSymbol;
+    Symbol *selectedSymbol;
     Scope locals;
     Scope bumpLocals;
+    Scope nextLocals;
     SourceLoc entryLoc;
     SourceLoc ifLoc;
     SourceLoc flatLoc;
@@ -333,6 +550,7 @@ int main(int argc, char **argv)
     SourceLoc whileLoc;
     SourceLoc emitLoc;
     SourceLoc bumpLoc;
+    SourceLoc lvalueLoc;
 
     if (argc == 2 && !strcmp(argv[1], "--verify-assertions-active")) {
         int assertionsActive;
@@ -354,10 +572,14 @@ int main(int argc, char **argv)
     assert(StartGlobalScope(Cg));
 
     floatType = GetStandardTypeKind(CG_SCALAR_FLOAT, 0, 0);
+    float2Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 2, 0);
     float4Type = GetStandardTypeKind(CG_SCALAR_FLOAT, 4, 0);
+    intType = GetStandardTypeKind(CG_SCALAR_INT, 0, 0);
     boolType = GetStandardTypeKind(CG_SCALAR_BOOL, 0, 0);
-    assert(floatType != UndefinedType && float4Type != UndefinedType);
-    assert(boolType != UndefinedType);
+    bool2Type = GetStandardTypeKind(CG_SCALAR_BOOL, 2, 0);
+    assert(floatType != UndefinedType && float2Type != UndefinedType &&
+           float4Type != UndefinedType && intType != UndefinedType);
+    assert(boolType != UndefinedType && bool2Type != UndefinedType);
 
     memset(&entryLoc, 0, sizeof(entryLoc)); entryLoc.file = 41; entryLoc.line = 3;
     memset(&ifLoc, 0, sizeof(ifLoc)); ifLoc.file = 41; ifLoc.line = 7;
@@ -366,6 +588,7 @@ int main(int argc, char **argv)
     memset(&whileLoc, 0, sizeof(whileLoc)); whileLoc.file = 41; whileLoc.line = 12;
     memset(&emitLoc, 0, sizeof(emitLoc)); emitLoc.file = 41; emitLoc.line = 13;
     memset(&bumpLoc, 0, sizeof(bumpLoc)); bumpLoc.file = 41; bumpLoc.line = 2;
+    memset(&lvalueLoc, 0, sizeof(lvalueLoc)); lvalueLoc.file = 41; lvalueLoc.line = 4;
 
     memset(&functionType, 0, sizeof(functionType));
     functionType.fun.properties = TYPE_CATEGORY_FUNCTION | TYPE_MISC_PROGRAM;
@@ -393,7 +616,42 @@ int main(int argc, char **argv)
     bump->details.fun.params = bumpValueSymbol;
     memset(&bumpLocals, 0, sizeof(bumpLocals));
     bump->details.fun.locals = &bumpLocals;
+
+    memset(&valuesArrayType, 0, sizeof(valuesArrayType));
+    valuesArrayType.properties = TYPE_BASE_FLOAT | TYPE_CATEGORY_ARRAY;
+    valuesArrayType.arr.eltype = float4Type;
+    valuesArrayType.arr.numels = 2;
+    valuesArrayType.arr.scalarKind = CG_SCALAR_FLOAT;
+    inoutIntType = *intType;
+    inoutIntType.properties |= TYPE_QUALIFIER_INOUT;
+    memset(&nextParameterType, 0, sizeof(nextParameterType));
+    nextParameterType.type = &inoutIntType;
+    memset(&nextFunctionType, 0, sizeof(nextFunctionType));
+    nextFunctionType.fun.properties = TYPE_CATEGORY_FUNCTION;
+    nextFunctionType.fun.rettype = intType;
+    nextFunctionType.fun.paramtypes = &nextParameterType;
+    next = NewTestSymbol(FUNCTION_S, "next", &nextFunctionType, lvalueLoc);
+    valuesSymbol = NewTestSymbol(VARIABLE_S, "values", &valuesArrayType,
+                                 lvalueLoc);
+    indexSymbol = NewTestSymbol(VARIABLE_S, "index", intType, lvalueLoc);
+    nextIndexSymbol = NewTestSymbol(VARIABLE_S, "index", &inoutIntType,
+                                    lvalueLoc);
+    chooseSymbol = NewTestSymbol(VARIABLE_S, "choose", bool2Type,
+                                 lvalueLoc);
+    selectedSymbol = NewTestSymbol(VARIABLE_S, "selected", float2Type,
+                                   lvalueLoc);
+    assert(next != NULL && valuesSymbol != NULL && indexSymbol != NULL &&
+           nextIndexSymbol != NULL && chooseSymbol != NULL &&
+           selectedSymbol != NULL);
+    next->properties |= SYMB_IS_DEFINED;
+    next->details.fun.params = nextIndexSymbol;
+    memset(&nextLocals, 0, sizeof(nextLocals));
+    next->details.fun.locals = &nextLocals;
     locals.symbols = valueSymbol;
+    valueSymbol->right = valuesSymbol;
+    valuesSymbol->right = indexSymbol;
+    indexSymbol->right = chooseSymbol;
+    chooseSymbol->right = selectedSymbol;
 
     CgIRInitModule(&source, TestAlloc, NULL);
     assert(CgIRSetStage(&source, CGIR_STAGE_GEOMETRY));
@@ -424,6 +682,17 @@ int main(int argc, char **argv)
     assert(sourceBump->body != NULL);
     CgIRAppendFunction(&source.functions, sourceBump);
 
+    sourceNext = CgIRNewFunction(&source, next, intType, &lvalueLoc);
+    sourceNextIndex = CgIRNewDecl(&source, nextIndexSymbol,
+        nextIndexSymbol->name, &inoutIntType, CGIR_STORAGE_NONE,
+        CGIR_DOMAIN_NONE, 0, NULL, &lvalueLoc);
+    assert(sourceNext != NULL && sourceNextIndex != NULL);
+    CgIRAppendDecl(&sourceNext->parameters, sourceNextIndex);
+    sourceNext->body = CgIRNewReturnStmt(&source, &lvalueLoc,
+        CgIRNewSymbol(&source, intType, &lvalueLoc, nextIndexSymbol));
+    assert(sourceNext->body != NULL);
+    CgIRAppendFunction(&source.functions, sourceNext);
+
     memset(&initialValue, 0, sizeof(initialValue));
     initialValue.kind = CG_SCALAR_FLOAT;
     sourceValue = CgIRNewDecl(&source, valueSymbol, valueSymbol->name,
@@ -432,6 +701,38 @@ int main(int argc, char **argv)
         &entryLoc);
     assert(sourceValue != NULL && sourceValue->initializer != NULL);
     CgIRAppendDecl(&sourceEntry->locals, sourceValue);
+    memset(&intZero, 0, sizeof(intZero));
+    intZero.kind = CG_SCALAR_INT;
+    sourceValues = CgIRNewDecl(&source, valuesSymbol, valuesSymbol->name,
+        &valuesArrayType, CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0,
+        NULL, &lvalueLoc);
+    sourceIndex = CgIRNewDecl(&source, indexSymbol, indexSymbol->name,
+        intType, CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0,
+        CgIRNewConstant(&source, intType, &lvalueLoc, &intZero),
+        &lvalueLoc);
+    assert(sourceValues != NULL && sourceIndex != NULL &&
+           sourceIndex->initializer != NULL);
+    CgIRAppendDecl(&sourceEntry->locals, sourceValues);
+    CgIRAppendDecl(&sourceEntry->locals, sourceIndex);
+    memset(&boolean, 0, sizeof(boolean));
+    boolean.kind = CG_SCALAR_BOOL;
+    boolean.value.i = 1;
+    arguments = NULL;
+    CgIRAppendExpr(&arguments, CgIRNewConstant(&source, boolType,
+                                                &lvalueLoc, &boolean));
+    CgIRAppendExpr(&arguments, CgIRNewConstant(&source, boolType,
+                                                &lvalueLoc, &boolean));
+    sourceChoose = CgIRNewDecl(&source, chooseSymbol, chooseSymbol->name,
+        bool2Type, CGIR_STORAGE_NONE, CGIR_DOMAIN_NONE, 0,
+        CgIRNewConstruct(&source, bool2Type, &lvalueLoc, arguments),
+        &lvalueLoc);
+    sourceSelected = CgIRNewDecl(&source, selectedSymbol,
+        selectedSymbol->name, float2Type, CGIR_STORAGE_NONE,
+        CGIR_DOMAIN_NONE, 0, NULL, &lvalueLoc);
+    assert(sourceChoose != NULL && sourceChoose->initializer != NULL &&
+           sourceSelected != NULL);
+    CgIRAppendDecl(&sourceEntry->locals, sourceChoose);
+    CgIRAppendDecl(&sourceEntry->locals, sourceSelected);
 
     memset(&boolean, 0, sizeof(boolean));
     boolean.kind = CG_SCALAR_BOOL;
@@ -470,10 +771,130 @@ int main(int argc, char **argv)
     whileStmt = CgIRNewWhileStmt(&source, &whileLoc, condition, whileBlock);
     assert(whileStmt != NULL);
 
+    arguments = CgIRNewSymbol(&source, intType, &lvalueLoc, indexSymbol);
+    assert(arguments != NULL);
+    arguments->isLvalue = 1;
+    indexExpr = CgIRNewCall(&source, intType, &lvalueLoc, next, arguments);
+    assert(indexExpr != NULL);
+    indexExpr->sideEffects = 1;
+    arrayRef = CgIRNewSymbol(&source, &valuesArrayType, &lvalueLoc,
+                             valuesSymbol);
+    assert(arrayRef != NULL);
+    arrayRef->isLvalue = 1;
+    lvalueTarget = CgIRNewIndex(&source, float4Type, &lvalueLoc,
+                                arrayRef, indexExpr);
+    assert(lvalueTarget != NULL);
+    lvalueTarget->isLvalue = 1;
+    lvalueTarget = CgIRNewSwizzle(&source, float2Type, &lvalueLoc,
+                                  lvalueTarget, 0x4, 2);
+    assert(lvalueTarget != NULL);
+    lvalueTarget->isLvalue = 1;
+    memset(&floatOne, 0, sizeof(floatOne));
+    floatOne.kind = CG_SCALAR_FLOAT;
+    floatOne.value.f = 1.0f;
+    memset(&floatTwo, 0, sizeof(floatTwo));
+    floatTwo.kind = CG_SCALAR_FLOAT;
+    floatTwo.value.f = 2.0f;
+    arguments = NULL;
+    CgIRAppendExpr(&arguments, CgIRNewConstant(&source, floatType,
+                                                &lvalueLoc, &floatOne));
+    CgIRAppendExpr(&arguments, CgIRNewConstant(&source, floatType,
+                                                &lvalueLoc, &floatTwo));
+    lvalueValue = CgIRNewConstruct(&source, float2Type, &lvalueLoc,
+                                   arguments);
+    lvalueValue = CgIRNewAssign(&source, float2Type, &lvalueLoc,
+        CGIR_OP_ASSIGN, lvalueTarget, lvalueValue);
+    lvalueStmt = CgIRNewExprStmt(&source, &lvalueLoc, lvalueValue);
+    assert(lvalueValue != NULL && lvalueStmt != NULL);
+
+    arrayRef = CgIRNewSymbol(&source, &valuesArrayType, &lvalueLoc,
+                             valuesSymbol);
+    indexExpr = CgIRNewConstant(&source, intType, &lvalueLoc, &intZero);
+    lvalueValue = CgIRNewIndex(&source, float4Type, &lvalueLoc,
+                               arrayRef, indexExpr);
+    lvalueValue = CgIRNewSwizzle(&source, floatType, &lvalueLoc,
+                                 lvalueValue, 0, 1);
+    lvalueTarget = CgIRNewSymbol(&source, floatType, &lvalueLoc,
+                                 valueSymbol);
+    assert(lvalueTarget != NULL);
+    lvalueTarget->isLvalue = 1;
+    lvalueValue = CgIRNewAssign(&source, floatType, &lvalueLoc,
+        CGIR_OP_ASSIGN, lvalueTarget, lvalueValue);
+    readStmt = CgIRNewExprStmt(&source, &lvalueLoc, lvalueValue);
+    assert(lvalueValue != NULL && readStmt != NULL);
+
+    condition = CgIRNewSymbol(&source, bool2Type, &lvalueLoc,
+                              chooseSymbol);
+    lvalueValue = CgIRNewConditional(&source, float2Type, &lvalueLoc,
+        condition,
+        NewOrderedPair(&source, floatType, float2Type, lvalueLoc,
+                       bump, valueSymbol),
+        NewOrderedPair(&source, floatType, float2Type, lvalueLoc,
+                       bump, valueSymbol));
+    lvalueTarget = CgIRNewSymbol(&source, float2Type, &lvalueLoc,
+                                 selectedSymbol);
+    assert(lvalueTarget != NULL);
+    lvalueTarget->isLvalue = 1;
+    lvalueValue = CgIRNewAssign(&source, float2Type, &lvalueLoc,
+        CGIR_OP_ASSIGN, lvalueTarget, lvalueValue);
+    vectorStmt = CgIRNewExprStmt(&source, &lvalueLoc, lvalueValue);
+    assert(condition != NULL && lvalueValue != NULL && vectorStmt != NULL);
+
+    loopBody = CgIRNewBlockStmt(&source, &lvalueLoc);
+    CgIRAppendStmt(&loopBody->u.block,
+                   CgIRNewBreakStmt(&source, &lvalueLoc));
+    loopWhileStmt = CgIRNewWhileStmt(&source, &lvalueLoc,
+        NewBumpCondition(&source, floatType, boolType, lvalueLoc,
+                         bump, valueSymbol, 4.0f), loopBody);
+    loopBody = CgIRNewBlockStmt(&source, &lvalueLoc);
+    CgIRAppendStmt(&loopBody->u.block,
+                   CgIRNewBreakStmt(&source, &lvalueLoc));
+    loopDoStmt = CgIRNewDoStmt(&source, &lvalueLoc,
+        NewBumpCondition(&source, floatType, boolType, lvalueLoc,
+                         bump, valueSymbol, 8.0f), loopBody);
+    loopBody = CgIRNewBlockStmt(&source, &lvalueLoc);
+    CgIRAppendStmt(&loopBody->u.block,
+                   CgIRNewBreakStmt(&source, &lvalueLoc));
+    CgIRAppendStmt(&loopBody->u.block,
+                   CgIRNewContinueStmt(&source, &lvalueLoc));
+    lvalueValue = NewOrderedPair(&source, floatType, float2Type,
+                                 lvalueLoc, bump, valueSymbol);
+    arguments = lvalueValue->u.construct.arguments;
+    lvalueValue = CgIRNewBinary(&source, floatType, &lvalueLoc,
+        CGIR_OP_ADD, arguments, arguments->next);
+    assert(lvalueValue != NULL);
+    lvalueValue->u.binary.left->next = NULL;
+    lvalueValue->sideEffects = 1;
+    lvalueTarget = CgIRNewSymbol(&source, floatType, &lvalueLoc,
+                                 valueSymbol);
+    lvalueTarget->isLvalue = 1;
+    lvalueValue = CgIRNewAssign(&source, floatType, &lvalueLoc,
+        CGIR_OP_ASSIGN, lvalueTarget, lvalueValue);
+    loopForStmt = CgIRNewForStmt(&source, &lvalueLoc, NULL,
+        NewBumpCondition(&source, floatType, boolType, lvalueLoc,
+                         bump, valueSymbol, 12.0f),
+        lvalueValue, loopBody);
+    assert(loopWhileStmt != NULL && loopDoStmt != NULL &&
+           loopForStmt != NULL);
+
     root = CgIRNewBlockStmt(&source, &entryLoc);
     assert(root != NULL);
     CgIRAppendStmt(&root->u.block,
                    CgIRNewDeclStmt(&source, &entryLoc, sourceValue));
+    CgIRAppendStmt(&root->u.block,
+                   CgIRNewDeclStmt(&source, &lvalueLoc, sourceValues));
+    CgIRAppendStmt(&root->u.block,
+                   CgIRNewDeclStmt(&source, &lvalueLoc, sourceIndex));
+    CgIRAppendStmt(&root->u.block,
+                   CgIRNewDeclStmt(&source, &lvalueLoc, sourceChoose));
+    CgIRAppendStmt(&root->u.block,
+                   CgIRNewDeclStmt(&source, &lvalueLoc, sourceSelected));
+    CgIRAppendStmt(&root->u.block, lvalueStmt);
+    CgIRAppendStmt(&root->u.block, readStmt);
+    CgIRAppendStmt(&root->u.block, vectorStmt);
+    CgIRAppendStmt(&root->u.block, loopWhileStmt);
+    CgIRAppendStmt(&root->u.block, loopDoStmt);
+    CgIRAppendStmt(&root->u.block, loopForStmt);
     CgIRAppendStmt(&root->u.block, ifStmt);
     CgIRAppendStmt(&root->u.block, whileStmt);
     sourceEntry->body = root;
@@ -495,7 +916,10 @@ int main(int argc, char **argv)
     assert(CountKind(entry->body, HLSL_STMT_RESTART_STRIP) ==
            CountIRKind(sourceEntry->body, CGIR_STMT_GEOMETRY_RESTART));
 
-    hIf = entry->body;
+    hIf = AssertIndexedSwizzleStore(entry->body, next, valuesSymbol,
+                                    valueSymbol);
+    hIf = AssertVectorConditional(hIf, selectedSymbol);
+    hIf = AssertLoopPrefixes(hIf, bump);
     hWhile = hIf != NULL ? hIf->next : NULL;
     assert(hIf != NULL && hIf->kind == HLSL_STMT_IF);
     assert(hWhile != NULL && hWhile->kind == HLSL_STMT_WHILE);

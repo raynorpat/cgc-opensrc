@@ -1,0 +1,18 @@
+// Indexed swizzle stores mutate the original aggregate exactly once.
+
+int next(inout int index)
+{
+    int current = index;
+    index = index + 1;
+    return current;
+}
+
+POINT POINT_OUT void main(AttribArray<float4> position : POSITION)
+{
+    float4 values[2];
+    int index = 0;
+    values[0] = position[0];
+    values[1] = position[0];
+    values[next(index)].xy = float2(3.0, 4.0);
+    emitVertex(values[0] : POSITION);
+}

@@ -1,0 +1,56 @@
+// profile hlslg40
+// target gs_4_0
+// cgc-bind interface out POSITION float4 SV_Position SV_Position system default
+// cgc-bind interface in position float4 SV_Position SV_Position system default
+
+struct cg_GeometryOut
+{
+    float4 position : SV_Position;
+};
+
+struct cg_GeometryIn
+{
+    float4 position : SV_Position;
+};
+
+float cg_bump(inout float value)
+{
+    value = value + (float) 1.0;
+    return value;
+}
+
+void cg_entry(float4 position[1], inout PointStream<cg_GeometryOut> cgc_stream, inout cg_GeometryOut cgc_output)
+{
+    float value;
+    bool2 choose;
+    float2 selected;
+    float temp1;
+    float temp2;
+    bool2 temp3;
+    float2 temp4;
+    float2 temp5;
+    float4 temp6;
+    value = 0.0;
+    choose = position[0].xy > float2(0.0, 0.0);
+    temp3 = choose;
+    temp1 = cg_bump(value);
+    temp4 = float2(temp1, cg_bump(value));
+    temp2 = cg_bump(value);
+    temp5 = float2(temp2, cg_bump(value));
+    selected = float2(temp3.x ? temp4.x : temp5.x, temp3.y ? temp4.y : temp5.y);
+    {
+        temp6 = position[0] + float4(selected.x, selected.y, value, 0.0);
+        cgc_output.position = temp6;
+        cgc_stream.Append(cgc_output);
+    }
+}
+
+[maxvertexcount(1)]
+void main(point cg_GeometryIn input[1], inout PointStream<cg_GeometryOut> cgc_stream)
+{
+    float4 position[1];
+    cg_GeometryOut cgc_output = (cg_GeometryOut) 0;
+    position[0] = input[0].position;
+    cg_entry(position, cgc_stream, cgc_output);
+    return;
+}
