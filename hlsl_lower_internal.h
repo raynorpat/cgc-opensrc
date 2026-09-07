@@ -155,5 +155,15 @@ const CgIRFunction *HlslFindSourceIRFunction(
     const HlslLowerContext *context, const Symbol *symbol);
 int HlslCollectGeometryOutput(HlslLowerContext *context);
 int HlslPrepareGeometryFunctions(HlslLowerContext *context);
+int HlslCollectCallsInStatements(HlslLowerContext *context, stmt *source);
+int HlslCollectIRCallsInStatements(HlslLowerContext *context,
+                                   const CgIRStmt *source);
+int HlslInitializeReturnedStructs(HlslModule *module,
+                                   HlslFunction *function,
+                                   HlslStmt *statements);
+int HlslLowerFunction(HlslLowerContext *context,
+                      HlslFunction *function);
+Type *HlslOriginalEntryResult(Symbol *program);
+int HlslIsEmptyEntry(Symbol *program);
 
 #endif // __HLSL_LOWER_INTERNAL_H

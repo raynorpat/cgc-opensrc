@@ -14,6 +14,7 @@ set(CGC_HLSL_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_expr.c
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_stmt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_function.c
 )
 
 if(BUILD_TESTING)
