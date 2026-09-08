@@ -5182,6 +5182,12 @@ set_target_properties(arb_ir_tests PROPERTIES
     C_EXTENSIONS YES
 )
 add_test(NAME arb_ir_unit COMMAND arb_ir_tests)
+add_test(
+    NAME arb_lower_structure
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_ROOT=${PROJECT_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_arb_lower_structure.cmake
+)
 
 add_arb_fixture(arbvp1_passthrough arbvp1
     tests/arb/profile/vp_passthrough.cg
