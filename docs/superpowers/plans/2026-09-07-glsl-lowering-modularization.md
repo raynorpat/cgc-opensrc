@@ -1815,7 +1815,7 @@ if ($LASTEXITCODE -ne 0) { throw 'HLSL compatibility regression' }
 Expected: all tests pass and four HLSL contracts remain green, including the
 197-combination modern FXC contract unless independently expanded.
 
-- [ ] **Step 5: Final review and integration checks.**
+- [x] **Step 5: Final review and integration checks.**
 Verify all 205 baseline definitions have exactly one owner; function bodies,
 private type fields, static storage and phase order match the baseline.
 Public glsl_hal.h and glsl_ir.h must be byte-identical to baseline.
@@ -1930,7 +1930,7 @@ moves, which avoids temporary reverse-dependency link failures.
 | GlslIRCollectUniforms | interface | GlslLowerCgIR (facade) |
 | GlslIREnsureEntryLocals | decl | GlslLowerCgIR (facade) |
 
-## Execution status: isolated qualification complete
+## Execution status: complete and integrated locally
 
 Implementation through Task 13 and isolated Task 14 qualification are complete.
 Qualified source commit: `a36bce36366e4520039670597afa963359382e4e`.
@@ -1968,17 +1968,21 @@ the complete branch also passed final review.
   baseline worktree. Task 6 build/selected-test logs were captured by an independent
   rerun after the first successful run did not retain full logs.
 
-The user approved local integration into master, then ARB continuation. Main-checkout
-verification is pending; nothing has been pushed.
+The user approved local integration into master, then ARB continuation. Master was
+fast-forwarded to `9f1472264e184743eb222f48d87439f307d69b72`. Main-checkout
+structural guard, self-test, fresh full Release build, and all 1,371 tests passed
+with no skips. Both WGL checks loaded their programs successfully. Existing user
+changes were preserved. Integration evidence is retained under the main checkout's
+ignored `build-cg20-glsl-merged/EVIDENCE.md`. Nothing has been pushed.
 
 ## Final review checklist
 
-- [ ] Approved responsibilities all have explicit function ownership.
-- [ ] Every shared declaration matches its definition and callers.
-- [ ] All private types/forward declarations travel with the correct owner.
-- [ ] No public API, profile, IR, code-generation or expected-output change.
-- [ ] Pristine baseline remained separate throughout execution.
-- [ ] All old test names retained; new structural test counted exactly once.
-- [ ] Debug/Release, external validation, raw or narrowly normalized differential
+- [x] Approved responsibilities all have explicit function ownership.
+- [x] Every shared declaration matches its definition and callers.
+- [x] All private types/forward declarations travel with the correct owner.
+- [x] No public API, profile, IR, code-generation or expected-output change.
+- [x] Pristine baseline remained separate throughout execution.
+- [x] All old test names retained; new structural test counted exactly once.
+- [x] Debug/Release, external validation, raw or narrowly normalized differential
   evidence and main-checkout structure checks pass.
-- [ ] Any unsupported-driver skips are reported explicitly.
+- [x] Any unsupported-driver skips are reported explicitly.
