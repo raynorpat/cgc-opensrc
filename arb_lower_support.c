@@ -368,4 +368,3 @@ void ArbLowerComposeSwizzledSource(ArbOperand *operand, const int *selection,
         operand->swizzle[ii] = old[lane];
     }
 } // ComposeSwizzledSource
-
