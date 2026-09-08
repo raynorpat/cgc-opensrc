@@ -31,6 +31,10 @@ set(CGC_GLSL_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_function.c
 )
 
+set(CGC_ARB_LOWER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower.c
+)
+
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
@@ -97,7 +101,7 @@ add_executable(cgc
     symbols.c
     tokens.c
     arb_ir.c
-    arb_lower.c
+    ${CGC_ARB_LOWER_SOURCES}
     arb_codegen.c
 )
 

@@ -49,57 +49,11 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <string.h>
 
-#include "slglobals.h"
-#include "cg_stdlib.h"
-#include "arb_ir.h"
+#include "arb_lower_internal.h"
 
-typedef struct ConsumedStmt_Rec {
-    struct ConsumedStmt_Rec *next;
-    stmt *stmt;
-} ConsumedStmt;
-
-typedef struct LoopInit_Rec {
-    struct LoopInit_Rec *next;
-    stmt *loop;
-    Symbol *symbol;
-    int value;
-} LoopInit;
-
-typedef struct ArbLowerContext_Rec {
-    ArbProgram *ir;
-    const ArbProfileDesc *profile;
-    Symbol *program;
-    struct ArbStaticValue_Rec *staticValues;
-    int dstSelValid;        // Target selection order recorded by LowerLValue
-    int dstSelWidth;
-    int dstSel[4];
-    ConsumedStmt *consumedHead; // Statements claimed by loop analysis
-    int attrRegno[16];          // Seen vertex attribute registers
-    int attrName[16];           // Binding spelling atom per register
-    int attrCount;
-    LoopInit *loopInitHead;     // Paired while/do initializers
-} ArbLowerContext;
-
-#define ARB_MAX_UNROLL 256
-
-typedef struct ArbStaticValue_Rec {
-    struct ArbStaticValue_Rec *next;
-    Symbol *symbol;
-    int value;
-} ArbStaticValue;
-
-static int LowerStatement(ArbLowerContext *ctx, stmt *statement);
 static int LowerAssignment(ArbLowerContext *ctx, expr *left, expr *right,
                            int mask, const SourceLoc *loc);
-static int LowerLValue(ArbLowerContext *ctx, expr *expression,
-                       ArbOperand *operand, int *mask);
-static int LowerExpression(ArbLowerContext *ctx, expr *expression,
-                           ArbOperand *operand);
-static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
-                                ArbOperand *operand);
-static void TrackSymbolTemp(ArbLowerContext *ctx, Symbol *symbol);
 static int EvalConstInt(ArbLowerContext *ctx, expr *e, int *out);
-static ArbOperand SmearOperand(ArbOperand operand);
 static int ExtractStepDelta(ArbLowerContext *ctx, expr *e, Symbol *target,
                             int *delta, int *found);
 
@@ -108,7 +62,7 @@ static int ExtractStepDelta(ArbLowerContext *ctx, expr *e, Symbol *target,
  *         a scalar or vector type.
  */
 
-static int MaskFromType(Type *fType)
+int ArbLowerMaskFromType(Type *fType)
 {
     int len;
 
@@ -128,7 +82,7 @@ static int MaskFromType(Type *fType)
  *         contiguous block of one temp per quad via GetSymbolTempBlock.
  */
 
-static int GetSymbolTemp(ArbLowerContext *ctx, Symbol *symbol)
+int ArbLowerGetSymbolTemp(ArbLowerContext *ctx, Symbol *symbol)
 {
     int *index;
     if (symbol->tempptr)
@@ -141,7 +95,7 @@ static int GetSymbolTemp(ArbLowerContext *ctx, Symbol *symbol)
     return *index;
 } // GetSymbolTemp
 
-static int GetSymbolTempBlock(ArbLowerContext *ctx, Symbol *symbol, int *count)
+int ArbLowerGetSymbolTempBlock(ArbLowerContext *ctx, Symbol *symbol, int *count)
 {
     int base;
     int ii;
@@ -149,7 +103,7 @@ static int GetSymbolTempBlock(ArbLowerContext *ctx, Symbol *symbol, int *count)
     *count = GetQuadRegSize(symbol->type);
     if (*count <= 1) {
         *count = 1;
-        return GetSymbolTemp(ctx, symbol);
+        return ArbLowerGetSymbolTemp(ctx, symbol);
     }
     if (symbol->tempptr)
         return *(int *) symbol->tempptr;
@@ -165,7 +119,7 @@ static int GetSymbolTempBlock(ArbLowerContext *ctx, Symbol *symbol, int *count)
         *index = base;
         symbol->tempptr = index;
     }
-    TrackSymbolTemp(ctx, symbol);
+    ArbLowerTrackSymbolTemp(ctx, symbol);
     return base;
 } // GetSymbolTempBlock
 
@@ -176,7 +130,7 @@ static int GetSymbolTempBlock(ArbLowerContext *ctx, Symbol *symbol, int *count)
  *         have cached backend data.
  */
 
-static void ClearSymbolTemps(ArbLowerContext *ctx)
+void ArbLowerClearSymbolTemps(ArbLowerContext *ctx)
 {
     SymbolList *tracked = (SymbolList *) ctx->program->tempptr2;
     while (tracked) {
@@ -196,7 +150,7 @@ static void ClearSymbolTemps(ArbLowerContext *ctx)
  * TrackSymbolTemp() - Remember a symbol whose tempptr the backend owns.
  */
 
-static void TrackSymbolTemp(ArbLowerContext *ctx, Symbol *symbol)
+void ArbLowerTrackSymbolTemp(ArbLowerContext *ctx, Symbol *symbol)
 {
     SymbolList *node = (SymbolList *) malloc(sizeof(SymbolList));
     if (!node)
@@ -236,7 +190,7 @@ static void StaticPop(ArbLowerContext *ctx)
     }
 } // StaticPop
 
-static int StaticFind(const ArbLowerContext *ctx, Symbol *symbol, int *value)
+int ArbLowerStaticFind(const ArbLowerContext *ctx, Symbol *symbol, int *value)
 {
     ArbStaticValue *sv = ctx->staticValues;
     while (sv) {
@@ -278,7 +232,7 @@ static int EvalConstInt(ArbLowerContext *ctx, expr *e, int *out)
         if (e->sym.op == VARIABLE_OP &&
             GetBase(e->common.type) == TYPE_BASE_INT)
         {
-            return StaticFind(ctx, e->sym.symbol, out);
+            return ArbLowerStaticFind(ctx, e->sym.symbol, out);
         }
         return 0;
     case UNARY_N:
@@ -364,7 +318,7 @@ static int EvalConstInt(ArbLowerContext *ctx, expr *e, int *out)
  * step expressions) and must not lower as ordinary assignments.
  */
 
-static void MarkConsumedStmt(ArbLowerContext *ctx, stmt *fStmt)
+void ArbLowerMarkConsumedStmt(ArbLowerContext *ctx, stmt *fStmt)
 {
     ConsumedStmt *node = (ConsumedStmt *) malloc(sizeof(ConsumedStmt));
     if (!node)
@@ -374,7 +328,7 @@ static void MarkConsumedStmt(ArbLowerContext *ctx, stmt *fStmt)
     ctx->consumedHead = node;
 } // MarkConsumedStmt
 
-static int IsConsumedStmt(ArbLowerContext *ctx, stmt *fStmt)
+int ArbLowerIsConsumedStmt(ArbLowerContext *ctx, stmt *fStmt)
 {
     ConsumedStmt *node = ctx->consumedHead;
     while (node) {
@@ -711,7 +665,7 @@ static int ResolveMemberBinding(Binding *fBind, ArbOperand *operand)
  *         (or -1 when the symbol is not a bound uniform).
  */
 
-static int UniformQuadBase(Symbol *symb)
+int ArbLowerUniformQuadBase(Symbol *symb)
 {
     Binding *fBind = symb->details.var.bind;
 
@@ -896,7 +850,7 @@ static int DetectDotChain(expr *e, expr **ua, expr **ub, int *width)
  *         Returns 0 when the shape is unsupported.
  */
 
-static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
+int ArbLowerConnectorMember(ArbLowerContext *ctx, expr *expression,
                                 ArbOperand *operand)
 {
     Symbol *member;
@@ -914,7 +868,7 @@ static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
         if (ResolveMemberBinding(symb->details.var.bind, operand))
             return 1;
         if (GetDomain(symb->type) & TYPE_DOMAIN_UNIFORM) {
-            base = UniformQuadBase(symb);
+            base = ArbLowerUniformQuadBase(symb);
             if (base < 0) {
                 SemanticError(Cg->pLastSourceLoc,
                               ERROR_S_ARB_UNSUPPORTED_OPERATION,
@@ -934,16 +888,16 @@ static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
         // the base of their contiguous temp block.
         if (!IsScalar(symb->type) && !IsVector(symb->type, &len)) {
             int count;
-            int base = GetSymbolTempBlock(ctx, symb, &count);
+            int base = ArbLowerGetSymbolTempBlock(ctx, symb, &count);
             if (base < 0)
                 return 0;
             *operand = ArbTempOperand(base);
             return 1;
         }
-        temp = GetSymbolTemp(ctx, symb);
+        temp = ArbLowerGetSymbolTemp(ctx, symb);
         if (temp < 0)
             return 0;
-        TrackSymbolTemp(ctx, symb);
+        ArbLowerTrackSymbolTemp(ctx, symb);
         *operand = ArbTempOperand(temp);
         if (IsScalar(symb->type)) {
             operand->swizzle[0] = 0;
@@ -982,7 +936,7 @@ static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
 
     if (expression->bin.left->common.kind == SYMB_N) {
         Symbol *baseSymb = expression->bin.left->sym.symbol;
-        int base = UniformQuadBase(baseSymb);
+        int base = ArbLowerUniformQuadBase(baseSymb);
         if (base >= 0) {
             *operand = ArbParamOperand(base + (member->details.var.addr >> 2));
             if (IsScalar(memberType)) {
@@ -1009,7 +963,7 @@ static int LowerConnectorMember(ArbLowerContext *ctx, expr *expression,
  *         letters to the mask.
  */
 
-static int LowerLValue(ArbLowerContext *ctx, expr *expression,
+int ArbLowerLValue(ArbLowerContext *ctx, expr *expression,
                        ArbOperand *operand, int *mask)
 {
     Type *lType;
@@ -1025,7 +979,7 @@ static int LowerLValue(ArbLowerContext *ctx, expr *expression,
         int letterMask = 0;
         int ii;
 
-        if (!LowerLValue(ctx, expression->un.arg, operand, mask))
+        if (!ArbLowerLValue(ctx, expression->un.arg, operand, mask))
             return 0;
         for (ii = 0; ii < width && ii < 4; ii++) {
             int letter = (int) ((packed >> (2 * ii)) & 3);
@@ -1045,7 +999,7 @@ static int LowerLValue(ArbLowerContext *ctx, expr *expression,
     {
         Symbol *symb = expression->sym.symbol;
         if (ResolveMemberBinding(symb->details.var.bind, operand)) {
-            *mask = MaskFromType(symb->type);
+            *mask = ArbLowerMaskFromType(symb->type);
             return 1;
         }
         if (GetDomain(symb->type) & TYPE_DOMAIN_UNIFORM) {
@@ -1054,15 +1008,15 @@ static int LowerLValue(ArbLowerContext *ctx, expr *expression,
             return 0;
         }
         {
-            int temp = GetSymbolTemp(ctx, symb);
+            int temp = ArbLowerGetSymbolTemp(ctx, symb);
             if (temp < 0)
                 return 0;
-            TrackSymbolTemp(ctx, symb);
+            ArbLowerTrackSymbolTemp(ctx, symb);
             *operand = ArbTempOperand(temp);
             if (IsScalar(symb->type))
                 operand->swizzle[0] = operand->swizzle[1] =
                 operand->swizzle[2] = operand->swizzle[3] = 0;
-            *mask = MaskFromType(symb->type);
+            *mask = ArbLowerMaskFromType(symb->type);
             return 1;
         }
     }
@@ -1076,9 +1030,9 @@ static int LowerLValue(ArbLowerContext *ctx, expr *expression,
     }
 
     lType = expression->common.type;
-    if (!LowerConnectorMember(ctx, expression, operand))
+    if (!ArbLowerConnectorMember(ctx, expression, operand))
         return 0;
-    *mask = MaskFromType(lType);
+    *mask = ArbLowerMaskFromType(lType);
     return 1;
 } // LowerLValue
 
@@ -1115,14 +1069,14 @@ static int LowerAssignment(ArbLowerContext *ctx, expr *left, expr *right,
     ArbInstruction *inst;
     int dstMask;
 
-    if (!LowerLValue(ctx, left, &dst, &dstMask))
+    if (!ArbLowerLValue(ctx, left, &dst, &dstMask))
         return 0;
     dstMask &= mask ? mask : ARB_MASK_XYZW;
     if (dst.file == ARB_REG_INPUT) {
         // Synthesized copy into a connector input: bookkeeping only.
         return 1;
     }
-    if (!LowerExpression(ctx, right, &src))
+    if (!ArbLowerExpression(ctx, right, &src))
         return 0;
 
     // Positional alignment: destination lane sel[p] (the p-th written
@@ -1245,19 +1199,19 @@ static int LowerExpressionStmt(ArbLowerContext *ctx, expr *fExpr,
 
             ctx->dstSelValid = 0;
             ctx->dstSelWidth = 0;
-            if (!LowerLValue(ctx, dstExpr, &dst, &dstMask))
+            if (!ArbLowerLValue(ctx, dstExpr, &dst, &dstMask))
                 return 0;
-            if (!LowerExpression(ctx, condExpr, &cond))
+            if (!ArbLowerExpression(ctx, condExpr, &cond))
                 return 0;
-            if (!LowerExpression(ctx, valExpr, &tv))
+            if (!ArbLowerExpression(ctx, valExpr, &tv))
                 return 0;
             fv = dst; // Old destination contents.
             if (fv.file == ARB_REG_TEMP)
                 fv.swizzle[0] = fv.swizzle[1] = fv.swizzle[2] =
                     fv.swizzle[3] = IsScalar(dstType) ? 0 : fv.swizzle[3];
-            if (!BuildSelect(ctx, loc, cond, tv, fv,
-                             TypeWidth(dstType),
-                             MaskFromType(dstType), &sel))
+            if (!ArbLowerBuildSelect(ctx, loc, cond, tv, fv,
+                             ArbLowerTypeWidth(dstType),
+                             ArbLowerMaskFromType(dstType), &sel))
             {
                 return 0;
             }
@@ -1266,7 +1220,7 @@ static int LowerExpressionStmt(ArbLowerContext *ctx, expr *fExpr,
                     ArbAppendInstruction(ctx, ARB_OP_MOV, loc, dst);
                 if (!mov)
                     return 0;
-                mov->mask = (unsigned char) MaskFromType(dstType);
+                mov->mask = (unsigned char) ArbLowerMaskFromType(dstType);
                 if (!ArbAddSource(mov, sel))
                     return 0;
             }
@@ -1295,7 +1249,7 @@ static int LowerExpressionStmt(ArbLowerContext *ctx, expr *fExpr,
  *     body's final step expression) as compile-time loop control.
  */
 
-static void PairWhileInitializers(ArbLowerContext *ctx, stmt *list)
+void ArbLowerPairWhileInitializers(ArbLowerContext *ctx, stmt *list)
 {
     stmt *prev = NULL;
     stmt *s;
@@ -1333,9 +1287,9 @@ static void PairWhileInitializers(ArbLowerContext *ctx, stmt *list)
                             rec->next = ctx->loopInitHead;
                             ctx->loopInitHead = rec;
                         }
-                        MarkConsumedStmt(ctx, prev);
+                        ArbLowerMarkConsumedStmt(ctx, prev);
                         for (ii = 0; ii < consumedCount; ii++)
-                            MarkConsumedStmt(ctx, consumed[ii]);
+                            ArbLowerMarkConsumedStmt(ctx, consumed[ii]);
                     }
                 }
             }
@@ -1368,7 +1322,7 @@ static int LowerLoopBody(ArbLowerContext *ctx, Symbol *induction,
 
     for (ii = 0; ii < count; ii++) {
         StaticPush(ctx, induction, values[ii]);
-        if (!LowerStatement(ctx, body)) {
+        if (!ArbLowerStatement(ctx, body)) {
             StaticPop(ctx);
             return 0;
         }
@@ -1381,7 +1335,7 @@ static int LowerLoopBody(ArbLowerContext *ctx, Symbol *induction,
  * LowerCanonicalFor() - Recognize and unroll "for (i = c; i <op> n; step)".
  */
 
-static int LowerCanonicalFor(ArbLowerContext *ctx, stmt *fStmt)
+int ArbLowerCanonicalFor(ArbLowerContext *ctx, stmt *fStmt)
 {
     Symbol *induction = NULL;
     int start, bound, op, delta, found = 0;
@@ -1450,7 +1404,7 @@ fail:
  *     the initializer recorded by PairWhileInitializers.
  */
 
-static int LowerCanonicalWhileDo(ArbLowerContext *ctx, stmt *fStmt,
+int ArbLowerCanonicalWhileDo(ArbLowerContext *ctx, stmt *fStmt,
                                  int testFirst)
 {
     LoopInit *init = FindLoopInit(ctx, fStmt);
@@ -1517,11 +1471,11 @@ fail:
  *     induction symbol bound to simulated constants.
  */
 
-static int LowerStatement(ArbLowerContext *ctx, stmt *statement)
+int ArbLowerStatement(ArbLowerContext *ctx, stmt *statement)
 {
-    PairWhileInitializers(ctx, statement);
+    ArbLowerPairWhileInitializers(ctx, statement);
     while (statement) {
-        if (IsConsumedStmt(ctx, statement)) {
+        if (ArbLowerIsConsumedStmt(ctx, statement)) {
             // Claimed initializer or step: no code.
             statement = statement->commonst.next;
             continue;
@@ -1548,13 +1502,13 @@ static int LowerStatement(ArbLowerContext *ctx, stmt *statement)
                                   ERROR___ARB_VERTEX_DISCARD);
                     return 0;
                 }
-                if (!LowerExpression(ctx, statement->discardst.cond, &sink))
+                if (!ArbLowerExpression(ctx, statement->discardst.cond, &sink))
                     return 0;
             }
             break;        case COMMENT_STMT:
             break;
         case BLOCK_STMT:
-            if (!LowerStatement(ctx, statement->blockst.body))
+            if (!ArbLowerStatement(ctx, statement->blockst.body))
                 return 0;
             break;
         case IF_STMT:
@@ -1562,15 +1516,15 @@ static int LowerStatement(ArbLowerContext *ctx, stmt *statement)
                           ERROR_S_ARB_UNSUPPORTED_OPERATION, "if");
             return 0;
         case FOR_STMT:
-            if (!LowerCanonicalFor(ctx, statement))
+            if (!ArbLowerCanonicalFor(ctx, statement))
                 return 0;
             break;
         case WHILE_STMT:
-            if (!LowerCanonicalWhileDo(ctx, statement, 1))
+            if (!ArbLowerCanonicalWhileDo(ctx, statement, 1))
                 return 0;
             break;
         case DO_STMT:
-            if (!LowerCanonicalWhileDo(ctx, statement, 0))
+            if (!ArbLowerCanonicalWhileDo(ctx, statement, 0))
                 return 0;
             break;
         default:
@@ -1588,7 +1542,7 @@ static int LowerStatement(ArbLowerContext *ctx, stmt *statement)
  *         through all four lanes.
  */
 
-static ArbOperand SmearOperand(ArbOperand operand)
+ArbOperand ArbLowerSmearOperand(ArbOperand operand)
 {
     ArbOperand copy = operand;
     copy.swizzle[0] = 0;
@@ -1602,7 +1556,7 @@ static ArbOperand SmearOperand(ArbOperand operand)
  * EmitBinary() - Append one two-source instruction writing a fresh temp.
  */
 
-static int EmitBinary(ArbLowerContext *ctx, ArbOpcode opcode, int mask,
+int ArbLowerEmitBinary(ArbLowerContext *ctx, ArbOpcode opcode, int mask,
                       const SourceLoc *loc, ArbOperand a, ArbOperand b,
                       ArbOperand *result)
 {
@@ -1625,7 +1579,7 @@ static int EmitBinary(ArbLowerContext *ctx, ArbOpcode opcode, int mask,
  * EmitUnary() - Append one one-source instruction writing a fresh temp.
  */
 
-static int EmitUnary(ArbLowerContext *ctx, ArbOpcode opcode, int mask,
+int ArbLowerEmitUnary(ArbLowerContext *ctx, ArbOpcode opcode, int mask,
                      const SourceLoc *loc, ArbOperand a, ArbOperand *result)
 {
     ArbInstruction *inst;
@@ -1650,7 +1604,7 @@ static int EmitUnary(ArbLowerContext *ctx, ArbOpcode opcode, int mask,
  *     (SUB(c, 1)).
  */
 
-static int BuildSelect(ArbLowerContext *ctx, const SourceLoc *loc,
+int ArbLowerBuildSelect(ArbLowerContext *ctx, const SourceLoc *loc,
                        ArbOperand cond, ArbOperand tv, ArbOperand fv,
                        int width, int mask, ArbOperand *result)
 {
@@ -1659,13 +1613,13 @@ static int BuildSelect(ArbLowerContext *ctx, const SourceLoc *loc,
     ArbOperand oneOp, m, inv, t, f;
 
     if (width == 1) {
-        cond = SmearOperand(cond);
-        tv = SmearOperand(tv);
-        fv = SmearOperand(fv);
+        cond = ArbLowerSmearOperand(cond);
+        tv = ArbLowerSmearOperand(tv);
+        fv = ArbLowerSmearOperand(fv);
         mask = ARB_MASK_X;
     } else {
         // Conditions are scalar by language rule; smear across lanes.
-        cond = SmearOperand(cond);
+        cond = ArbLowerSmearOperand(cond);
     }
 
     if (ctx->profile->stage == ARB_STAGE_FRAGMENT) {
@@ -1680,7 +1634,7 @@ static int BuildSelect(ArbLowerContext *ctx, const SourceLoc *loc,
         if (ci < 0)
             return 0;
         oneOp = ArbConstOperand(ci);
-        if (!EmitBinary(ctx, ARB_OP_SUB, mask, loc, cond, oneOp,
+        if (!ArbLowerEmitBinary(ctx, ARB_OP_SUB, mask, loc, cond, oneOp,
                         &signedCond))
         {
             return 0;
@@ -1713,16 +1667,16 @@ static int BuildSelect(ArbLowerContext *ctx, const SourceLoc *loc,
         if (zindex < 0)
             return 0;
         zeroOp = ArbConstOperand(zindex);
-        if (!EmitBinary(ctx, ARB_OP_SGE, mask, loc, cond, zeroOp, &m))
+        if (!ArbLowerEmitBinary(ctx, ARB_OP_SGE, mask, loc, cond, zeroOp, &m))
             return 0;
     }
-    if (!EmitBinary(ctx, ARB_OP_SUB, mask, loc, oneOp, m, &inv))
+    if (!ArbLowerEmitBinary(ctx, ARB_OP_SUB, mask, loc, oneOp, m, &inv))
         return 0;
-    if (!EmitBinary(ctx, ARB_OP_MUL, mask, loc, tv, m, &t))
+    if (!ArbLowerEmitBinary(ctx, ARB_OP_MUL, mask, loc, tv, m, &t))
         return 0;
-    if (!EmitBinary(ctx, ARB_OP_MUL, mask, loc, fv, inv, &f))
+    if (!ArbLowerEmitBinary(ctx, ARB_OP_MUL, mask, loc, fv, inv, &f))
         return 0;
-    return EmitBinary(ctx, ARB_OP_ADD, mask, loc, t, f, result);
+    return ArbLowerEmitBinary(ctx, ARB_OP_ADD, mask, loc, t, f, result);
 } // BuildSelect
 
 /*
@@ -1780,7 +1734,7 @@ static int LowerConstantNode(ArbLowerContext *ctx, expr *expression,
  * TypeWidth() - Component width of a scalar or vector type.
  */
 
-static int TypeWidth(Type *fType)
+int ArbLowerTypeWidth(Type *fType)
 {
     int len;
 
@@ -1789,7 +1743,7 @@ static int TypeWidth(Type *fType)
     return 1;
 } // TypeWidth
 
-static int WidthMask(int width)
+int ArbLowerWidthMask(int width)
 {
     switch (width) {
     case 2: return ARB_MASK_X | ARB_MASK_Y;
@@ -1809,7 +1763,7 @@ static int IsIdentitySwizzleLower(const signed char *swizzle)
  *     over an existing operand's swizzle.
  */
 
-static void ComposeSwizzledSource(ArbOperand *operand, const int *selection,
+void ArbLowerComposeSwizzledSource(ArbOperand *operand, const int *selection,
                                   int width)
 {
     signed char old[4];
@@ -1828,7 +1782,7 @@ static void ComposeSwizzledSource(ArbOperand *operand, const int *selection,
  *         component as a two-bit code in the subop mask field.
  */
 
-static int LowerSwizzleNode(ArbLowerContext *ctx, expr *expression,
+int ArbLowerSwizzleNode(ArbLowerContext *ctx, expr *expression,
                             ArbOperand *operand)
 {
     unsigned int packed = (unsigned int) SUBOP_GET_MASK(expression->un.subop);
@@ -1838,7 +1792,7 @@ static int LowerSwizzleNode(ArbLowerContext *ctx, expr *expression,
     int selection[4];
     int ii;
 
-    if (!LowerExpression(ctx, expression->un.arg, operand))
+    if (!ArbLowerExpression(ctx, expression->un.arg, operand))
         return 0;
     for (ii = 0; ii < 4; ii++)
         selection[ii] = (int) ((packed >> (2 * ii)) & 3);
@@ -1851,7 +1805,7 @@ static int LowerSwizzleNode(ArbLowerContext *ctx, expr *expression,
             return 0;
         }
     }
-    ComposeSwizzledSource(operand, selection, width);
+    ArbLowerComposeSwizzledSource(operand, selection, width);
     return 1;
 } // LowerSwizzleNode
 
@@ -1882,14 +1836,14 @@ static int LowerVectorConstructor(ArbLowerContext *ctx, expr *expression,
         } else {
             arg = NULL;
         }
-        if (!item || !LowerExpression(ctx, item, &component))
+        if (!item || !ArbLowerExpression(ctx, item, &component))
             return 0;
         inst = ArbAppendInstruction(ctx->ir, ARB_OP_MOV, loc,
                                     ArbTempOperand(temp));
         if (!inst)
             return 0;
         inst->mask = (unsigned char) (1 << lane);
-        if (!ArbAddSource(inst, SmearOperand(component)))
+        if (!ArbAddSource(inst, ArbLowerSmearOperand(component)))
             return 0;
     }
     *operand = ArbTempOperand(temp);
@@ -1969,10 +1923,10 @@ static int LowerBuiltinCall(ArbLowerContext *ctx, expr *expression,
             return 0;
         }
         argExpr = args->bin.left;
-        if (!LowerExpression(ctx, argExpr, &arg))
+        if (!ArbLowerExpression(ctx, argExpr, &arg))
             return 0;
-        arg = SmearOperand(arg);
-        if (!EmitUnary(ctx, ARB_OP_RSQ, ARB_MASK_X, loc, arg, &result))
+        arg = ArbLowerSmearOperand(arg);
+        if (!ArbLowerEmitUnary(ctx, ARB_OP_RSQ, ARB_MASK_X, loc, arg, &result))
             return 0;
         *operand = result;
         return 1;
@@ -2080,7 +2034,7 @@ static int LowerBuiltinCall(ArbLowerContext *ctx, expr *expression,
                 return 0;
             }
         }
-        if (!LowerExpression(ctx, coordExpr, &coord))
+        if (!ArbLowerExpression(ctx, coordExpr, &coord))
             return 0;
 
         temp = ArbNewTemp(ctx->ir);
@@ -2115,8 +2069,8 @@ static int LowerBooleanOrComparison(ArbLowerContext *ctx, expr *expression,
                                     const SourceLoc *loc, ArbOperand *operand)
 {
     int op = expression->bin.op;
-    int width = TypeWidth(expression->common.type);
-    int mask = WidthMask(width);
+    int width = ArbLowerTypeWidth(expression->common.type);
+    int mask = ArbLowerWidthMask(width);
     ArbOperand a, b;
 
     switch (op) {
@@ -2128,8 +2082,8 @@ static int LowerBooleanOrComparison(ArbLowerContext *ctx, expr *expression,
         ArbOpcode opcode;
         int swap = 0;
 
-        if (!LowerExpression(ctx, expression->bin.left, &a) ||
-            !LowerExpression(ctx, expression->bin.right, &b))
+        if (!ArbLowerExpression(ctx, expression->bin.left, &a) ||
+            !ArbLowerExpression(ctx, expression->bin.right, &b))
         {
             return 0;
         }
@@ -2154,11 +2108,11 @@ static int LowerBooleanOrComparison(ArbLowerContext *ctx, expr *expression,
             a = b;
             b = tmp;
         }
-        if (TypeWidth(expression->bin.left->common.type) == 1 && width > 1)
-            a = SmearOperand(a);
-        if (TypeWidth(expression->bin.right->common.type) == 1 && width > 1)
-            b = SmearOperand(b);
-        return EmitBinary(ctx, opcode, mask, loc, a, b, operand);
+        if (ArbLowerTypeWidth(expression->bin.left->common.type) == 1 && width > 1)
+            a = ArbLowerSmearOperand(a);
+        if (ArbLowerTypeWidth(expression->bin.right->common.type) == 1 && width > 1)
+            b = ArbLowerSmearOperand(b);
+        return ArbLowerEmitBinary(ctx, opcode, mask, loc, a, b, operand);
     }
     case EQ_OP: case EQ_V_OP: case EQ_SV_OP: case EQ_VS_OP:
     case NE_OP: case NE_V_OP: case NE_SV_OP: case NE_VS_OP:
@@ -2167,21 +2121,21 @@ static int LowerBooleanOrComparison(ArbLowerContext *ctx, expr *expression,
         int isNE = (op == NE_OP || op == NE_V_OP ||
                     op == NE_SV_OP || op == NE_VS_OP);
 
-        if (!LowerExpression(ctx, expression->bin.left, &a) ||
-            !LowerExpression(ctx, expression->bin.right, &b))
+        if (!ArbLowerExpression(ctx, expression->bin.left, &a) ||
+            !ArbLowerExpression(ctx, expression->bin.right, &b))
         {
             return 0;
         }
-        if (TypeWidth(expression->bin.left->common.type) == 1 && width > 1)
-            a = SmearOperand(a);
-        if (TypeWidth(expression->bin.right->common.type) == 1 && width > 1)
-            b = SmearOperand(b);
-        if (!EmitBinary(ctx, ARB_OP_SGE, mask, loc, a, b, &geAB) ||
-            !EmitBinary(ctx, ARB_OP_SGE, mask, loc, b, a, &geBA))
+        if (ArbLowerTypeWidth(expression->bin.left->common.type) == 1 && width > 1)
+            a = ArbLowerSmearOperand(a);
+        if (ArbLowerTypeWidth(expression->bin.right->common.type) == 1 && width > 1)
+            b = ArbLowerSmearOperand(b);
+        if (!ArbLowerEmitBinary(ctx, ARB_OP_SGE, mask, loc, a, b, &geAB) ||
+            !ArbLowerEmitBinary(ctx, ARB_OP_SGE, mask, loc, b, a, &geBA))
         {
             return 0;
         }
-        if (!EmitBinary(ctx, ARB_OP_MUL, mask, loc, geAB, geBA, &eq))
+        if (!ArbLowerEmitBinary(ctx, ARB_OP_MUL, mask, loc, geAB, geBA, &eq))
             return 0;
         if (!isNE) {
             *operand = eq;
@@ -2193,18 +2147,18 @@ static int LowerBooleanOrComparison(ArbLowerContext *ctx, expr *expression,
             if (cindex < 0)
                 return 0;
             oneOp = ArbConstOperand(cindex);
-            return EmitBinary(ctx, ARB_OP_SUB, mask, loc, oneOp, eq, operand);
+            return ArbLowerEmitBinary(ctx, ARB_OP_SUB, mask, loc, oneOp, eq, operand);
         }
     }
     case AND_OP: case AND_V_OP: case AND_SV_OP: case AND_VS_OP:
     case BAND_OP: case BAND_V_OP: case BAND_SV_OP: case BAND_VS_OP:
     {
-        if (!LowerExpression(ctx, expression->bin.left, &a) ||
-            !LowerExpression(ctx, expression->bin.right, &b))
+        if (!ArbLowerExpression(ctx, expression->bin.left, &a) ||
+            !ArbLowerExpression(ctx, expression->bin.right, &b))
         {
             return 0;
         }
-        return EmitBinary(ctx, ARB_OP_MUL, mask, loc, a, b, operand);
+        return ArbLowerEmitBinary(ctx, ARB_OP_MUL, mask, loc, a, b, operand);
     }
     case OR_OP: case OR_V_OP: case OR_SV_OP: case OR_VS_OP:
     case BOR_OP: case BOR_V_OP: case BOR_SV_OP: case BOR_VS_OP:
@@ -2214,18 +2168,18 @@ static int LowerBooleanOrComparison(ArbLowerContext *ctx, expr *expression,
         int cindex;
         ArbOperand oneOp;
 
-        if (!LowerExpression(ctx, expression->bin.left, &a) ||
-            !LowerExpression(ctx, expression->bin.right, &b))
+        if (!ArbLowerExpression(ctx, expression->bin.left, &a) ||
+            !ArbLowerExpression(ctx, expression->bin.right, &b))
         {
             return 0;
         }
-        if (!EmitBinary(ctx, ARB_OP_ADD, mask, loc, a, b, &sum))
+        if (!ArbLowerEmitBinary(ctx, ARB_OP_ADD, mask, loc, a, b, &sum))
             return 0;
         cindex = ArbInternConstant(ctx->ir, one, 4);
         if (cindex < 0)
             return 0;
         oneOp = ArbConstOperand(cindex);
-        return EmitBinary(ctx, ARB_OP_MIN, mask, loc, sum, oneOp, operand);
+        return ArbLowerEmitBinary(ctx, ARB_OP_MIN, mask, loc, sum, oneOp, operand);
     }
     default:
         return 0;
@@ -2241,10 +2195,10 @@ static int LowerArithmeticBinary(ArbLowerContext *ctx, expr *expression,
                                  const SourceLoc *loc, ArbOperand *operand)
 {
     int op = expression->bin.op;
-    int width = TypeWidth(expression->common.type);
-    int mask = WidthMask(width);
-    int lwidth = TypeWidth(expression->bin.left->common.type);
-    int rwidth = TypeWidth(expression->bin.right->common.type);
+    int width = ArbLowerTypeWidth(expression->common.type);
+    int mask = ArbLowerWidthMask(width);
+    int lwidth = ArbLowerTypeWidth(expression->bin.left->common.type);
+    int rwidth = ArbLowerTypeWidth(expression->bin.right->common.type);
     ArbOpcode opcode;
     ArbOperand a, b;
     int isDiv = 0;
@@ -2266,8 +2220,8 @@ static int LowerArithmeticBinary(ArbLowerContext *ctx, expr *expression,
         return 0;
     }
 
-    if (!LowerExpression(ctx, expression->bin.left, &a) ||
-        !LowerExpression(ctx, expression->bin.right, &b))
+    if (!ArbLowerExpression(ctx, expression->bin.left, &a) ||
+        !ArbLowerExpression(ctx, expression->bin.right, &b))
     {
         return 0;
     }
@@ -2280,55 +2234,55 @@ static int LowerArithmeticBinary(ArbLowerContext *ctx, expr *expression,
         ArbOperand dividend = a;
 
         if (lwidth == 1)
-            dividend = SmearOperand(dividend);
+            dividend = ArbLowerSmearOperand(dividend);
         if (rwidth == 1)
-            divisor = SmearOperand(divisor);
-        if (!EmitUnary(ctx, ARB_OP_RCP, rcpMask, loc, divisor, &rcp))
+            divisor = ArbLowerSmearOperand(divisor);
+        if (!ArbLowerEmitUnary(ctx, ARB_OP_RCP, rcpMask, loc, divisor, &rcp))
             return 0;
         if (rwidth == 1)
-            rcp = SmearOperand(rcp);
+            rcp = ArbLowerSmearOperand(rcp);
         else if (rwidth < 4 && width > rwidth) {
             int sel[4];
             int ii;
             for (ii = 0; ii < 4; ii++)
                 sel[ii] = ii < rwidth ? ii : rwidth - 1;
-            ComposeSwizzledSource(&rcp, sel, width);
+            ArbLowerComposeSwizzledSource(&rcp, sel, width);
         }
-        return EmitBinary(ctx, ARB_OP_MUL, mask, loc, dividend, rcp,
+        return ArbLowerEmitBinary(ctx, ARB_OP_MUL, mask, loc, dividend, rcp,
                           operand);
     }
 
     if ((op == ADD_SV_OP || op == SUB_SV_OP || op == MUL_SV_OP) &&
         lwidth == 1 && width > 1)
     {
-        a = SmearOperand(a);
+        a = ArbLowerSmearOperand(a);
     }
     if ((op == ADD_VS_OP || op == SUB_VS_OP || op == MUL_VS_OP) &&
         rwidth == 1 && width > 1)
     {
-        b = SmearOperand(b);
+        b = ArbLowerSmearOperand(b);
     }
     if (width == 1) {
-        a = SmearOperand(a);
-        b = SmearOperand(b);
+        a = ArbLowerSmearOperand(a);
+        b = ArbLowerSmearOperand(b);
         mask = ARB_MASK_X;
     } else if (lwidth == 1 && rwidth == 1) {
-        a = SmearOperand(a);
-        b = SmearOperand(b);
+        a = ArbLowerSmearOperand(a);
+        b = ArbLowerSmearOperand(b);
     } else if (lwidth < width && lwidth > 1) {
         int sel[4];
         int ii;
         for (ii = 0; ii < 4; ii++)
             sel[ii] = ii < lwidth ? ii : lwidth - 1;
-        ComposeSwizzledSource(&a, sel, width);
+        ArbLowerComposeSwizzledSource(&a, sel, width);
     } else if (rwidth < width && rwidth > 1) {
         int sel[4];
         int ii;
         for (ii = 0; ii < 4; ii++)
             sel[ii] = ii < rwidth ? ii : rwidth - 1;
-        ComposeSwizzledSource(&b, sel, width);
+        ArbLowerComposeSwizzledSource(&b, sel, width);
     }
-    return EmitBinary(ctx, opcode, mask, loc, a, b, operand);
+    return ArbLowerEmitBinary(ctx, opcode, mask, loc, a, b, operand);
 } // LowerArithmeticBinary
 
 /*
@@ -2398,7 +2352,7 @@ static int RejectUnsupportedBinary(expr *expression)
  *     operands keep their mathematical order.
  */
 
-static int LowerExpression(ArbLowerContext *ctx, expr *expression,
+int ArbLowerExpression(ArbLowerContext *ctx, expr *expression,
                            ArbOperand *operand)
 {
     const SourceLoc *loc = Cg->pLastSourceLoc;
@@ -2419,7 +2373,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
             // An induction symbol on the simulation stack contributes
             // its compile-time value instead of a register.
             int sval;
-            if (StaticFind(ctx, expression->sym.symbol, &sval)) {
+            if (ArbLowerStaticFind(ctx, expression->sym.symbol, &sval)) {
                 float cv[4];
                 int ci;
                 cv[0] = (float) sval;
@@ -2430,26 +2384,26 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                 return 1;
             }
         }
-        return LowerConnectorMember(ctx, expression, operand);
+        return ArbLowerConnectorMember(ctx, expression, operand);
 
     case UNARY_N:
         switch (expression->un.op) {
         case NEG_OP:
         case NEG_V_OP:
-            if (!LowerExpression(ctx, expression->un.arg, operand))
+            if (!ArbLowerExpression(ctx, expression->un.arg, operand))
                 return 0;
             operand->negate = !operand->negate;
             return 1;
         case POS_OP:
         case POS_V_OP:
-            return LowerExpression(ctx, expression->un.arg, operand);
+            return ArbLowerExpression(ctx, expression->un.arg, operand);
         case CAST_CS_OP:
         case CAST_CV_OP:
         case CAST_CM_OP:
             // Numeric casts are value-preserving at this level.
-            return LowerExpression(ctx, expression->un.arg, operand);
+            return ArbLowerExpression(ctx, expression->un.arg, operand);
         case SWIZZLE_Z_OP:
-            return LowerSwizzleNode(ctx, expression, operand);
+            return ArbLowerSwizzleNode(ctx, expression, operand);
         case SWIZMAT_Z_OP: {
             // Matrix element selects: each 4-bit code packs (row<<2)|col.
             // Same-row groups read that row vector with a column swizzle.
@@ -2497,7 +2451,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                                   "swizmat");
                     return 0;
                 }
-                base = UniformQuadBase(matSymb);
+                base = ArbLowerUniformQuadBase(matSymb);
 
                 if (base >= 0) {
                     *operand = ArbParamOperand(base + row0);
@@ -2516,7 +2470,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                         int cc = codes[ii < width ? ii : width - 1];
                         sel[ii] = cc & 3;
                     }
-                    ComposeSwizzledSource(operand, sel, width);
+                    ArbLowerComposeSwizzledSource(operand, sel, width);
                 }
             }
             return 1;
@@ -2537,14 +2491,14 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                 ArbOperand oneOp;
                 ArbInstruction *kil;
 
-                if (!LowerExpression(ctx, expression->un.arg, &cond))
+                if (!ArbLowerExpression(ctx, expression->un.arg, &cond))
                     return 0;
-                cond = SmearOperand(cond);
+                cond = ArbLowerSmearOperand(cond);
                 cindex = ArbInternConstant(ctx->ir, one, 4);
                 if (cindex < 0)
                     return 0;
                 oneOp = ArbConstOperand(cindex);
-                if (!EmitBinary(ctx, ARB_OP_SUB, ARB_MASK_XYZW, loc,
+                if (!ArbLowerEmitBinary(ctx, ARB_OP_SUB, ARB_MASK_XYZW, loc,
                                 cond, oneOp, &signedCond))
                 {
                     return 0;
@@ -2569,7 +2523,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
 
         switch (expression->bin.op) {
         case MEMBER_SELECTOR_OP:
-            return LowerConnectorMember(ctx, expression, operand);
+            return ArbLowerConnectorMember(ctx, expression, operand);
         case FUN_ARG_OP:
         case EXPR_LIST_OP:
         case COMMA_OP:
@@ -2620,7 +2574,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                 return 0;
             }
             {
-                int base = UniformQuadBase(baseSymb);
+                int base = ArbLowerUniformQuadBase(baseSymb);
                 Type *elType = baseSymb->type;
                 ArbOperand idxOp;
                 int isConstIndex = 0;
@@ -2638,7 +2592,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                 int savedConsts = ctx->ir->numConstants;
                 // Lower the index once; a constant result selects the
                 // static PARAM register, anything else becomes relative.
-                if (LowerExpression(ctx, expression->bin.right, &idxOp))
+                if (ArbLowerExpression(ctx, expression->bin.right, &idxOp))
                 {
                     float cv[4];
                     if (idxOp.file == ARB_REG_CONST &&
@@ -2684,8 +2638,8 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                         ci = ArbInternConstant(ctx->ir, bv, 1);
                         if (ci < 0)
                             return 0;
-                        bOp = SmearOperand(ArbConstOperand(ci));
-                        if (!EmitBinary(ctx, ARB_OP_ADD, ARB_MASK_X, loc,
+                        bOp = ArbLowerSmearOperand(ArbConstOperand(ci));
+                        if (!ArbLowerEmitBinary(ctx, ARB_OP_ADD, ARB_MASK_X, loc,
                                         idxOp, bOp, &sum))
                         {
                             return 0;
@@ -2711,7 +2665,7 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                         if (!arl)
                             return 0;
                         arl->mask = ARB_MASK_X;
-                        if (!ArbAddSource(arl, SmearOperand(idxOp)))
+                        if (!ArbAddSource(arl, ArbLowerSmearOperand(idxOp)))
                             return 0;
                     }
                     *operand = ArbParamOperand(relBase);
@@ -2740,12 +2694,12 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
                 DetectDotChain(expression, &ua, &ub, &dwidth))
             {
                 ArbOperand dot;
-                if (!LowerExpression(ctx, ua, &u) ||
-                    !LowerExpression(ctx, ub, &v))
+                if (!ArbLowerExpression(ctx, ua, &u) ||
+                    !ArbLowerExpression(ctx, ub, &v))
                 {
                     return 0;
                 }
-                if (!EmitBinary(ctx, dwidth == 4 ? ARB_OP_DP4 : ARB_OP_DP3,
+                if (!ArbLowerEmitBinary(ctx, dwidth == 4 ? ARB_OP_DP4 : ARB_OP_DP3,
                                 ARB_MASK_X, loc, u, v, &dot))
                 {
                     return 0;
@@ -2780,15 +2734,15 @@ static int LowerExpression(ArbLowerContext *ctx, expr *expression,
         case COND_GEN_OP: {
             // Both alternatives evaluate unconditionally, then select.
             ArbOperand cond, tv, fv, sel;
-            int width = TypeWidth(expression->common.type);
-            if (!LowerExpression(ctx, expression->tri.arg1, &cond) ||
-                !LowerExpression(ctx, expression->tri.arg2, &tv) ||
-                !LowerExpression(ctx, expression->tri.arg3, &fv))
+            int width = ArbLowerTypeWidth(expression->common.type);
+            if (!ArbLowerExpression(ctx, expression->tri.arg1, &cond) ||
+                !ArbLowerExpression(ctx, expression->tri.arg2, &tv) ||
+                !ArbLowerExpression(ctx, expression->tri.arg3, &fv))
             {
                 return 0;
             }
-            if (!BuildSelect(ctx, loc, cond, tv, fv, width,
-                             WidthMask(width), &sel))
+            if (!ArbLowerBuildSelect(ctx, loc, cond, tv, fv, width,
+                             ArbLowerWidthMask(width), &sel))
             {
                 return 0;
             }
@@ -2830,11 +2784,11 @@ int ArbLowerProgram(ArbProgram *ir, const ArbProfileDesc *profile,
     ctx.program = program;
     ctx.staticValues = NULL;
 
-    if (!LowerStatement(&ctx, program->details.fun.statements)) {
-        ClearSymbolTemps(&ctx);
+    if (!ArbLowerStatement(&ctx, program->details.fun.statements)) {
+        ArbLowerClearSymbolTemps(&ctx);
         return 0;
     }
-    ClearSymbolTemps(&ctx);
+    ArbLowerClearSymbolTemps(&ctx);
 
     if (profile->stage == ARB_STAGE_VERTEX) {
         // Generic ATTRn and conventional spellings must not mix on one
