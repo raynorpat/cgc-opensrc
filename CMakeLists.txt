@@ -34,6 +34,7 @@ set(CGC_GLSL_LOWER_SOURCES
 set(CGC_ARB_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_operand.c
 )
 
 if(BUILD_TESTING)
