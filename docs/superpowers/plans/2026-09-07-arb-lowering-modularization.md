@@ -1,12 +1,29 @@
 # ARB Lowering Modularization Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Mechanically split arb_lower.c into private modules while preserving compiler behavior.
 
 **Architecture:** Keep the existing public facade and stack-owned context. Install the complete cross-module interface before moving functions, then extract one responsibility per commit. Use one canonical CMake source list and backend-specific structural tests.
 
 **Tech Stack:** C90 with extensions, CMake 3.16+, MSVC x64, CTest, glslangValidator, Windows SDK FXC, Windows OpenGL smoke validation.
+
+## Execution status — 2026-09-07
+
+Implementation and isolated qualification are complete at `97395d5`; both final independent specification/architecture and quality reviews approved with no actionable findings. GLSL was already integrated into master before ARB began. ARB remains on `codex/arb-lower-modularization`, pending explicit local-integration direction; nothing was pushed.
+
+- Frozen execution baseline: `ea5a11414d1615c02eeedb9295d1f150c2dbe58d`.
+- Fresh Debug and Release: **1,372/1,372 each**, zero skipped; both WGL tests actually loaded programs in both configurations.
+- Test names: all 1,371 baseline names retained, plus only `arb_lower_structure`.
+- Release outputs: all **32 recursive assembly artifacts** compared; 64 complete changed lines classified only as timestamps and exact command-line roots. All other bytes and frozen baseline hashes match.
+- Negative replay: **15 fixtures** with identical full stdout, stderr and nonzero exit status.
+- Four HLSL contracts passed, including **197 exact modern FXC combinations**.
+- All **58 function bodies/signatures**, 24 private declarations, original type bytes, public headers, comments and state ownership preserved; facade **121 lines** against the fixed 160 ceiling.
+- Evidence index: `.worktrees/arb-lower-modularization/build-cg20-arb-final/EVIDENCE.md`. Baseline and all per-task/full-run logs are retained in ignored build directories.
+
+Tasks 1–6 received separate specification and quality reviews. The agent limit temporarily prevented delegation for Tasks 7–8; they were executed locally with the same red/green and exact-preservation checks, then independently reviewed after the next continuation restored agent availability. Final whole-branch specification and quality reviews approved both steps. The only correction was an extra EOF blank line after Task 3, fixed and re-reviewed in `02ae294`.
+
+Execution used Debug then Release for the pristine baseline, leaving shared assembly paths frozen as Release. Final candidate comparison ran after Release and before Debug. The final Debug run subsequently overwrote shared assembly files; the preserved Release comparison log contains every original/replacement metadata line.
 
 ## Approved design and starting state
 
@@ -44,7 +61,7 @@ not cleanup tasks.
 
 **Files:** Read source and tests only; create ignored build artifacts.
 
-- [ ] **Step 1: Pin baseline and create independent worktrees.** Run from the main checkout.
+- [x] **Step 1: Pin baseline and create independent worktrees.** Run from the main checkout.
 Choose these exact unused paths; if a path already exists, inspect it instead of overwriting it.
 
 ```powershell
@@ -59,7 +76,7 @@ if ($LASTEXITCODE -ne 0) { throw 'candidate worktree failed' }
 
 Record the full baseline SHA. Preserve user changes in the main checkout.
 
-- [ ] **Step 2: Build the pristine baseline in both configurations.**
+- [x] **Step 2: Build the pristine baseline in both configurations.**
 Run inside `.worktrees/arb-lower-pristine`.
 
 ```powershell
@@ -80,7 +97,7 @@ Expected: all registered tests pass. Require actual glslangValidator and FXC pat
 not NOTFOUND. Record any ARB WGL skip (return 77) separately from a pass. Do not
 claim driver validation for a skipped smoke test.
 
-- [ ] **Step 3: Snapshot test inventory and artifacts.**
+- [x] **Step 3: Snapshot test inventory and artifacts.**
 Keep the baseline build untouched afterward. Read CTest JSON with
 `ctest --test-dir build-cg20-arb-baseline -C Release --show-only=json-v1`.
 Record sorted test names, commands, validator locations and complete artifact paths.
@@ -91,7 +108,7 @@ Do not copy compiler binaries or generated outputs into tracked source.
 
 **Files:** Modify `arb_lower.c`, `CMakeLists.txt`; create `arb_lower_internal.h`.
 
-- [ ] **Step 1: Move the original private types into the following header.**
+- [x] **Step 1: Move the original private types into the following header.**
 Copy the complete original NVIDIA notice verbatim above the include guard; the
 comment below is an instruction, not replacement license text. Standard library
 includes remain before the private header in every C translation unit.
@@ -181,7 +198,7 @@ int ArbLowerExpression(ArbLowerContext *ctx, expr *expression,
 
 The moved block includes ConsumedStmt, LoopInit, ArbLowerContext, ARB_MAX_UNROLL and ArbStaticValue. Keep DotTerm local to expression lowering.
 
-- [ ] **Step 2: Establish linkage before extraction.**
+- [x] **Step 2: Establish linkage before extraction.**
 For precisely the declarations above, remove `static` from definitions and any
 retained matching forward declarations, even while their bodies still reside in
 the facade. Remove redundant cross-module forwards now supplied by the header.
@@ -225,7 +242,7 @@ Replace the existing project header includes in the facade with:
 Preserve the existing standard-library includes and their order. Remove only the
 private type block moved to the header.
 
-- [ ] **Step 3: Wire the initial one-file canonical source list.**
+- [x] **Step 3: Wire the initial one-file canonical source list.**
 Before `add_subdirectory(tests)` in root CMake:
 ```cmake
 set(CGC_ARB_LOWER_SOURCES
@@ -238,7 +255,7 @@ Replace the direct `arb_lower.c` source in `cgc` with:
 ```
 Keep `arb_ir_tests` and `arb_smoke` unchanged: neither compiles the lowerer.
 
-- [ ] **Step 4: Configure/build/test the candidate.**
+- [x] **Step 4: Configure/build/test the candidate.**
 Run from `.worktrees/arb-lower-modularization`.
 ```powershell
 cmake -S . -B build-cg20-arb-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
@@ -254,7 +271,7 @@ git diff --check
 Expected: build/link success and all selected tests pass, with nonzero selected
 inventory. Audit that every promoted name is unique across repository definitions.
 
-- [ ] **Step 5: Commit only the preparation files.**
+- [x] **Step 5: Commit only the preparation files.**
 ```powershell
 git add arb_lower.c arb_lower_internal.h CMakeLists.txt
 git commit -m "Prepare ARB lowering module interfaces"
@@ -264,7 +281,7 @@ git commit -m "Prepare ARB lowering module interfaces"
 
 **Files:** Create `arb_lower_support.c`; modify `arb_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -300,7 +317,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_ARB_LOWER_SOURCES
@@ -309,7 +326,7 @@ set(CGC_ARB_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded ARB identifier mapping and linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -317,7 +334,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-arb-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -333,7 +350,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 9's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add arb_lower.c arb_lower_support.c CMakeLists.txt
 git commit -m "Extract ARB support lowering"
@@ -343,7 +360,7 @@ git commit -m "Extract ARB support lowering"
 
 **Files:** Create `arb_lower_operand.c`; modify `arb_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -369,7 +386,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_ARB_LOWER_SOURCES
@@ -379,7 +396,7 @@ set(CGC_ARB_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded ARB identifier mapping and linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -387,7 +404,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-arb-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -403,7 +420,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 9's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add arb_lower.c arb_lower_operand.c CMakeLists.txt
 git commit -m "Extract ARB operand lowering"
@@ -413,7 +430,7 @@ git commit -m "Extract ARB operand lowering"
 
 **Files:** Create `arb_lower_expr.c`; modify `arb_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -450,7 +467,7 @@ forward declarations with their owning module. Move the exact DotTerm typedef be
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_ARB_LOWER_SOURCES
@@ -461,7 +478,7 @@ set(CGC_ARB_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded ARB identifier mapping and linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -469,7 +486,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-arb-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -485,7 +502,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 9's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add arb_lower.c arb_lower_expr.c CMakeLists.txt
 git commit -m "Extract ARB expr lowering"
@@ -495,7 +512,7 @@ git commit -m "Extract ARB expr lowering"
 
 **Files:** Create `arb_lower_loop.c`; modify `arb_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -533,7 +550,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_ARB_LOWER_SOURCES
@@ -545,7 +562,7 @@ set(CGC_ARB_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded ARB identifier mapping and linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -553,7 +570,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-arb-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -569,7 +586,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 9's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add arb_lower.c arb_lower_loop.c CMakeLists.txt
 git commit -m "Extract ARB loop lowering"
@@ -579,7 +596,7 @@ git commit -m "Extract ARB loop lowering"
 
 **Files:** Create `arb_lower_stmt.c`; modify `arb_lower.c` and `CMakeLists.txt`.
 
-- [ ] **Step 1: Move this exact ordered inventory.**
+- [x] **Step 1: Move this exact ordered inventory.**
 Move complete definitions and attached comments from the original source, preserving
 relative order. The line numbers refer to the pinned planning baseline and are
 navigation hints; function names are authoritative.
@@ -604,7 +621,7 @@ forward declarations with their owning module.
 
 
 
-- [ ] **Step 2: Append the new file to the canonical list.**
+- [x] **Step 2: Append the new file to the canonical list.**
 The list after this task must be exactly:
 ```cmake
 set(CGC_ARB_LOWER_SOURCES
@@ -617,7 +634,7 @@ set(CGC_ARB_LOWER_SOURCES
 )
 ```
 
-- [ ] **Step 3: Audit extraction before building.**
+- [x] **Step 3: Audit extraction before building.**
 Compare the moved bodies against the pinned baseline and the prior commit. Allow
 only the recorded ARB identifier mapping and linkage changes.
 Require each listed definition exactly once in its new owner, zero remaining
@@ -625,7 +642,7 @@ copies, and no changes to remaining bodies. Preserve all file/function-static
 state and comments. A link failure is a missing dependency to reconcile against
 Appendix A, not permission to change behavior.
 
-- [ ] **Step 4: Build both configurations and run backend coverage.**
+- [x] **Step 4: Build both configurations and run backend coverage.**
 ```powershell
 cmake -S . -B build-cg20-arb-candidate -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -641,7 +658,7 @@ Expected: all selected tests pass. Compare generated backend outputs with the
 pristine baseline using Task 9's complete-set procedure. Run only
 one configuration's ARB tests at a time because assembly artifact paths are shared.
 
-- [ ] **Step 5: Commit this extraction.**
+- [x] **Step 5: Commit this extraction.**
 ```powershell
 git add arb_lower.c arb_lower_stmt.c CMakeLists.txt
 git commit -m "Extract ARB stmt lowering"
@@ -653,14 +670,14 @@ git commit -m "Extract ARB stmt lowering"
 create `tests/check_arb_lower_structure.cmake` and
 `tests/check_arb_lower_structure_selftest.cmake`.
 
-- [ ] **Step 1: Audit the facade.**
+- [x] **Step 1: Audit the facade.**
 Keep only the complete original license, standard includes, private include,
 and `ArbLowerProgram`.
 Remove obsolete private forwards and section banners left by extraction.
 Public function bodies retain their exact original contents, except the recorded private call-name substitutions.
 The fixed ceiling is 160 lines; existing entry bodies and the license fit within it.
 
-- [ ] **Step 2: Add this complete structural checker.**
+- [x] **Step 2: Add this complete structural checker.**
 It follows the HLSL checker without changing the HLSL test. Test-double exceptions
 apply only to public-definition checks; production private-header leaks still fail.
 
@@ -859,7 +876,7 @@ foreach(entry_point IN LISTS public_entry_points)
 endforeach()
 ```
 
-- [ ] **Step 3: Add this complete checker self-test.**
+- [x] **Step 3: Add this complete checker self-test.**
 ```cmake
 cmake_minimum_required(VERSION 3.16)
 if(NOT DEFINED SOURCE_ROOT OR NOT DEFINED STRUCTURE_SCRIPT)
@@ -910,6 +927,8 @@ Check("outside the lowering")
 file(WRITE "${fixture}/unrelated.c" "int ArbLowerProgram(void) { return 0; }\n")
 Check("only arb_lower.c may define it")
 file(WRITE "${fixture}/unrelated.c" "")
+file(WRITE "${fixture}/tests/stub.c" "#include \"arb_lower_internal.h\"\n")
+Check("outside the lowering")
 file(WRITE "${fixture}/tests/stub.c" "int ArbLowerProgram(void) { return 0; }\n")
 Check("PASS")
 file(WRITE "${fixture}/.worktrees/other/copy.c" [=[#include "arb_lower_internal.h"
@@ -932,7 +951,7 @@ file(WRITE "${fixture}/arb_lower_support.c" "#include \"arb_lower_internal.h\"\n
 Check("PASS")
 ```
 
-- [ ] **Step 4: Run the checker and its negative fixtures.**
+- [x] **Step 4: Run the checker and its negative fixtures.**
 ```powershell
 $root = (Resolve-Path '.').Path
 $guard = (Resolve-Path 'tests/check_arb_lower_structure.cmake').Path
@@ -944,7 +963,7 @@ if ($LASTEXITCODE -ne 0) { throw 'real structure failed' }
 Expected: both exit zero; negative fixtures internally prove rejection. Do not
 weaken guards to accommodate a failed extraction.
 
-- [ ] **Step 5: Register exactly one test in tests/CMakeLists.txt.**
+- [x] **Step 5: Register exactly one test in tests/CMakeLists.txt.**
 Place near arb_ir_unit:
 ```cmake
 add_test(
@@ -970,7 +989,7 @@ no new mutable globals, and unchanged public headers separately from the lexical
 
 **Files:** Verification artifacts only. Do not edit expected outputs.
 
-- [ ] **Step 1: Fresh candidate configuration and full Release qualification.**
+- [x] **Step 1: Fresh candidate configuration and full Release qualification.**
 ```powershell
 cmake -S . -B build-cg20-arb-final -A x64 -DBUILD_TESTING=ON -DCGC_REQUIRE_FXC=ON
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
@@ -982,7 +1001,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Release suite failed' }
 Expected: baseline test names retained, exactly one additional structural test.
 Do not count skipped OpenGL checks as successful driver validation.
 
-- [ ] **Step 2: Compare complete Release artifact sets before Debug writes them.**
+- [x] **Step 2: Compare complete Release artifact sets before Debug writes them.**
 Ensure pristine Release ran last: ARB test artifacts in tests/*.arb are shared between configurations and Debug may overwrite them. Run this PowerShell from the candidate root. Baseline is the untouched sibling
 created by Task 1.
 
@@ -1015,7 +1034,7 @@ paths and line numbers before normalizing; compare complete normalized files and
 require zero remaining differences. Never remove arbitrary headers, instruction
 lines, version directives, bindings, or diagnostic content.
 
-- [ ] **Step 3: Verify diagnostic and status equivalence.**
+- [x] **Step 3: Verify diagnostic and status equivalence.**
 Compare the unchanged negative fixtures against both binaries using the existing
 CTest commands recorded in the JSON inventory. Retain full stdout/stderr and exit
 results in the build evidence. Existing expected-diagnostic tests must pass on
@@ -1079,7 +1098,7 @@ Both binaries receive the same absolute source/output paths, so this replay need
 no path normalization. The full suites also cover specialized transaction/pipeline
 drivers beyond the single-source failures selected above.
 
-- [ ] **Step 4: Full Debug build and suite.**
+- [x] **Step 4: Full Debug build and suite.**
 ```powershell
 cmake --build build-cg20-arb-final --config Debug
 if ($LASTEXITCODE -ne 0) { throw 'Debug build failed' }
@@ -1091,7 +1110,7 @@ if ($LASTEXITCODE -ne 0) { throw 'HLSL compatibility regression' }
 Expected: all tests pass and four HLSL contracts remain green, including the
 197-combination modern FXC contract unless independently expanded.
 
-- [ ] **Step 5: Final review and integration checks.**
+- [x] **Step 5: Final review.**
 Verify all 58 baseline definitions have exactly one owner; function bodies,
 private type fields, static storage and phase order match the baseline.
 Public arb_ir.h and arb_hal.h must be byte-identical to baseline.
@@ -1103,6 +1122,8 @@ git log -12 --oneline
 ```
 Expected: only focused committed work and ignored builds; user changes remain
 untouched. Perform the final review against the approved design before integration.
+- [ ] **Step 6: Local integration, only after explicit user approval.**
+
 On the merged main checkout, rerun the structural self-test, registered structural
 test and full suite. Keep nested worktrees present during the structural check to
 exercise the integration environment. Do not push or merge merely because this
@@ -1142,9 +1163,9 @@ Task 2 contains the complete old/new token map.
 
 ## Review checklist
 
-- [ ] Every definition has one owner and every shared call has a private declaration.
-- [ ] Exact-body audit allows only the recorded identifier mapping and linkage changes.
-- [ ] Public headers, profiles, IR and expected outputs remain unchanged.
-- [ ] Pristine baseline, both full suites, assembly comparisons and diagnostic comparisons pass.
-- [ ] Structural checks pass in both isolated and main checkouts.
-- [ ] ARB WGL skips are recorded separately from passes.
+- [x] Every definition has one owner and every shared call has a private declaration.
+- [x] Exact-body audit allows only the recorded identifier mapping and linkage changes.
+- [x] Public headers, profiles, IR and expected outputs remain unchanged.
+- [x] Pristine baseline, both full suites, assembly comparisons and diagnostic comparisons pass.
+- [x] Structural checks pass in both isolated and main checkouts.
+- [x] ARB WGL skips are recorded separately from passes.
