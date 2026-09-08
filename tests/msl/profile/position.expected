@@ -1,0 +1,101 @@
+// cgc-msl-abi version=1 profile=mslv language=2.0
+// cgc-msl-entry source=main metal=cg_mslv_main
+// cgc-msl-buffer index=0 bytes=160 alignment=16
+// cgc-msl-uniform path=ambientcolor offset=0 slots=1 type=float3 wire=float4
+// cgc-msl-uniform path=lightcolor offset=16 slots=1 type=float3 wire=float4
+// cgc-msl-uniform path=lightdir offset=32 slots=1 type=float3 wire=float4
+// cgc-msl-uniform path=object_matrix offset=48 slots=3 type=float3x3 wire=float4 column_stride=16
+// cgc-msl-uniform path=objviewproj_matrix offset=96 slots=4 type=float4x4 wire=float4 column_stride=16
+// cgc-msl-attribute semantic=ATTRIB0 index=0 type=float4
+// cgc-msl-attribute semantic=ATTRIB1 index=1 type=float4
+// cgc-msl-attribute semantic=ATTRIB2 index=2 type=float4
+// cgc-msl-varying semantic=COLOR0 field=cg_COLOR0 type=float4 interpolation=perspective
+// cgc-msl-builtin semantic=POSITION0 attribute=position type=float4
+// cgc-msl-varying semantic=TEXCOORD0 field=cg_TEXCOORD0 type=float4 interpolation=perspective
+#include <metal_stdlib>
+using namespace metal;
+
+struct cg_type_1 {
+    float4 cg_field_2;
+    float4 cg_field_3;
+    float4 cg_field_4;
+};
+struct cg_type_6 {
+    float4 cg_field_7;
+    float4 cg_field_8;
+    float4 cg_field_9;
+};
+struct cg_Uniforms {
+    float4 slot0;
+    float4 slot1;
+    float4 slot2;
+    float4 slot3;
+    float4 slot4;
+    float4 slot5;
+    float4 slot6;
+    float4 slot7;
+    float4 slot8;
+    float4 slot9;
+};
+struct cg_Input {
+    float4 cg_ATTRIB0 [[attribute(0)]];
+    float4 cg_ATTRIB1 [[attribute(1)]];
+    float4 cg_ATTRIB2 [[attribute(2)]];
+};
+struct cg_Output {
+    float4 cg_POSITION0 [[position]];
+    float4 cg_COLOR0 [[user(cg_COLOR0)]];
+    float4 cg_TEXCOORD0 [[user(cg_TEXCOORD0)]];
+};
+cg_type_1 cg_fn_0(cg_type_6 cg_v_5, float3x3 cg_v_10, float4x4 cg_v_11, float3 cg_v_12, float3 cg_v_13, float3 cg_v_14);
+float4 cg_fn_17(float4x4 cg_v_18, float4 cg_v_19);
+float cg_fn_21(float4 cg_v_22, float4 cg_v_23);
+cg_type_1 cg_fn_0(cg_type_6 cg_v_5, float3x3 cg_v_10, float4x4 cg_v_11, float3 cg_v_12, float3 cg_v_13, float3 cg_v_14)
+{
+    cg_type_1 cg_v_15;
+    float cg_v_16;
+    ((cg_v_15).cg_field_2 = cg_fn_17(cg_v_11, (cg_v_5).cg_field_7));
+    ((cg_v_15).cg_field_3 = (cg_v_5).cg_field_8);
+    ((cg_v_15).cg_field_4 = (cg_v_5).cg_field_9);
+    return cg_v_15;
+}
+
+float4 cg_fn_17(float4x4 cg_v_18, float4 cg_v_19)
+{
+    float4 cg_v_20;
+    ((cg_v_20).x = cg_fn_21(float4(((cg_v_18)[0])[0], ((cg_v_18)[1])[0], ((cg_v_18)[2])[0], ((cg_v_18)[3])[0]), cg_v_19));
+    ((cg_v_20).y = cg_fn_21(float4(((cg_v_18)[0])[1], ((cg_v_18)[1])[1], ((cg_v_18)[2])[1], ((cg_v_18)[3])[1]), cg_v_19));
+    ((cg_v_20).z = cg_fn_21(float4(((cg_v_18)[0])[2], ((cg_v_18)[1])[2], ((cg_v_18)[2])[2], ((cg_v_18)[3])[2]), cg_v_19));
+    ((cg_v_20).w = cg_fn_21(float4(((cg_v_18)[0])[3], ((cg_v_18)[1])[3], ((cg_v_18)[2])[3], ((cg_v_18)[3])[3]), cg_v_19));
+    return cg_v_20;
+}
+
+float cg_fn_21(float4 cg_v_22, float4 cg_v_23)
+{
+    return (((((cg_v_22).x * (cg_v_23).x) + ((cg_v_22).y * (cg_v_23).y)) + ((cg_v_22).z * (cg_v_23).z)) + ((cg_v_22).w * (cg_v_23).w));
+}
+
+vertex cg_Output cg_mslv_main(cg_Input cg_in [[stage_in]], constant cg_Uniforms &cg_u [[buffer(0)]])
+{
+    cg_type_6 cg_v_5;
+    float3x3 cg_v_10;
+    cg_v_10 = float3x3(cg_u.slot3.xyz, cg_u.slot4.xyz, cg_u.slot5.xyz);
+    float4x4 cg_v_11;
+    cg_v_11 = float4x4(cg_u.slot6.xyzw, cg_u.slot7.xyzw, cg_u.slot8.xyzw, cg_u.slot9.xyzw);
+    float3 cg_v_12;
+    cg_v_12 = float3(cg_u.slot2.xyz);
+    float3 cg_v_13;
+    cg_v_13 = float3(cg_u.slot1.xyz);
+    float3 cg_v_14;
+    cg_v_14 = float3(cg_u.slot0.xyz);
+    cg_v_5.cg_field_7 = cg_in.cg_ATTRIB0;
+    cg_v_5.cg_field_8 = cg_in.cg_ATTRIB1;
+    cg_v_5.cg_field_9 = cg_in.cg_ATTRIB2;
+    cg_type_1 cg_value = cg_fn_0(cg_v_5, cg_v_10, cg_v_11, cg_v_12, cg_v_13, cg_v_14);
+    cg_Output cg_result;
+    cg_result.cg_POSITION0 = cg_value.cg_field_2;
+    cg_result.cg_COLOR0 = cg_value.cg_field_3;
+    cg_result.cg_TEXCOORD0 = cg_value.cg_field_4;
+    return cg_result;
+}
+// End of program

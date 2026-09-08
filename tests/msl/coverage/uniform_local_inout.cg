@@ -1,0 +1,1 @@
+void change(inout float v) { v+=2; } float4 main(uniform float x):COLOR0 { float v=x; change(v); return float4(v,x,0,1); }

@@ -354,6 +354,23 @@ regeneration checks:
 ctest --test-dir build -C Release -R "cg20|stdlib_regeneration|parser" --output-on-failure
 ```
 
+## Metal source output
+
+The initial `mslv` and `mslf` profiles emit MSL 2.0 vertex and fragment source.
+They lower verified Cg IR into separate typed Metal nodes and leave Apple
+compilation to an external validation step. The generated-output corpus and
+real offscreen rendering have been tested on an M4 Max Mac.
+
+```sh
+./build/cgc -quiet -version 2.0 -profile mslv -o position.metal position.cg
+./build/cgc -quiet -version 2.0 -profile mslf -o fragment.metal tests/msl/profile/fragment.cg
+```
+
+See [Metal compatibility](docs/msl-compatibility.md) for the tested surface,
+16-byte uniform ABI, texture/sampler bindings, remaining limits, and strict
+Apple compiler/GPU test commands. The [qualification record](docs/msl-qualification.md)
+separates passed checks from unqualified parts of the implementation plan.
+
 ## Compiler Internals
 
 Under the default Cg 2.0 language every profile first builds and verifies the

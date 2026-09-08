@@ -1,0 +1,1 @@
+float4 main(uniform float value) : COLOR0 { float2 x=value; float2 y=lerp(x,x+2,x/4); return float4(y.x,0,0,1); }

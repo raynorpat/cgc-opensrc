@@ -1,0 +1,3 @@
+float4 main(void) : COLOR0 {
+uint u=4294967295u; int i=int(u); bool2 b=int2(-1,2)<int2(0,1); return float4(i, float(u>>31), float(b.x),float(b.y));
+}

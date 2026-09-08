@@ -1,0 +1,1 @@
+float next(inout int n) { n++; return n; } float4 main(void):COLOR0 { int n=0; float x; if(n==0) x=next(n); else x=next(n)+10; while(n<3) { n++; if(n==2) continue; x+=n; } return float4(x,n,0,1); }

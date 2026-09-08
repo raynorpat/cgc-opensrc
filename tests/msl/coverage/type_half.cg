@@ -1,0 +1,1 @@
+float4 main(uniform half v) : COLOR0 { return float4(float(v), 0, 0, 1); }

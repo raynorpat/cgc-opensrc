@@ -1,0 +1,37 @@
+// cgc-msl-abi version=1 profile=mslf language=2.0
+// cgc-msl-entry source=main metal=cg_mslf_main
+// cgc-msl-resource path=image texture=3 sampler=3 type=cube
+// cgc-msl-buffer index=0 bytes=16 alignment=16
+// cgc-msl-uniform path=direction offset=0 slots=1 type=float3 wire=float4
+// cgc-msl-builtin semantic=COLOR0 attribute=color(0) type=float4
+#include <metal_stdlib>
+using namespace metal;
+
+struct cg_Uniforms {
+    float4 slot0;
+};
+struct cg_Output {
+    float4 cg_COLOR0 [[color(0)]];
+};
+float4 cg_fn_0(texturecube<float> cg_v_1, sampler cg_v_1_s, float3 cg_v_2);
+float4 cg_fn_3(texturecube<float> cg_v_4, sampler cg_v_4_s, float3 cg_v_5);
+float4 cg_fn_0(texturecube<float> cg_v_1, sampler cg_v_1_s, float3 cg_v_2)
+{
+    return cg_fn_3(cg_v_1, cg_v_1_s, cg_v_2);
+}
+
+float4 cg_fn_3(texturecube<float> cg_v_4, sampler cg_v_4_s, float3 cg_v_5)
+{
+    return cg_v_4.sample(cg_v_4_s, cg_v_5);
+}
+
+fragment cg_Output cg_mslf_main(constant cg_Uniforms &cg_u [[buffer(0)]], texturecube<float> cg_v_1 [[texture(3)]], sampler cg_v_1_s [[sampler(3)]])
+{
+    float3 cg_v_2;
+    cg_v_2 = float3(cg_u.slot0.xyz);
+    float4 cg_value = cg_fn_0(cg_v_1, cg_v_1_s, cg_v_2);
+    cg_Output cg_result;
+    cg_result.cg_COLOR0 = cg_value;
+    return cg_result;
+}
+// End of program

@@ -1,0 +1,1 @@
+float2 main(void):DEPTH { return float2(0,1); }

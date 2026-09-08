@@ -1,0 +1,5 @@
+float4 sample_cube(samplerCUBE image, float3 direction) { return texCUBE(image, direction); }
+float4 main(uniform samplerCUBE image : TEXUNIT3, uniform float3 direction) : COLOR0
+{
+    return sample_cube(image, direction);
+}

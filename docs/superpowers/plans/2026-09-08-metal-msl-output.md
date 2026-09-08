@@ -82,6 +82,28 @@ single-config Unix builds normally use `build-msl/cgc`. Test scripts receive
 
 ## Task 1: Freeze the baseline and prove the Apple target contract
 
+Validation started on macOS on 2026-09-08; see
+[the qualification record](../../msl-qualification.md) for build prerequisites,
+regression results and generated-source/GPU evidence. The initial backend now
+passes 558 strict Metal tests with no skips (228 runtime tests and 11 fault
+sweeps covering 2248 allocation failure points). All four bundled shaders compile
+and create pipelines; all eight generic captures match the post-portability
+reference. The full suite has only the three recorded baseline failures.
+The original baseline could not build; changes remain uncommitted.
+
+Implementation spans profiles, typed target IR, lowering, bindings, emission,
+Apple validation, and offscreen execution. Source capability checks currently
+live in lowering; aggregate/texture handling lives in declaration/expression
+modules rather than the separate files proposed below. `CgIRLowerUniformDefault`
+was added to expose default data through IR. See
+[the compatibility document](../../msl-compatibility.md) for remaining coverage.
+The [coverage audit](../../msl-coverage.md) maps the hardening results to this
+plan, including the inherited frontend/catalog rejections. Checked items below
+have concrete implementation/test evidence. Unchecked items retain their full
+original acceptance wording; they include unimplemented language combinations,
+architectural differences, historical sequencing and uncreated commits. They
+must not be inferred complete from a passing test count.
+
 **Files:** Create `tests/capture_msl_baseline.cmake`,
 `tests/msl/probes/interface.metal`, `tests/msl/probes/resources.metal`,
 `docs/msl-qualification.md`. Read `tests/CMakeLists.txt` and `output.c`.
@@ -89,12 +111,12 @@ single-config Unix builds normally use `build-msl/cgc`. Test scripts receive
 - [ ] Build the unchanged compiler in a fresh baseline build and run existing
   CTest. Save its test list, results, compiler versions, and available external
   validators. Record failures as baseline failures rather than concealing them.
-- [ ] Write the baseline script to loop over `position`, `reflection`,
+- [x] Write the baseline script to loop over `position`, `reflection`,
   `vertexlight`, `vertexlight4` and language versions `1.1`, `2.0`; execute
   `cgc -quiet -version <version> -profile generic <absolute-source>`, saving
   stdout, stderr, and process status separately. Compare those same invocations
   after implementation. Normalize only CRLF/LF, not diagnostic contents.
-- [ ] Add this independent Apple interface probe, including both stages:
+- [x] Add this independent Apple interface probe, including both stages:
 
 ```metal
 #include <metal_stdlib>
@@ -112,13 +134,13 @@ fragment float4 probe_f(Varyings x [[stage_in]]) {
 }
 ```
 
-- [ ] Add a resources probe with `constant Uniforms &u [[buffer(0)]]`, where
+- [x] Add a resources probe with `constant Uniforms &u [[buffer(0)]]`, where
   `Uniforms` contains two float4 fields; sample a texture2d<float> with an
   independent sampler. Add entry variants for texturecube<float>, explicit
   `level(lod)`, flat integer user fields, `depth(any)`, and `thread float &`
   helper formals. Use these variants to exercise the exact spellings in the
   design, including helper resource parameters.
-- [ ] On macOS, inspect the installed compiler help and run:
+- [x] On macOS, inspect the installed compiler help and run:
 
 ```text
 xcrun --sdk macosx --find metal
@@ -131,7 +153,7 @@ xcrun --sdk macosx metallib interface.air -o interface.metallib
   exact spelling after the same probe passes. Both spellings request 2.0;
   accepting an unversioned default or a newer language is not equivalent.
   Prove a deliberately invalid probe fails. Keep artifacts in the build tree.
-- [ ] Record selected SDK, compiler version, standard spelling and deployment
+- [x] Record selected SDK, compiler version, standard spelling and deployment
   target in qualification documentation. On a Windows-only implementation
   session, record Apple validation as unavailable; portable work may proceed,
   but completion cannot claim Apple qualification.
@@ -149,7 +171,7 @@ modify both CMake entry points.
   `MslExpr`, `MslStmt`, `MslFunction`, `MslModule`, and
   `MslDiagnostic` with typed references and SourceLoc. Resources and uniform
   wire declarations must be distinct from ordinary numeric values.
-- [ ] Implement arena ownership using an allocator callback, as in Cg IR.
+- [x] Implement arena ownership using an allocator callback, as in Cg IR.
   Each builder zeroes the node and latches allocation failure; later builders
   return NULL. Add dirty-memory and fail-on-Nth-allocation tests before builders.
 - [ ] Add verifier tests for a missing entry, invalid stage, expression/type
@@ -249,13 +271,13 @@ int MslWriteModule(FILE *out, const MslModule *module);
 modify HAL descriptors, declaration lowering, verifier and writer;
 create `tests/msl/interfaces/` fixtures.
 
-- [ ] Port only the semantic rules specified in the design: case folding,
+- [x] Port only the semantic rules specified in the design: case folding,
   implicit zero suffix and four named aliases. Test duplicate detection after
   canonicalization, not only literal duplicate strings.
-- [ ] Reserve explicit ATTRIB0..15 first, then sort other named inputs and
+- [x] Reserve explicit ATTRIB0..15 first, then sort other named inputs and
   allocate lowest free slots. Unit-test deterministic results when source
   declaration order changes and collision/overflow detection.
-- [ ] Flatten numeric struct leaves, reconstruct source inputs, and collect
+- [x] Flatten numeric struct leaves, reconstruct source inputs, and collect
   return plus out/inout outputs. Map POSITION, COLOR0 and DEPTH to their
   built-ins; map permitted interstage fields to canonical user attributes.
   Enforce float4 position/color, scalar float depth, flat integer varyings,
@@ -268,7 +290,7 @@ create `tests/msl/interfaces/` fixtures.
   identities still match. Add rejection fixtures for absent POSITION,
   COLOR1 fragment output, duplicate HPOS/POSITION, matrix stage leaves and
   unsupported system semantics.
-- [ ] Exercise limits at 16/17 attributes and 64/65 user components; use
+- [x] Exercise limits at 16/17 attributes and 64/65 user components; use
   internal binding tests for the latter when the semantic surface itself
   cannot express that many independent leaves. Register `msl_interface_*`.
 - [ ] Commit: `Define Metal stage interface bindings`.
@@ -326,11 +348,11 @@ lowerer, verifier and writer; create `tests/msl/functions/`.
   detect call-graph cycles, and order definitions or prototypes. Unreachable
   unsupported code must not trigger a backend capability error; ordinary
   frontend errors remain frontend errors.
-- [ ] Adapt `tests/cg20/overloads/profile.cg` to add exact mslv/mslf overloads;
+- [x] Adapt `tests/cg20/overloads/profile.cg` to add exact mslv/mslf overloads;
   verify exact > vs/ps > open selection with distinct emitted/runtime values.
   Do not add an `msl*` selector: the existing registration API has one stage
   wildcard per profile, and a new family is outside this plan's scope.
-- [ ] Lower input formals by value. For out/inout, evaluate target addresses
+- [x] Lower input formals by value. For out/inout, evaluate target addresses
   once, allocate thread-local temporaries, copy in for inout, call with
   references to temporaries, and copy out in the order required by normalized
   Cg IR/frontend semantics. Inspect `cg_ir_lower.c` before adding copies so
@@ -401,7 +423,7 @@ Cg mul(v,w), vectors                 -> dot(v,w)
 **Files:** Modify `msl_bind.*`, declaration/function/aggregate lowerers and
 writer; add `tests/msl/uniforms/` and ABI unit cases.
 
-- [ ] Add layout tests before implementation. Use 16-byte slots exclusively;
+- [x] Add layout tests before implementation. Use 16-byte slots exclusively;
   never compute wire offsets using host `sizeof(Type)` or native struct packing.
 
 ```text
@@ -414,17 +436,17 @@ buffer size             = 16 * total slot count
 
   Reject arithmetic overflow before multiplication/addition. Test an array
   whose computed size overflows and the 4096/4112-byte policy boundary.
-- [ ] Sort top-level uniforms by qualified source name, preserve member/index
+- [x] Sort top-level uniforms by qualified source name, preserve member/index
   order and generate flat wire fields. Map bool to uint lanes and half/fixed
   to float lanes. Generated decoders rebuild source values, including matrix
   columns and nested arrays, using the same binding table used for metadata.
   Retain all entry uniform formals and only globals referenced by reachable
   code. Use bare parameter names and `global.<name>` paths so source shadowing
   cannot collide; add unused-helper and shadowed-global layout tests.
-- [ ] Bind one constant buffer at buffer(0), propagate it to helpers that need
+- [x] Bind one constant buffer at buffer(0), propagate it to helpers that need
   it, and emit no empty buffer. Writes to source uniform/global storage must
   fail C6608; inout copies of readable values remain thread-local.
-- [ ] Use this exact layout witness:
+- [x] Use this exact layout witness:
 
 ```c
 struct Params { float3 tint; float exposure; float3x3 basis; };
@@ -441,10 +463,10 @@ float4 main(float4 p : ATTRIB0, uniform Params params) : POSITION {
   exported entry, type promotion, buffer bytes, leaf offsets, matrix stride,
   attributes, varyings, resources and defaults. Format literals with enough
   precision to round-trip the supported value. Defaults remain host-applied.
-- [ ] Add deterministic repeated-run tests and reordered unrelated declaration
+- [x] Add deterministic repeated-run tests and reordered unrelated declaration
   tests. Reject unsupported register/pragma bindings explicitly; do not
   reinterpret DirectX register numbers as Metal buffer offsets.
-- [ ] Compile all four root example shaders under mslv and retain hand-reviewed
+- [x] Compile all four root example shaders under mslv and retain hand-reviewed
   snapshots. Run `^msl_(uniform|metadata|example)_` and the generic baseline
   comparison. Expected: all examples succeed and existing generic bytes/status
   match the captured baseline after line-ending normalization only.
@@ -455,7 +477,7 @@ float4 main(float4 p : ATTRIB0, uniform Params params) : POSITION {
 **Files:** Create `msl_lower_texture.c`; modify binding, helper lowering,
 validator and writer; add `tests/msl/textures/`.
 
-- [ ] Reserve explicit TEXUNIT indices before deterministic allocation of
+- [x] Reserve explicit TEXUNIT indices before deterministic allocation of
   unbound samplers. Emit paired texture(N)/sampler(N) parameters. Keep the
   resource object identities distinct even when source names are similar.
 - [ ] Lower this fixture with a texture/sampler pair passed through the helper:
@@ -470,7 +492,7 @@ float4 main(float2 uv : TEXCOORD0,
 
   Expect texture(3), sampler(3), both helper arguments, and `.sample(s, uv)`.
   Add a two-level helper call so transitive propagation is exercised.
-- [ ] Support tex2D/texCUBE implicit fragment sampling and tex2Dlod/texCUBElod
+- [x] Support tex2D/texCUBE implicit fragment sampling and tex2Dlod/texCUBElod
   in either stage. For tex2Dlod use coordinate.xy and coordinate.w as LOD;
   for cube LOD use coordinate.xyz and coordinate.w. Evaluate the coordinate
   expression once before extracting multiple fields.
@@ -490,22 +512,22 @@ float4 main(float2 uv : TEXCOORD0,
 create `tests/msl/diagnostics/` cases, `tests/check_msl_output_transaction.cmake`,
 `tests/check_msl_structure.cmake`; modify `tests/msl.cmake`.
 
-- [ ] Inventory every CgIR expression/statement enum against validator and
+- [x] Inventory every CgIR expression/statement enum against validator and
   lowerer switches. Ensure no admitted case reaches an unimplemented writer
   branch; unsupported source kinds must fail with their source location.
 - [ ] Exercise unsupported type in a reachable nested helper, recursion,
   geometry operations, writable globals and unsupported intrinsic signatures.
   Check diagnostic code, source filename/line, reason and existing call-path
   notes. Test matching -nocode rejection and unreachable backend-only cases.
-- [ ] Seed an output file with `KEEP_EXISTING_OUTPUT`, compile each failure
+- [x] Seed an output file with `KEEP_EXISTING_OUTPUT`, compile each failure
   using -o, and assert the sentinel is unchanged. For a previously absent
   output assert it remains absent. Inspect the exact test directory for leaked
   cgc temporary files. Add a bad destination test and injected writer/allocation
   failures to ensure failed generation never reports success.
-- [ ] Verify stdout has no target declarations/ABI records on validation
+- [x] Verify stdout has no target declarations/ABI records on validation
   failure. Do not mistake unavoidable partial stdout on an actual I/O failure
   for a transaction guarantee; assert error status in that case.
-- [ ] Add a structural check forbidding frontend `expr`/`stmt` traversal in
+- [x] Add a structural check forbidding frontend `expr`/`stmt` traversal in
   the MSL lowerers and GLSL/HLSL/ARB dependencies. It must also verify the
   production source list is shared with the actual lowering test target.
   Add a self-test proving the check detects a deliberately invalid specimen.
@@ -517,24 +539,24 @@ create `tests/msl/diagnostics/` cases, `tests/check_msl_output_transaction.cmake
 **Files:** Create `tests/validate_msl.cmake`, `tests/msl_runtime.m`,
 `tests/run_msl_runtime.cmake`; modify CMake files and qualification records.
 
-- [ ] Add `CGC_REQUIRE_METAL` and `CGC_REQUIRE_METAL_RUNTIME`, both default OFF.
+- [x] Add `CGC_REQUIRE_METAL` and `CGC_REQUIRE_METAL_RUNTIME`, both default OFF.
   Discover xcrun/metal/metallib and prove the configured standard/deployment
   flags with task 1's probe. An unavailable tool can disable optional tests;
   either strict option requiring it must fail configuration. Runtime strictness
   implies compiler strictness. Enable Objective-C only on APPLE for the runtime
   test target; keep cgc C90 and Windows build dependencies unchanged.
-- [ ] Register Apple compilation for every positive fixture in the same
+- [x] Register Apple compilation for every positive fixture in the same
   manifest used for portable source tests. Compile fresh generated source to
   fresh AIR, then metallib; require exit 0 and nonempty current outputs.
   Delete only those test-owned outputs before invocation. Record tool version,
   exact target flags, fixture, profile, and resulting artifact in test evidence.
   Add invalid-MSL and stale-artifact self-tests that must fail.
-- [ ] Build `msl_runtime` against Foundation and Metal. Accept vertex/fragment
+- [x] Build `msl_runtime` against Foundation and Metal. Accept vertex/fragment
   library paths, exported names and a fixture identifier as arguments. Load
   both functions, construct an MTLVertexDescriptor from expected attribute
   slots, bind vertex data at buffer(1), reserve buffer(0) for numeric uniforms,
   and create a pipeline with the required color/depth formats.
-- [ ] Render a small offscreen target; wait for completion, check command-buffer
+- [x] Render a small offscreen target; wait for completion, check command-buffer
   errors, and read back results. Use independently constructed CPU data and
   expected values rather than computing expectations with the new backend.
   An unavailable device exits 77 only in optional mode; strict mode must fail.
@@ -545,11 +567,11 @@ create `tests/msl/diagnostics/` cases, `tests/check_msl_output_transaction.cmake
   interpolation. For arithmetic witnesses use RGBA32Float, absolute/relative
   tolerance 1e-5, finite inputs, and pixel samples away from primitive edges.
   For normalized color texture witnesses use exact bytes or <=1 LSB tolerance.
-- [ ] Create a mismatched varying-type pair and require pipeline creation to
+- [x] Create a mismatched varying-type pair and require pipeline creation to
   fail; separately prove a matching pair succeeds. Validate bundled vertex
   shaders with a companion fragment accepting their emitted COLOR0, and render
   fully initialized dedicated fixtures for numerical comparisons.
-- [ ] Run strict qualification on macOS:
+- [x] Run strict qualification on macOS:
 
 ```text
 cmake -S . -B build-msl-apple -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DCGC_REQUIRE_METAL=ON -DCGC_REQUIRE_METAL_RUNTIME=ON
@@ -572,12 +594,12 @@ ctest --test-dir build-msl-apple -C Release -R "^msl_" --output-on-failure
   allowlists with a success/rejection fixture name for every feature family.
   Explain half/fixed promotion, Cg matrix behavior, fixed policy limits,
   unsupported Cg 1.1, and macOS-only qualification.
-- [ ] Include the uniform byte-layout witness, per-stage buffer(0) reservation,
+- [x] Include the uniform byte-layout witness, per-stage buffer(0) reservation,
   vertex-buffer slot separation, TEXUNIT pairing, default-value handling,
   entry-name mapping, metadata ABI version and coordinate conventions.
   Provide CPU upload examples using explicit byte offsets and column-major
   matrix packing; do not use an unverified host struct layout.
-- [ ] Show source compilation and the separate Apple toolchain commands:
+- [x] Show source compilation and the separate Apple toolchain commands:
 
 ```text
 cgc -quiet -version 2.0 -profile mslv -entry main -o position.metal position.cg
@@ -588,13 +610,13 @@ xcrun --sdk macosx metallib position.air -o position.metallib
 
   Use the standard spelling actually verified in task 1 if it differs.
   State that the library export is `cg_mslv_main`, not necessarily `main`.
-- [ ] Rerun full existing CTest on the implementation host and compare all
+- [x] Rerun full existing CTest on the implementation host and compare all
   eight generic example/version baseline records. Repeat Apple qualification
   only if subsequent compiler/test changes invalidate its evidence.
-- [ ] Inspect diff for unrelated files, generated parser changes, binary
+- [x] Inspect diff for unrelated files, generated parser changes, binary
   artifacts, missing notices, and machine-specific paths. Review module
   boundaries, ABI consistency and the feature-to-test mapping before merging.
-- [ ] Record command results and genuine limitations in qualification docs.
+- [x] Record command results and genuine limitations in qualification docs.
   A Windows-only green run is portable validation, not release qualification.
   Summarize affected stage, behavior, and representative bindings in the PR.
 - [ ] Commit: `Document Metal shader compatibility and qualification`.
@@ -602,12 +624,12 @@ xcrun --sdk macosx metallib position.air -o position.metallib
 ## Completion criteria
 
 - [ ] Both profiles emit valid standalone MSL for the agreed subset.
-- [ ] All four bundled vertex shaders translate without source modifications.
-- [ ] Numeric semantics, resources and stage interfaces have independent tests.
+- [x] All four bundled vertex shaders translate without source modifications.
+- [x] Numeric semantics, resources and stage interfaces have independent tests.
 - [ ] Unsupported programs have stable located profile diagnostics and failed
   -o compilations preserve existing files.
-- [ ] Existing tests and generic baseline comparisons show no new regressions.
-- [ ] Strict Apple compilation and runtime qualification passed with recorded
+- [x] Existing tests and generic baseline comparisons show no new regressions.
+- [x] Strict Apple compilation and runtime qualification passed with recorded
   toolchain/platform details and no missing-tool/device skips.
 - [ ] Documentation explains the supported surface and application ABI completely.
 

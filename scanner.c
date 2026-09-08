@@ -49,12 +49,13 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <string.h>
 
-#if 0
-#include <ieeefp.h>
-#else
-#define isinff(x) (((*(long *)&(x) & 0x7f800000L)==0x7f800000L) && \
-                   ((*(long *)&(x) & 0x007fffffL)==0000000000L))
-#endif
+#include <float.h>
+
+/* Compare values without aliasing float storage through a host-sized long. */
+static int lIsInfiniteFloat(float value)
+{
+    return value > FLT_MAX || value < -FLT_MAX;
+}
 
 #include "slglobals.h"
 
@@ -722,7 +723,7 @@ static int lFloatConst(char *str, int len, int ch)
     CgNumericSetFloat(&yylval.sc_literal, kind, dval);
     CgNumericNormalize(&yylval.sc_literal, &yylval.sc_literal);
     if (kind != CG_SCALAR_DOUBLE &&
-        isinff((float)yylval.sc_literal.value.f))
+        lIsInfiniteFloat((float)yylval.sc_literal.value.f))
     {
         SemanticError(Cg->tokenLoc, ERROR___FP_CONST_OVERFLOW);
     }

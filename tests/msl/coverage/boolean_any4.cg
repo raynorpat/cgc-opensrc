@@ -1,0 +1,1 @@
+float4 main(uniform bool4 x):COLOR0 { return float4(float(any(x)),0,0,1); }

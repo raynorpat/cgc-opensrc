@@ -1,0 +1,4 @@
+float4 main(uniform samplerCUBE image : TEXUNIT3) : COLOR0
+{
+    return texCUBElod(image, float4(0, 0, 1, 1));
+}

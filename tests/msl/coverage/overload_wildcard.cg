@@ -1,0 +1,4 @@
+float choose(void) { return 1; }
+vs float choose(void) { return 2; }
+ps float choose(void) { return 3; }
+float4 main(void):COLOR0 { return float4(choose(),0,0,1); }

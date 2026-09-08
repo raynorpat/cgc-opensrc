@@ -1,0 +1,2 @@
+struct Output { float4 color : COLOR0; float depth : DEPTH; };
+Output main(void) { Output r; r.color = float4(1,0,0,1); r.depth = .25; return r; }

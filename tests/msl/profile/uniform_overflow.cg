@@ -1,0 +1,1 @@
+float4 main(uniform float values[257]) : COLOR0 { return float4(values[0],0,0,1); }

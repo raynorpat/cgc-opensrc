@@ -1,0 +1,3 @@
+float4 main(void) : COLOR0 {
+float3 a=float3(1,0,0), b=float3(0,1,0); return float4(cross(a,b).z, reflect(a,b).x, refract(a,b,0.5).x,1);
+}

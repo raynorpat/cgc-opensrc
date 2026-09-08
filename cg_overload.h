@@ -50,6 +50,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #if !defined(__CG_OVERLOAD_H)
 #define __CG_OVERLOAD_H 1
 
+union expr_rec;
+
 /*
  * CgProfileStage - coarse pipeline stage a profile serves.  Neutral
  * profiles (generic) impose no stage constraint on selector matching.

@@ -1,0 +1,2 @@
+float recurse(float x) { if (x > 0) return recurse(x - 1); return x; }
+float4 main(void) : COLOR0 { return float4(recurse(2), 0, 0, 1); }

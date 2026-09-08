@@ -1,0 +1,1 @@
+void main(out float4 color:COLOR0, out float depth:DEPTH) { color=float4(1,0,0,1); depth=0.25; }

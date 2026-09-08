@@ -1,0 +1,7 @@
+void swap_values(inout float a, inout float b) { float saved = a; a = b; b = saved; }
+float4 main(void) : COLOR0
+{
+    float4 p = float4(1,2,3,1);
+    swap_values(p.x, p.y);
+    return p;
+}

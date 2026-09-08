@@ -1,0 +1,1 @@
+float v; float4 main(void):COLOR0 { v=1; return float4(v,0,0,1); }

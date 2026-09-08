@@ -1,0 +1,1 @@
+sampler2D get(uniform sampler2D t) { return t; } float4 main(uniform sampler2D t):COLOR0 { return tex2D(get(t),float2(0,0)); }

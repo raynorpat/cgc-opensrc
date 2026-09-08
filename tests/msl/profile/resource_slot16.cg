@@ -1,0 +1,4 @@
+float4 main(uniform sampler2D image : TEXUNIT16) : COLOR0
+{
+    return tex2D(image, float2(.5,.5));
+}

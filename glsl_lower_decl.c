@@ -52,6 +52,9 @@ EVEN IF NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "glsl_lower_internal.h"
 
+static int GlslIREnsureType(GlslLowerContext *context, Type *type,
+                            const SourceLoc *loc);
+
 
 static Type *GlslCanonicalStructType(Type *type)
 {

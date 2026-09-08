@@ -1,0 +1,12 @@
+struct Varyings {
+    float4 p : POSITION;
+    float2 a : TEXCOORD1;
+    float2 b : TEXCOORD0;
+    int tag : TEXCOORD2;
+};
+Varyings main(float4 p : ATTRIB0)
+{
+    Varyings r;
+    r.p = p; r.a = float2(.25, .5); r.b = float2(.75, 1); r.tag = 7;
+    return r;
+}

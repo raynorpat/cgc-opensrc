@@ -1,0 +1,61 @@
+// cgc-msl-abi version=1 profile=mslf language=2.0
+// cgc-msl-entry source=main metal=cg_mslf_main
+// cgc-msl-buffer index=0 bytes=80 alignment=16
+// cgc-msl-uniform path=params.tint offset=0 slots=1 type=float3 wire=float4
+// cgc-msl-uniform path=params.exposure offset=16 slots=1 type=float wire=float4
+// cgc-msl-uniform path=params.basis offset=32 slots=3 type=float3x3 wire=float4 column_stride=16
+// cgc-msl-builtin semantic=COLOR0 attribute=color(0) type=float4
+#include <metal_stdlib>
+using namespace metal;
+
+struct cg_type_2 {
+    float3 cg_field_3;
+    float cg_field_4;
+    float3x3 cg_field_5;
+};
+struct cg_Uniforms {
+    float4 slot0;
+    float4 slot1;
+    float4 slot2;
+    float4 slot3;
+    float4 slot4;
+};
+struct cg_Output {
+    float4 cg_COLOR0 [[color(0)]];
+};
+float4 cg_fn_0(cg_type_2 cg_v_1);
+float3 cg_fn_7(float3x3 cg_v_8, float3 cg_v_9);
+float cg_fn_11(float3 cg_v_12, float3 cg_v_13);
+float4 cg_fn_0(cg_type_2 cg_v_1)
+{
+    float3 cg_v_6;
+    (cg_v_6 = (cg_fn_7((cg_v_1).cg_field_5, (cg_v_1).cg_field_3) * (cg_v_1).cg_field_4));
+    return float4((cg_v_6).x, (cg_v_6).y, (cg_v_6).z, float(1));
+}
+
+float3 cg_fn_7(float3x3 cg_v_8, float3 cg_v_9)
+{
+    float3 cg_v_10;
+    ((cg_v_10).x = cg_fn_11(float3(((cg_v_8)[0])[0], ((cg_v_8)[1])[0], ((cg_v_8)[2])[0]), cg_v_9));
+    ((cg_v_10).y = cg_fn_11(float3(((cg_v_8)[0])[1], ((cg_v_8)[1])[1], ((cg_v_8)[2])[1]), cg_v_9));
+    ((cg_v_10).z = cg_fn_11(float3(((cg_v_8)[0])[2], ((cg_v_8)[1])[2], ((cg_v_8)[2])[2]), cg_v_9));
+    return cg_v_10;
+}
+
+float cg_fn_11(float3 cg_v_12, float3 cg_v_13)
+{
+    return ((((cg_v_12).x * (cg_v_13).x) + ((cg_v_12).y * (cg_v_13).y)) + ((cg_v_12).z * (cg_v_13).z));
+}
+
+fragment cg_Output cg_mslf_main(constant cg_Uniforms &cg_u [[buffer(0)]])
+{
+    cg_type_2 cg_v_1;
+    cg_v_1.cg_field_3 = float3(cg_u.slot0.xyz);
+    cg_v_1.cg_field_4 = float(cg_u.slot1.x);
+    cg_v_1.cg_field_5 = float3x3(cg_u.slot2.xyz, cg_u.slot3.xyz, cg_u.slot4.xyz);
+    float4 cg_value = cg_fn_0(cg_v_1);
+    cg_Output cg_result;
+    cg_result.cg_COLOR0 = cg_value;
+    return cg_result;
+}
+// End of program

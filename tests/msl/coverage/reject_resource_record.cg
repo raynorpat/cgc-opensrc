@@ -1,0 +1,1 @@
+struct R { sampler2D t; }; float4 main(uniform R r):COLOR0 { return tex2D(r.t,float2(0,0)); }

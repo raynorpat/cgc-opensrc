@@ -1,0 +1,6 @@
+struct Input {
+    float2 b : TEXCOORD0;
+    int tag : TEXCOORD2;
+    float2 a : TEXCOORD1;
+};
+float4 main(Input p) : COLOR0 { return float4(p.a.x, p.a.y, p.b.x, p.tag); }

@@ -1,0 +1,1 @@
+float4 main(uniform sampler2D t):COLOR0 { return tex2Dbias(t,float4(0,0,0,1)); }

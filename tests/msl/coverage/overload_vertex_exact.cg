@@ -1,0 +1,6 @@
+float choose(void) { return 1; }
+vs float choose(void) { return 2; }
+ps float choose(void) { return 3; }
+mslv float choose(void) { return 4; }
+mslf float choose(void) { return 5; }
+struct O { float4 p:POSITION; float4 c:COLOR0; }; O main(float4 p:ATTRIB0) { O o; o.p=p; o.c=float4(choose(),0,0,1); return o; }

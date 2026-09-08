@@ -1,0 +1,1 @@
+struct O { float4 a:HPOS; float4 b:POSITION; }; O main(float4 p:ATTRIB0) { O o; o.a=p; o.b=p; return o; }

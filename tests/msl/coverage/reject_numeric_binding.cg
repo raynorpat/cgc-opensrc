@@ -1,0 +1,1 @@
+float4 main(uniform float v:C0):COLOR0 { return float4(v,0,0,1); }

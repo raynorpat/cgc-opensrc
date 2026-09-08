@@ -1,0 +1,1 @@
+float4 main(void):COLOR0 { float2 x=float2(0,1); float2 r=reflect(x,x); float2 t=refract(x,-x,0.5); return float4(r[1],t[1],0,1); }

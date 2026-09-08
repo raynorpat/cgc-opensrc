@@ -41,6 +41,7 @@ TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF
 NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 \****************************************************************************/
 
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -48,6 +49,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "arb_lower_internal.h"
 
 static int EvalConstInt(ArbLowerContext *ctx, expr *e, int *out);
+static int ExtractSimpleDelta(ArbLowerContext *ctx, expr *e, Symbol *target,
+                               int *delta);
 static int ExtractStepDelta(ArbLowerContext *ctx, expr *e, Symbol *target,
                             int *delta, int *found);
 
@@ -619,7 +622,7 @@ int ArbLowerCanonicalFor(ArbLowerContext *ctx, stmt *fStmt)
             stepExpr = fStmt->forst.step->exprst.exp;
         }
         okStep = stepExpr &&
-                 ExtractStepDelta(ctx, stepExpr, induction, &delta, found);
+                 ExtractStepDelta(ctx, stepExpr, induction, &delta, &found);
         {
             // The step may be a linearized statement list; scan every
             // expression statement for the induction update.

@@ -1,0 +1,6 @@
+float4 sample_image(sampler2D image, float2 uv) { return tex2D(image, uv); }
+float4 nested(sampler2D image, float2 uv) { return sample_image(image, uv); }
+float4 main(uniform sampler2D image : TEXUNIT3) : COLOR0
+{
+    return nested(image, float2(.75, .25));
+}

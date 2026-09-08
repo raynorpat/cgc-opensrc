@@ -56,6 +56,7 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #include "slglobals.h"
+#include "msl_hal.h"
 #include "glsl_hal.h"
 #include "cg_stdlib.h"
 #include "cg_ir.h"
@@ -455,7 +456,8 @@ int OpenOutputFile(void)
     Cg->options.outfd = Cg->options.outputTransaction.stream;
     Cg->options.OutputFileOpen = 1;
     Cg->theHAL->PrintCodeHeader(Cg->options.outfd);
-    if (!HlslHALUsesStableOutputHeader(Cg->theHAL)) {
+    if (!HlslHALUsesStableOutputHeader(Cg->theHAL) &&
+        Cg->theHAL->pid != PROFILE_MSLV_ID && Cg->theHAL->pid != PROFILE_MSLF_ID) {
         fprintf(Cg->options.outfd, "%s cgc version %d.%d.%04d%s, build date %s  %s\n", Cg->theHAL->comment,
                 HSL_VERSION, HSL_SUB_VERSION, HSL_SUB_SUB_VERSION, NDA_STRING, Build_Date, Build_Time);
     }
@@ -496,7 +498,8 @@ void PrintOptions(int argc, char **argv)
 {
     int ii;
 
-    if (HlslHALUsesStableOutputHeader(Cg->theHAL))
+    if (HlslHALUsesStableOutputHeader(Cg->theHAL) ||
+        Cg->theHAL->pid == PROFILE_MSLV_ID || Cg->theHAL->pid == PROFILE_MSLF_ID)
         return;
     if (argc > 1) {
         fprintf(Cg->options.outfd, "%s command line args:", Cg->theHAL->comment);

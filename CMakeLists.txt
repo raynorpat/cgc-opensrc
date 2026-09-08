@@ -40,11 +40,23 @@ set(CGC_ARB_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_stmt.c
 )
 
+set(CGC_MSL_LOWER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_bind.c
+)
+
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
 
 add_executable(cgc
+    msl_ir.c msl_verify.c msl_codegen.c msl_hal.c mslv_hal.c mslf_hal.c
+    ${CGC_MSL_LOWER_SOURCES}
     arb_hal.c
     arbfp1_hal.c
     arbvp1_hal.c
@@ -179,4 +191,19 @@ else()
         COMMAND ${CMAKE_COMMAND} -E false
         VERBATIM
     )
+endif()
+
+if(BUILD_TESTING)
+    # Compile the actual compiler/lowerers with a test-only fault seam. No
+    # environment-controlled fault behavior is present in the production cgc.
+    get_target_property(CGC_MSL_FAULT_SOURCES cgc SOURCES)
+    add_executable(cgc_msl_fault ${CGC_MSL_FAULT_SOURCES})
+    if(APPLE AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+        target_compile_options(cgc_msl_fault PRIVATE -g -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(cgc_msl_fault PRIVATE -fsanitize=address)
+    endif()
+    target_compile_definitions(cgc_msl_fault PRIVATE CGC_MSL_FAULT_TEST
+        $<$<BOOL:${CGC_HAVE_STDINT_H}>:CGC_HAVE_STDINT_H>)
+    set_target_properties(cgc_msl_fault PROPERTIES
+        C_STANDARD 90 C_STANDARD_REQUIRED YES C_EXTENSIONS YES)
 endif()

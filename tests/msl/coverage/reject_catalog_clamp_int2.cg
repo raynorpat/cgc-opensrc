@@ -1,0 +1,1 @@
+float4 main(uniform float value):COLOR0 { int2 x=int(value); int2 y=clamp(x,x-1,x+1); return float4(float(y.x),0,0,1); }

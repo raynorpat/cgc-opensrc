@@ -1,0 +1,1 @@
+void get(out sampler2D t) { return; } float4 main(uniform sampler2D t):COLOR0 { get(t); return float4(1,0,0,1); }

@@ -1,0 +1,5 @@
+uniform float unused;
+float ignored(void) { return unused; }
+uniform float z;
+float use_global(void) { return z; }
+float4 main(uniform float a, uniform float z):COLOR0 { return float4(z,a,use_global(),1); }

@@ -1,0 +1,1 @@
+float4 main(uniform float value) : COLOR0 { float x=value; float y=acos(x/x); return float4(y,0,0,1); }

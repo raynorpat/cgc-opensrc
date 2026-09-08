@@ -60,12 +60,14 @@ int RegisterProfiles_generic(void);
 int RegisterProfiles_glsl(void);
 int RegisterProfiles_arb(void);
 int RegisterProfiles_hlsl(void);
+int RegisterProfiles_msl(void);
 
 static int (*RegistrationFunctions[])(void) = {
     RegisterProfiles_generic,
     RegisterProfiles_glsl,
     RegisterProfiles_arb,
     RegisterProfiles_hlsl,
+    RegisterProfiles_msl,
 };
 
 int CommandLineArgs(int argc, char **argv, int pass);

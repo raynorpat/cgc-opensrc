@@ -1,0 +1,1 @@
+float4 main(float2x2 m:TEXCOORD0):COLOR0 { return float4(m[0][0],m[0][1],m[1][0],m[1][1]); }

@@ -1,0 +1,2 @@
+void set_values(inout float a, out float b) { a+=10; b=20; }
+float4 main(void):COLOR0 { float a[3]; a[0]=1; a[1]=2; a[2]=3; int i=0; set_values(a[i++],a[i++]); return float4(a[0],a[1],a[2],i); }

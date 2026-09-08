@@ -1,0 +1,1 @@
+float4 main(void):COLOR0 { float2x2 a=float2x2(1,2,3,4); float2x2 c=a*a; return float4(c[0][0],0,0,1); }

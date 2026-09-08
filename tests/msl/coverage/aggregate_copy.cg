@@ -1,0 +1,3 @@
+struct Inner { float x[2]; }; struct Outer { Inner a; float y; };
+Outer copy(Outer a) { a.a.x[0]+=10; return a; }
+float4 main(void):COLOR0 { Outer a; a.a.x[0]=1; a.a.x[1]=2; a.y=3; Outer b; b=copy(a); return float4(a.a.x[0],b.a.x[0],b.a.x[1],b.y); }

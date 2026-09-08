@@ -56,6 +56,8 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "language.h"
 #include "cg_stdlib.h"
 
+static int lCountInitializerElements(expr *fExpr);
+
 dtype CurrentDeclTypeSpecs = { 0, };
 
 #undef PICK

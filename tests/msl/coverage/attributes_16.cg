@@ -1,0 +1,1 @@
+struct I { float a0:ATTRIB0; float a1:ATTRIB1; float a2:ATTRIB2; float a3:ATTRIB3; float a4:ATTRIB4; float a5:ATTRIB5; float a6:ATTRIB6; float a7:ATTRIB7; float a8:ATTRIB8; float a9:ATTRIB9; float a10:ATTRIB10; float a11:ATTRIB11; float a12:ATTRIB12; float a13:ATTRIB13; float a14:ATTRIB14; float a15:ATTRIB15; }; float4 main(I i):POSITION { return float4(i.a0,0,0,1); }

@@ -455,4 +455,15 @@ NVIDIA HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define NOTICE_S_CG_ENTRY_PATH          9505, "reached from entry function \"%s\""
 #define NOTICE_S_HLSL_INTERFACE_FIRST   9506, "first declaration of interface semantic \"%s\""
 
+/* Metal profile diagnostics; source locations are carried by MslDiagnostic. */
+#define ERROR_S_MSL_LANGUAGE 6600, "%s"
+#define ERROR_S_MSL_TYPE 6601, "%s"
+#define ERROR_S_MSL_OPERATION 6602, "%s"
+#define ERROR_S_MSL_INTERFACE 6603, "%s"
+#define ERROR_S_MSL_BINDING 6604, "%s"
+#define ERROR_S_MSL_LIMIT 6605, "%s"
+#define ERROR_S_MSL_STAGE 6606, "%s"
+#define ERROR_S_MSL_RECURSION 6607, "%s"
+#define ERROR_S_MSL_GLOBAL_WRITE 6608, "%s"
+
 #endif // !defined(__ERRORS_H)

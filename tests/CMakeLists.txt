@@ -480,6 +480,11 @@ add_cg20_failure(cg20_reserved_word_case
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/reserved_word_case.cg
     -DCODE=1300 -DEXPECTED_LINE=7 -DMESSAGE=reserved.word
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
+add_cg20_failure(cg20_float_literal_overflow
+    -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
+    -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/float_literal_overflow.cg
+    -DCODE=123 -DEXPECTED_LINE=3 "-DMESSAGE=floating.point.constant.overflow"
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 add_cg20_failure(cg20_literal_overflow
     -DCGC=$<TARGET_FILE:cgc> -DPROFILE=generic
     -DSOURCE=${PROJECT_SOURCE_DIR}/tests/cg20/diagnostics/literal_overflow.cg
@@ -5192,14 +5197,16 @@ add_test(
 add_arb_fixture(arbvp1_passthrough arbvp1
     tests/arb/profile/vp_passthrough.cg
     tests/arb/profile/vp_passthrough.expected)
-add_test(NAME arbvp1_wgl_smoke
-    COMMAND $<TARGET_FILE:arb_smoke> vp
-        ${CMAKE_CURRENT_BINARY_DIR}/arbvp1_passthrough.arb)
-set_tests_properties(arbvp1_passthrough PROPERTIES
-    FIXTURES_SETUP arbvp1_smoke_program)
-set_tests_properties(arbvp1_wgl_smoke PROPERTIES
-    DEPENDS arbvp1_passthrough
-    SKIP_RETURN_CODE 77)
+if(WIN32)
+    add_test(NAME arbvp1_wgl_smoke
+        COMMAND $<TARGET_FILE:arb_smoke> vp
+            ${CMAKE_CURRENT_BINARY_DIR}/arbvp1_passthrough.arb)
+    set_tests_properties(arbvp1_passthrough PROPERTIES
+        FIXTURES_SETUP arbvp1_smoke_program)
+    set_tests_properties(arbvp1_wgl_smoke PROPERTIES
+        DEPENDS arbvp1_passthrough
+        SKIP_RETURN_CODE 77)
+endif()
 
 add_arb_fixture(arbvp1_arithmetic arbvp1
     tests/arb/arithmetic/vp_arithmetic.cg
@@ -5261,14 +5268,16 @@ add_arb_fixture(arbfp1_conditional arbfp1
 add_arb_fixture(arbfp1_tex2d arbfp1
     tests/arb/textures/fp_tex2d.cg
     tests/arb/textures/fp_tex2d.expected)
-add_test(NAME arbfp1_wgl_smoke
-    COMMAND $<TARGET_FILE:arb_smoke> fp
-        ${CMAKE_CURRENT_BINARY_DIR}/arbfp1_tex2d.arb)
-set_tests_properties(arbfp1_tex2d PROPERTIES
-    FIXTURES_SETUP arbfp1_smoke_program)
-set_tests_properties(arbfp1_wgl_smoke PROPERTIES
-    DEPENDS arbfp1_tex2d
-    SKIP_RETURN_CODE 77)
+if(WIN32)
+    add_test(NAME arbfp1_wgl_smoke
+        COMMAND $<TARGET_FILE:arb_smoke> fp
+            ${CMAKE_CURRENT_BINARY_DIR}/arbfp1_tex2d.arb)
+    set_tests_properties(arbfp1_tex2d PROPERTIES
+        FIXTURES_SETUP arbfp1_smoke_program)
+    set_tests_properties(arbfp1_wgl_smoke PROPERTIES
+        DEPENDS arbfp1_tex2d
+        SKIP_RETURN_CODE 77)
+endif()
 add_arb_fixture(arbfp1_target_1d arbfp1
     tests/arb/textures/fp_targets.cg
     tests/arb/textures/fp_target_1d.expected -DTEST_1D)
@@ -5518,3 +5527,5 @@ string(REPLACE ";" "\n" hlsl_modern_witness_lines
 file(GENERATE
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hlsl-modern-witness-tests.txt"
     CONTENT "${hlsl_modern_witness_lines}\n")
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/msl.cmake)

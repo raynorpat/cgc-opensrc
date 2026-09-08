@@ -61,6 +61,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "slglobals.h"
 #include "cg_ir.h"
@@ -1012,6 +1013,7 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
 ///////////////////////////// Statement lowering /////////////////////////////
 
 static int lLowerStmtList(CgIRLower *L, stmt *fStmt, CgIRStmt **list);
+static int lLowerForStmt(CgIRLower *L, stmt *fStmt, CgIRStmt **list);
 
 static expr *lGeometryValueRoot(expr *value)
 {
@@ -1946,3 +1948,23 @@ int CgIRLowerProgram(CgIRLowerContext *context, Scope *globalScope,
     }
     return !CgIRModuleFailed(context->module);
 } // CgIRLowerProgram
+
+/* Preserve constant uniform-default data for target metadata without exposing
+ * frontend expression trees to a backend. The returned nodes use the supplied
+ * module's allocator; no source tree is changed. */
+CgIRExpr *CgIRLowerUniformDefault(CgIRModule *module, const CgIRDecl *decl)
+{
+    CgIRLower lower;
+    expr *value;
+    if (!module || !decl || !decl->symbol)
+        return NULL;
+    value = decl->symbol->details.var.init;
+    if (!value)
+        return NULL;
+    if (value->common.kind == BINARY_N && value->bin.op == EXPR_LIST_OP)
+        value = value->bin.left;
+    memset(&lower, 0, sizeof(lower));
+    lower.module = module;
+    lower.loc = decl->loc;
+    return lLowerExpr(&lower, value);
+}

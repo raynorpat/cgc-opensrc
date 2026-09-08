@@ -1,0 +1,8 @@
+float4 main(void) : COLOR0
+{
+    float2x2 m = float2x2(1, 2, 3, 4);
+    float2 v = float2(5, 6);
+    float2 a = mul(m, v);
+    float2 b = mul(v, m);
+    return float4(a.x, a.y, b.x, b.y);
+}

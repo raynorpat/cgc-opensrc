@@ -1,0 +1,3 @@
+uniform float factor;
+float apply(float x) { return x * factor; }
+float4 main(void) : COLOR0 { return float4(apply(3), 0, 0, 1); }

@@ -1,0 +1,1 @@
+void set_values(out float a,out float b) { a=3; b=4; } float4 main(void):COLOR0 { float a=1; set_values(a,a); return float4(a,0,0,1); }

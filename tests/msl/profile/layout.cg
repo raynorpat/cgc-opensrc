@@ -1,0 +1,6 @@
+struct Params { float3 tint; float exposure; float3x3 basis; };
+float4 main(uniform Params params) : COLOR0
+{
+    float3 value = mul(params.basis, params.tint) * params.exposure;
+    return float4(value.x, value.y, value.z, 1);
+}

@@ -1,0 +1,2 @@
+float fragment(float thread) { return thread+1; }
+float4 main(void):COLOR0 { float metal=2, vertex=3, cg_v_0=4; return float4(fragment(metal),vertex,cg_v_0,1); }

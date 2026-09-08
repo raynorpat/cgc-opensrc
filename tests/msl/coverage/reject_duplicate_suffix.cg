@@ -1,0 +1,1 @@
+float4 main(float a:TEXCOORD0,float b:texcoord00):COLOR0 { return float4(a,b,0,1); }

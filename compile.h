@@ -164,4 +164,6 @@ expr *GenFConstV(float *fval, int len, int base);
 expr *GenConvertVectorLength(expr *fExpr, int base, int len, int newlen);
 expr *DupExpr(expr *fExpr);
 
+int GetConstIndex(expr *fExpr);
+
 #endif // !defined(__COMPILE_H)

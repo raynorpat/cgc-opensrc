@@ -1,0 +1,1 @@
+float3 main(float3 p:ATTRIB0):POSITION { return p; }

@@ -1,0 +1,1 @@
+float4 main(uniform float v=0.1f, uniform half2 h=half2(0.5h,0.25h), uniform bool b=true, uniform uint u=4294967295u):COLOR0 { return float4(v,float(h.x),float(b),float(u)); }

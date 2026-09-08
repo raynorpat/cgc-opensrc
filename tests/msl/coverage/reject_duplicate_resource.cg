@@ -1,0 +1,1 @@
+float4 main(uniform sampler2D a:TEXUNIT0,uniform sampler2D b:TEXUNIT0):COLOR0 { return tex2D(a,float2(0,0))+tex2D(b,float2(0,0)); }

@@ -1,0 +1,2 @@
+bool bump(inout int i) { i++; return true; }
+float4 main(void):COLOR0 { int i=0; bool a=false && bump(i); bool b=true || bump(i); return float4(i,float(a),float(b),1); }

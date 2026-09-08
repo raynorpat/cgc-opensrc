@@ -1,0 +1,36 @@
+// cgc-msl-abi version=1 profile=mslf language=2.0
+// cgc-msl-entry source=main metal=cg_mslf_main
+// cgc-msl-buffer index=0 bytes=32 alignment=16
+// cgc-msl-uniform path=values[0] offset=0 slots=1 type=float2 wire=float4
+// cgc-msl-uniform path=values[1] offset=16 slots=1 type=float2 wire=float4
+// cgc-msl-builtin semantic=COLOR0 attribute=color(0) type=float4
+#include <metal_stdlib>
+using namespace metal;
+
+struct cg_array_2 {
+    float2 elements[2];
+};
+struct cg_Uniforms {
+    float4 slot0;
+    float4 slot1;
+};
+struct cg_Output {
+    float4 cg_COLOR0 [[color(0)]];
+};
+float4 cg_fn_0(cg_array_2 cg_v_1);
+float4 cg_fn_0(cg_array_2 cg_v_1)
+{
+    return float4(((cg_v_1).elements[0]).x, ((cg_v_1).elements[0]).y, ((cg_v_1).elements[1]).x, ((cg_v_1).elements[1]).y);
+}
+
+fragment cg_Output cg_mslf_main(constant cg_Uniforms &cg_u [[buffer(0)]])
+{
+    cg_array_2 cg_v_1;
+    cg_v_1.elements[0] = float2(cg_u.slot0.xy);
+    cg_v_1.elements[1] = float2(cg_u.slot1.xy);
+    float4 cg_value = cg_fn_0(cg_v_1);
+    cg_Output cg_result;
+    cg_result.cg_COLOR0 = cg_value;
+    return cg_result;
+}
+// End of program

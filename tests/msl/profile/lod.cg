@@ -1,0 +1,4 @@
+float4 main(uniform sampler2D image : TEXUNIT3) : COLOR0
+{
+    return tex2Dlod(image, float4(.5, .5, 0, 1));
+}

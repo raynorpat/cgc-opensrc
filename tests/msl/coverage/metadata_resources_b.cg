@@ -1,0 +1,1 @@
+float4 main(uniform samplerCUBE a, uniform sampler2D z, uniform sampler2D fixedSlot:TEXUNIT0):COLOR0 { return tex2D(z,float2(0,0)); }

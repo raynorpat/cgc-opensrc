@@ -1,0 +1,40 @@
+// cgc-msl-abi version=1 profile=mslf language=2.0
+// cgc-msl-entry source=main metal=cg_mslf_main
+// cgc-msl-varying semantic=TEXCOORD0 field=cg_TEXCOORD0 type=float2 interpolation=perspective
+// cgc-msl-varying semantic=TEXCOORD1 field=cg_TEXCOORD1 type=float2 interpolation=perspective
+// cgc-msl-varying semantic=TEXCOORD2 field=cg_TEXCOORD2 type=int interpolation=flat
+// cgc-msl-builtin semantic=COLOR0 attribute=color(0) type=float4
+#include <metal_stdlib>
+using namespace metal;
+
+struct cg_type_2 {
+    float2 cg_field_3;
+    int cg_field_4;
+    float2 cg_field_5;
+};
+struct cg_Input {
+    float2 cg_TEXCOORD0 [[user(cg_TEXCOORD0)]];
+    int cg_TEXCOORD2 [[user(cg_TEXCOORD2), flat]];
+    float2 cg_TEXCOORD1 [[user(cg_TEXCOORD1)]];
+};
+struct cg_Output {
+    float4 cg_COLOR0 [[color(0)]];
+};
+float4 cg_fn_0(cg_type_2 cg_v_1);
+float4 cg_fn_0(cg_type_2 cg_v_1)
+{
+    return float4(((cg_v_1).cg_field_5).x, ((cg_v_1).cg_field_5).y, ((cg_v_1).cg_field_3).x, float((cg_v_1).cg_field_4));
+}
+
+fragment cg_Output cg_mslf_main(cg_Input cg_in [[stage_in]])
+{
+    cg_type_2 cg_v_1;
+    cg_v_1.cg_field_3 = cg_in.cg_TEXCOORD0;
+    cg_v_1.cg_field_4 = cg_in.cg_TEXCOORD2;
+    cg_v_1.cg_field_5 = cg_in.cg_TEXCOORD1;
+    float4 cg_value = cg_fn_0(cg_v_1);
+    cg_Output cg_result;
+    cg_result.cg_COLOR0 = cg_value;
+    return cg_result;
+}
+// End of program

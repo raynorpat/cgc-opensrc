@@ -53,6 +53,8 @@ ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "hlsl_hal.h"
 #include "hlsl_modern.h"
 
+static int HlslStringsEqual(const char *left, const char *right);
+
 typedef struct HlslPointerFrame_Rec {
     const struct HlslPointerFrame_Rec *parent;
     const void *pointer;

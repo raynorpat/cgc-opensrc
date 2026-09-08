@@ -1,0 +1,24 @@
+// cgc-msl-abi version=1 profile=mslf language=2.0
+// cgc-msl-entry source=main metal=cg_mslf_main
+// cgc-msl-builtin semantic=COLOR0 attribute=color(0) type=float4
+#include <metal_stdlib>
+using namespace metal;
+
+struct cg_Output {
+    float4 cg_COLOR0 [[color(0)]];
+};
+float4 cg_fn_0();
+float4 cg_fn_0()
+{
+    discard_fragment();
+    return float4(int4(1, 0, 0, 1));
+}
+
+fragment cg_Output cg_mslf_main()
+{
+    float4 cg_value = cg_fn_0();
+    cg_Output cg_result;
+    cg_result.cg_COLOR0 = cg_value;
+    return cg_result;
+}
+// End of program

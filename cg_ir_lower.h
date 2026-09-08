@@ -92,4 +92,7 @@ typedef struct CgIRLowerContext_Rec {
 int CgIRLowerProgram(CgIRLowerContext *context, Scope *globalScope,
                      Symbol *entry, const CgGeometryProgram *geometry);
 
+/* Copy parsed uniform-default data into caller-owned IR storage. */
+CgIRExpr *CgIRLowerUniformDefault(CgIRModule *module, const CgIRDecl *decl);
+
 #endif // !defined(__CG_IR_LOWER_H)

@@ -1,0 +1,5 @@
+struct Output { float4 p : POSITION; float4 color : COLOR0; };
+Output main(float4 p : ATTRIB0, uniform sampler2D image : TEXUNIT3)
+{
+    Output r; r.p = p; r.color = tex2Dlod(image, float4(.5, .5, 0, 1)); return r;
+}

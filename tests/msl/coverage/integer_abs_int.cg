@@ -1,0 +1,1 @@
+float4 main(uniform float value):COLOR0 { int x=int(value); int y=abs(-x); return float4(float(y),0,0,1); }

@@ -496,7 +496,7 @@ static stmt *CheckForUnsupportedStatements(stmt *fStmt, void *arg1, int arg2)
 {
     if (fStmt) {
         if (!Cg->theHAL->CheckStatement(&fStmt->commonst.loc, fStmt))
-            ++(int *) arg1;
+            ++(*(int *) arg1);
     }
     return fStmt;
 } // CheckForUnsupportedStatements
