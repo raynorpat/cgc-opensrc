@@ -35,6 +35,7 @@ set(CGC_ARB_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_support.c
     ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_operand.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_expr.c
 )
 
 if(BUILD_TESTING)
