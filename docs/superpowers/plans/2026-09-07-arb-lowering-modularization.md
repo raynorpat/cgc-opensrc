@@ -10,7 +10,9 @@
 
 ## Execution status — 2026-09-07
 
-Implementation and isolated qualification are complete at `97395d5`; both final independent specification/architecture and quality reviews approved with no actionable findings. GLSL was already integrated into master before ARB began. ARB remains on `codex/arb-lower-modularization`, pending explicit local-integration direction; nothing was pushed.
+Implementation and isolated qualification are complete at `97395d5`; both final independent specification/architecture and quality reviews approved with no actionable findings. GLSL was already integrated into master before ARB began. With explicit user approval, ARB was fast-forwarded into `master` at `2596fd3`; nothing was pushed.
+
+Merged-main verification is complete: a fresh x64 Release build and all **1,372/1,372 tests** passed with zero skips, including both actual WGL program loads and the 197-combination FXC contract. The structural self-test and guard passed with nested worktrees present. Evidence is retained in `build-cg20-arb-merged/EVIDENCE.md`. Existing user changes were preserved; worktrees and ignored evidence remain available.
 
 - Frozen execution baseline: `ea5a11414d1615c02eeedb9295d1f150c2dbe58d`.
 - Fresh Debug and Release: **1,372/1,372 each**, zero skipped; both WGL tests actually loaded programs in both configurations.
@@ -1122,7 +1124,7 @@ git log -12 --oneline
 ```
 Expected: only focused committed work and ignored builds; user changes remain
 untouched. Perform the final review against the approved design before integration.
-- [ ] **Step 6: Local integration, only after explicit user approval.**
+- [x] **Step 6: Local integration, only after explicit user approval.**
 
 On the merged main checkout, rerun the structural self-test, registered structural
 test and full suite. Keep nested worktrees present during the structural check to
