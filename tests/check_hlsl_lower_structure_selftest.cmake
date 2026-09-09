@@ -12,12 +12,12 @@ set(fixture_root
     "${SOURCE_ROOT}/build-cg20-hlsl-lower-structure-fixture")
 file(MAKE_DIRECTORY "${fixture_root}")
 
-file(WRITE "${fixture_root}/hlsl_lower_internal.h" [=[
+file(WRITE "${fixture_root}/src/hlsl_lower_internal.h" [=[
 #ifndef HLSL_LOWER_INTERNAL_H
 #define HLSL_LOWER_INTERNAL_H
 #endif
 ]=])
-file(WRITE "${fixture_root}/hlsl_lower.c" [=[
+file(WRITE "${fixture_root}/src/hlsl_lower.c" [=[
 #include "hlsl_lower_internal.h"
 int HlslLowerProgramWithIR(void)
 {
@@ -35,20 +35,20 @@ foreach(source IN ITEMS
         hlsl_lower_stmt.c
         hlsl_lower_geometry.c
         hlsl_lower_function.c)
-    file(WRITE "${fixture_root}/${source}" [=[
+    file(WRITE "${fixture_root}/src/${source}" [=[
 #include "hlsl_lower_internal.h"
 ]=])
 endforeach()
 
 file(WRITE "${fixture_root}/CMakeLists.txt" [=[
 set(CGC_HLSL_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_decl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_geometry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_function.c
 )
 add_executable(cgc
     ${CGC_HLSL_LOWER_SOURCES}
@@ -102,13 +102,13 @@ ExpectStructureFailure(
 
 file(WRITE "${fixture_root}/CMakeLists.txt" [=[
 set(CGC_HLSL_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_decl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_geometry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_function.c
 )
 add_executable(cgc
     ${CGC_HLSL_LOWER_SOURCES}
@@ -130,14 +130,14 @@ add_executable(hlsl_geometry_lower_unit
 ]=])
 file(WRITE "${fixture_root}/CMakeLists.txt" [=[
 set(CGC_HLSL_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_decl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_geometry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_function.c
 )
 add_executable(cgc
     ${CGC_HLSL_LOWER_SOURCES}
@@ -161,17 +161,17 @@ add_executable(cgc
 )
 ]=])
 ExpectStructureFailure(
-    "CGC_HLSL_LOWER_SOURCES must contain hlsl_lower.c exactly once")
+    "CGC_HLSL_LOWER_SOURCES must contain src/hlsl_lower.c exactly once")
 
 file(WRITE "${fixture_root}/CMakeLists.txt" [=[
 set(CGC_HLSL_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_decl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_geometry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_function.c
 )
 add_executable(cgc
     ${CGC_HLSL_LOWER_SOURCES}
@@ -202,7 +202,7 @@ int HlslLowerProgram(void)
 }
 */
 ]=])
-file(WRITE "${fixture_root}/hlsl_lower_support.c" [=[
+file(WRITE "${fixture_root}/src/hlsl_lower_support.c" [=[
 #include "hlsl_lower_internal.h"
 int HlslLowerProgram(void)
 {
@@ -212,7 +212,7 @@ int HlslLowerProgram(void)
 ExpectStructureFailure(
     "hlsl_lower_support.c defines HlslLowerProgram")
 
-file(WRITE "${fixture_root}/hlsl_lower_support.c" [=[
+file(WRITE "${fixture_root}/src/hlsl_lower_support.c" [=[
 #include "hlsl_lower_internal.h"
 ]=])
 file(WRITE "${fixture_root}/tests/hlsl_lower_stub.c" [=[

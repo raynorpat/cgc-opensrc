@@ -32,7 +32,7 @@ function(add_msl_fixture name profile)
     set(work "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/msl/${name}")
     set(source "${CMAKE_CURRENT_SOURCE_DIR}/msl/profile/${name}.cg")
     if(NOT EXISTS "${source}")
-        set(source "${PROJECT_SOURCE_DIR}/${name}.cg")
+        set(source "${PROJECT_SOURCE_DIR}/tests/cg/${name}.cg")
     endif()
     add_test(NAME msl_profile_${name} COMMAND "${CMAKE_COMMAND}"
         "-DCGC=$<TARGET_FILE:cgc>" "-DPROFILE=${profile}"
@@ -79,9 +79,9 @@ if(CGC_METAL_AVAILABLE)
     endforeach()
 endif()
 
-add_executable(msl_ir_test msl_ir_test.c ${PROJECT_SOURCE_DIR}/msl_ir.c
-    ${PROJECT_SOURCE_DIR}/msl_verify.c)
-target_include_directories(msl_ir_test PRIVATE ${PROJECT_SOURCE_DIR})
+add_executable(msl_ir_test msl_ir_test.c ${PROJECT_SOURCE_DIR}/src/msl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/msl_verify.c)
+target_include_directories(msl_ir_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
 set_target_properties(msl_ir_test PROPERTIES C_STANDARD 90 C_STANDARD_REQUIRED YES C_EXTENSIONS YES)
 add_test(NAME msl_ir_invariants_and_allocation COMMAND msl_ir_test)
 if(CGC_METAL_AVAILABLE)

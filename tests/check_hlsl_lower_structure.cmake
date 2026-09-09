@@ -5,15 +5,15 @@ if(NOT DEFINED SOURCE_ROOT OR SOURCE_ROOT STREQUAL "")
 endif()
 
 set(lower_header
-    hlsl_lower_internal.h)
+    src/hlsl_lower_internal.h)
 set(lower_sources
-    hlsl_lower.c
-    hlsl_lower_support.c
-    hlsl_lower_decl.c
-    hlsl_lower_expr.c
-    hlsl_lower_stmt.c
-    hlsl_lower_geometry.c
-    hlsl_lower_function.c)
+    src/hlsl_lower.c
+    src/hlsl_lower_support.c
+    src/hlsl_lower_decl.c
+    src/hlsl_lower_expr.c
+    src/hlsl_lower_stmt.c
+    src/hlsl_lower_geometry.c
+    src/hlsl_lower_function.c)
 
 foreach(relative IN LISTS lower_header lower_sources)
     if(NOT EXISTS "${SOURCE_ROOT}/${relative}")
@@ -57,7 +57,7 @@ foreach(relative IN LISTS lower_sources)
     endif()
 endforeach()
 
-file(STRINGS "${SOURCE_ROOT}/hlsl_lower.c" facade_lines)
+file(STRINGS "${SOURCE_ROOT}/src/hlsl_lower.c" facade_lines)
 list(LENGTH facade_lines facade_line_count)
 if(facade_line_count GREATER 450)
     message(FATAL_ERROR
@@ -201,7 +201,7 @@ foreach(relative IN LISTS repository_files)
         string(REGEX MATCH "${definition_pattern}" entry_point_definition
             "${source_content}")
         if(NOT entry_point_definition STREQUAL "")
-            if(NOT relative STREQUAL "hlsl_lower.c")
+            if(NOT relative STREQUAL "src/hlsl_lower.c")
                 message(FATAL_ERROR
                     "${relative} defines ${entry_point}; only hlsl_lower.c may define it")
             endif()

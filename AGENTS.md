@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a flat C codebase for the NVIDIA Cg compiler front end and its generic profile. Compiler stages live in paired root-level files: scanning in `scanner.c`/`scanner.h`, parsing in `parser.y` plus generated `parser.c`/`parser.h`, semantic analysis in `semantic.c`, and compilation in `compile.c`. Hardware abstraction code is in `hal.*`; use `generic_hal.*` as the reference when changing profile behavior. `cgcmain.c` contains the compiler entry point, while `tokenize.c` provides the standard-library tokenizer. The four example shaders—`position.cg`, `reflection.cg`, `vertexlight.cg`, and `vertexlight4.cg`—are manual-validation inputs; `stdlib.cg` supplies the built-in standard library.
+This is a C codebase for the NVIDIA Cg compiler front end and its generic profile. Compiler stages live in paired files under `src/`: scanning in `src/scanner.c`/`src/scanner.h`, parsing in `src/parser.y` plus generated `src/parser.c`/`src/parser.h`, semantic analysis in `src/semantic.c`, and compilation in `src/compile.c`. Hardware abstraction code is in `src/hal.*`; use `src/generic_hal.*` as the reference when changing profile behavior. `src/cgcmain.c` contains the compiler entry point, while `src/tokenize.c` provides the standard-library tokenizer. The four example shaders—`tests/cg/position.cg`, `tests/cg/reflection.cg`, `tests/cg/vertexlight.cg`, and `tests/cg/vertexlight4.cg`—are manual-validation inputs; `src/stdlib.cg` supplies the built-in standard library.
 
 ## Coding Style & Naming Conventions
 
@@ -10,7 +10,7 @@ Match the local file first and avoid unrelated reformatting. The mixed legacy st
 
 ## Testing Guidelines
 
-There is no automated test suite or stated coverage threshold. Validate compiler changes against all four bundled inputs: `position.cg`, `reflection.cg`, `vertexlight.cg`, and `vertexlight4.cg`. Exercise them with the generic profile and compare stdout, diagnostics, and exit status with the behavior before your change. For parser, scanner, semantic, or constant-folding work, add a minimal `.cg` regression input when it captures a distinct case; name it descriptively, for example `invalid-array-index.cg`, and document the expected result in the pull request.
+There is no automated test suite or stated coverage threshold. Validate compiler changes against all four bundled inputs: `tests/cg/position.cg`, `tests/cg/reflection.cg`, `tests/cg/vertexlight.cg`, and `tests/cg/vertexlight4.cg`. Exercise them with the generic profile and compare stdout, diagnostics, and exit status with the behavior before your change. For parser, scanner, semantic, or constant-folding work, add a minimal `.cg` regression input when it captures a distinct case; name it descriptively, for example `invalid-array-index.cg`, and document the expected result in the pull request.
 
 ## Commit & Pull Request Guidelines
 
@@ -18,4 +18,4 @@ History is minimal, so follow the existing concise, imperative subject style: `A
 
 ## Generated Sources & Security
 
-Treat `parser.y` as the grammar source of truth. When grammar changes require regeneration, keep `parser.c` and `parser.h` synchronized and mention the generator version in the pull request. Do not add proprietary shader sources, credentials, or machine-specific paths. Preserve the redistribution notices in `LICENSE` and existing source headers.
+Treat `src/parser.y` as the grammar source of truth. When grammar changes require regeneration, keep `src/parser.c` and `src/parser.h` synchronized and mention the generator version in the pull request. Do not add proprietary shader sources, credentials, or machine-specific paths. Preserve the redistribution notices in `LICENSE` and existing source headers.

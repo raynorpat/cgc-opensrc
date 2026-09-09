@@ -13,7 +13,7 @@ foreach(shader position reflection vertexlight vertexlight4)
     foreach(version 1.1 2.0)
         set(name "${shader}-${version}")
         execute_process(COMMAND "${CGC}" -quiet -version "${version}"
-            -profile generic "${SOURCE_DIR}/${shader}.cg"
+            -profile generic "${SOURCE_DIR}/tests/cg/${shader}.cg"
             RESULT_VARIABLE status OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr)
         if(NOT "${status}" MATCHES "^-?[0-9]+$")
             message(FATAL_ERROR "Could not execute compiler: ${status}")

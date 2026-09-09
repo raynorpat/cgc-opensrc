@@ -7,27 +7,27 @@ file(MAKE_DIRECTORY "${fixture}/tests" "${fixture}/.worktrees/other")
 file(WRITE "${fixture}/.worktrees/other/copy.c" "")
 file(WRITE "${fixture}/unrelated.c" "")
 file(WRITE "${fixture}/tests/stub.c" "")
-file(WRITE "${fixture}/arb_lower_internal.h" "")
+file(WRITE "${fixture}/src/arb_lower_internal.h" "")
 set(root_cmake [=[set(CGC_ARB_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_operand.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_loop.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_operand.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_loop.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_stmt.c
 )
 add_executable(cgc ${CGC_ARB_LOWER_SOURCES})
 ]=])
 file(WRITE "${fixture}/CMakeLists.txt" "${root_cmake}")
 file(WRITE "${fixture}/tests/CMakeLists.txt" [=[]=])
-file(WRITE "${fixture}/arb_lower.c" [=[#include "arb_lower_internal.h"
+file(WRITE "${fixture}/src/arb_lower.c" [=[#include "arb_lower_internal.h"
 int ArbLowerProgram(void) { return 0; }
 ]=])
-file(WRITE "${fixture}/arb_lower_support.c" "#include \"arb_lower_internal.h\"\n")
-file(WRITE "${fixture}/arb_lower_operand.c" "#include \"arb_lower_internal.h\"\n")
-file(WRITE "${fixture}/arb_lower_expr.c" "#include \"arb_lower_internal.h\"\n")
-file(WRITE "${fixture}/arb_lower_loop.c" "#include \"arb_lower_internal.h\"\n")
-file(WRITE "${fixture}/arb_lower_stmt.c" "#include \"arb_lower_internal.h\"\n")
+file(WRITE "${fixture}/src/arb_lower_support.c" "#include \"arb_lower_internal.h\"\n")
+file(WRITE "${fixture}/src/arb_lower_operand.c" "#include \"arb_lower_internal.h\"\n")
+file(WRITE "${fixture}/src/arb_lower_expr.c" "#include \"arb_lower_internal.h\"\n")
+file(WRITE "${fixture}/src/arb_lower_loop.c" "#include \"arb_lower_internal.h\"\n")
+file(WRITE "${fixture}/src/arb_lower_stmt.c" "#include \"arb_lower_internal.h\"\n")
 function(Check expected)
     execute_process(COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${fixture}" -P "${STRUCTURE_SCRIPT}" RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
     if(expected STREQUAL "PASS")
@@ -65,7 +65,7 @@ string(REPLACE "add_executable(cgc " "add_executable(cgc arb_lower.c " bypass "$
 file(WRITE "${fixture}/CMakeLists.txt" "${bypass}")
 Check("directly lists")
 file(WRITE "${fixture}/CMakeLists.txt" "${root_cmake}")
-file(WRITE "${fixture}/arb_lower_support.c" "")
+file(WRITE "${fixture}/src/arb_lower_support.c" "")
 Check("must include")
-file(WRITE "${fixture}/arb_lower_support.c" "#include \"arb_lower_internal.h\"\n")
+file(WRITE "${fixture}/src/arb_lower_support.c" "#include \"arb_lower_internal.h\"\n")
 Check("PASS")

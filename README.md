@@ -55,8 +55,8 @@ emission, so a source triggering an internal-invariant rejection
 (`C9011`/`C9012`) fails with an internal error in legacy mode too,
 where an earlier release may have emitted output.
 
-The release contains a pre-built parser (`parser.c` and `parser.h`) generated
-from `parser.y` with GNU Bison. Normal builds use the checked-in generated
+The release contains a pre-built parser (`src/parser.c` and `src/parser.h`) generated
+from `src/parser.y` with GNU Bison. Normal builds use the checked-in generated
 sources and do not require Bison. To regenerate the generated parser and
 standard library, run:
 
@@ -92,7 +92,7 @@ The compiler provides these profiles:
 For a single-config build, use:
 
 ```sh
-./build/cgc -quiet -profile generic position.cg
+./build/cgc -quiet -profile generic tests/cg/position.cg
 ./build/cgc -quiet -profile glslv -entry main -o shader.vert shader.cg
 ./build/cgc -quiet -profile glslg -entry main -po TRIANGLE \
   -po TRIANGLE_OUT -po Vertices=3 -o shader.geom geometry.cg
@@ -103,7 +103,7 @@ glslangValidator -l shader.vert shader.geom shader.frag
 For a multi-config Release build on Windows, use:
 
 ```powershell
-.\build\Release\cgc.exe -quiet -profile generic position.cg
+.\build\Release\cgc.exe -quiet -profile generic tests/cg/position.cg
 .\build\Release\cgc.exe -quiet -profile glslv -entry main -o shader.vert shader.cg
 .\build\Release\cgc.exe -quiet -profile glslg -entry main -po TRIANGLE -po TRIANGLE_OUT -po Vertices=3 -o shader.geom geometry.cg
 .\build\Release\cgc.exe -quiet -profile glslf -entry main -o shader.frag shader.cg
@@ -243,10 +243,10 @@ are byte-deterministic across directories.
 Representative Windows commands are:
 
 ```powershell
-.\build\Release\cgc.exe -quiet -profile hlslv40 -entry main -o shader.v40.hlsl position.cg
+.\build\Release\cgc.exe -quiet -profile hlslv40 -entry main -o shader.v40.hlsl tests/cg/position.cg
 .\build\Release\cgc.exe -quiet -profile hlslf40 -entry texture_pixel -o shader.p40.hlsl tests\hlsl\modern\textures.cg
 .\build\Release\cgc.exe -quiet -profile hlslg40 -entry main -po POINT -po POINT_OUT -po Vertices=1 -o shader.g40.hlsl tests\hlsl\geometry\pass_through.cg
-.\build\Release\cgc.exe -quiet -profile hlslv50 -entry main -o shader.v50.hlsl position.cg
+.\build\Release\cgc.exe -quiet -profile hlslv50 -entry main -o shader.v50.hlsl tests/cg/position.cg
 .\build\Release\cgc.exe -quiet -profile hlslf50 -entry texture_pixel -o shader.p50.hlsl tests\hlsl\modern\textures.cg
 .\build\Release\cgc.exe -quiet -profile hlslg50 -entry main -po POINT -po POINT_OUT -po Vertices=1 -o shader.g50.hlsl tests\hlsl\geometry\pass_through.cg
 ```
@@ -350,7 +350,7 @@ row per normative requirement, each naming the single registered CTest that
 answers it (`valid-generic`, `invalid-language`, `backend-reject`, or
 `out-of-scope`). The `cg20_manifest` test enforces that every row names a
 registered test, that requirement ids are unique, and that every intrinsic
-opcode in `cg_stdlib.def` is unique. To run just the conformance and
+opcode in `src/cg_stdlib.def` is unique. To run just the conformance and
 regeneration checks:
 
 ```sh
@@ -373,7 +373,7 @@ a Metal library and running it requires Apple's toolchain and a Metal device.
 All four bundled vertex shaders translate without modification.
 
 ```sh
-./build/cgc -quiet -version 2.0 -profile mslv -o position.metal position.cg
+./build/cgc -quiet -version 2.0 -profile mslv -o position.metal tests/cg/position.cg
 ./build/cgc -quiet -version 2.0 -profile mslf -o fragment.metal tests/msl/profile/fragment.cg
 ```
 
@@ -403,30 +403,35 @@ and application ABI, the [coverage audit](docs/msl-coverage.md) for feature test
 and the [qualification record](docs/msl-qualification.md) for tested toolchains
 and commands to repeat strict Apple compiler/GPU validation.
 
+Compiler sources, headers, and the built-in library source `stdlib.cg` live
+in `src/`. The original shader examples live in `tests/cg/`. Backend-specific
+fixtures remain in their existing subdirectories under `tests/`. The
+`regenerate_stdlib` target regenerates `src/stdlib.c` from `src/stdlib.cg`.
+
 ## Compiler Internals
 
 Under the default Cg 2.0 language every profile first builds and verifies the
-backend-neutral typed IR in `cg_ir.c` and `cg_ir_verify.c` before any target
-code runs. `generic` prints it through `cg_ir_print.c`, the GLSL profiles
+backend-neutral typed IR in `src/cg_ir.c` and `src/cg_ir_verify.c` before any target
+code runs. `generic` prints it through `src/cg_ir_print.c`, the GLSL profiles
 lower it to their structured source IR, and the ARB profiles use it for stage
 validation before retaining their historical tree lowering. The
-historical tree-printing back end remains in `generic_hal.[ch]` for explicit
+historical tree-printing back end remains in `src/generic_hal.[ch]` for explicit
 `-version 1.1` compiles. The GLSL profiles share a structured source backend
-in `glsl_ir.[ch]`, `glsl_lower.c`, and `glsl_codegen.c`, with stage-specific
-HAL descriptors; their Cg-IR lowering lives in `glsl_lower.c`
+in `src/glsl_ir.[ch]`, `src/glsl_lower.c`, and `src/glsl_codegen.c`, with stage-specific
+HAL descriptors; their Cg-IR lowering lives in `src/glsl_lower.c`
 (`GlslLowerCgIR`).
 
-`hal.[ch]` describes the hardware abstraction layer by which profiles
+`src/hal.[ch]` describes the hardware abstraction layer by which profiles
 communicate with the front-end. To add a new profile, you can use
-`generic_hal.c` as a framework/example. A profile must register itself
+`src/generic_hal.c` as a framework/example. A profile must register itself
 with the HAL by calling `RegisterProfile` as part of compiler startup.
 Then, if selected via the appropriate command line argument, the
 profile will be called to verify various constructs in the source code,
 deal with connector semantics, and finally, generate code. See
-`generic_hal.c` for more details.
+`src/generic_hal.c` for more details.
 
-The directory contains four vertex examples: `vertexlight.cg`,
-`vertexlight4.cg`, `position.cg`, and `reflection.cg`. They can be inspected
+The directory contains four vertex examples: `tests/cg/vertexlight.cg`,
+`tests/cg/vertexlight4.cg`, `tests/cg/position.cg`, and `tests/cg/reflection.cg`. They can be inspected
 with `generic` or translated with `glslv`.
 
 Developers can download all the latest Cg-related content from the

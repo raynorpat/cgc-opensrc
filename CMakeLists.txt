@@ -8,48 +8,48 @@ include(CheckIncludeFile)
 check_include_file(stdint.h CGC_HAVE_STDINT_H)
 
 set(CGC_HLSL_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_decl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_geometry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/hlsl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/hlsl_lower_function.c
 )
 
 set(CGC_GLSL_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_decl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_interface.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_aggregate.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_legacy_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_legacy_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_ir_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_ir_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_geometry.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/glsl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_interface.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_aggregate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_legacy_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_legacy_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_ir_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_ir_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/glsl_lower_function.c
 )
 
 set(CGC_ARB_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_operand.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_loop.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/arb_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_operand.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_loop.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/arb_lower_stmt.c
 )
 
 set(CGC_MSL_LOWER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_support.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_aggregate.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_texture.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_decl.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_expr.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_stmt.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_function.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/msl_bind.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower_aggregate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower_texture.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower_decl.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower_expr.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower_stmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_lower_function.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/msl_bind.c
 )
 
 if(BUILD_TESTING)
@@ -57,82 +57,82 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(cgc
-    msl_ir.c msl_verify.c msl_validate.c msl_codegen.c msl_hal.c mslv_hal.c mslf_hal.c
+    src/msl_ir.c src/msl_verify.c src/msl_validate.c src/msl_codegen.c src/msl_hal.c src/mslv_hal.c src/mslf_hal.c
     ${CGC_MSL_LOWER_SOURCES}
-    arb_hal.c
-    arbfp1_hal.c
-    arbvp1_hal.c
-    atom.c
-    binding.c
-    cgcmain.c
-    cg_geometry.c
-    cg_ir.c
-    cg_ir_lower.c
-    cg_ir_default.c
-    cg_ir_print.c
-    cg_ir_verify.c
-    cg_numeric.c
-    cg_overload.c
-    cg_reach.c
-    cg_stdlib.c
-    cg_types.c
-    cgstruct.c
-    check.c
-    compile.c
-    constfold.c
-    cpp.c
-    generic_hal.c
-    glsl_ir.c
-    glsl_verify.c
+    src/arb_hal.c
+    src/arbfp1_hal.c
+    src/arbvp1_hal.c
+    src/atom.c
+    src/binding.c
+    src/cgcmain.c
+    src/cg_geometry.c
+    src/cg_ir.c
+    src/cg_ir_lower.c
+    src/cg_ir_default.c
+    src/cg_ir_print.c
+    src/cg_ir_verify.c
+    src/cg_numeric.c
+    src/cg_overload.c
+    src/cg_reach.c
+    src/cg_stdlib.c
+    src/cg_types.c
+    src/cgstruct.c
+    src/check.c
+    src/compile.c
+    src/constfold.c
+    src/cpp.c
+    src/generic_hal.c
+    src/glsl_ir.c
+    src/glsl_verify.c
     ${CGC_GLSL_LOWER_SOURCES}
-    glsl_codegen.c
-    glsl_hal.c
-    glslv_hal.c
-    glslf_hal.c
-    glslg_hal.c
-    hal.c
-    hlsl_bind.c
-    hlsl_ir.c
-    hlsl_modern.c
+    src/glsl_codegen.c
+    src/glsl_hal.c
+    src/glslv_hal.c
+    src/glslf_hal.c
+    src/glslg_hal.c
+    src/hal.c
+    src/hlsl_bind.c
+    src/hlsl_ir.c
+    src/hlsl_modern.c
     ${CGC_HLSL_LOWER_SOURCES}
-    hlsl_legalize.c
-    hlsl_validate.c
-    hlsl_codegen.c
-    hlsl_hal.c
-    hlslv_hal.c
-    hlslf_hal.c
-    hlslv40_hal.c
-    hlslg40_hal.c
-    hlslf40_hal.c
-    hlslv50_hal.c
-    hlslg50_hal.c
-    hlslf50_hal.c
-    inline.c
-    language.c
-    memory.c
-    output.c
-    parser.c
-    printutils.c
-    scanner.c
-    semantic.c
-    stdlib.c
-    support.c
-    support_iter.c
-    symbols.c
-    tokens.c
-    arb_ir.c
+    src/hlsl_legalize.c
+    src/hlsl_validate.c
+    src/hlsl_codegen.c
+    src/hlsl_hal.c
+    src/hlslv_hal.c
+    src/hlslf_hal.c
+    src/hlslv40_hal.c
+    src/hlslg40_hal.c
+    src/hlslf40_hal.c
+    src/hlslv50_hal.c
+    src/hlslg50_hal.c
+    src/hlslf50_hal.c
+    src/inline.c
+    src/language.c
+    src/memory.c
+    src/output.c
+    src/parser.c
+    src/printutils.c
+    src/scanner.c
+    src/semantic.c
+    src/stdlib.c
+    src/support.c
+    src/support_iter.c
+    src/symbols.c
+    src/tokens.c
+    src/arb_ir.c
     ${CGC_ARB_LOWER_SOURCES}
-    arb_codegen.c
+    src/arb_codegen.c
 )
 
 add_executable(tokenize
-    atom.c
-    cg_numeric.c
-    cgstruct.c
-    language.c
-    scanner.c
-    tokenize.c
-    tokens.c
+    src/atom.c
+    src/cg_numeric.c
+    src/cgstruct.c
+    src/language.c
+    src/scanner.c
+    src/tokenize.c
+    src/tokens.c
 )
 
 set_target_properties(cgc tokenize PROPERTIES
@@ -142,7 +142,7 @@ set_target_properties(cgc tokenize PROPERTIES
 )
 
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set_source_files_properties(scanner.c PROPERTIES
+    set_source_files_properties(src/scanner.c PROPERTIES
         COMPILE_OPTIONS /U_WIN32
     )
 endif()
@@ -164,14 +164,14 @@ add_custom_target(regenerate_stdlib
     COMMAND ${CMAKE_COMMAND}
         -DTOKENIZE=$<TARGET_FILE:tokenize>
         -DINPUT=stdlib.cg
-        -DOUTPUT=stdlib.c
+        -DOUTPUT=${CMAKE_CURRENT_SOURCE_DIR}/src/stdlib.c
         -DTEMP=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/stdlib_generic.cg
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
     DEPENDS
         tokenize
-        ${CMAKE_CURRENT_SOURCE_DIR}/stdlib.cg
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/stdlib.cg
         ${CMAKE_CURRENT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
     VERBATIM
 )
 
@@ -183,8 +183,8 @@ if(BISON_FOUND)
             parser.y
             --defines=parser.h
             --output=parser.c
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/parser.y
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/parser.y
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src
         VERBATIM
     )
 else()

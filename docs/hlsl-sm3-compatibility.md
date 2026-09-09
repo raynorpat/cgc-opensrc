@@ -11,7 +11,7 @@ test in the final column.
 The inventory was produced from the grammar productions in `parser.y`, the
 token and predefined-type registries in `tokens.h`, `cg_types.c`, and
 `symbols.c`, the binding and default paths in `compile.c` and `binding.c`, the
-standard-library catalog in `cg_stdlib.def`, `cg_stdlib.c`, and `stdlib.cg`,
+standard-library catalog in `src/cg_stdlib.def`, `src/cg_stdlib.c`, and `src/stdlib.cg`,
 and the HLSL semantic, intrinsic, texture, register, and validation tables.
 Scanner tokens that are reserved but have no grammar production are not a
 source feature. Rows group spellings only when they share one parser or

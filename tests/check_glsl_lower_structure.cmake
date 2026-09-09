@@ -5,19 +5,19 @@ if(NOT DEFINED SOURCE_ROOT OR SOURCE_ROOT STREQUAL "")
 endif()
 
 set(lower_header
-    glsl_lower_internal.h)
+    src/glsl_lower_internal.h)
 set(lower_sources
-    glsl_lower.c
-    glsl_lower_support.c
-    glsl_lower_decl.c
-    glsl_lower_interface.c
-    glsl_lower_aggregate.c
-    glsl_lower_legacy_expr.c
-    glsl_lower_legacy_stmt.c
-    glsl_lower_ir_expr.c
-    glsl_lower_ir_stmt.c
-    glsl_lower_geometry.c
-    glsl_lower_function.c)
+    src/glsl_lower.c
+    src/glsl_lower_support.c
+    src/glsl_lower_decl.c
+    src/glsl_lower_interface.c
+    src/glsl_lower_aggregate.c
+    src/glsl_lower_legacy_expr.c
+    src/glsl_lower_legacy_stmt.c
+    src/glsl_lower_ir_expr.c
+    src/glsl_lower_ir_stmt.c
+    src/glsl_lower_geometry.c
+    src/glsl_lower_function.c)
 
 foreach(relative IN LISTS lower_header lower_sources)
     if(NOT EXISTS "${SOURCE_ROOT}/${relative}")
@@ -61,7 +61,7 @@ foreach(relative IN LISTS lower_sources)
     endif()
 endforeach()
 
-file(STRINGS "${SOURCE_ROOT}/glsl_lower.c" facade_lines)
+file(STRINGS "${SOURCE_ROOT}/src/glsl_lower.c" facade_lines)
 list(LENGTH facade_lines facade_line_count)
 if(facade_line_count GREATER 350)
     message(FATAL_ERROR
@@ -212,7 +212,7 @@ foreach(relative IN LISTS repository_files)
         string(REGEX MATCH "${definition_pattern}" entry_point_definition
             "${source_content}")
         if(NOT entry_point_definition STREQUAL "")
-            if(NOT relative STREQUAL "glsl_lower.c")
+            if(NOT relative STREQUAL "src/glsl_lower.c")
                 message(FATAL_ERROR
                     "${relative} defines ${entry_point}; only glsl_lower.c may define it")
             endif()

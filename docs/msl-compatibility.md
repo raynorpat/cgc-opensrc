@@ -13,7 +13,7 @@ cmake -S . -B build/metal -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
   -DCGC_REQUIRE_METAL=ON -DCGC_REQUIRE_METAL_RUNTIME=ON
 cmake --build build/metal --config Release
 ctest --test-dir build/metal -C Release -R '^msl_' --output-on-failure
-build/metal/cgc -quiet -version 2.0 -profile mslv -o position.metal position.cg
+build/metal/cgc -quiet -version 2.0 -profile mslv -o position.metal tests/cg/position.cg
 build/metal/cgc -quiet -version 2.0 -profile mslf -o fragment.metal \
   tests/msl/profile/fragment.cg
 xcrun --sdk macosx metal -std=macos-metal2.0 -mmacosx-version-min=13.0 \

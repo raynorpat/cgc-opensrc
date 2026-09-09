@@ -5,14 +5,14 @@ if(NOT DEFINED SOURCE_ROOT OR SOURCE_ROOT STREQUAL "")
 endif()
 
 set(lower_header
-    arb_lower_internal.h)
+    src/arb_lower_internal.h)
 set(lower_sources
-    arb_lower.c
-    arb_lower_support.c
-    arb_lower_operand.c
-    arb_lower_expr.c
-    arb_lower_loop.c
-    arb_lower_stmt.c)
+    src/arb_lower.c
+    src/arb_lower_support.c
+    src/arb_lower_operand.c
+    src/arb_lower_expr.c
+    src/arb_lower_loop.c
+    src/arb_lower_stmt.c)
 
 foreach(relative IN LISTS lower_header lower_sources)
     if(NOT EXISTS "${SOURCE_ROOT}/${relative}")
@@ -56,7 +56,7 @@ foreach(relative IN LISTS lower_sources)
     endif()
 endforeach()
 
-file(STRINGS "${SOURCE_ROOT}/arb_lower.c" facade_lines)
+file(STRINGS "${SOURCE_ROOT}/src/arb_lower.c" facade_lines)
 list(LENGTH facade_lines facade_line_count)
 if(facade_line_count GREATER 160)
     message(FATAL_ERROR
@@ -175,7 +175,7 @@ foreach(relative IN LISTS repository_files)
         string(REGEX MATCH "${definition_pattern}" entry_point_definition
             "${source_content}")
         if(NOT entry_point_definition STREQUAL "")
-            if(NOT relative STREQUAL "arb_lower.c")
+            if(NOT relative STREQUAL "src/arb_lower.c")
                 message(FATAL_ERROR
                     "${relative} defines ${entry_point}; only arb_lower.c may define it")
             endif()

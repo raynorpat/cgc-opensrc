@@ -1394,9 +1394,9 @@ add_test(
     NAME parser_regeneration
     COMMAND ${CMAKE_COMMAND}
         -DBISON=${cg20_parser_regen_bison}
-        -DSOURCE=${PROJECT_SOURCE_DIR}/parser.y
-        -DEXPECTED_PARSER=${PROJECT_SOURCE_DIR}/parser.c
-        -DEXPECTED_DEFINES=${PROJECT_SOURCE_DIR}/parser.h
+        -DSOURCE=${PROJECT_SOURCE_DIR}/src/parser.y
+        -DEXPECTED_PARSER=${PROJECT_SOURCE_DIR}/src/parser.c
+        -DEXPECTED_DEFINES=${PROJECT_SOURCE_DIR}/src/parser.h
         "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/parser-regeneration"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_parser_regeneration.cmake
 )
@@ -1438,14 +1438,14 @@ add_cg20_failure(cg20_interface_bad_signature
     -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_failure.cmake)
 
 add_executable(glsl_ir_unit
-    ${PROJECT_SOURCE_DIR}/glsl_ir.c
-    ${PROJECT_SOURCE_DIR}/glsl_verify.c
-    ${PROJECT_SOURCE_DIR}/glsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_verify.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_codegen.c
     glsl_ir_test.c
 )
 
 target_include_directories(glsl_ir_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 target_compile_definitions(glsl_ir_unit PRIVATE
@@ -1471,21 +1471,21 @@ add_test(
 )
 
 add_executable(hlsl_ir_unit
-    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
-    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
-    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
-    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
-    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
-    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
-    ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
-    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslv40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslg40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslv50_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslg50_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_bind.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_modern.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_legalize.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_validate.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslg40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslg50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf50_hal.c
     hlsl_ir_test.c
 )
 
@@ -1495,7 +1495,7 @@ target_compile_definitions(hlsl_ir_unit PRIVATE
 )
 
 target_include_directories(hlsl_ir_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 set_target_properties(hlsl_ir_unit PROPERTIES
@@ -1530,40 +1530,40 @@ set_tests_properties(
 # HLSL nodes so source locations and structured control-flow ownership are
 # checked at the IR transfer boundary.
 add_executable(hlsl_geometry_lower_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/binding.c
-    ${PROJECT_SOURCE_DIR}/cg_geometry.c
-    ${PROJECT_SOURCE_DIR}/cg_ir.c
-    ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
-    ${PROJECT_SOURCE_DIR}/cg_numeric.c
-    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
-    ${PROJECT_SOURCE_DIR}/cg_types.c
-    ${PROJECT_SOURCE_DIR}/cgstruct.c
-    ${PROJECT_SOURCE_DIR}/hal.c
-    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
-    ${PROJECT_SOURCE_DIR}/hlsl_codegen.c
-    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
-    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
-    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/binding.c
+    ${PROJECT_SOURCE_DIR}/src/cg_geometry.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir_verify.c
+    ${PROJECT_SOURCE_DIR}/src/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/src/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/src/cg_types.c
+    ${PROJECT_SOURCE_DIR}/src/cgstruct.c
+    ${PROJECT_SOURCE_DIR}/src/hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_bind.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_legalize.c
     ${CGC_HLSL_LOWER_SOURCES}
-    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
-    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
-    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslv40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslg40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslv50_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslg50_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf50_hal.c
-    ${PROJECT_SOURCE_DIR}/language.c
-    ${PROJECT_SOURCE_DIR}/memory.c
-    ${PROJECT_SOURCE_DIR}/symbols.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_modern.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_validate.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslg40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslg50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
+    ${PROJECT_SOURCE_DIR}/src/symbols.c
     hlsl_geometry_lower_test.c
 )
 
 target_include_directories(hlsl_geometry_lower_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 set_target_properties(hlsl_geometry_lower_unit PROPERTIES
@@ -1592,12 +1592,12 @@ add_test(
 )
 
 add_executable(hlsl_profile_identity_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/hal.c
-    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
-    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
-    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
-    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_modern.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
     hlsl_profile_identity_test.c
 )
 
@@ -1607,7 +1607,7 @@ target_compile_definitions(hlsl_profile_identity_unit PRIVATE
 )
 
 target_include_directories(hlsl_profile_identity_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 set_target_properties(hlsl_profile_identity_unit PROPERTIES
@@ -1629,11 +1629,11 @@ add_test(
 )
 
 add_executable(hlsl_invariants_unit
-    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
-    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
-    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
-    ${PROJECT_SOURCE_DIR}/hlsl_legalize.c
-    ${PROJECT_SOURCE_DIR}/hlsl_validate.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_modern.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_legalize.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_validate.c
     hlsl_invariants_test.c
 )
 
@@ -1642,7 +1642,7 @@ target_compile_definitions(hlsl_invariants_unit PRIVATE
 )
 
 target_include_directories(hlsl_invariants_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 add_test(
@@ -1668,19 +1668,19 @@ add_test(
 )
 
 add_executable(hlsl_semantics_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/hlsl_bind.c
-    ${PROJECT_SOURCE_DIR}/hlsl_ir.c
-    ${PROJECT_SOURCE_DIR}/hlsl_hal.c
-    ${PROJECT_SOURCE_DIR}/hlsl_modern.c
-    ${PROJECT_SOURCE_DIR}/hlslv_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslv40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslg40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf40_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslv50_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslg50_hal.c
-    ${PROJECT_SOURCE_DIR}/hlslf50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_bind.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlsl_modern.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslg40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf40_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslv50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslg50_hal.c
+    ${PROJECT_SOURCE_DIR}/src/hlslf50_hal.c
     hlsl_semantics_test.c
 )
 
@@ -1689,7 +1689,7 @@ target_compile_definitions(hlsl_semantics_unit PRIVATE
 )
 
 target_include_directories(hlsl_semantics_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 set_target_properties(hlsl_semantics_unit PROPERTIES
@@ -1738,19 +1738,19 @@ add_test(NAME hlsl_interface_fresh_hal_isolation
     COMMAND hlsl_semantics_unit fresh-hal)
 
 add_executable(glsl_semantics_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/glsl_ir.c
-    ${PROJECT_SOURCE_DIR}/glsl_hal.c
-    ${PROJECT_SOURCE_DIR}/glsl_verify.c
-    ${PROJECT_SOURCE_DIR}/glslv_hal.c
-    ${PROJECT_SOURCE_DIR}/glslf_hal.c
-    ${PROJECT_SOURCE_DIR}/glslg_hal.c
-    ${PROJECT_SOURCE_DIR}/memory.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_hal.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_verify.c
+    ${PROJECT_SOURCE_DIR}/src/glslv_hal.c
+    ${PROJECT_SOURCE_DIR}/src/glslf_hal.c
+    ${PROJECT_SOURCE_DIR}/src/glslg_hal.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
     glsl_semantics_test.c
 )
 
 target_include_directories(glsl_semantics_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 set_target_properties(glsl_semantics_unit PROPERTIES
@@ -1771,29 +1771,29 @@ add_test(
 # stores, so they are covered at the unit layer.
 
 add_executable(glsl_lower_ir_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/cg_geometry.c
-    ${PROJECT_SOURCE_DIR}/cg_ir.c
-    ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
-    ${PROJECT_SOURCE_DIR}/cg_numeric.c
-    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
-    ${PROJECT_SOURCE_DIR}/language.c
-    ${PROJECT_SOURCE_DIR}/cg_types.c
-    ${PROJECT_SOURCE_DIR}/glsl_codegen.c
-    ${PROJECT_SOURCE_DIR}/glsl_hal.c
-    ${PROJECT_SOURCE_DIR}/glsl_ir.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/cg_geometry.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir_verify.c
+    ${PROJECT_SOURCE_DIR}/src/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/src/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
+    ${PROJECT_SOURCE_DIR}/src/cg_types.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_codegen.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_hal.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_ir.c
     ${CGC_GLSL_LOWER_SOURCES}
-    ${PROJECT_SOURCE_DIR}/glsl_verify.c
-    ${PROJECT_SOURCE_DIR}/glslf_hal.c
-    ${PROJECT_SOURCE_DIR}/glslg_hal.c
-    ${PROJECT_SOURCE_DIR}/glslv_hal.c
-    ${PROJECT_SOURCE_DIR}/memory.c
-    ${PROJECT_SOURCE_DIR}/symbols.c
+    ${PROJECT_SOURCE_DIR}/src/glsl_verify.c
+    ${PROJECT_SOURCE_DIR}/src/glslf_hal.c
+    ${PROJECT_SOURCE_DIR}/src/glslg_hal.c
+    ${PROJECT_SOURCE_DIR}/src/glslv_hal.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
+    ${PROJECT_SOURCE_DIR}/src/symbols.c
     glsl_lower_ir_test.c
 )
 
 target_include_directories(glsl_lower_ir_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 
 set_target_properties(glsl_lower_ir_unit PROPERTIES
@@ -1822,26 +1822,26 @@ add_test(
 )
 
 add_executable(cg_language_unit
-    ${PROJECT_SOURCE_DIR}/language.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
     cg_language_test.c
 )
-target_include_directories(cg_language_unit PRIVATE ${PROJECT_SOURCE_DIR})
+target_include_directories(cg_language_unit PRIVATE ${PROJECT_SOURCE_DIR}/src)
 set_target_properties(cg_language_unit PROPERTIES
     C_STANDARD 90 C_STANDARD_REQUIRED YES C_EXTENSIONS YES)
 add_test(NAME cg_language_unit COMMAND cg_language_unit)
 
 add_executable(cg_types_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/cg_numeric.c
-    ${PROJECT_SOURCE_DIR}/cg_types.c
-    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
-    ${PROJECT_SOURCE_DIR}/language.c
-    ${PROJECT_SOURCE_DIR}/memory.c
-    ${PROJECT_SOURCE_DIR}/symbols.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/src/cg_types.c
+    ${PROJECT_SOURCE_DIR}/src/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
+    ${PROJECT_SOURCE_DIR}/src/symbols.c
     cg_types_test.c
 )
 target_include_directories(cg_types_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 set_target_properties(cg_types_unit PROPERTIES
     C_STANDARD 90
@@ -1854,18 +1854,18 @@ add_test(
 )
 
 add_executable(cg_overload_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/cg_numeric.c
-    ${PROJECT_SOURCE_DIR}/cg_types.c
-    ${PROJECT_SOURCE_DIR}/cg_overload.c
-    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
-    ${PROJECT_SOURCE_DIR}/language.c
-    ${PROJECT_SOURCE_DIR}/memory.c
-    ${PROJECT_SOURCE_DIR}/symbols.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/src/cg_types.c
+    ${PROJECT_SOURCE_DIR}/src/cg_overload.c
+    ${PROJECT_SOURCE_DIR}/src/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
+    ${PROJECT_SOURCE_DIR}/src/symbols.c
     cg_overload_test.c
 )
 target_include_directories(cg_overload_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 set_target_properties(cg_overload_unit PROPERTIES
     C_STANDARD 90
@@ -1878,17 +1878,17 @@ add_test(
 )
 
 add_executable(cg_stdlib_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/cg_numeric.c
-    ${PROJECT_SOURCE_DIR}/cg_types.c
-    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
-    ${PROJECT_SOURCE_DIR}/language.c
-    ${PROJECT_SOURCE_DIR}/memory.c
-    ${PROJECT_SOURCE_DIR}/symbols.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/src/cg_types.c
+    ${PROJECT_SOURCE_DIR}/src/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
+    ${PROJECT_SOURCE_DIR}/src/symbols.c
     cg_stdlib_test.c
 )
 target_include_directories(cg_stdlib_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 set_target_properties(cg_stdlib_unit PROPERTIES
     C_STANDARD 90
@@ -1901,18 +1901,18 @@ add_test(
 )
 
 add_executable(cg_geometry_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/cg_geometry.c
-    ${PROJECT_SOURCE_DIR}/cg_numeric.c
-    ${PROJECT_SOURCE_DIR}/cg_types.c
-    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
-    ${PROJECT_SOURCE_DIR}/language.c
-    ${PROJECT_SOURCE_DIR}/memory.c
-    ${PROJECT_SOURCE_DIR}/symbols.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/cg_geometry.c
+    ${PROJECT_SOURCE_DIR}/src/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/src/cg_types.c
+    ${PROJECT_SOURCE_DIR}/src/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
+    ${PROJECT_SOURCE_DIR}/src/symbols.c
     cg_geometry_test.c
 )
 target_include_directories(cg_geometry_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 set_target_properties(cg_geometry_unit PROPERTIES
     C_STANDARD 90
@@ -1925,26 +1925,26 @@ add_test(
 )
 
 add_executable(cg_ir_unit
-    ${PROJECT_SOURCE_DIR}/atom.c
-    ${PROJECT_SOURCE_DIR}/cg_geometry.c
-    ${PROJECT_SOURCE_DIR}/cg_ir.c
-    ${PROJECT_SOURCE_DIR}/cg_ir_lower.c
-    ${PROJECT_SOURCE_DIR}/cg_ir_print.c
-    ${PROJECT_SOURCE_DIR}/cg_ir_verify.c
-    ${PROJECT_SOURCE_DIR}/cg_numeric.c
-    ${PROJECT_SOURCE_DIR}/cg_reach.c
-    ${PROJECT_SOURCE_DIR}/cg_types.c
-    ${PROJECT_SOURCE_DIR}/cg_stdlib.c
+    ${PROJECT_SOURCE_DIR}/src/atom.c
+    ${PROJECT_SOURCE_DIR}/src/cg_geometry.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir_lower.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir_print.c
+    ${PROJECT_SOURCE_DIR}/src/cg_ir_verify.c
+    ${PROJECT_SOURCE_DIR}/src/cg_numeric.c
+    ${PROJECT_SOURCE_DIR}/src/cg_reach.c
+    ${PROJECT_SOURCE_DIR}/src/cg_types.c
+    ${PROJECT_SOURCE_DIR}/src/cg_stdlib.c
     # Lowering maps every module's program stage through the shared
     # profile-stage conversion helper.
-    ${PROJECT_SOURCE_DIR}/hal.c
-    ${PROJECT_SOURCE_DIR}/language.c
-    ${PROJECT_SOURCE_DIR}/memory.c
-    ${PROJECT_SOURCE_DIR}/symbols.c
+    ${PROJECT_SOURCE_DIR}/src/hal.c
+    ${PROJECT_SOURCE_DIR}/src/language.c
+    ${PROJECT_SOURCE_DIR}/src/memory.c
+    ${PROJECT_SOURCE_DIR}/src/symbols.c
     cg_ir_test.c
 )
 target_include_directories(cg_ir_unit PRIVATE
-    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/src
 )
 # The unit suite hand-builds invalid modules to exercise the verifier's
 # controlled failure paths; CG_IR_TEST_SEAMS lets CgIRFail record its
@@ -1970,11 +1970,11 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_assertions_active.cmake
 )
 
-add_generic_regression(position position.cg
+add_generic_regression(position tests/cg/position.cg
     fbd55194fb43822d993f60915df94f7a0627fd9bea27013a8c2d1d0ccdfe7b8e)
-add_generic_regression(reflection reflection.cg
+add_generic_regression(reflection tests/cg/reflection.cg
     54c9eafeef857ed7d520e5e487293e0ff623e6463363edced7bde9877c5b159e)
-add_generic_regression(vertexlight vertexlight.cg
+add_generic_regression(vertexlight tests/cg/vertexlight.cg
     a973a0f2820dd1777d0e2cdb593a93f1e0c6d3f5f8640b2017724e37f8fd3c81)
 # Hashes updated by "Parse Cg 2.0 type keywords": the new fixed keyword
 # atoms shift dynamic atom IDs, which reorders top-level declarations in
@@ -1987,7 +1987,7 @@ add_generic_regression(vertexlight vertexlight.cg
 # pre-change build).
 # Hash updated by "Add the Cg 2.0 intrinsic catalog": the FUN_BUILTIN_OP
 # opcode was renamed FUN_INTRINSIC_OP, so the node dump for the one
-# intrinsic call in reflection.cg now prints "intrinsic" instead of
+# intrinsic call in tests/cg/reflection.cg now prints "intrinsic" instead of
 # "builtin".  No other output content changed.
 # These regressions run with explicit -version 1.1 (see check_generic.cmake):
 # their hashes pin the historical generic tree dump, byte-identical between
@@ -1999,7 +1999,7 @@ add_generic_regression(vertexlight vertexlight.cg
 # reorders top-level declarations in generic output.  Verified against
 # pre-change builds: outputs are identical as line multisets modulo the
 # stripped banner, i.e. declaration order moved and no content changed.
-add_generic_regression(vertexlight4 vertexlight4.cg
+add_generic_regression(vertexlight4 tests/cg/vertexlight4.cg
     8659adcf27d5047461607902942f0ab14161d5fcba4f491c6302ca9676b1a02c)
 add_generic_regression(loop_jumps tests/glsl/expressions/vp_jumps.cg
     07c60ea6ceaeba6c3cd85020e9088d23293179983fc7cd12ca51b306025ce5f4)
@@ -2712,21 +2712,21 @@ add_hlsl_fixture(modern_single_leaf_v50 hlslv50
     tests/hlsl/modern/single-leaf-v50.expected)
 
 add_hlsl_fixture(modern_position_v40 hlslv40
-    position.cg tests/hlsl/modern/position-v40.expected)
+    tests/cg/position.cg tests/hlsl/modern/position-v40.expected)
 add_hlsl_fixture(modern_position_v50 hlslv50
-    position.cg tests/hlsl/modern/position-v50.expected)
+    tests/cg/position.cg tests/hlsl/modern/position-v50.expected)
 add_hlsl_fixture(modern_reflection_v40 hlslv40
-    reflection.cg tests/hlsl/modern/reflection-v40.expected)
+    tests/cg/reflection.cg tests/hlsl/modern/reflection-v40.expected)
 add_hlsl_fixture(modern_reflection_v50 hlslv50
-    reflection.cg tests/hlsl/modern/reflection-v50.expected)
+    tests/cg/reflection.cg tests/hlsl/modern/reflection-v50.expected)
 add_hlsl_fixture(modern_vertexlight_v40 hlslv40
-    vertexlight.cg tests/hlsl/modern/vertexlight-v40.expected)
+    tests/cg/vertexlight.cg tests/hlsl/modern/vertexlight-v40.expected)
 add_hlsl_fixture(modern_vertexlight_v50 hlslv50
-    vertexlight.cg tests/hlsl/modern/vertexlight-v50.expected)
+    tests/cg/vertexlight.cg tests/hlsl/modern/vertexlight-v50.expected)
 add_hlsl_fixture(modern_vertexlight4_v40 hlslv40
-    vertexlight4.cg tests/hlsl/modern/vertexlight4-v40.expected)
+    tests/cg/vertexlight4.cg tests/hlsl/modern/vertexlight4-v40.expected)
 add_hlsl_fixture(modern_vertexlight4_v50 hlslv50
-    vertexlight4.cg tests/hlsl/modern/vertexlight4-v50.expected)
+    tests/cg/vertexlight4.cg tests/hlsl/modern/vertexlight4-v50.expected)
 
 function(add_hlsl_modern_semantic_failure name profile source entry code line reason)
     add_test(
@@ -3044,13 +3044,13 @@ add_hlsl_fixture(hlslv_mixed_struct_helpers hlslv
     tests/hlsl/bindings/vp_mixed_struct_helpers.cg
     tests/hlsl/bindings/vp_mixed_struct_helpers.expected)
 add_hlsl_fixture(hlslv_position hlslv
-    position.cg tests/hlsl/vertex/position.expected)
+    tests/cg/position.cg tests/hlsl/vertex/position.expected)
 add_hlsl_fixture(hlslv_reflection hlslv
-    reflection.cg tests/hlsl/vertex/reflection.expected)
+    tests/cg/reflection.cg tests/hlsl/vertex/reflection.expected)
 add_hlsl_fixture(hlslv_vertexlight hlslv
-    vertexlight.cg tests/hlsl/vertex/vertexlight.expected)
+    tests/cg/vertexlight.cg tests/hlsl/vertex/vertexlight.expected)
 add_hlsl_fixture(hlslv_vertexlight4 hlslv
-    vertexlight4.cg tests/hlsl/vertex/vertexlight4.expected)
+    tests/cg/vertexlight4.cg tests/hlsl/vertex/vertexlight4.expected)
 add_hlsl_fixture(hlslv_intrinsic_numeric hlslv
     tests/hlsl/intrinsics/vp_numeric.cg
     tests/hlsl/intrinsics/vp_numeric.expected)
@@ -4398,7 +4398,7 @@ add_cg20_failure(glslf_sampler_struct
 # A few manifest rows answer their rule with a pre-existing suite test
 # that predates the add_cg20_* helpers: the language, type, overload,
 # and stdlib unit binaries, the historical generic golden for
-# position.cg (the -version 1.1 opt-in row), and the two GLSL golden
+# tests/cg/position.cg (the -version 1.1 opt-in row), and the two GLSL golden
 # passthrough fixtures pinning mandatory vertex/fragment outputs.
 # Record them so the cross-check sees one witness per cited row.
 
@@ -4423,7 +4423,7 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
         -DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/cg20/conformance.csv
         "-DTEST_NAMES=${cg20_test_names}"
-        -DPIN_CATALOG=${PROJECT_SOURCE_DIR}/cg_stdlib.def
+        -DPIN_CATALOG=${PROJECT_SOURCE_DIR}/src/cg_stdlib.def
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_cg20_manifest.cmake
 )
 
@@ -4625,19 +4625,19 @@ add_glsl_fixture(glslv_uniform_collision glslv
     tests/glsl/uniforms/vp_uniform_collision.expected)
 
 add_glsl_fixture(glslv_position glslv
-    position.cg
+    tests/cg/position.cg
     tests/glsl/vertex/position.expected)
 
 add_glsl_fixture(glslv_reflection glslv
-    reflection.cg
+    tests/cg/reflection.cg
     tests/glsl/vertex/reflection.expected)
 
 add_glsl_fixture(glslv_vertexlight glslv
-    vertexlight.cg
+    tests/cg/vertexlight.cg
     tests/glsl/vertex/vertexlight.expected)
 
 add_glsl_fixture(glslv_vertexlight4 glslv
-    vertexlight4.cg
+    tests/cg/vertexlight4.cg
     tests/glsl/vertex/vertexlight4.expected)
 
 add_glsl_fixture(glslv_control glslv
@@ -5107,7 +5107,7 @@ foreach(marker_case missing duplicated reversed nested prefix suffix
         NAME stdlib_marker_${marker_case}
         COMMAND ${CMAKE_COMMAND}
             -DTOKENIZE=$<TARGET_FILE:tokenize>
-            -DINPUT=${PROJECT_SOURCE_DIR}/stdlib.cg
+            -DINPUT=${PROJECT_SOURCE_DIR}/src/stdlib.cg
             -DSCRIPT=${PROJECT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
             -DCASE=${marker_case}
             "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/stdlib-marker-tests"
@@ -5120,9 +5120,9 @@ add_test(
     COMMAND ${CMAKE_COMMAND}
         -DTOKENIZE=$<TARGET_FILE:tokenize>
         -DINPUT=stdlib.cg
-        -DEXPECTED=${PROJECT_SOURCE_DIR}/stdlib.c
+        -DEXPECTED=${PROJECT_SOURCE_DIR}/src/stdlib.c
         -DSCRIPT=${PROJECT_SOURCE_DIR}/cmake/RegenerateStdlib.cmake
-        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}/src
         "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/stdlib-reproducibility"
         -P ${CMAKE_CURRENT_SOURCE_DIR}/check_stdlib_regeneration.cmake
 )
@@ -5179,8 +5179,8 @@ add_test(NAME arbfp1_registration
     COMMAND $<TARGET_FILE:cgc> -quiet -nocode -profile arbfp1
             ${PROJECT_SOURCE_DIR}/tests/arb/profile/fp_passthrough.cg)
 
-add_executable(arb_ir_tests arb_ir_tests.c ${PROJECT_SOURCE_DIR}/arb_ir.c)
-target_include_directories(arb_ir_tests PRIVATE ${PROJECT_SOURCE_DIR})
+add_executable(arb_ir_tests arb_ir_tests.c ${PROJECT_SOURCE_DIR}/src/arb_ir.c)
+target_include_directories(arb_ir_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 set_target_properties(arb_ir_tests PROPERTIES
     C_STANDARD 90
     C_STANDARD_REQUIRED YES
@@ -5421,11 +5421,11 @@ add_glsl150_contract(glsl150_glslv_passthrough glslv
 add_glsl150_contract(glsl150_glslf_passthrough glslf
     tests/glsl/profile/fp_passthrough.cg)
 add_glsl150_contract(glsl150_glslv_vertexlight glslv
-    vertexlight.cg)
+    tests/cg/vertexlight.cg)
 add_glsl150_contract(glsl150_glslf_tex2d glslf
     tests/glsl/textures/fp_tex2d.cg)
 add_glsl150_contract(glsl150_glslv_position glslv
-    position.cg)
+    tests/cg/position.cg)
 
 # The checked-in compatibility contract is executable documentation: every
 # row uses the closed status vocabulary and names one registered CTest.

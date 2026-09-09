@@ -2,7 +2,7 @@ if(NOT DEFINED SOURCE)
     message(FATAL_ERROR "SOURCE is required")
 endif()
 
-file(READ "${SOURCE}/hlsl_hal.c" source_text)
+file(READ "${SOURCE}/src/hlsl_hal.c" source_text)
 string(FIND "${source_text}" "HlslLowerProgram(&module" lower_index)
 string(FIND "${source_text}" "HlslBuildEntryWrapper(&module" wrapper_index)
 string(FIND "${source_text}" "HlslLegalizeModule(&module" legalize_index)
