@@ -85,6 +85,9 @@ The compiler provides these profiles:
   HLSL targets `vs_5_0`, `gs_5_0`, and `ps_5_0`.
 - `arbvp1` emits base `!!ARBvp1.0` vertex assembly.
 - `arbfp1` emits base `!!ARBfp1.0` fragment assembly.
+- `mslv` and `mslf` translate Cg 2.0 vertex and fragment entry points to
+  Metal Shading Language (MSL) 2.0. See [Metal source output](#metal-source-output)
+  for examples, bindings, and qualification details.
 
 For a single-config build, use:
 
@@ -356,20 +359,49 @@ ctest --test-dir build -C Release -R "cg20|stdlib_regeneration|parser" --output-
 
 ## Metal source output
 
-The initial `mslv` and `mslf` profiles emit MSL 2.0 vertex and fragment source.
-They lower verified Cg IR into separate typed Metal nodes and leave Apple
-compilation to an external validation step. The generated-output corpus and
-real offscreen rendering have been tested on an M4 Max Mac.
+The `mslv` and `mslf` profiles emit standalone MSL 2.0 source from Cg 2.0.
+They support scalar/vector arithmetic, square floating-point matrices, fixed
+arrays, structs, helpers with `out`/`inout` parameters, structured control flow,
+uniforms and defaults, and 2D/cube textures. Implicit texture sampling and
+derivatives are fragment-only; explicit LOD sampling works in both stages.
+Half/fixed values promote to float. Cg 1.1, geometry/compute stages, and features
+outside the documented subset are unsupported.
+
+Both profiles lower verified Cg IR into separate typed Metal nodes. Source
+generation works on Windows without Apple tools; compiling that source into
+a Metal library and running it requires Apple's toolchain and a Metal device.
+All four bundled vertex shaders translate without modification.
 
 ```sh
 ./build/cgc -quiet -version 2.0 -profile mslv -o position.metal position.cg
 ./build/cgc -quiet -version 2.0 -profile mslf -o fragment.metal tests/msl/profile/fragment.cg
 ```
 
-See [Metal compatibility](docs/msl-compatibility.md) for the tested surface,
-16-byte uniform ABI, texture/sampler bindings, remaining limits, and strict
-Apple compiler/GPU test commands. The [qualification record](docs/msl-qualification.md)
-separates passed checks from unqualified parts of the implementation plan.
+For a Windows multi-config build, use `.\build\Release\cgc.exe`. The example
+entries export as `cg_mslv_main` and `cg_mslf_main`. On macOS, compile and link
+the generated source separately:
+
+```sh
+xcrun --sdk macosx metal -std=macos-metal2.0 -mmacosx-version-min=13.0 -c position.metal -o position.air
+xcrun --sdk macosx metallib position.air -o position.metallib
+```
+
+Each stage reserves buffer 0 for numeric uniforms, using explicit 16-byte
+slots; vertex attribute data must use another buffer index. Samplers become
+separate texture and sampler arguments. Generated `cgc-msl-abi` comments
+describe entry exports, bindings, uniform offsets and defaults. Applications
+upload uniform data and apply defaults; no coordinate or clip-depth conversion
+is performed automatically.
+
+Apple compilation and offscreen rendering passed on an M4 Max Mac. Windows
+x64 Release/Debug and Win32 Release builds also passed, with 1,727 tests passing
+in the x64 portability review. The macOS deployment target is 13.0; execution
+on macOS 13 itself and iOS has not been qualified.
+
+See [Metal compatibility](docs/msl-compatibility.md) for the supported subset
+and application ABI, the [coverage audit](docs/msl-coverage.md) for feature tests,
+and the [qualification record](docs/msl-qualification.md) for tested toolchains
+and commands to repeat strict Apple compiler/GPU validation.
 
 ## Compiler Internals
 
