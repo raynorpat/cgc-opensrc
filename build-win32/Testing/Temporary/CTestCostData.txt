@@ -1,3 +1,0 @@
-cgc_vertexlight 4 0.0188901
-cgc_vertexlight4 4 0.00677315
----

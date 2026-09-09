@@ -165,5 +165,8 @@ pip-log.txt
 # Dedicated Cg 2.0 build directories
 /build-cg20*/
 
+# Local Windows build artifacts
+/build-win32/
+
 # Mac crap
 .DS_Store
