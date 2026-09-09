@@ -167,3 +167,43 @@ Historical milestone commit ordering and an unchanged executable baseline
 could not be reproduced; these execution differences remain explicit in the
 plan. Unsupported features and untested hosts remain documented. The branch
 has not been merged or pushed.
+
+## 2026-09-08: Windows portability review after merge
+
+Reviewed merged revision `a6317c1` with MSVC 19.51.36256.0 / Visual Studio 18
+2026. Fresh build trees were used, independent of existing developer builds.
+
+- Windows x64 Release: full compiler and test-target build passed.
+- Windows x64 Debug: compiler build passed.
+- Windows Win32 Release with `BUILD_TESTING=OFF`: compiler/tokenizer build passed.
+- Full x64 Release CTest: **1727/1727 passed**, zero skips, 229.97 seconds.
+  This includes **354 portable Metal tests**, allocation-failure sweeps, output
+  transaction checks, and the locally available existing backend validators.
+- All four bundled shaders produced matching x64/Win32 output and diagnostics
+  for generic Cg 1.1, generic Cg 2.0, and Metal vertex Cg 2.0 (12 comparisons).
+- All eight generic shader/version results also matched the retained pre-Metal
+  baseline executable. These cross-build comparisons normalize line endings and
+  omit only the generic compiler version/build-date comment; shader output,
+  diagnostics, and exit status are otherwise compared unchanged.
+- Enabling `CGC_REQUIRE_METAL=ON` correctly failed configuration on Windows;
+  the ordinary build does not require Objective-C, Xcode, or Metal frameworks.
+- No new MSL build warnings or Windows portability failures were found. Existing
+  legacy compiler/ARB warnings remain outside this review's changes.
+
+The review restored the original NVIDIA redistribution notice in 22 new source
+and header files, whose disclaimer text had been changed. Comparison against
+`a6317c1` confirmed that all content after those notices is unchanged. This is a
+comment-only correction and does not invalidate the recorded MacBook GPU results.
+No Apple compiler or GPU tests were rerun on Windows; the prior MacBook evidence
+above remains the Apple qualification record. Linux was not tested in this review.
+
+To repeat the Windows checks with Visual Studio installed:
+
+```powershell
+cmake -S . -B build/windows-x64 -A x64 -DBUILD_TESTING=ON
+cmake --build build/windows-x64 --config Release -j 6
+ctest --test-dir build/windows-x64 -C Release --output-on-failure -j 6
+cmake --build build/windows-x64 --config Debug --target cgc -j 6
+cmake -S . -B build/windows-x86 -A Win32 -DBUILD_TESTING=OFF
+cmake --build build/windows-x86 --config Release -j 6
+```
