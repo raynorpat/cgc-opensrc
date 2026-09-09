@@ -6,28 +6,28 @@
 using namespace metal;
 
 struct cg_type_1 {
-    float4 cg_field_2;
-    float cg_field_3;
+    float4 cg_field_color_2;
+    float cg_field_depth_3;
 };
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
     float cg_DEPTH0 [[depth(any)]];
 };
-cg_type_1 cg_fn_0();
-cg_type_1 cg_fn_0()
+cg_type_1 cg_fn_main_0();
+cg_type_1 cg_fn_main_0()
 {
-    cg_type_1 cg_v_4;
-    ((cg_v_4).cg_field_2 = float4(int4(1, 0, 0, 1)));
-    ((cg_v_4).cg_field_3 = float(2.500000000e-01f));
-    return cg_v_4;
+    cg_type_1 cg_v_r_4;
+    ((cg_v_r_4).cg_field_color_2 = float4(int4(1, 0, 0, 1)));
+    ((cg_v_r_4).cg_field_depth_3 = float(2.500000000e-01f));
+    return cg_v_r_4;
 }
 
 fragment cg_Output cg_mslf_main()
 {
-    cg_type_1 cg_value = cg_fn_0();
+    cg_type_1 cg_value = cg_fn_main_0();
     cg_Output cg_result;
-    cg_result.cg_COLOR0 = cg_value.cg_field_2;
-    cg_result.cg_DEPTH0 = cg_value.cg_field_3;
+    cg_result.cg_COLOR0 = cg_value.cg_field_color_2;
+    cg_result.cg_DEPTH0 = cg_value.cg_field_depth_3;
     return cg_result;
 }
 // End of program

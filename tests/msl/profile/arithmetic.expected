@@ -7,51 +7,51 @@ using namespace metal;
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
 };
-float4 cg_fn_0();
-float cg_fn_4(float cg_v_5);
-float4 cg_fn_0()
+float4 cg_fn_main_0();
+float cg_fn_twice_4(float cg_v_x_5);
+float4 cg_fn_main_0()
 {
-    int cg_v_1;
-    int cg_v_2;
-    int cg_v_3;
-    (cg_v_1 = int(0));
-    (cg_v_3 = int(0));
+    int cg_v_sum_1;
+    int cg_v_i_2;
+    int cg_v_k_3;
+    (cg_v_sum_1 = int(0));
+    (cg_v_k_3 = int(0));
     {
-        (cg_v_2 = int(0));
-        for (; (cg_v_2 < int(4)); (cg_v_2++)) {
+        (cg_v_i_2 = int(0));
+        for (; (cg_v_i_2 < int(4)); (cg_v_i_2++)) {
             {
-                if ((cg_v_2 == int(1))) {
+                if ((cg_v_i_2 == int(1))) {
                     continue;
                 }
-                (cg_v_1 += cg_v_2);
+                (cg_v_sum_1 += cg_v_i_2);
             }
         }
     }
     do {
         {
-            (cg_v_3++);
+            (cg_v_k_3++);
         }
     }
-    while ((cg_v_3 < int(2)));
-    while ((cg_v_3 < int(4))) {
+    while ((cg_v_k_3 < int(2)));
+    while ((cg_v_k_3 < int(4))) {
         {
-            (cg_v_3++);
-            if ((cg_v_3 == int(3))) {
+            (cg_v_k_3++);
+            if ((cg_v_k_3 == int(3))) {
                 break;
             }
         }
     }
-    return float4((cg_fn_4(float(cg_v_1)) / float(2.000000000e+00f)), float(cg_v_3), float(0), float(1));
+    return float4((cg_fn_twice_4(float(cg_v_sum_1)) / float(2.000000000e+00f)), float(cg_v_k_3), float(0), float(1));
 }
 
-float cg_fn_4(float cg_v_5)
+float cg_fn_twice_4(float cg_v_x_5)
 {
-    return (cg_v_5 * float(2.000000000e+00f));
+    return (cg_v_x_5 * float(2.000000000e+00f));
 }
 
 fragment cg_Output cg_mslf_main()
 {
-    float4 cg_value = cg_fn_0();
+    float4 cg_value = cg_fn_main_0();
     cg_Output cg_result;
     cg_result.cg_COLOR0 = cg_value;
     return cg_result;

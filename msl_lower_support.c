@@ -46,6 +46,21 @@ const char *MslLName(Lower *l, const char *prefix)
     return MslString(l->m, buf);
 }
 
+const char *MslLSourceName(Lower *l,const char *prefix,const char *source)
+{
+    size_t len=strlen(source),i; char *name,*out; char suffix[32];
+    if(len>4096) { MslFail(l->m,6603,NULL,"source identifier too long"); return NULL; }
+    name=(char *)MslAlloc(l->m,len*3+strlen(prefix)+48); if(!name) return NULL;
+    sprintf(name,"cg_%s_",prefix); out=name+strlen(name);
+    for(i=0;i<len;i++) {
+        unsigned char c=(unsigned char)source[i];
+        if(isalnum(c) || c=='_') *out++=(char)c;
+        else { sprintf(out,"_%02x",c); out+=3; }
+    }
+    sprintf(suffix,"_%d",l->ordinal++); strcpy(out,suffix);
+    return name;
+}
+
 MslDecl *MslLFindDecl(Lower *l, Symbol *s)
 {
     DeclMap *p;

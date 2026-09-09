@@ -40,6 +40,8 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "msl_lower_internal.h"
 
+static int Dependencies(MslModule *,MslFunction *);
+
 int MslLVisitExpr(MslModule *m, MslExpr *e)
 {
     for (; e; e=e->next) {
@@ -63,5 +65,36 @@ int MslLVisitFunction(MslModule *m, MslFunction *f)
     if (f->visit==2) return 1;
     f->visit=1;
     if (!MslLVisitStmt(m,f->body)) return 0;
+    if(!Dependencies(m,f)) return 0;
     f->visit=2; return 1;
+}
+
+static int UsesExpr(const MslExpr *e,const MslDecl *decl)
+{
+    const MslDependency *dep;
+    for(;e;e=e->next) {
+        if(e->kind==MSL_SYMBOL && e->decl==decl) return 1;
+        if(e->function) for(dep=e->function->globals;dep;dep=dep->next)
+            if(dep->decl==decl) return 1;
+        if(UsesExpr(e->a,decl) || UsesExpr(e->b,decl) || UsesExpr(e->c,decl)) return 1;
+    }
+    return 0;
+}
+static int UsesStmt(const MslStmt *s,const MslDecl *decl)
+{
+    for(;s;s=s->next)
+        if(UsesExpr(s->value,decl) || UsesExpr(s->step,decl) || UsesStmt(s->body,decl) ||
+           UsesStmt(s->other,decl) || UsesStmt(s->init,decl)) return 1;
+    return 0;
+}
+static int Dependencies(MslModule *m,MslFunction *f)
+{
+    MslDecl *decl; MslDependency *dep,**tail;
+    for(decl=m->globals;decl;decl=decl->next) if(UsesStmt(f->body,decl)) {
+        dep=(MslDependency *)MslAlloc(m,sizeof(*dep)); if(!dep) return 0;
+        dep->decl=decl; tail=&f->globals;
+        while(*tail && strcmp((*tail)->decl->sourceName,decl->sourceName)<0) tail=&(*tail)->next;
+        dep->next=*tail; *tail=dep;
+    }
+    return 1;
 }

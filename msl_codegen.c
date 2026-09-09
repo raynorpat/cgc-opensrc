@@ -62,9 +62,11 @@ static void Element(FILE *o,const MslExpr *a,int index)
     fputc('(',o); Expr(o,a); fputc(')',o);
     if(a->type.lanes>1) fprintf(o,"[%d]",index);
 }
-static void GlobalArgs(FILE *o,const MslDecl *p,int comma)
+static void GlobalArgs(FILE *o,const MslDependency *dep,int comma)
 {
-    for(;p;p=p->next) {
+    const MslDecl *p;
+    for(;dep;dep=dep->next) {
+        p=dep->decl;
         if(comma) fputs(", ",o); comma=1;
         fputs(p->name,o); if(p->type.base>=MSL_TEXTURE2D) fprintf(o,", %s_s",p->name);
     }
@@ -91,8 +93,11 @@ static void Expr(FILE *o,const MslExpr *e)
             }
             fputc(')',o);
         } else {
-            fputc(e->type.base==MSL_RECORD?'{':'(',o); Args(o,e->a);
-            fputc(e->type.base==MSL_RECORD?'}':')',o);
+            fputc(e->type.base==MSL_RECORD || e->type.base==MSL_ARRAY?'{':'(',o);
+            if(e->type.base==MSL_ARRAY) fputc('{',o);
+            Args(o,e->a);
+            if(e->type.base==MSL_ARRAY) fputc('}',o);
+            fputc(e->type.base==MSL_RECORD || e->type.base==MSL_ARRAY?'}':')',o);
         }
         break;
     case MSL_UNARY:
@@ -190,8 +195,9 @@ static void Signature(FILE *o,const MslFunction *f)
         if(p->type.base>=MSL_TEXTURE2D) fprintf(o,", sampler %s_s",p->name);
         if(p->next) fputs(", ",o);
     }
-    { int comma=f->parameters!=NULL;
-      for(p=f->globals;p;p=p->next) {
+    { int comma=f->parameters!=NULL; const MslDependency *dep;
+      for(dep=f->globals;dep;dep=dep->next) {
+        p=dep->decl;
         if(comma) fputs(", ",o); comma=1; TypeName(o,p->type); fprintf(o," %s",p->name);
         if(p->type.base>=MSL_TEXTURE2D) fprintf(o,", sampler %s_s",p->name);
       }
@@ -205,7 +211,7 @@ static void Attribute(FILE *o,const MslModule *m,const MslInterface *v,int outpu
     else if(v->builtin) fputs(m->stage==MSL_VERTEX?"position":"color(0)",o);
     else {
         fprintf(o,"user(cg_%s)",v->semantic);
-        if(v->type.base==MSL_INT || v->type.base==MSL_UINT) fputs(", flat",o);
+        if(v->interpolation==MSL_FLAT) fputs(", flat",o);
     }
     (void)output;
 }
@@ -276,7 +282,7 @@ static void InterfaceMetadata(FILE *o,const MslModule *m,const MslInterface *lis
             fprintf(o,"// cgc-msl-builtin semantic=%s attribute=",v->semantic); Attribute(o,m,v,output);
         } else fprintf(o,"// cgc-msl-varying semantic=%s field=cg_%s",v->semantic,v->semantic);
         fputs(" type=",o); TypeName(o,v->type);
-        if(v->attribute<0 && !v->builtin) fprintf(o," interpolation=%s",v->type.base==MSL_FLOAT?"perspective":"flat");
+        if(v->attribute<0 && !v->builtin) fprintf(o," interpolation=%s",v->interpolation==MSL_PERSPECTIVE?"perspective":"flat");
         fputc('\n',o);
     }
 }
@@ -358,14 +364,15 @@ int MslWriteModule(FILE *o,const MslModule *m)
     }
     for(p=m->globals;p;p=p->next) if(p->resourceSlot<0) {
         fputs("    ",o); TypeName(o,p->type); fprintf(o," %s;\n",p->name);
-        slot=p->uniformSlot; Uniform(o,p->type,p->name,p->sourceName,&slot,2);
+        if(p->constant) { fprintf(o,"    %s = ",p->name); Expr(o,p->defaultValue); fputs(";\n",o); }
+        else { slot=p->uniformSlot; Uniform(o,p->type,p->name,p->sourceName,&slot,2); }
     }
     for(v=m->inputs;v;v=v->next) fprintf(o,"    %s = cg_in.cg_%s;\n",v->path,v->semantic);
     fputs("    ",o);
     if(m->entry->result.base!=MSL_VOID) { TypeName(o,m->entry->result); fputs(" cg_value = ",o); }
     fprintf(o,"%s(",m->entry->name);
     for(p=m->entry->parameters;p;p=p->next) { fputs(p->name,o); if(p->resourceSlot>=0) fprintf(o,", %s_s",p->name); if(p->next) fputs(", ",o); }
-    GlobalArgs(o,m->globals,m->entry->parameters!=NULL);
+    GlobalArgs(o,m->entry->globals,m->entry->parameters!=NULL);
     fputs(");\n    cg_Output cg_result;\n",o);
     for(v=m->outputs;v;v=v->next) fprintf(o,"    cg_result.cg_%s = %s;\n",v->semantic,v->path);
     fputs("    return cg_result;\n}\n",o);

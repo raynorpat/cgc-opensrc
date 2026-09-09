@@ -14,19 +14,19 @@ struct cg_Uniforms {
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
 };
-float4 cg_fn_0(float4 cg_v_1, float cg_v_2);
-float4 cg_fn_0(float4 cg_v_1, float cg_v_2)
+float4 cg_fn_main_0(float4 cg_v_tint_1, float cg_v_exposure_2);
+float4 cg_fn_main_0(float4 cg_v_tint_1, float cg_v_exposure_2)
 {
-    return (cg_v_1 * cg_v_2);
+    return (cg_v_tint_1 * cg_v_exposure_2);
 }
 
 fragment cg_Output cg_mslf_main(constant cg_Uniforms &cg_u [[buffer(0)]])
 {
-    float4 cg_v_1;
-    cg_v_1 = float4(cg_u.slot1.xyzw);
-    float cg_v_2;
-    cg_v_2 = float(cg_u.slot0.x);
-    float4 cg_value = cg_fn_0(cg_v_1, cg_v_2);
+    float4 cg_v_tint_1;
+    cg_v_tint_1 = float4(cg_u.slot1.xyzw);
+    float cg_v_exposure_2;
+    cg_v_exposure_2 = float(cg_u.slot0.x);
+    float4 cg_value = cg_fn_main_0(cg_v_tint_1, cg_v_exposure_2);
     cg_Output cg_result;
     cg_result.cg_COLOR0 = cg_value;
     return cg_result;

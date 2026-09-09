@@ -62,6 +62,7 @@ typedef struct Lower_Rec {
 MslType MslLLowerRecord(Lower *l, const Type *t, const SourceLoc *loc);
 MslType MslLLowerArray(Lower *l,const Type *t,const SourceLoc *loc);
 MslType MslLLowerType(Lower *l, const Type *t, const SourceLoc *loc);
+const char *MslLSourceName(Lower *,const char *,const char *);
 const char *MslLName(Lower *l, const char *prefix);
 MslDecl *MslLFindDecl(Lower *l, Symbol *s);
 MslFunction *MslLFindFunction(Lower *l, Symbol *s);
@@ -70,6 +71,9 @@ MslDecl *MslLLowerDecls(Lower *l, const CgIRDecl *s);
 const char *MslLOp(CgIROp op);
 const char *MslLIntrinsic(Lower *l, const CgIRExpr *e);
 MslExpr *MslLArgs(Lower *l, const CgIRExpr *s);
+MslExpr *MslLLowerTexture(Lower *,const CgIRExpr *,MslExpr *,int);
+MslExpr *MslLMaterialize(Lower *,MslExpr *,MslExpr ***);
+MslExpr *MslLExpandOnce(Lower *,MslExpr *,int);
 MslExpr *MslLTemporary(Lower *l,MslType type,const SourceLoc *loc);
 MslExpr *MslLCopyExpr(Lower *l,const MslExpr *e);
 MslExpr *MslLStore(Lower *l,MslExpr *to,MslExpr *from);

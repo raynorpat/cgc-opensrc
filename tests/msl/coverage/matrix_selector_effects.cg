@@ -1,0 +1,1 @@
+float next(inout int i) { return ++i; } float4 main(void):COLOR0 { int i=0; float2x2 a=float2x2(1,2,3,4); a._m00_m01=float2(next(i),next(i)); return float4(a[0][0],a[0][1],i,1); }

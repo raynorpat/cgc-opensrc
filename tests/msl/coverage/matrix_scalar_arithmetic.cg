@@ -1,0 +1,1 @@
+float4 main(uniform float v):COLOR0 { float2x2 a=float2x2(1,2,3,4); float2x2 b=(a+v)/v; float2x2 c=v-a; return float4(b[0][0],b[1][0],c[0][1],c[1][1]); }

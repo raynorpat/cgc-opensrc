@@ -82,6 +82,8 @@ typedef struct CgIRLowerRec_ {
     int tempCounter;       // synthesized temporaries
 } CgIRLower;
 
+static CgIRExpr *lLowerDefaultValue(CgIRLower *,expr *,Type *);
+
 /*
  * lIRPoolAlloc() - Module storage comes from the global scope's memory
  *          pool, so releasing the compilation releases the IR graph.
@@ -772,6 +774,10 @@ static CgIRExpr *lLowerExpr(CgIRLower *L, expr *fExpr)
                                    left);
             break;
         case VECTOR_V_OP:
+            if(IsStruct(fExpr->common.type) || (IsArray(fExpr->common.type) && !IsVector(fExpr->common.type,NULL) && !IsMatrix(fExpr->common.type,NULL,NULL))) {
+                result=lLowerDefaultValue(L,fExpr,fExpr->common.type);
+                break;
+            }
             result = CgIRNewConstruct(L->module, fExpr->common.type,
                                       &L->loc, NULL);
             if (result != NULL &&
@@ -1849,6 +1855,11 @@ static int lLowerGlobal(CgIRLower *L, Symbol *symbol)
 
     initializer = NULL;
     initExpr = symbol->details.var.init;
+    /* Native constant defaults are extracted separately after resolving their
+     * constant dependencies. Such dependencies need not be runtime-reachable
+     * globals and must not become unresolved runtime IR symbol references. */
+    if(Cg->theHAL->GetCapsBit(CAPS_NATIVE_VALUE_OPERATIONS) &&
+       (GetQualifiers(symbol->type)&TYPE_QUALIFIER_CONST)) initExpr=NULL;
     if (initExpr != NULL) {
         if (initExpr->common.kind == BINARY_N &&
             initExpr->bin.op == EXPR_LIST_OP)
@@ -1856,7 +1867,9 @@ static int lLowerGlobal(CgIRLower *L, Symbol *symbol)
             initExpr = initExpr->bin.left;
         }
         L->loc = symbol->loc;
-        initializer = lLowerExpr(L, initExpr);
+        if(Cg->theHAL->GetCapsBit(CAPS_NATIVE_VALUE_OPERATIONS))
+            initializer=lLowerDefaultValue(L,initExpr,symbol->type);
+        else initializer = lLowerExpr(L, initExpr);
         if (initializer == NULL)
             return 0;
     }
@@ -1952,19 +1965,42 @@ int CgIRLowerProgram(CgIRLowerContext *context, Scope *globalScope,
 /* Preserve constant uniform-default data for target metadata without exposing
  * frontend expression trees to a backend. The returned nodes use the supplied
  * module's allocator; no source tree is changed. */
-CgIRExpr *CgIRLowerUniformDefault(CgIRModule *module, const CgIRDecl *decl)
+static CgIRExpr *lLowerDefaultValue(CgIRLower *L,expr *value,Type *type)
+{
+    CgIRExpr *result,*child; Symbol *member=NULL; expr *item;
+    int count=0,n=0,isStruct=IsStruct(type);
+    if(!isStruct && !(IsArray(type) && !IsVector(type,NULL) && !IsMatrix(type,NULL,NULL)))
+        return lLowerExpr(L,value);
+    if(value && value->common.kind==UNARY_N && value->un.op==VECTOR_V_OP) value=value->un.arg;
+    if(value && !(value->common.kind==BINARY_N && value->bin.op==EXPR_LIST_OP))
+        return lLowerExpr(L,value);
+    result=CgIRNewConstruct(L->module,type,&L->loc,NULL);
+    if(!result) return NULL;
+    if(isStruct) member=type->str.members->symbols;
+    else n=type->arr.numels;
+    for(item=value;item;item=item->bin.right) {
+        Type *element;
+        if(item->common.kind!=BINARY_N || item->bin.op!=EXPR_LIST_OP) {
+            lUnlowerable(L,"aggregate default initializer shape"); return NULL;
+        }
+        if(isStruct) {
+            while(member && member->kind!=VARIABLE_S) member=member->next;
+            if(!member) { lUnlowerable(L,"excess struct default data"); return NULL; }
+            element=member->type; member=member->next;
+        } else {
+            if(count++>=n) { lUnlowerable(L,"excess array default data"); return NULL; }
+            element=type->arr.eltype;
+        }
+        child=lLowerDefaultValue(L,item->bin.left,element);
+        if(!child) return NULL;
+        lAppendExpr(&result->u.construct.arguments,child);
+    }
+    return result;
+}
+
+CgIRExpr *CgIRLowerDefaultExpression(CgIRModule *module,expr *value,Type *type,const SourceLoc *loc)
 {
     CgIRLower lower;
-    expr *value;
-    if (!module || !decl || !decl->symbol)
-        return NULL;
-    value = decl->symbol->details.var.init;
-    if (!value)
-        return NULL;
-    if (value->common.kind == BINARY_N && value->bin.op == EXPR_LIST_OP)
-        value = value->bin.left;
-    memset(&lower, 0, sizeof(lower));
-    lower.module = module;
-    lower.loc = decl->loc;
-    return lLowerExpr(&lower, value);
+    memset(&lower,0,sizeof(lower)); lower.module=module; lower.loc=*loc;
+    return lLowerDefaultValue(&lower,value,type);
 }

@@ -83,13 +83,13 @@ static int VerifyMutations(void)
     }
     /* Binding coverage: exact buffer limit, overlap, missing slots, pairs. */
     binding.name="binding"; binding.sourceName="value"; binding.type=scalar;
-    binding.uniformSlot=0; binding.resourceSlot=-1; m.bindings=&binding; m.uniformSlots=1;
+    binding.uniformSlot=0; binding.resourceSlot=-1; m.uniformAddressSpace=MSL_CONSTANT; m.bindings=&binding; m.uniformSlots=1;
     CHECK(MslVerifyModule(&m,&diag));
     binding.uniformSlot=256; CHECK(!MslVerifyModule(&m,&diag)); binding.uniformSlot=0;
     second=binding; second.name="second"; second.sourceName="second"; binding.bindingNext=&second;
     CHECK(!MslVerifyModule(&m,&diag)); second.uniformSlot=1; m.uniformSlots=2;
     CHECK(MslVerifyModule(&m,&diag)); binding.bindingNext=NULL; m.uniformSlots=0;
-    binding.type.base=MSL_TEXTURE2D; binding.resourceSlot=15;
+    binding.type.base=MSL_TEXTURE2D; binding.role=MSL_RESOURCE_DECL; binding.resourceSlot=15;
     CHECK(MslVerifyModule(&m,&diag)); binding.resourceSlot=16;
     CHECK(!MslVerifyModule(&m,&diag)); binding.resourceSlot=15; second=binding; binding.bindingNext=&second;
     CHECK(!MslVerifyModule(&m,&diag)); m.bindings=NULL;
@@ -110,12 +110,19 @@ static int VerifyMutations(void)
     interfaces[15].attribute=0; CHECK(!MslVerifyModule(&m,&diag)); m.inputs=NULL; m.stage=MSL_FRAGMENT;
     /* Declaration identity, type, writable-address and expression contracts. */
     decl.type=scalar; decl.name="value"; f.locals=&decl;
+    decl.addressSpace=MSL_CONSTANT; CHECK(!MslVerifyModule(&m,&diag)); decl.addressSpace=MSL_THREAD;
+    decl.direction=(MslDirection)3; CHECK(!MslVerifyModule(&m,&diag)); decl.direction=MSL_IN;
+    decl.role=MSL_RESOURCE_DECL; CHECK(!MslVerifyModule(&m,&diag)); decl.role=MSL_VALUE_DECL;
     a.kind=MSL_SYMBOL; a.type=scalar; a.decl=&decl;
     b.kind=MSL_LITERAL; b.type=scalar; b.text="2.0f";
     expr.kind=MSL_ASSIGN; expr.text="="; expr.a=&a; expr.b=&b;
     CHECK(MslVerifyModule(&m,&diag)); decl.readOnly=1;
     CHECK(!MslVerifyModule(&m,&diag)); decl.readOnly=0;
     a.decl=&second; CHECK(!MslVerifyModule(&m,&diag)); a.decl=&decl;
+    expr.kind=MSL_BINARY; expr.text="+";
+    decl.type.base=MSL_TEXTURE2D; decl.role=MSL_RESOURCE_DECL; a.type=decl.type;
+    CHECK(!MslVerifyModule(&m,&diag));
+    decl.type=scalar; decl.role=MSL_VALUE_DECL; a.type=scalar;
     expr.kind=MSL_UNARY; expr.text="++"; expr.b=NULL;
     CHECK(MslVerifyModule(&m,&diag)); expr.a=&b; CHECK(!MslVerifyModule(&m,&diag)); expr.a=&a;
     expr.kind=MSL_SWIZZLE; expr.text="z"; CHECK(!MslVerifyModule(&m,&diag));

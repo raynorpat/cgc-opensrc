@@ -17,18 +17,18 @@ struct cg_Uniforms {
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
 };
-float4 cg_fn_0(cg_array_2 cg_v_1);
-float4 cg_fn_0(cg_array_2 cg_v_1)
+float4 cg_fn_main_0(cg_array_2 cg_v_values_1);
+float4 cg_fn_main_0(cg_array_2 cg_v_values_1)
 {
-    return float4(((cg_v_1).elements[0]).x, ((cg_v_1).elements[0]).y, ((cg_v_1).elements[1]).x, ((cg_v_1).elements[1]).y);
+    return float4(((cg_v_values_1).elements[0]).x, ((cg_v_values_1).elements[0]).y, ((cg_v_values_1).elements[1]).x, ((cg_v_values_1).elements[1]).y);
 }
 
 fragment cg_Output cg_mslf_main(constant cg_Uniforms &cg_u [[buffer(0)]])
 {
-    cg_array_2 cg_v_1;
-    cg_v_1.elements[0] = float2(cg_u.slot0.xy);
-    cg_v_1.elements[1] = float2(cg_u.slot1.xy);
-    float4 cg_value = cg_fn_0(cg_v_1);
+    cg_array_2 cg_v_values_1;
+    cg_v_values_1.elements[0] = float2(cg_u.slot0.xy);
+    cg_v_values_1.elements[1] = float2(cg_u.slot1.xy);
+    float4 cg_value = cg_fn_main_0(cg_v_values_1);
     cg_Output cg_result;
     cg_result.cg_COLOR0 = cg_value;
     return cg_result;

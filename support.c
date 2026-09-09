@@ -1636,6 +1636,14 @@ static int lCheckInitializationData(SourceLoc *loc, Type *vType, expr *dExpr, in
             int after;
 
             memberExpr = dExpr->bin.left;
+            if(Cg->theHAL->GetCapsBit(CAPS_NATIVE_VALUE_OPERATIONS) && memberExpr &&
+               !(memberExpr->common.kind==BINARY_N && memberExpr->bin.op==EXPR_LIST_OP))
+            {
+                if(ConvertType(loc,memberExpr,vType,memberExpr->common.type,&tExpr,0,0,1)) {
+                    dExpr->bin.left=tExpr; return 1;
+                }
+                SemanticError(loc,ERROR___INVALID_INITIALIZATION); return 0;
+            }
             after = -1;
             for (;;) {
                 best = NULL;
@@ -1865,6 +1873,13 @@ stmt *Init_Declarator(SourceLoc *loc, Scope *fScope, decl *fDecl, expr *fExpr)
                                 CAPS_AGGREGATE_DEFAULT_INITIALIZERS))
                         {
                             lSymb->details.var.init = fExpr;
+                        } else if(Cg->theHAL->GetCapsBit(CAPS_NATIVE_VALUE_OPERATIONS)) {
+                            lExpr=fExpr->bin.left;
+                            if(lExpr->common.kind==BINARY_N && lExpr->bin.op==EXPR_LIST_OP) {
+                                lExpr=(expr *)NewUnopSubNode(VECTOR_V_OP,0,lExpr);
+                                lExpr->common.type=lType;
+                            }
+                            lStmt=NewSimpleAssignmentStmt(loc,(expr *)NewSymbNode(VARIABLE_OP,lSymb),lExpr,1);
                         } else {
                             SemanticError(loc,
                                           ERROR___INVALID_INITIALIZATION);
@@ -3785,6 +3800,15 @@ expr *NewBinaryOperator(SourceLoc *loc, int fop, int name, expr *lExpr, expr *re
     CanSmear = fop == MUL_OP || fop == DIV_OP || fop == ADD_OP || fop == SUB_OP ? 1 : 0;
     lType = leltype = lExpr->common.type;
     rtype = reltype = rexpr->common.type;
+    if(Cg->theHAL->GetCapsBit(CAPS_NATIVE_VALUE_OPERATIONS) && CanSmear && !IntegralOnly) {
+        int lr=0,lc=0,rr=0,rc=0;
+        int lm=IsMatrix(lType,&lr,&lc), rm=IsMatrix(rtype,&rr,&rc);
+        if((lm && rm && lr==rr && lc==rc) || (lm && IsScalar(rtype)) || (rm && IsScalar(lType))) {
+            result=NewBinopSubNode(fop,0,lExpr,rexpr);
+            result->type=lm?lType:rtype;
+            return (expr *)result;
+        }
+    }
     if (IsScalar(lType) || IsSampler(lType, NULL)) {
         if (IsScalar(rtype) || IsSampler(rtype, NULL)) {
             subop = 0;
@@ -3918,7 +3942,8 @@ expr *NewBinaryBooleanOperator(SourceLoc *loc, int fop, int name, expr *lExpr, e
             } else {
                 SemanticError(loc, ERROR_S_OPERANDS_NOT_BOOLEAN, GetAtomString(atable, name));
             }
-            if (lExpr->common.HasSideEffects || rexpr->common.HasSideEffects) {
+            if ((lExpr->common.HasSideEffects || rexpr->common.HasSideEffects) &&
+                !Cg->theHAL->GetCapsBit(CAPS_NATIVE_VALUE_OPERATIONS)) {
                 SemanticError(loc, ERROR_S_OPERANDS_HAVE_SIDE_EFFECTS, GetAtomString(atable, name));
             }
         }

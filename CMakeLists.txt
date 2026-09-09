@@ -43,6 +43,8 @@ set(CGC_ARB_LOWER_SOURCES
 set(CGC_MSL_LOWER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_support.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_aggregate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_texture.c
     ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_decl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_expr.c
     ${CMAKE_CURRENT_SOURCE_DIR}/msl_lower_stmt.c
@@ -55,7 +57,7 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(cgc
-    msl_ir.c msl_verify.c msl_codegen.c msl_hal.c mslv_hal.c mslf_hal.c
+    msl_ir.c msl_verify.c msl_validate.c msl_codegen.c msl_hal.c mslv_hal.c mslf_hal.c
     ${CGC_MSL_LOWER_SOURCES}
     arb_hal.c
     arbfp1_hal.c
@@ -66,6 +68,7 @@ add_executable(cgc
     cg_geometry.c
     cg_ir.c
     cg_ir_lower.c
+    cg_ir_default.c
     cg_ir_print.c
     cg_ir_verify.c
     cg_numeric.c

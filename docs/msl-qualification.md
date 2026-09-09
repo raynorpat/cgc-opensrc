@@ -2,7 +2,7 @@
 
 ## 2026-09-08: generated output and GPU execution
 
-Status: **Coverage audit passes: 558 Metal tests, no skips**.
+Status: **Coverage audit passes: 624 Metal tests, no skips**.
 See the [coverage audit](msl-coverage.md) and
 [implemented behavior and remaining limits](msl-compatibility.md).
 The starting revision was `af2ff1c` (`Plan Metal MSL shader output`). Work is
@@ -90,8 +90,8 @@ contain local paths and are not committed.
 
 ### Generated output and GPU results
 
-The final strict configuration registers 1545 tests: 1538 pass, the same three
-baseline tests fail, and four existing GLSL tests remain disabled. All **558 MSL
+The final strict configuration registers 1611 tests: 1604 pass, the same three
+baseline tests fail, and four existing GLSL tests remain disabled. All **624 MSL
 tests pass with no skips**, with both `CGC_REQUIRE_METAL` and
 `CGC_REQUIRE_METAL_RUNTIME` enabled.
 
@@ -109,14 +109,15 @@ layout `(7,16,26.5,1)`, and depth `0.25`.
 Negative controls prove that wrong pixels, wrong source/status expectations,
 invalid Apple source, stale artifacts, and incompatible stage interfaces are
 rejected. Transaction tests preserve existing output on compiler failure.
-This is a qualified initial corpus, not exhaustive support for the full design.
+This qualifies the agreed vertex/fragment subset; it does not prove every
+possible source combination or floating-point input.
 
 All eight final generic captures match the post-portability reference exactly
 for stdout, stderr, and exit status. Builds use `SOURCE_DATE_EPOCH=1788889613`
 to preserve the reference compiler's embedded build timestamp; no timestamp or
 diagnostic text is stripped by the comparator. Evidence is saved in
-`build/evidence/coverage-final-full.log`, `coverage-inventory.json`,
-`generic-coverage-compare.log`, and
+`build/evidence/plan-full.log`, `plan-inventory.json`,
+`generic-plan-final/`, and
 the per-test artifacts under `build/validation/`.
 
 ### Repeatable commands
@@ -147,9 +148,22 @@ Probes cover both stages, user varyings, float4 buffer slots, 2D and cube resour
 helpers, explicit vertex/cube LOD, flat integers, depth, and thread references.
 These are hand-authored syntax probes, not cgc-generated output or GPU tests.
 
-The coverage audit includes 228 runtime tests, 11 allocation sweeps covering 2248 injected failures with
+The coverage audit includes 269 runtime tests, 17 allocation sweeps covering 3054 injected failures with
 AddressSanitizer on Apple Clang, exact metadata/layout assertions and located
-transactional rejection checks. The initial output/GPU milestone and this
-hardening pass are validated on this host. Remaining language and host limits
-are explicit in the coverage and compatibility documents. Changes remain
-uncommitted in the isolated worktree.
+transactional rejection checks. The output/GPU milestone was committed as `8b05e13`. The follow-up completes
+aggregate initialization/defaults and dependent constants, minimal transitive
+helper dependencies, source-derived names, matrix compound/scalar/effectful
+operations, short-circuit effects, Metal-only numeric overloads, typed storage
+invariants, private lowering modules and nested-helper diagnostic notes.
+
+The constant-default service now lives in `cg_ir_default.c`, keeping frontend
+constant folding out of the standalone IR core. It clones default expressions
+in scratch-owned storage, resolves constant references and folds values without
+mutating source defaults. Allocation sweeps include this path. The generic
+capability guards confirm the Metal-only source extensions do not change the
+legacy generic acceptance rules; all eight final generic captures match.
+
+Historical milestone commit ordering and an unchanged executable baseline
+could not be reproduced; these execution differences remain explicit in the
+plan. Unsupported features and untested hosts remain documented. The branch
+has not been merged or pushed.

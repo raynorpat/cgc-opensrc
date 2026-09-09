@@ -7,15 +7,15 @@ using namespace metal;
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
 };
-float4 cg_fn_0();
-float4 cg_fn_0()
+float4 cg_fn_shade_0();
+float4 cg_fn_shade_0()
 {
     return float4(int4(1, 0, 0, 1));
 }
 
 fragment cg_Output cg_mslf_shade()
 {
-    float4 cg_value = cg_fn_0();
+    float4 cg_value = cg_fn_shade_0();
     cg_Output cg_result;
     cg_result.cg_COLOR0 = cg_value;
     return cg_result;

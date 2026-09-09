@@ -8,9 +8,9 @@
 using namespace metal;
 
 struct cg_type_2 {
-    float2 cg_field_3;
-    int cg_field_4;
-    float2 cg_field_5;
+    float2 cg_field_b_3;
+    int cg_field_tag_4;
+    float2 cg_field_a_5;
 };
 struct cg_Input {
     float2 cg_TEXCOORD0 [[user(cg_TEXCOORD0)]];
@@ -20,19 +20,19 @@ struct cg_Input {
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
 };
-float4 cg_fn_0(cg_type_2 cg_v_1);
-float4 cg_fn_0(cg_type_2 cg_v_1)
+float4 cg_fn_main_0(cg_type_2 cg_v_p_1);
+float4 cg_fn_main_0(cg_type_2 cg_v_p_1)
 {
-    return float4(((cg_v_1).cg_field_5).x, ((cg_v_1).cg_field_5).y, ((cg_v_1).cg_field_3).x, float((cg_v_1).cg_field_4));
+    return float4(((cg_v_p_1).cg_field_a_5).x, ((cg_v_p_1).cg_field_a_5).y, ((cg_v_p_1).cg_field_b_3).x, float((cg_v_p_1).cg_field_tag_4));
 }
 
 fragment cg_Output cg_mslf_main(cg_Input cg_in [[stage_in]])
 {
-    cg_type_2 cg_v_1;
-    cg_v_1.cg_field_3 = cg_in.cg_TEXCOORD0;
-    cg_v_1.cg_field_4 = cg_in.cg_TEXCOORD2;
-    cg_v_1.cg_field_5 = cg_in.cg_TEXCOORD1;
-    float4 cg_value = cg_fn_0(cg_v_1);
+    cg_type_2 cg_v_p_1;
+    cg_v_p_1.cg_field_b_3 = cg_in.cg_TEXCOORD0;
+    cg_v_p_1.cg_field_tag_4 = cg_in.cg_TEXCOORD2;
+    cg_v_p_1.cg_field_a_5 = cg_in.cg_TEXCOORD1;
+    float4 cg_value = cg_fn_main_0(cg_v_p_1);
     cg_Output cg_result;
     cg_result.cg_COLOR0 = cg_value;
     return cg_result;

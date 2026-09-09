@@ -66,18 +66,20 @@ int MslLowerCgIR(MslModule *m, const MslProfileDesc *profile, const CgIRModule *
         p->source = f; p->target = (MslFunction *) MslAlloc(m, sizeof(*p->target));
         if (!p->target) break;
         *mapTail = p; mapTail = &p->next; *tail = p->target; tail = &p->target->next;
-        p->target->name = MslLName(&l, "fn"); p->target->loc = f->loc;
+        p->target->name = MslLSourceName(&l, "fn",GetAtomString(atable,f->symbol->name)); p->target->loc = f->loc;
         p->target->result = MslLLowerType(&l, f->resultType, &f->loc);
         if(p->target->result.base>=MSL_TEXTURE2D) MslFail(m,6601,&f->loc,"sampler return values are unsupported");
-        p->target->entry = f == source->entry; p->target->globals=m->globals;
+        p->target->entry = f == source->entry;
         p->target->parameters = MslLLowerDecls(&l, f->parameters);
         p->target->locals = MslLLowerDecls(&l, f->locals);
+        if(m->failed) m->diagnostic.symbol=f->symbol;
         if (p->target->entry) m->entry = p->target;
     }
     if (m->failed) return 0;
     for (p = l.functions; p && !m->failed; p = p->next) {
         l.current=p->target; l.temporaries=NULL;
         p->target->body = MslLLowerStmt(&l, p->source->body);
+        if(m->failed) m->diagnostic.symbol=p->source->symbol;
         if(l.temporaries && !m->failed) {
             MslStmt *last=l.temporaries;
             while(last->next) last=last->next;
@@ -144,8 +146,10 @@ int MslLowerCgIR(MslModule *m, const MslProfileDesc *profile, const CgIRModule *
     }
     d=source->globals;
     for(q=m->globals;q && !m->failed;q=q->next,d=d->next) {
-        if(d->storage==CGIR_STORAGE_CONST)
-            return MslFail(m,6608,&d->loc,"global constants require compile-time folding");
+        if(q->constant) {
+            if(!q->defaultValue) return MslFail(m,6604,&d->loc,"constant requires a constant initializer");
+            continue;
+        }
         if(q->type.base>=MSL_TEXTURE2D) {
             q->resourceSlot=-2;
             if(d->semantic) {
@@ -164,7 +168,7 @@ int MslLowerCgIR(MslModule *m, const MslProfileDesc *profile, const CgIRModule *
     }
     { MslDecl **end=&m->bindings;
       for(q=m->entry->parameters;q;q=q->next) if(q->uniformSlot>=0 || q->type.base>=MSL_TEXTURE2D) { *end=q; end=&q->bindingNext; }
-      for(q=m->globals;q;q=q->next) { *end=q; end=&q->bindingNext; }
+      for(q=m->globals;q;q=q->next) if(!q->constant) { *end=q; end=&q->bindingNext; }
     }
     for(;;) {
         MslDecl *lowest=NULL;

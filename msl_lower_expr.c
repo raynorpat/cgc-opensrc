@@ -157,36 +157,6 @@ MslExpr *MslLConvert(Lower *l, MslExpr *value, MslType type)
     return cast;
 }
 
-/* Expressions expanded into multiple column accesses must evaluate their
- * operands once, in source order, at the original expression position. */
-static MslExpr *Materialize(Lower *l, MslExpr *value, MslExpr ***tail)
-{
-    MslExpr *temp=MslLTemporary(l,value->type,&value->loc);
-    if (!temp) return NULL;
-    MslLSequenceAppend(tail,MslLStore(l,MslLCopyExpr(l,temp),value));
-    return temp;
-}
-static MslExpr *ExpandOnce(Lower *l, MslExpr *e, int arguments)
-{
-    MslExpr *seq,*arg,*next,**tail,**args;
-    seq=(MslExpr *)MslAlloc(l->m,sizeof(*seq));
-    if (!seq) return NULL;
-    seq->kind=MSL_SEQUENCE; seq->type=e->type; seq->loc=e->loc; tail=&seq->a;
-    if (arguments) {
-        args=&e->a;
-        for (arg=e->a;arg;arg=next) {
-            next=arg->next; arg->next=NULL;
-            *args=Materialize(l,arg,&tail);
-            if (!*args) return NULL;
-            args=&(*args)->next;
-        }
-    } else {
-        e->a=Materialize(l,e->a,&tail);
-        if (e->b) e->b=Materialize(l,e->b,&tail);
-    }
-    *tail=e;
-    return seq;
-}
 static MslExpr *LowerExprMode(Lower *, const CgIRExpr *, int);
 MslExpr *MslLLowerExpr(Lower *l, const CgIRExpr *s)
 {
@@ -214,7 +184,7 @@ static MslExpr *LowerExprMode(Lower *l, const CgIRExpr *s, int lvalue)
     case CGIR_EXPR_CONSTRUCT:
         if(e->type.base>=MSL_TEXTURE2D) { MslFail(l->m,6602,&s->loc,"resource values cannot be constructed"); break; }
         e->kind = MSL_CONSTRUCT; e->a = MslLArgs(l, s->u.construct.arguments);
-        if (!l->m->failed && e->type.base==MSL_MATRIX && s->sideEffects) e=ExpandOnce(l,e,1);
+        if (!l->m->failed && e->type.base==MSL_MATRIX && s->sideEffects) e=MslLExpandOnce(l,e,1);
         break;
     case CGIR_EXPR_CAST:
         e->kind = MSL_CONSTRUCT; e->a = MslLLowerExpr(l, s->u.cast.operand); break;
@@ -249,7 +219,7 @@ static MslExpr *LowerExprMode(Lower *l, const CgIRExpr *s, int lvalue)
         e->b = MslLLowerExpr(l, s->u.index.index);
         if(e->a && e->a->type.base==MSL_MATRIX) {
             e->kind=MSL_ROW;
-            if (!lvalue && s->sideEffects && !l->m->failed) e=ExpandOnce(l,e,0);
+            if (!lvalue && s->sideEffects && !l->m->failed) e=MslLExpandOnce(l,e,0);
         }
         break;
     case CGIR_EXPR_UNARY:
@@ -262,7 +232,9 @@ static MslExpr *LowerExprMode(Lower *l, const CgIRExpr *s, int lvalue)
         break;
     case CGIR_EXPR_BINARY:
         e->kind = MSL_BINARY; e->a = MslLLowerExpr(l, s->u.binary.left);
-        e->b = MslLLowerExpr(l, s->u.binary.right); e->text = MslLOp(s->u.binary.op); break;
+        e->b = MslLLowerExpr(l, s->u.binary.right); e->text = MslLOp(s->u.binary.op);
+        if(!l->m->failed && e->type.base==MSL_MATRIX && s->sideEffects) e=MslLExpandOnce(l,e,0);
+        break;
     case CGIR_EXPR_ASSIGN:
         if(e->type.base>=MSL_TEXTURE2D) { MslFail(l->m,6602,&s->loc,"resource values cannot be copied"); break; }
         if(MslReadOnlyTarget(l,s->u.assign.target)) {
@@ -272,9 +244,21 @@ static MslExpr *LowerExprMode(Lower *l, const CgIRExpr *s, int lvalue)
         e->b = MslLLowerExpr(l, s->u.assign.value); e->text = MslLOp(s->u.assign.op);
         /* Compound operations retain the RHS scalar kind in normalized Cg IR. */
         if (s->u.assign.op != CGIR_OP_ASSIGN) e->b=MslLConvert(l,e->b,e->type);
-        if(e->a && e->a->kind==MSL_ROW) {
-            if(strcmp(e->text,"=")) MslFail(l->m,6602,&s->loc,"compound whole-row stores require an explicit row expression");
-            else l->m->rowSetters|=1u<<e->a->type.lanes;
+        if(e->a && (e->a->kind==MSL_ROW || e->type.base==MSL_MATRIX)) {
+            if(e->a->kind==MSL_ROW) l->m->rowSetters|=1u<<e->a->type.lanes;
+            if(strcmp(e->text,"=") && !l->m->failed) {
+                MslExpr *seq,*value,**tail; char op[2];
+                seq=(MslExpr *)MslAlloc(l->m,sizeof(*seq));
+                value=(MslExpr *)MslAlloc(l->m,sizeof(*value));
+                if(!seq || !value) break;
+                seq->kind=MSL_SEQUENCE; seq->type=e->type; seq->loc=e->loc; tail=&seq->a;
+                if(!MslLStabilize(l,e->a,&tail)) break;
+                value->kind=MSL_BINARY; value->type=e->type; value->loc=e->loc;
+                value->a=MslLMaterialize(l,MslLCopyExpr(l,e->a),&tail);
+                value->b=MslLMaterialize(l,e->b,&tail);
+                op[0]=e->text[0]; op[1]=0; value->text=MslString(l->m,op);
+                e->text="="; e->b=value; *tail=e; e=seq;
+            }
         }
         break;
     case CGIR_EXPR_CONDITIONAL:
@@ -288,22 +272,13 @@ static MslExpr *LowerExprMode(Lower *l, const CgIRExpr *s, int lvalue)
             if(id!=CG_INTRINSIC_MUL && id!=CG_INTRINSIC_TRANSPOSE && !MslLIntrinsic(l,&intrinsic)) break;
         }
         if((s->u.call.callee->properties & SYMB_IS_BUILTIN) && s->u.call.callee->details.fun.group==MSL_BUILTIN_GROUP) {
-            MslExpr *coord,*sample,*seq,*store,*uv,*lod; MslType type;
-            coord=MslLLowerExpr(l,s->u.call.arguments->next);
-            if(!coord) break;
-            sample=e; sample->kind=MSL_SAMPLE; sample->a=MslLLowerExpr(l,s->u.call.arguments);
-            seq=(MslExpr *)MslAlloc(l->m,sizeof(*seq));
-            uv=(MslExpr *)MslAlloc(l->m,sizeof(*uv)); lod=(MslExpr *)MslAlloc(l->m,sizeof(*lod));
-            if(!seq || !uv || !lod) break;
-            type=coord->type; e=MslLTemporary(l,type,&s->loc); if(!e) break;
-            store=MslLStore(l,MslLCopyExpr(l,e),coord);
-            uv->kind=MSL_SWIZZLE; uv->type=type;
-            uv->type.lanes=s->u.call.callee->details.fun.index==MSL_BUILTIN_TEX2DLOD?2:3;
-            uv->text=uv->type.lanes==2?"xy":"xyz"; uv->a=MslLCopyExpr(l,e);
-            lod->kind=MSL_SWIZZLE; lod->type=type; lod->type.lanes=1; lod->text="w"; lod->a=e;
-            sample->b=uv; sample->c=lod;
-            seq->kind=MSL_SEQUENCE; seq->type=sample->type; seq->loc=s->loc;
-            seq->a=store; if(store) store->next=sample; e=seq; break;
+            if(s->u.call.callee->details.fun.index>=MSL_BUILTIN_MIN) {
+                static const char *names[]={"min","max","clamp","dot"};
+                int index=s->u.call.callee->details.fun.index-MSL_BUILTIN_MIN;
+                if(index>3) { MslFail(l->m,6602,&s->loc,"invalid numeric builtin identity"); break; }
+                e->kind=MSL_CALL; e->text=names[index]; e->a=MslLArgs(l,s->u.call.arguments); break;
+            }
+            e=MslLLowerTexture(l,s,e,1); break;
         }
         e->kind = MSL_CALL; e->function = MslLFindFunction(l, s->u.call.callee);
         {
@@ -326,15 +301,7 @@ static MslExpr *LowerExprMode(Lower *l, const CgIRExpr *s, int lvalue)
         break;
     case CGIR_EXPR_INTRINSIC:
         if(s->u.intrinsicCall.intrinsic==CG_INTRINSIC_TEX2D || s->u.intrinsicCall.intrinsic==CG_INTRINSIC_TEXCUBE) {
-            if(!s->u.intrinsicCall.arguments || !s->u.intrinsicCall.arguments->next || s->u.intrinsicCall.arguments->next->next) {
-                MslFail(l->m,6602,&s->loc,"gradient texture signatures are unsupported"); break;
-            }
-            if(l->m->stage!=MSL_FRAGMENT) { MslFail(l->m,6602,&s->loc,"implicit texture sampling requires fragment stage"); break; }
-            e->kind=MSL_SAMPLE; e->a=MslLLowerExpr(l,s->u.intrinsicCall.arguments);
-            e->b=MslLLowerExpr(l,s->u.intrinsicCall.arguments->next);
-            if(!e->a || e->a->kind!=MSL_SYMBOL || e->a->type.base<MSL_TEXTURE2D)
-                MslFail(l->m,6602,&s->loc,"sampling requires a resolved texture/sampler pair");
-            break;
+            e=MslLLowerTexture(l,s,e,0); break;
         }
         if(s->u.intrinsicCall.intrinsic==CG_INTRINSIC_MUL) {
             e->a=MslLLowerExpr(l,s->u.intrinsicCall.arguments);

@@ -92,6 +92,10 @@ int main(int argc, const char **argv)
         id<MTLBuffer> vb = [device newBufferWithBytes:vertices length:sizeof(vertices) options:MTLResourceStorageModeShared];
         /* Name-sorted ABI: exposure at byte 0, tint at byte 16. Poison padding. */
         float uniforms[20] = {2,91,92,93, .25f,.5f,.75f,1};
+        if(!strcmp(argv[5],"coverage_aggregate_defaults")) {
+            const float defaults[]={5,91,92,93, 6,91,92,93, 2,91,92,93, 3,4,92,93};
+            memcpy(uniforms,defaults,sizeof(defaults));
+        }
         if(!strcmp(argv[5],"layout")) {
             const float layout[] = {.25f,.5f,.75f,91, 2,92,93,94,
                                     1,4,7,95, 2,5,8,96, 3,6,10,97};

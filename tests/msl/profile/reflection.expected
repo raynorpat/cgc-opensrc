@@ -15,13 +15,13 @@
 using namespace metal;
 
 struct cg_type_1 {
-    float4 cg_field_2;
-    float4 cg_field_3;
-    float4 cg_field_4;
+    float4 cg_field_HPOS_2;
+    float4 cg_field_COL0_3;
+    float4 cg_field_TEX0_4;
 };
 struct cg_type_6 {
-    float4 cg_field_7;
-    float3 cg_field_8;
+    float4 cg_field_position_7;
+    float3 cg_field_normal_8;
 };
 struct cg_Uniforms {
     float4 slot0;
@@ -45,99 +45,99 @@ struct cg_Output {
     float4 cg_COLOR0 [[user(cg_COLOR0)]];
     float4 cg_TEXCOORD0 [[user(cg_TEXCOORD0)]];
 };
-cg_type_1 cg_fn_0(cg_type_6 cg_v_5, float4x4 cg_v_9, float4x4 cg_v_10, float3 cg_v_11, float3 cg_v_12, float3 cg_v_13);
-float4 cg_fn_21(float4x4 cg_v_22, float4 cg_v_23);
-float3 cg_fn_25(float3 cg_v_26);
-float3 cg_fn_27(float3x3 cg_v_28, float3 cg_v_29);
-float cg_fn_31(float3 cg_v_32, float3 cg_v_33);
-float cg_fn_34(float4 cg_v_35, float4 cg_v_36);
-cg_type_1 cg_fn_0(cg_type_6 cg_v_5, float4x4 cg_v_9, float4x4 cg_v_10, float3 cg_v_11, float3 cg_v_12, float3 cg_v_13)
+cg_type_1 cg_fn_main_0(cg_type_6 cg_v_I_5, float4x4 cg_v_modelview_matrix_9, float4x4 cg_v_projection_matrix_10, float3 cg_v_lightdir_11, float3 cg_v_lightcolor_12, float3 cg_v_ambientcolor_13);
+float4 cg_fn_mul_21(float4x4 cg_v_m_22, float4 cg_v_v_23);
+float3 cg_fn_normalize_25(float3 cg_v_v_26);
+float3 cg_fn_mul_27(float3x3 cg_v_m_28, float3 cg_v_v_29);
+float cg_fn_dot_31(float3 cg_v_a_32, float3 cg_v_b_33);
+float cg_fn_dot_34(float4 cg_v_a_35, float4 cg_v_b_36);
+cg_type_1 cg_fn_main_0(cg_type_6 cg_v_I_5, float4x4 cg_v_modelview_matrix_9, float4x4 cg_v_projection_matrix_10, float3 cg_v_lightdir_11, float3 cg_v_lightcolor_12, float3 cg_v_ambientcolor_13)
 {
-    cg_type_1 cg_v_14;
-    float3 cg_v_15;
-    float3 cg_v_16;
-    float3 cg_v_17;
-    float4 cg_v_18;
-    float cg_v_19;
-    float3x3 cg_v_20;
-    (cg_v_18 = cg_fn_21(cg_v_9, (cg_v_5).cg_field_7));
-    (cg_v_16 = cg_fn_25((cg_v_18).xyz));
-    float3 cg_selector_37 = float3(((cg_v_9)[0])[0], ((cg_v_9)[1])[0], ((cg_v_9)[2])[0]);
-    (((cg_v_20)[0])[0] = (cg_selector_37).x);
-    (((cg_v_20)[1])[0] = (cg_selector_37).y);
-    (((cg_v_20)[2])[0] = (cg_selector_37).z);
-    float3 cg_selector_38 = float3(((cg_v_9)[0])[1], ((cg_v_9)[1])[1], ((cg_v_9)[2])[1]);
-    (((cg_v_20)[0])[1] = (cg_selector_38).x);
-    (((cg_v_20)[1])[1] = (cg_selector_38).y);
-    (((cg_v_20)[2])[1] = (cg_selector_38).z);
-    float3 cg_selector_39 = float3(((cg_v_9)[0])[2], ((cg_v_9)[1])[2], ((cg_v_9)[2])[2]);
-    (((cg_v_20)[0])[2] = (cg_selector_39).x);
-    (((cg_v_20)[1])[2] = (cg_selector_39).y);
-    (((cg_v_20)[2])[2] = (cg_selector_39).z);
-    (cg_v_15 = cg_fn_27(cg_v_20, (cg_v_5).cg_field_8));
-    (cg_v_17 = (cg_v_16 - ((float(2) * cg_v_15) * cg_fn_31(cg_v_15, cg_v_16))));
-    ((cg_v_17).z = ((cg_v_17).z + float(1)));
-    (cg_v_19 = (5.000000000e-01f * rsqrt(cg_fn_31(cg_v_17, cg_v_17))));
-    (((cg_v_14).cg_field_4).x = (((cg_v_17).x * cg_v_19) + 5.000000000e-01f));
-    (((cg_v_14).cg_field_4).y = (((cg_v_17).y * cg_v_19) + 5.000000000e-01f));
-    ((cg_v_14).cg_field_2 = cg_fn_21(cg_v_10, cg_v_18));
-    return cg_v_14;
+    cg_type_1 cg_v_O_14;
+    float3 cg_v_n_15;
+    float3 cg_v_u_16;
+    float3 cg_v_r_17;
+    float4 cg_v_v_18;
+    float cg_v_m_19;
+    float3x3 cg_v_m3_20;
+    (cg_v_v_18 = cg_fn_mul_21(cg_v_modelview_matrix_9, (cg_v_I_5).cg_field_position_7));
+    (cg_v_u_16 = cg_fn_normalize_25((cg_v_v_18).xyz));
+    float3 cg_selector_37 = float3(((cg_v_modelview_matrix_9)[0])[0], ((cg_v_modelview_matrix_9)[1])[0], ((cg_v_modelview_matrix_9)[2])[0]);
+    (((cg_v_m3_20)[0])[0] = (cg_selector_37).x);
+    (((cg_v_m3_20)[1])[0] = (cg_selector_37).y);
+    (((cg_v_m3_20)[2])[0] = (cg_selector_37).z);
+    float3 cg_selector_38 = float3(((cg_v_modelview_matrix_9)[0])[1], ((cg_v_modelview_matrix_9)[1])[1], ((cg_v_modelview_matrix_9)[2])[1]);
+    (((cg_v_m3_20)[0])[1] = (cg_selector_38).x);
+    (((cg_v_m3_20)[1])[1] = (cg_selector_38).y);
+    (((cg_v_m3_20)[2])[1] = (cg_selector_38).z);
+    float3 cg_selector_39 = float3(((cg_v_modelview_matrix_9)[0])[2], ((cg_v_modelview_matrix_9)[1])[2], ((cg_v_modelview_matrix_9)[2])[2]);
+    (((cg_v_m3_20)[0])[2] = (cg_selector_39).x);
+    (((cg_v_m3_20)[1])[2] = (cg_selector_39).y);
+    (((cg_v_m3_20)[2])[2] = (cg_selector_39).z);
+    (cg_v_n_15 = cg_fn_mul_27(cg_v_m3_20, (cg_v_I_5).cg_field_normal_8));
+    (cg_v_r_17 = (cg_v_u_16 - ((float(2) * cg_v_n_15) * cg_fn_dot_31(cg_v_n_15, cg_v_u_16))));
+    ((cg_v_r_17).z = ((cg_v_r_17).z + float(1)));
+    (cg_v_m_19 = (5.000000000e-01f * rsqrt(cg_fn_dot_31(cg_v_r_17, cg_v_r_17))));
+    (((cg_v_O_14).cg_field_TEX0_4).x = (((cg_v_r_17).x * cg_v_m_19) + 5.000000000e-01f));
+    (((cg_v_O_14).cg_field_TEX0_4).y = (((cg_v_r_17).y * cg_v_m_19) + 5.000000000e-01f));
+    ((cg_v_O_14).cg_field_HPOS_2 = cg_fn_mul_21(cg_v_projection_matrix_10, cg_v_v_18));
+    return cg_v_O_14;
 }
 
-float4 cg_fn_21(float4x4 cg_v_22, float4 cg_v_23)
+float4 cg_fn_mul_21(float4x4 cg_v_m_22, float4 cg_v_v_23)
 {
-    float4 cg_v_24;
-    ((cg_v_24).x = cg_fn_34(float4(((cg_v_22)[0])[0], ((cg_v_22)[1])[0], ((cg_v_22)[2])[0], ((cg_v_22)[3])[0]), cg_v_23));
-    ((cg_v_24).y = cg_fn_34(float4(((cg_v_22)[0])[1], ((cg_v_22)[1])[1], ((cg_v_22)[2])[1], ((cg_v_22)[3])[1]), cg_v_23));
-    ((cg_v_24).z = cg_fn_34(float4(((cg_v_22)[0])[2], ((cg_v_22)[1])[2], ((cg_v_22)[2])[2], ((cg_v_22)[3])[2]), cg_v_23));
-    ((cg_v_24).w = cg_fn_34(float4(((cg_v_22)[0])[3], ((cg_v_22)[1])[3], ((cg_v_22)[2])[3], ((cg_v_22)[3])[3]), cg_v_23));
-    return cg_v_24;
+    float4 cg_v_rv_24;
+    ((cg_v_rv_24).x = cg_fn_dot_34(float4(((cg_v_m_22)[0])[0], ((cg_v_m_22)[1])[0], ((cg_v_m_22)[2])[0], ((cg_v_m_22)[3])[0]), cg_v_v_23));
+    ((cg_v_rv_24).y = cg_fn_dot_34(float4(((cg_v_m_22)[0])[1], ((cg_v_m_22)[1])[1], ((cg_v_m_22)[2])[1], ((cg_v_m_22)[3])[1]), cg_v_v_23));
+    ((cg_v_rv_24).z = cg_fn_dot_34(float4(((cg_v_m_22)[0])[2], ((cg_v_m_22)[1])[2], ((cg_v_m_22)[2])[2], ((cg_v_m_22)[3])[2]), cg_v_v_23));
+    ((cg_v_rv_24).w = cg_fn_dot_34(float4(((cg_v_m_22)[0])[3], ((cg_v_m_22)[1])[3], ((cg_v_m_22)[2])[3], ((cg_v_m_22)[3])[3]), cg_v_v_23));
+    return cg_v_rv_24;
 }
 
-float3 cg_fn_25(float3 cg_v_26)
+float3 cg_fn_normalize_25(float3 cg_v_v_26)
 {
-    return (rsqrt(cg_fn_31(cg_v_26, cg_v_26)) * cg_v_26);
+    return (rsqrt(cg_fn_dot_31(cg_v_v_26, cg_v_v_26)) * cg_v_v_26);
 }
 
-float3 cg_fn_27(float3x3 cg_v_28, float3 cg_v_29)
+float3 cg_fn_mul_27(float3x3 cg_v_m_28, float3 cg_v_v_29)
 {
-    float3 cg_v_30;
-    ((cg_v_30).x = cg_fn_31(float3(((cg_v_28)[0])[0], ((cg_v_28)[1])[0], ((cg_v_28)[2])[0]), cg_v_29));
-    ((cg_v_30).y = cg_fn_31(float3(((cg_v_28)[0])[1], ((cg_v_28)[1])[1], ((cg_v_28)[2])[1]), cg_v_29));
-    ((cg_v_30).z = cg_fn_31(float3(((cg_v_28)[0])[2], ((cg_v_28)[1])[2], ((cg_v_28)[2])[2]), cg_v_29));
-    return cg_v_30;
+    float3 cg_v_rv_30;
+    ((cg_v_rv_30).x = cg_fn_dot_31(float3(((cg_v_m_28)[0])[0], ((cg_v_m_28)[1])[0], ((cg_v_m_28)[2])[0]), cg_v_v_29));
+    ((cg_v_rv_30).y = cg_fn_dot_31(float3(((cg_v_m_28)[0])[1], ((cg_v_m_28)[1])[1], ((cg_v_m_28)[2])[1]), cg_v_v_29));
+    ((cg_v_rv_30).z = cg_fn_dot_31(float3(((cg_v_m_28)[0])[2], ((cg_v_m_28)[1])[2], ((cg_v_m_28)[2])[2]), cg_v_v_29));
+    return cg_v_rv_30;
 }
 
-float cg_fn_31(float3 cg_v_32, float3 cg_v_33)
+float cg_fn_dot_31(float3 cg_v_a_32, float3 cg_v_b_33)
 {
-    return ((((cg_v_32).x * (cg_v_33).x) + ((cg_v_32).y * (cg_v_33).y)) + ((cg_v_32).z * (cg_v_33).z));
+    return ((((cg_v_a_32).x * (cg_v_b_33).x) + ((cg_v_a_32).y * (cg_v_b_33).y)) + ((cg_v_a_32).z * (cg_v_b_33).z));
 }
 
-float cg_fn_34(float4 cg_v_35, float4 cg_v_36)
+float cg_fn_dot_34(float4 cg_v_a_35, float4 cg_v_b_36)
 {
-    return (((((cg_v_35).x * (cg_v_36).x) + ((cg_v_35).y * (cg_v_36).y)) + ((cg_v_35).z * (cg_v_36).z)) + ((cg_v_35).w * (cg_v_36).w));
+    return (((((cg_v_a_35).x * (cg_v_b_36).x) + ((cg_v_a_35).y * (cg_v_b_36).y)) + ((cg_v_a_35).z * (cg_v_b_36).z)) + ((cg_v_a_35).w * (cg_v_b_36).w));
 }
 
 vertex cg_Output cg_mslv_main(cg_Input cg_in [[stage_in]], constant cg_Uniforms &cg_u [[buffer(0)]])
 {
-    cg_type_6 cg_v_5;
-    float4x4 cg_v_9;
-    cg_v_9 = float4x4(cg_u.slot3.xyzw, cg_u.slot4.xyzw, cg_u.slot5.xyzw, cg_u.slot6.xyzw);
-    float4x4 cg_v_10;
-    cg_v_10 = float4x4(cg_u.slot7.xyzw, cg_u.slot8.xyzw, cg_u.slot9.xyzw, cg_u.slot10.xyzw);
-    float3 cg_v_11;
-    cg_v_11 = float3(cg_u.slot2.xyz);
-    float3 cg_v_12;
-    cg_v_12 = float3(cg_u.slot1.xyz);
-    float3 cg_v_13;
-    cg_v_13 = float3(cg_u.slot0.xyz);
-    cg_v_5.cg_field_7 = cg_in.cg_ATTRIB0;
-    cg_v_5.cg_field_8 = cg_in.cg_ATTRIB1;
-    cg_type_1 cg_value = cg_fn_0(cg_v_5, cg_v_9, cg_v_10, cg_v_11, cg_v_12, cg_v_13);
+    cg_type_6 cg_v_I_5;
+    float4x4 cg_v_modelview_matrix_9;
+    cg_v_modelview_matrix_9 = float4x4(cg_u.slot3.xyzw, cg_u.slot4.xyzw, cg_u.slot5.xyzw, cg_u.slot6.xyzw);
+    float4x4 cg_v_projection_matrix_10;
+    cg_v_projection_matrix_10 = float4x4(cg_u.slot7.xyzw, cg_u.slot8.xyzw, cg_u.slot9.xyzw, cg_u.slot10.xyzw);
+    float3 cg_v_lightdir_11;
+    cg_v_lightdir_11 = float3(cg_u.slot2.xyz);
+    float3 cg_v_lightcolor_12;
+    cg_v_lightcolor_12 = float3(cg_u.slot1.xyz);
+    float3 cg_v_ambientcolor_13;
+    cg_v_ambientcolor_13 = float3(cg_u.slot0.xyz);
+    cg_v_I_5.cg_field_position_7 = cg_in.cg_ATTRIB0;
+    cg_v_I_5.cg_field_normal_8 = cg_in.cg_ATTRIB1;
+    cg_type_1 cg_value = cg_fn_main_0(cg_v_I_5, cg_v_modelview_matrix_9, cg_v_projection_matrix_10, cg_v_lightdir_11, cg_v_lightcolor_12, cg_v_ambientcolor_13);
     cg_Output cg_result;
-    cg_result.cg_POSITION0 = cg_value.cg_field_2;
-    cg_result.cg_COLOR0 = cg_value.cg_field_3;
-    cg_result.cg_TEXCOORD0 = cg_value.cg_field_4;
+    cg_result.cg_POSITION0 = cg_value.cg_field_HPOS_2;
+    cg_result.cg_COLOR0 = cg_value.cg_field_COL0_3;
+    cg_result.cg_TEXCOORD0 = cg_value.cg_field_TEX0_4;
     return cg_result;
 }
 // End of program

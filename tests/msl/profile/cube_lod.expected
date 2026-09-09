@@ -8,16 +8,16 @@ using namespace metal;
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
 };
-float4 cg_fn_0(texturecube<float> cg_v_1, sampler cg_v_1_s);
-float4 cg_fn_0(texturecube<float> cg_v_1, sampler cg_v_1_s)
+float4 cg_fn_main_0(texturecube<float> cg_v_image_1, sampler cg_v_image_1_s);
+float4 cg_fn_main_0(texturecube<float> cg_v_image_1, sampler cg_v_image_1_s)
 {
     float4 cg_copy_2;
-    return ((cg_copy_2 = float4(int4(0, 0, 1, 1))), cg_v_1.sample(cg_v_1_s, (cg_copy_2).xyz, level((cg_copy_2).w)));
+    return ((cg_copy_2 = float4(int4(0, 0, 1, 1))), cg_v_image_1.sample(cg_v_image_1_s, (cg_copy_2).xyz, level((cg_copy_2).w)));
 }
 
-fragment cg_Output cg_mslf_main(texturecube<float> cg_v_1 [[texture(3)]], sampler cg_v_1_s [[sampler(3)]])
+fragment cg_Output cg_mslf_main(texturecube<float> cg_v_image_1 [[texture(3)]], sampler cg_v_image_1_s [[sampler(3)]])
 {
-    float4 cg_value = cg_fn_0(cg_v_1, cg_v_1_s);
+    float4 cg_value = cg_fn_main_0(cg_v_image_1, cg_v_image_1_s);
     cg_Output cg_result;
     cg_result.cg_COLOR0 = cg_value;
     return cg_result;

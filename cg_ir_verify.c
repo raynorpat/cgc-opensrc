@@ -890,6 +890,28 @@ static int lVerifyExpr(CgIRVerifyContext *ctx, const CgIRExpr *expr)
         }
         break;
     case CGIR_EXPR_CONSTRUCT:
+        if(IsStruct(expr->type) || (IsArray(expr->type) && !IsVector(expr->type,NULL) && !IsMatrix(expr->type,NULL,NULL))) {
+            Symbol *member=IsStruct(expr->type)?expr->type->str.members->symbols:NULL;
+            int count=0;
+            for(cursor=expr->u.construct.arguments;cursor;cursor=cursor->next) {
+                Type *element;
+                if(IsStruct(expr->type)) {
+                    while(member && member->kind!=VARIABLE_S) member=member->next;
+                    if(!member) return CgIRFail(ctx,CGIR_VERIFY_OPERAND,expr->loc,expr);
+                    element=member->type; member=member->next;
+                } else {
+                    if(count++>=expr->type->arr.numels) return CgIRFail(ctx,CGIR_VERIFY_OPERAND,expr->loc,expr);
+                    element=expr->type->arr.eltype;
+                }
+                if(!lVerifyExpr(ctx,cursor)) return 0;
+                if(!IsSameUnqualifiedType(element,cursor->type)) return CgIRFail(ctx,CGIR_VERIFY_TYPE,expr->loc,expr);
+            }
+            if(IsStruct(expr->type)) {
+                while(member && member->kind!=VARIABLE_S) member=member->next;
+                if(member) return CgIRFail(ctx,CGIR_VERIFY_OPERAND,expr->loc,expr);
+            } else if(count!=expr->type->arr.numels) return CgIRFail(ctx,CGIR_VERIFY_OPERAND,expr->loc,expr);
+            break;
+        }
         components = lAggregateComponents(expr->type);
         if (components <= 0 || !lKnownKind(GetScalarKind(expr->type)))
             return CgIRFail(ctx, CGIR_VERIFY_TYPE, expr->loc, expr);

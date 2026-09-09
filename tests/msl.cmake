@@ -281,3 +281,17 @@ add_test(NAME msl_allocation_matrix_row_inout COMMAND "${CMAKE_COMMAND}"
     "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/msl/coverage/matrix_row_inout.cg"
     "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/msl/fault-matrix_row_inout"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check_msl_faults.cmake")
+foreach(name aggregate_defaults global_constants local_initializers matrix_compound minimal_dependencies dependent_constants)
+    add_test(NAME msl_allocation_${name} COMMAND "${CMAKE_COMMAND}"
+        "-DCGC=$<TARGET_FILE:cgc_msl_fault>" -DPROFILE=mslf
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/msl/coverage/${name}.cg"
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/msl/fault-${name}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_msl_faults.cmake")
+endforeach()
+add_test(NAME msl_plan_contract COMMAND "${CMAKE_COMMAND}"
+    "-DCGC=$<TARGET_FILE:cgc>"
+    "-DBASE_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/msl"
+    "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/msl/plan-contract"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_msl_plan_contract.cmake")
+set_tests_properties(msl_plan_contract PROPERTIES FIXTURES_REQUIRED
+    "msl_coverage_minimal_dependencies;msl_coverage_global_constants;msl_coverage_aggregate_defaults")

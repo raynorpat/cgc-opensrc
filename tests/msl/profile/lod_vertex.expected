@@ -8,8 +8,8 @@
 using namespace metal;
 
 struct cg_type_1 {
-    float4 cg_field_2;
-    float4 cg_field_3;
+    float4 cg_field_p_2;
+    float4 cg_field_color_3;
 };
 struct cg_Input {
     float4 cg_ATTRIB0 [[attribute(0)]];
@@ -18,24 +18,24 @@ struct cg_Output {
     float4 cg_POSITION0 [[position]];
     float4 cg_COLOR0 [[user(cg_COLOR0)]];
 };
-cg_type_1 cg_fn_0(float4 cg_v_4, texture2d<float> cg_v_5, sampler cg_v_5_s);
-cg_type_1 cg_fn_0(float4 cg_v_4, texture2d<float> cg_v_5, sampler cg_v_5_s)
+cg_type_1 cg_fn_main_0(float4 cg_v_p_4, texture2d<float> cg_v_image_5, sampler cg_v_image_5_s);
+cg_type_1 cg_fn_main_0(float4 cg_v_p_4, texture2d<float> cg_v_image_5, sampler cg_v_image_5_s)
 {
     float4 cg_copy_7;
-    cg_type_1 cg_v_6;
-    ((cg_v_6).cg_field_2 = cg_v_4);
-    ((cg_v_6).cg_field_3 = ((cg_copy_7 = float4(float4(5.000000000e-01f, 5.000000000e-01f, float(0), float(1)))), cg_v_5.sample(cg_v_5_s, (cg_copy_7).xy, level((cg_copy_7).w))));
-    return cg_v_6;
+    cg_type_1 cg_v_r_6;
+    ((cg_v_r_6).cg_field_p_2 = cg_v_p_4);
+    ((cg_v_r_6).cg_field_color_3 = ((cg_copy_7 = float4(float4(5.000000000e-01f, 5.000000000e-01f, float(0), float(1)))), cg_v_image_5.sample(cg_v_image_5_s, (cg_copy_7).xy, level((cg_copy_7).w))));
+    return cg_v_r_6;
 }
 
-vertex cg_Output cg_mslv_main(cg_Input cg_in [[stage_in]], texture2d<float> cg_v_5 [[texture(3)]], sampler cg_v_5_s [[sampler(3)]])
+vertex cg_Output cg_mslv_main(cg_Input cg_in [[stage_in]], texture2d<float> cg_v_image_5 [[texture(3)]], sampler cg_v_image_5_s [[sampler(3)]])
 {
-    float4 cg_v_4;
-    cg_v_4 = cg_in.cg_ATTRIB0;
-    cg_type_1 cg_value = cg_fn_0(cg_v_4, cg_v_5, cg_v_5_s);
+    float4 cg_v_p_4;
+    cg_v_p_4 = cg_in.cg_ATTRIB0;
+    cg_type_1 cg_value = cg_fn_main_0(cg_v_p_4, cg_v_image_5, cg_v_image_5_s);
     cg_Output cg_result;
-    cg_result.cg_POSITION0 = cg_value.cg_field_2;
-    cg_result.cg_COLOR0 = cg_value.cg_field_3;
+    cg_result.cg_POSITION0 = cg_value.cg_field_p_2;
+    cg_result.cg_COLOR0 = cg_value.cg_field_color_3;
     return cg_result;
 }
 // End of program

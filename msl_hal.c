@@ -56,9 +56,29 @@ static int MslCaps(int bit)
     case CAPS_DEFER_RECURSION_DIAGNOSTICS: case CAPS_CONDITIONAL_SIDE_EFFECTS:
     case CAPS_TYPED_INC_DEC_EXPRESSIONS: case CAPS_PRESERVE_COMMA_EXPRESSIONS:
     case CAPS_PRESERVE_INLINE_HELPERS: case CAPS_AGGREGATE_DEFAULT_INITIALIZERS:
+    case CAPS_NATIVE_VALUE_OPERATIONS:
     case CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS: return 1;
     default: return 0;
     }
+}
+static int NumericBuiltin(const char *name,Type *type,int arity,int index,int dot)
+{
+    SourceLoc loc={0,0}; Symbol *root,*symbol; Type *function; TypeList **tail,*param; int i,atom;
+    function=NewType(TYPE_CATEGORY_FUNCTION | TYPE_MISC_INTERNAL,0);
+    function->fun.rettype=dot?FloatType:type; tail=&function->fun.paramtypes;
+    for(i=0;i<arity;i++) {
+        param=(TypeList *)mem_Alloc(CurrentScope->pool,sizeof(*param)); if(!param) return 0;
+        param->type=type; param->next=NULL; *tail=param; tail=&param->next;
+    }
+    atom=AddAtom(atable,name); root=LookUpSymbol(CurrentScope,atom);
+    if(root) {
+        symbol=NewSymbol(&loc,CurrentScope,atom,function,FUNCTION_S);
+        symbol->details.fun.overload=root->details.fun.overload; root->details.fun.overload=symbol;
+    } else symbol=AddSymbol(&loc,CurrentScope,atom,function,FUNCTION_S);
+    if(!symbol) return 0;
+    symbol->properties|=SYMB_IS_BUILTIN;
+    symbol->details.fun.group=MSL_BUILTIN_GROUP; symbol->details.fun.index=index;
+    return 1;
 }
 static int MslNames(slHAL *hal)
 {
@@ -82,6 +102,17 @@ static int MslNames(slHAL *hal)
         symbol->details.fun.index=i?MSL_BUILTIN_TEXCUBELOD:MSL_BUILTIN_TEX2DLOD;
         symbol->details.fun.profileSelector.isOpen=1;
     }
+    for(i=0;i<4;i++) {
+        Type *signedType=GetStandardTypeKind(CG_SCALAR_INT,i?i+1:0,0);
+        Type *unsignedType=GetStandardTypeKind(CG_SCALAR_UINT,i?i+1:0,0);
+        if(!NumericBuiltin("min",signedType,2,MSL_BUILTIN_MIN,0) ||
+           !NumericBuiltin("max",signedType,2,MSL_BUILTIN_MAX,0) ||
+           !NumericBuiltin("clamp",signedType,3,MSL_BUILTIN_CLAMP,0) ||
+           !NumericBuiltin("min",unsignedType,2,MSL_BUILTIN_MIN,0) ||
+           !NumericBuiltin("max",unsignedType,2,MSL_BUILTIN_MAX,0) ||
+           !NumericBuiltin("clamp",unsignedType,3,MSL_BUILTIN_CLAMP,0)) return 0;
+        if(i && !NumericBuiltin("mul",GetStandardTypeKind(CG_SCALAR_FLOAT,i+1,0),2,MSL_BUILTIN_DOT,1)) return 0;
+    }
     return 1;
 }
 static int MslFree(slHAL *hal) { hal->localData = NULL; return 1; }
@@ -104,47 +135,17 @@ static int MslUniform(SourceLoc *loc, Symbol *sym, Binding *bind)
     bind->none.properties |= BIND_IS_BOUND | BIND_UNIFORM;
     return 1;
 }
-#ifdef CGC_MSL_FAULT_TEST
-static unsigned long mslAllocationCount;
-#endif
-static void *MslPoolAlloc(void *arg, size_t size)
+static int MslProcess(const CgIRModule *source,int emit)
 {
-#ifdef CGC_MSL_FAULT_TEST
-    const char *fail=getenv("CGC_TEST_MSL_FAIL_AT");
-    if (fail && mslAllocationCount++ == strtoul(fail,NULL,10)) return NULL;
-#endif
-    return mem_Alloc((MemoryPool *)arg,size);
-}
-static int MslProcess(const CgIRModule *source, int emit)
-{
-    MslModule m;
     MslDiagnostic diagnostic;
-    MemoryPool *pool = mem_CreatePool(16384, 8);
-    const MslProfileDesc *p = (const MslProfileDesc *) Cg->theHAL->localData;
-    int ok;
-    if (!pool) return 0;
-    MslInitModule(&m, p->stage, MslPoolAlloc, pool);
-    ok = MslLowerCgIR(&m, p, source);
-    if (ok && !MslVerifyModule(&m, &diagnostic)) {
-        InternalError(&diagnostic.loc, ERROR_S_CG_IR_INVARIANT, diagnostic.reason);
-        ok = 0;
-    } else if (!ok) {
-        if (m.diagnostic.code)
-            SemanticError(&m.diagnostic.loc, m.diagnostic.code, "%s", m.diagnostic.reason);
-        else
-            InternalError(&m.diagnostic.loc, ERROR_S_CG_IR_INVARIANT,
-                          m.diagnostic.reason ? m.diagnostic.reason : "Metal lowering");
+    const MslProfileDesc *profile=(const MslProfileDesc *)Cg->theHAL->localData;
+    int ok=emit?MslGenerateCgIR(profile,source,Cg->options.outfd,&diagnostic):MslValidateCgIR(profile,source,&diagnostic);
+    if(!ok) {
+        if(diagnostic.code) SemanticError(&diagnostic.loc,diagnostic.code,"%s",diagnostic.reason);
+        else InternalError(&diagnostic.loc,ERROR_S_CG_IR_INVARIANT,diagnostic.reason?diagnostic.reason:"Metal lowering");
+        ReportProfileCallPath(diagnostic.symbol);
     }
-    if (ok && emit) {
-#ifdef CGC_MSL_FAULT_TEST
-        if (getenv("CGC_TEST_MSL_WRITER_FAIL")) {
-            fputs("deliberate partial writer output",Cg->options.outfd);
-            ok=0;
-        } else
-#endif
-            ok = MslWriteModule(Cg->options.outfd, &m);
-    }
-    mem_FreePool(pool); return ok;
+    return ok;
 }
 static int MslValidate(SourceLoc *loc, const CgIRModule *source)
 { (void) loc; return MslProcess(source, 0); }

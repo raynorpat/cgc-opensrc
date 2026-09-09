@@ -82,7 +82,7 @@ int MslLInterface(Lower *l, MslInterface **list, MslType type,
     for(prior=*list;prior;prior=prior->next)
         if(!strcmp(prior->semantic,semantic)) return MslFail(l->m,6603,loc,"duplicate Metal interface semantic");
     v=(MslInterface *)MslAlloc(l->m,sizeof(*v)); if(!v) return 0;
-    v->type=type; v->path=MslString(l->m,path); v->semantic=semantic; v->attribute=-1;
+    v->type=type; v->interpolation=type.base==MSL_INT || type.base==MSL_UINT?MSL_FLAT:MSL_PERSPECTIVE; v->path=MslString(l->m,path); v->semantic=semantic; v->attribute=-1;
     if(l->m->stage==MSL_VERTEX && !output) {
         for(i=0;i<16;i++) { char a[16]; sprintf(a,"ATTRIB%d",i); if(!strcmp(a,semantic)) index=i; }
         if(type.base==MSL_BOOL) return MslFail(l->m,6603,loc,"boolean vertex attributes are unsupported");

@@ -90,11 +90,18 @@ static int TypeRegistered(const MslModule *m,MslType type)
     return 0;
 }
 static int Same(MslType a, MslType b) { return a.base == b.base && a.lanes == b.lanes && a.record==b.record; }
+static int StorageOK(const MslDecl *d)
+{
+    if(d->direction<MSL_IN || d->direction>MSL_INOUT || d->addressSpace!=MSL_THREAD) return 0;
+    if(d->role<MSL_VALUE_DECL || d->role>MSL_RESOURCE_DECL) return 0;
+    if(d->type.base>=MSL_TEXTURE2D) return d->role==MSL_RESOURCE_DECL && d->direction==MSL_IN;
+    return d->role!=MSL_RESOURCE_DECL;
+}
 static int DeclKnown(const MslFunction *f, const MslDecl *d)
 {
-    const MslDecl *p;
+    const MslDecl *p; const MslDependency *dep;
     for (p = f->parameters; p; p = p->next) if (p == d) return 1;
-    for (p=f->globals;p;p=p->next) if(p==d) return 1;
+    for (dep=f->globals;dep;dep=dep->next) if(dep->decl==d) return 1;
     for (p = f->locals; p; p = p->next) if (p == d) return 1;
     return 0;
 }
@@ -121,14 +128,23 @@ static int ExprOK(const MslModule *m, const MslFunction *f, const MslExpr *e, in
         if (!e->a) return 0;
         count=0; lanes=0;
         for (a=e->a;a;a=a->next) {
-            if (++count>64 || !ExprOK(m,f,a,depth+1)) return 0;
+            if (++count>4096 || !ExprOK(m,f,a,depth+1)) return 0;
+            if((Numeric(e->type) || e->type.base==MSL_MATRIX) && !Numeric(a->type) && a->type.base!=MSL_MATRIX) return 0;
             lanes+=a->type.lanes;
         }
         if (Numeric(e->type))
             return (lanes==e->type.lanes || (count==1 && e->a->type.lanes==1)) && Numeric(e->a->type);
         if (e->type.base==MSL_MATRIX)
             return (count==1 && (e->a->type.base==MSL_MATRIX || lanes==1)) || lanes==e->type.lanes*e->type.lanes;
-        return e->type.base==MSL_RECORD || e->type.base==MSL_ARRAY;
+        if(e->type.base==MSL_RECORD) {
+            for(p=e->type.record->members,a=e->a;p && a;p=p->next,a=a->next) if(!Same(p->type,a->type)) return 0;
+            return !p && !a;
+        }
+        if(e->type.base==MSL_ARRAY) {
+            for(a=e->a;a;a=a->next) if(!Same(e->type.record->members->type,a->type)) return 0;
+            return count==e->type.record->arrayCount;
+        }
+        return 0;
     case MSL_MEMBER:
         if(!e->a || e->a->type.base!=MSL_RECORD || !ExprOK(m,f,e->a,depth+1)) return 0;
         for(p=e->a->type.record->members;p;p=p->next) if(p==e->decl) return Same(e->type,p->type);
@@ -160,6 +176,8 @@ static int ExprOK(const MslModule *m, const MslFunction *f, const MslExpr *e, in
     case MSL_BINARY:
         return WordIn(e->text,"* / % + - << >> < > <= >= == != & ^ | && ||") &&
             ExprOK(m,f,e->a,depth+1) && ExprOK(m,f,e->b,depth+1) &&
+            (Numeric(e->a->type) || e->a->type.base==MSL_MATRIX) &&
+            (Numeric(e->b->type) || e->b->type.base==MSL_MATRIX) &&
             (Numeric(e->type) || e->type.base==MSL_MATRIX);
     case MSL_SELECT:
         return ExprOK(m,f,e->a,depth+1) && ExprOK(m,f,e->b,depth+1) && ExprOK(m,f,e->c,depth+1) &&
@@ -244,6 +262,7 @@ static int InterfaceOK(const MslModule *m,const MslInterface *list,int output)
                 v->type.lanes!=(v->builtin==1?4:1) || (v->builtin==2 && m->stage!=MSL_FRAGMENT)) return 0;
         } else {
             if(v->type.base==MSL_BOOL) return 0;
+            if(v->interpolation!=(v->type.base==MSL_FLOAT?MSL_PERSPECTIVE:MSL_FLAT)) return 0;
             components+=v->type.lanes;
         }
     }
@@ -253,9 +272,9 @@ static int BindingsOK(const MslModule *m)
 {
     const MslDecl *p; int count=0,i,n,slots[256],resources=0,total=0;
     memset(slots,0,sizeof(slots));
-    if(m->uniformSlots<0 || m->uniformSlots>256) return 0;
+    if(m->uniformSlots<0 || m->uniformSlots>256 || (m->uniformSlots && m->uniformAddressSpace!=MSL_CONSTANT)) return 0;
     for(p=m->bindings;p;p=p->bindingNext) {
-        if(++count>272 || !p->sourceName || !p->name || !TypeOK(p->type)) return 0;
+        if(++count>272 || !p->sourceName || !p->name || !TypeOK(p->type) || !StorageOK(p)) return 0;
         if(p->type.base>=MSL_TEXTURE2D) {
             if(p->resourceSlot<0 || p->resourceSlot>=16 || (resources & (1<<p->resourceSlot))) return 0;
             resources|=1<<p->resourceSlot;
@@ -281,11 +300,11 @@ int MslVerifyModule(const MslModule *m, MslDiagnostic *d)
         if (!f->name || !TypeOK(f->result) || !TypeRegistered(m,f->result) || !f->body) return 0;
         for (g=f->next;g;g=g->next) if (!strcmp(f->name,g->name)) return 0;
         for (p=f->parameters;p;p=p->next) {
-            if (!p->name || !TypeOK(p->type) || !TypeRegistered(m,p->type) || p->type.base == MSL_VOID) return 0;
+            if (!p->name || !TypeOK(p->type) || !StorageOK(p) || !TypeRegistered(m,p->type) || p->type.base == MSL_VOID) return 0;
             for (q=p->next;q;q=q->next) if (!strcmp(p->name,q->name)) return 0;
         }
         for(p=f->locals;p;p=p->next) {
-            if(!p->name || !TypeOK(p->type) || !TypeRegistered(m,p->type) || p->type.base==MSL_VOID || p->type.base>=MSL_TEXTURE2D) return 0;
+            if(!p->name || !TypeOK(p->type) || !StorageOK(p) || !TypeRegistered(m,p->type) || p->type.base==MSL_VOID || p->type.base>=MSL_TEXTURE2D) return 0;
             for(q=p->next;q;q=q->next) if(!strcmp(p->name,q->name)) return 0;
             for(q=f->parameters;q;q=q->next) if(!strcmp(p->name,q->name)) return 0;
         }

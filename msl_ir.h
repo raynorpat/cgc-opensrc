@@ -45,6 +45,10 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 /* Self-contained target nodes. No frontend tree or type is retained. */
 typedef enum MslStage_Rec { MSL_VERTEX = 1, MSL_FRAGMENT = 2 } MslStage;
 typedef enum MslBase_Rec { MSL_VOID, MSL_BOOL, MSL_INT, MSL_UINT, MSL_FLOAT, MSL_MATRIX, MSL_RECORD, MSL_ARRAY, MSL_TEXTURE2D, MSL_TEXTURECUBE } MslBase;
+typedef enum MslAddressSpace_Rec { MSL_THREAD, MSL_CONSTANT } MslAddressSpace;
+typedef enum MslDeclRole_Rec { MSL_VALUE_DECL, MSL_UNIFORM_DECL, MSL_RESOURCE_DECL } MslDeclRole;
+typedef enum MslDirection_Rec { MSL_IN, MSL_OUT, MSL_INOUT } MslDirection;
+typedef enum MslInterpolation_Rec { MSL_PERSPECTIVE, MSL_FLAT } MslInterpolation;
 typedef struct MslRecord_Rec MslRecord;
 typedef struct MslType_Rec { MslBase base; int lanes; MslRecord *record; int promotion; } MslType;
 typedef struct MslDecl_Rec MslDecl;
@@ -66,7 +70,10 @@ struct MslDecl_Rec {
     SourceLoc loc;
     int uniformSlot;
     int resourceSlot;
-    int direction, readOnly;
+    MslDirection direction;
+    MslDeclRole role;
+    MslAddressSpace addressSpace;
+    int readOnly, constant;
     MslExpr *defaultValue;
     const char *sourceName;
     const char *semantic;
@@ -84,6 +91,7 @@ typedef struct MslInterface_Rec {
     const char *semantic, *path;
     int attribute;
     int builtin;
+    MslInterpolation interpolation;
 } MslInterface;
 struct MslExpr_Rec {
     MslExprKind kind;
@@ -102,17 +110,21 @@ struct MslStmt_Rec {
     MslExpr *value, *step;
     MslDecl *decl;
 };
+typedef struct MslDependency_Rec {
+    struct MslDependency_Rec *next; MslDecl *decl;
+} MslDependency;
 struct MslFunction_Rec {
     MslFunction *next;
     const char *name;
     MslType result;
-    MslDecl *parameters, *locals, *globals;
+    MslDecl *parameters, *locals;
+    MslDependency *globals;
     MslStmt *body;
     SourceLoc loc;
     int entry;
     int visit;
 };
-typedef struct MslDiagnostic_Rec { int code; SourceLoc loc; const char *reason; } MslDiagnostic;
+typedef struct MslDiagnostic_Rec { int code; SourceLoc loc; const char *reason; const void *symbol; } MslDiagnostic;
 typedef struct MslModule_Rec {
     void *(*alloc)(void *, size_t);
     void *allocArg;
@@ -121,6 +133,7 @@ typedef struct MslModule_Rec {
     MslFunction *functions, *entry;
     const char *exportName, *sourceEntry;
     int uniformSlots;
+    MslAddressSpace uniformAddressSpace;
     unsigned rowSetters;
     MslRecord *records;
     MslDecl *globals, *bindings;

@@ -47,6 +47,7 @@ void MslInitModule(MslModule *m, MslStage stage,
                    void *(*alloc)(void *, size_t), void *arg)
 {
     memset(m, 0, sizeof(*m)); m->stage = stage; m->alloc = alloc; m->allocArg = arg;
+    m->uniformAddressSpace=MSL_CONSTANT;
 }
 void *MslAlloc(MslModule *m, size_t size)
 {

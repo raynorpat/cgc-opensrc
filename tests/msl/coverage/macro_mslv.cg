@@ -1,0 +1,4 @@
+#ifndef PROFILE_MSLV
+#error missing profile macro
+#endif
+float4 main(float4 p:ATTRIB0):POSITION { return p; }

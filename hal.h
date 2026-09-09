@@ -97,6 +97,8 @@ typedef struct slProfile_Rec slProfile;
 #define CAPS_AGGREGATE_DEFAULT_INITIALIZERS 20
 #define CAPS_PRESERVE_SIDE_EFFECTING_AGGREGATE_TEMPS 21
 #define CAPS_HLSL_GEOMETRY_ENTRY_ABI 22
+/* Preserve first-class value expressions for native IR targets. */
+#define CAPS_NATIVE_VALUE_OPERATIONS 23
 
 struct slProfile_Rec {
     slProfile *next;

@@ -11,17 +11,17 @@ struct cg_Input {
 struct cg_Output {
     float4 cg_COLOR0 [[color(0)]];
 };
-float4 cg_fn_0(float3 cg_v_1);
-float4 cg_fn_0(float3 cg_v_1)
+float4 cg_fn_main_0(float3 cg_v_a_1);
+float4 cg_fn_main_0(float3 cg_v_a_1)
 {
-    return float4((cg_v_1).x, (cg_v_1).y, (cg_v_1).z, float(1));
+    return float4((cg_v_a_1).x, (cg_v_a_1).y, (cg_v_a_1).z, float(1));
 }
 
 fragment cg_Output cg_mslf_main(cg_Input cg_in [[stage_in]])
 {
-    float3 cg_v_1;
-    cg_v_1 = cg_in.cg_TEXCOORD1;
-    float4 cg_value = cg_fn_0(cg_v_1);
+    float3 cg_v_a_1;
+    cg_v_a_1 = cg_in.cg_TEXCOORD1;
+    float4 cg_value = cg_fn_main_0(cg_v_a_1);
     cg_Output cg_result;
     cg_result.cg_COLOR0 = cg_value;
     return cg_result;

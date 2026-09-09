@@ -49,8 +49,8 @@ for n in range(2,5):
 body('intrinsic_geometry','float3 a=float3(1,0,0), b=float3(0,1,0); return float4(cross(a,b).z, reflect(a,b).x, refract(a,b,0.5).x,1);',[1,1,.5,1])
 body('signedness','uint u=4294967295u; int i=int(u); bool2 b=int2(-1,2)<int2(0,1); return float4(i, float(u>>31), float(b.x),float(b.y));',[-1,1,1,0])
 body('swizzle_overlap','float4 v=float4(1,2,3,4); v.xy=v.yx; v.yz+=v.zy; return v;',[2,4,4,4])
-add('reject_logical_effects','''bool bump(inout int i) { i++; return true; }
-float4 main(void):COLOR0 { int i=0; bool a=false && bump(i); bool b=true || bump(i); return float4(i,float(a),float(b),1); }''',reject='C1052')
+add('logical_effects','''bool bump(inout int i) { i++; return true; }
+float4 main(void):COLOR0 { int i=0; bool a=false && bump(i); bool b=true || bump(i); return float4(i,float(a),float(b),1); }''',[0,0,1,1])
 add('copy_indices','''void set_values(inout float a, out float b) { a+=10; b=20; }
 float4 main(void):COLOR0 { float a[3]; a[0]=1; a[1]=2; a[2]=3; int i=0; set_values(a[i++],a[i++]); return float4(a[0],a[1],a[2],i); }''',[11,20,3,2])
 add('copy_nested','''float change(inout float a) { a+=1; return a*2; }
@@ -70,7 +70,7 @@ add('reserved_names','float fragment(float thread) { return thread+1; }\nfloat4 
 for n in range(2,5):
     nums=','.join(str(i) for i in range(1,n*n+1))
     body(f'matrix_{n}',f'float{n}x{n} m=float{n}x{n}({nums}); float{n}x{n} t=transpose(m); m[0][1]++; return float4(m[0][1], t[0][1], m[{n-1}][{n-1}],m[1][0]);',[3,n+1,n*n,n+1])
-add('reject_matrix_product','float4 main(void):COLOR0 { float2x2 a=float2x2(1,2,3,4); float2x2 c=a*a; return float4(c[0][0],0,0,1); }',reject='C1020')
+add('matrix_product','float4 main(void):COLOR0 { float2x2 a=float2x2(1,2,3,4); float2x2 c=a*a; return float4(c[0][0],c[0][1],c[1][0],c[1][1]); }',[1,4,9,16])
 body('matrix_operators','float2x2 a=float2x2(1,2,3,4), b=float2x2(5,6,7,8); float2x2 d=mul(a,b); return float4(d[0][0],d[1][1],d[0][1],d[1][0]);',[19,50,22,43])
 add('matrix_constructor_effects','float next(inout int n) { return ++n; }\nfloat4 main(void):COLOR0 { int n=0; float2x2 m=float2x2(next(n),next(n),next(n),next(n)); return float4(m[0][0],m[0][1],m[1][0],m[1][1]); }',[1,2,3,4])
 body('matrix_row_effects','float2x2 m=float2x2(1,2,3,4); int i=0; float2 r=m[i++]; return float4(r.x,r.y,i,1);',[1,2,1,1])
@@ -105,7 +105,7 @@ negative={
 'numeric_binding':('float4 main(uniform float v:C0):COLOR0 { return float4(v,0,0,1); }','mslf','C6604'),
 'global_write':('float v; float4 main(void):COLOR0 { v=1; return float4(v,0,0,1); }','mslf','C6608'),
 'nested_type':('float bad(double x) { return float(x); } float wrap(float x) { return bad(x); } float4 main(uniform float x):COLOR0 { return float4(wrap(x),0,0,1); }','mslf','C6601'),
-'row_compound':('float4 main(void):COLOR0 { float2x2 m=float2x2(1,2,3,4); m[0]+=float2(1,1); return float4(m[0][0],m[0][1],m[1][0],m[1][1]); }','mslf','C6602'),
+
 }
 for name,(src,profile,code) in negative.items(): add('reject_'+name,src,profile=profile,reject=code)
 
@@ -137,10 +137,9 @@ for n in range(1,5):
         ty=kind+(str(n) if n>1 else '')
         for op,expr,result in [('min','min(x,x+1)',2),('max','max(x,x+1)',3),('clamp','clamp(x,x-1,x+1)',2)]+([('abs','abs(-x)',2)] if kind=='int' else []):
             src=f'float4 main(uniform float value):COLOR0 {{ {ty} x=int(value); {ty} y={expr}; return float4(float({"y.x" if n>1 else "y"}),0,0,1); }}'
-            if op=='abs': add(f'integer_{op}_{ty}',src,[result,0,0,1])
-            else: add(f'reject_catalog_{op}_{ty}',src,reject='C1101')
+            add(f'integer_{op}_{ty}',src,[result,0,0,1])
 for n in range(2,5):
-    add(f'reject_catalog_mul{n}',f'float4 main(uniform float{n} x):COLOR0 {{ return float4(mul(x,x),0,0,1); }}',reject='C1102')
+    add(f'catalog_mul{n}',f'float4 main(uniform float value):COLOR0 {{ float{n} x=value; return float4(mul(x,x),0,0,1); }}',[4*n,0,0,1])
 
 add('reject_uniform_out','void change(inout float x) { x++; } float4 main(uniform float x):COLOR0 { change(x); return float4(x,0,0,1); }',reject='C6608')
 add('reject_register_syntax','float4 main(uniform float v:register(c0)):COLOR0 { return float4(v,0,0,1); }',reject='C1300')
@@ -159,6 +158,32 @@ for n in [2,4]:
     add(f'intrinsic_reflect_refract{n}',f'float4 main(void):COLOR0 {{ {ty} x={ty}({vals}); {ty} r=reflect(x,x); {ty} t=refract(x,-x,0.5); return float4(r[{n-1}],t[{n-1}],0,1); }}',[-1,1,0,1])
 for name,expression in [('projected','tex2Dproj(t,float4(0,0,0,1))'),('bias','tex2Dbias(t,float4(0,0,0,1))'),('gradient','tex2D(t,float2(0,0),float2(1,0),float2(0,1))')]:
     add('reject_texture_'+name,f'float4 main(uniform sampler2D t):COLOR0 {{ return {expression}; }}',reject='C1008' if name=='bias' else 'C6602')
+
+add('row_compound','float4 main(void):COLOR0 { float2x2 m=float2x2(1,2,3,4); int i=0; m[i++]+=m[1]; return float4(m[0][0],m[0][1],i,m[1][0]); }',[4,6,1,3])
+add('minimal_dependencies','uniform float a; uniform float b; float only_a(float x) { return a*x; } float no_global(float x) { return x+1; } float transitive(float x) { return only_a(no_global(x)); } float4 main(void):COLOR0 { return float4(transitive(2),b,0,1); }',[6,.25,0,1])
+
+add('aggregate_defaults','struct R { float a; float2 b; }; float4 main(uniform R r = {2, {3,4}}, uniform float a[2] = {5,6}):COLOR0 { return float4(r.a,r.b.x,a[0],a[1]); }',[2,3,5,6])
+add('global_constants','const float a=2; const float2 b=float2(3,4); float4 main(void):COLOR0 { return float4(a,b.x,b.y,1); }',[2,3,4,1])
+for profile in ['mslv','mslf']:
+    src='#ifndef PROFILE_'+profile.upper()+'\n#error missing profile macro\n#endif\n'
+    src+= 'float4 main(float4 p:ATTRIB0):POSITION { return p; }' if profile=='mslv' else 'float4 main(void):COLOR0 { return float4(1,0,0,1); }'
+    add('macro_'+profile,src,profile=profile)
+
+add('local_initializers','struct R { float a; float2 b; }; float4 main(void):COLOR0 { R r = {2,{3,4}}; float a[2]={5,6}; R copy=r; return float4(copy.a,copy.b.x,a[0],a[1]); }',[2,3,5,6])
+add('matrix_compound','float4 main(void):COLOR0 { float2x2 a=float2x2(1,2,3,4); a*=a; return float4(a[0][0],a[0][1],a[1][0],a[1][1]); }',[1,4,9,16])
+add('matrix_selector_effects','float next(inout int i) { return ++i; } float4 main(void):COLOR0 { int i=0; float2x2 a=float2x2(1,2,3,4); a._m00_m01=float2(next(i),next(i)); return float4(a[0][0],a[0][1],i,1); }',[1,2,2,1])
+
+for kind in ['sampler1D','samplerRECT']:
+    add('reject_'+kind,f'float4 main(uniform {kind} t):COLOR0 {{ return float4(1,0,0,1); }}',reject='C6601')
+add('reject_dynamic_sampler','float4 main(uniform sampler2D a,uniform sampler2D b,uniform bool c):COLOR0 { return tex2D(c?a:b,float2(0,0)); }',reject='C1154')
+add('reject_comparison','float4 main(uniform sampler2D a):COLOR0 { return shadow2D(a,float3(0,0,1)); }',reject='C1008')
+add('reject_geometry','float4 main(float4 p:ATTRIB0):POSITION { emitVertex(p:POSITION); return p; }',profile='mslv',reject='C6317')
+
+add('nested_initializers','struct I { float a; float b[2]; }; struct O { I i; float c; }; float4 main(void):COLOR0 { O o={{2,{3,4}},5}; return float4(o.i.a,o.i.b[0],o.i.b[1],o.c); }',[2,3,4,5])
+add('global_aggregate_constant','struct I { float a; float b[2]; }; const I original={2,{3,4}}; const I data=original; float4 main(void):COLOR0 { return float4(data.a,data.b[0],data.b[1],1); }',[2,3,4,1])
+add('matrix_scalar_arithmetic','float4 main(uniform float v):COLOR0 { float2x2 a=float2x2(1,2,3,4); float2x2 b=(a+v)/v; float2x2 c=v-a; return float4(b[0][0],b[1][0],c[0][1],c[1][1]); }',[1.5,2.5,0,-2])
+add('matrix_binary_effects','float2x2 next(inout int i) { i++; return float2x2(i,i+1,i+2,i+3); } float4 main(void):COLOR0 { int i=0; float2x2 a=next(i)*next(i); return float4(a[0][0],a[0][1],a[1][1],i); }',[2,6,20,2])
+add('dependent_constants','const float a=2; const float b=a+3; float4 main(void):COLOR0 { return float4(a,b,0,1); }',[2,5,0,1])
 # Remove only files generated by this script which no longer have manifest entries.
 for name in previous:
     path=root/(name+'.cg')

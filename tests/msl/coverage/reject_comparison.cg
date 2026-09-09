@@ -1,0 +1,1 @@
+float4 main(uniform sampler2D a):COLOR0 { return shadow2D(a,float3(0,0,1)); }

@@ -1,0 +1,1 @@
+const float a=2; const float2 b=float2(3,4); float4 main(void):COLOR0 { return float4(a,b.x,b.y,1); }

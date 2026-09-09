@@ -1,0 +1,4 @@
+#ifndef PROFILE_MSLF
+#error missing profile macro
+#endif
+float4 main(void):COLOR0 { return float4(1,0,0,1); }

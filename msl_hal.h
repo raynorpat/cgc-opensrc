@@ -44,6 +44,10 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MSL_BUILTIN_GROUP 5
 #define MSL_BUILTIN_TEX2DLOD 1
 #define MSL_BUILTIN_TEXCUBELOD 2
+#define MSL_BUILTIN_MIN 3
+#define MSL_BUILTIN_MAX 4
+#define MSL_BUILTIN_CLAMP 5
+#define MSL_BUILTIN_DOT 6
 #define PROFILE_MSLV_ID 23
 #define PROFILE_MSLF_ID 24
 typedef struct MslProfileDesc_Rec { MslStage stage; const char *name; int id; } MslProfileDesc;
@@ -51,5 +55,7 @@ int RegisterProfiles_msl(void);
 int MslInitHAL(slHAL *, const MslProfileDesc *);
 int InitHAL_mslv(slHAL *);
 int InitHAL_mslf(slHAL *);
+int MslValidateCgIR(const MslProfileDesc *,const CgIRModule *,MslDiagnostic *);
+int MslGenerateCgIR(const MslProfileDesc *,const CgIRModule *,FILE *,MslDiagnostic *);
 int MslLowerCgIR(MslModule *, const MslProfileDesc *, const CgIRModule *);
 #endif

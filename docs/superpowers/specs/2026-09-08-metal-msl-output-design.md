@@ -5,8 +5,9 @@
 The user approved the direct Cg IR backend architecture and the vertex/fragment
 subset on 2026-09-08, then selected macOS-first qualification. This document
 records that design and makes the initial compatibility and application ABI
-choices explicit. Implementation has not started; qualification results are
-not implied by this specification.
+choices explicit. The implementation and Mac qualification are now recorded
+in [the qualification record](../../msl-qualification.md); this specification
+alone is not test evidence.
 
 Deliver `mslv` and `mslf`, translating Cg 2.0 to standalone Metal Shading
 Language source. cgc continues to build on Windows and other existing hosts.

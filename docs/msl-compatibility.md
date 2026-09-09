@@ -3,7 +3,7 @@
 `mslv` and `mslf` translate verified Cg IR to standalone MSL 2.0 source.
 The current implementation has passed Apple compilation and offscreen rendering
 on the Mac recorded in [the qualification record](msl-qualification.md).
-The [coverage audit](msl-coverage.md) records 558 passing Metal tests and the
+The [coverage audit](msl-coverage.md) records 624 passing Metal tests and the
 remaining language/frontend boundaries against the implementation plan.
 
 ## Running it
@@ -129,27 +129,35 @@ DIFFUSE, SPECULAR, and FOGCOORD aliases are canonicalized. Integer varyings are
 flat; floating varyings use perspective interpolation. No depth remapping,
 Y flip, texture-coordinate flip, or half-pixel correction is applied.
 
-## Remaining limits and qualification work
+## Completed plan extensions
 
-The complete plan is still open. In particular:
+Metal enables local struct/array initializers, nested aggregate defaults,
+read-only global constants (including dependent constant expressions), effectful
+short-circuit expressions, and componentwise matrix arithmetic with scalar
+lifting. Whole-matrix and whole-row compound assignments stabilize addresses
+and values before stores. Selector writes preserve normalized source ordering.
+`local_initializers`, `nested_initializers`, `aggregate_defaults`,
+`global_aggregate_constant`, `dependent_constants`, `logical_effects`,
+`matrix_compound`, `row_compound`, `matrix_scalar_arithmetic`, and
+`matrix_binary_effects` have generated-source and numerical GPU witnesses.
+Uniform defaults remain host-applied; global constants consume no buffer slots.
 
-- Aggregate initializer/default combinations beyond representable constant
-  constructor data are not promised. Nonconstant defaults and unfurled global
-  constants are rejected. Scalar and promoted vector defaults have exact metadata tests.
-- Compound whole-matrix-row assignments are rejected; use an explicit row
-  expression and assignment. The matrix selector store recognizer accepts the
-  verified repeated-value groups exercised by the bundled reflection shader;
-  other group shapes can receive a controlled rejection.
+Metal-only overloads provide scalar/vector int/uint min/max/clamp and vector
+`mul` as dot product. The shared catalog and other profiles retain their
+acceptance rules, checked by `msl_plan_contract` and the full regression suite.
+Helpers receive only their transitive global dependencies in deterministic
+order. Variable, field and helper names retain escaped source spellings with
+ordinal disambiguation. Aggregate and texture lowering have private modules;
+scratch validation and emission share the same lowering/verifier path.
+
+## Unsupported features and qualification limits
+
+- Nonconstant uniform defaults are unsupported; defaults must resolve to
+  constant scalar/vector or nested aggregate constructor data.
 - Resource arrays, resource struct members/returns/copies, dynamic resource
   selection, other texture dimensions, comparison textures, gradient/bias/
   projected texture forms, recursion, writable globals, dynamic arrays,
   interfaces, and geometry/compute/tessellation are unsupported.
-- Existing frontend/catalog restrictions reject effectful logical operands,
-  componentwise matrix arithmetic, integer min/max/clamp calls and vector-vector
-  mul calls before Metal lowering. These are now explicit rejection tests.
-  Use floating min/max/clamp, `dot` for a vector dot product and `mul` for
-  supported matrix signatures. The allowlist above describes translations;
-  it does not add missing signatures to the shared catalog.
 - Boundary, overload-selection, side-effect/aliasing, allocation-failure,
   metadata and diagnostic-location tests are recorded in the coverage audit.
   Passing that matrix does not establish every possible combination or input.

@@ -1,0 +1,1 @@
+uniform float a; uniform float b; float only_a(float x) { return a*x; } float no_global(float x) { return x+1; } float transitive(float x) { return only_a(no_global(x)); } float4 main(void):COLOR0 { return float4(transitive(2),b,0,1); }

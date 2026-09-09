@@ -92,6 +92,11 @@ typedef struct CgIRLowerContext_Rec {
 int CgIRLowerProgram(CgIRLowerContext *context, Scope *globalScope,
                      Symbol *entry, const CgGeometryProgram *geometry);
 
+/* Frontend bridge used by constant-default extraction; callers provide a
+ * private expression tree and receive only module-owned typed IR. */
+CgIRExpr *CgIRLowerDefaultExpression(CgIRModule *module, union expr_rec *value,
+    Type *type, const SourceLoc *loc);
+
 /* Copy parsed uniform-default data into caller-owned IR storage. */
 CgIRExpr *CgIRLowerUniformDefault(CgIRModule *module, const CgIRDecl *decl);
 

@@ -1,0 +1,1 @@
+struct I { float a; float b[2]; }; const I original={2,{3,4}}; const I data=original; float4 main(void):COLOR0 { return float4(data.a,data.b[0],data.b[1],1); }

@@ -40,32 +40,6 @@ USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "msl_lower_internal.h"
 
-int MslLSameExpr(const CgIRExpr *a,const CgIRExpr *b)
-{
-    const CgIRExpr *x,*y;
-    if(!a || !b) return a==b;
-    if(a->kind!=b->kind || a->sideEffects || b->sideEffects) return 0;
-    switch(a->kind) {
-    case CGIR_EXPR_SYMBOL: return a->u.symbol==b->u.symbol;
-    case CGIR_EXPR_CONSTANT: return a->u.constant.kind==b->u.constant.kind &&
-        (CgScalarIsFloating(a->u.constant.kind)?a->u.constant.value.f==b->u.constant.value.f:a->u.constant.value.u==b->u.constant.value.u);
-    case CGIR_EXPR_INDEX: return MslLSameExpr(a->u.index.object,b->u.index.object) && MslLSameExpr(a->u.index.index,b->u.index.index);
-    case CGIR_EXPR_MEMBER: return a->u.member.member==b->u.member.member && MslLSameExpr(a->u.member.object,b->u.member.object);
-    case CGIR_EXPR_CONSTRUCT:
-        for(x=a->u.construct.arguments,y=b->u.construct.arguments;x&&y;x=x->next,y=y->next) if(!MslLSameExpr(x,y)) return 0;
-        return !x&&!y;
-    case CGIR_EXPR_CAST: return IsSameUnqualifiedType(a->type,b->type) && MslLSameExpr(a->u.cast.operand,b->u.cast.operand);
-    default: return 0;
-    }
-}
-
-int MslLSelectorGroup(const CgIRStmt *s)
-{
-    const CgIRExpr *a;
-    if(!s || s->kind!=CGIR_STMT_EXPR || !(a=s->u.expression) || a->kind!=CGIR_EXPR_ASSIGN) return 0;
-    return a->u.assign.target->selectorRead && IsScalar(a->u.assign.target->type) && IsVector(a->u.assign.value->type,NULL);
-}
-
 MslStmt *MslLLowerStmt(Lower *l, const CgIRStmt *s)
 {
     MslStmt *first = NULL, **tail = &first, *t;

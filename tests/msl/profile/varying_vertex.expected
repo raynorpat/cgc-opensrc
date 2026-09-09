@@ -9,10 +9,10 @@
 using namespace metal;
 
 struct cg_type_1 {
-    float4 cg_field_2;
-    float2 cg_field_3;
-    float2 cg_field_4;
-    int cg_field_5;
+    float4 cg_field_p_2;
+    float2 cg_field_a_3;
+    float2 cg_field_b_4;
+    int cg_field_tag_5;
 };
 struct cg_Input {
     float4 cg_ATTRIB0 [[attribute(0)]];
@@ -23,27 +23,27 @@ struct cg_Output {
     float2 cg_TEXCOORD0 [[user(cg_TEXCOORD0)]];
     int cg_TEXCOORD2 [[user(cg_TEXCOORD2), flat]];
 };
-cg_type_1 cg_fn_0(float4 cg_v_6);
-cg_type_1 cg_fn_0(float4 cg_v_6)
+cg_type_1 cg_fn_main_0(float4 cg_v_p_6);
+cg_type_1 cg_fn_main_0(float4 cg_v_p_6)
 {
-    cg_type_1 cg_v_7;
-    ((cg_v_7).cg_field_2 = cg_v_6);
-    ((cg_v_7).cg_field_3 = float2(float2(2.500000000e-01f, 5.000000000e-01f)));
-    ((cg_v_7).cg_field_4 = float2(float2(7.500000000e-01f, float(1))));
-    ((cg_v_7).cg_field_5 = int(7));
-    return cg_v_7;
+    cg_type_1 cg_v_r_7;
+    ((cg_v_r_7).cg_field_p_2 = cg_v_p_6);
+    ((cg_v_r_7).cg_field_a_3 = float2(float2(2.500000000e-01f, 5.000000000e-01f)));
+    ((cg_v_r_7).cg_field_b_4 = float2(float2(7.500000000e-01f, float(1))));
+    ((cg_v_r_7).cg_field_tag_5 = int(7));
+    return cg_v_r_7;
 }
 
 vertex cg_Output cg_mslv_main(cg_Input cg_in [[stage_in]])
 {
-    float4 cg_v_6;
-    cg_v_6 = cg_in.cg_ATTRIB0;
-    cg_type_1 cg_value = cg_fn_0(cg_v_6);
+    float4 cg_v_p_6;
+    cg_v_p_6 = cg_in.cg_ATTRIB0;
+    cg_type_1 cg_value = cg_fn_main_0(cg_v_p_6);
     cg_Output cg_result;
-    cg_result.cg_POSITION0 = cg_value.cg_field_2;
-    cg_result.cg_TEXCOORD1 = cg_value.cg_field_3;
-    cg_result.cg_TEXCOORD0 = cg_value.cg_field_4;
-    cg_result.cg_TEXCOORD2 = cg_value.cg_field_5;
+    cg_result.cg_POSITION0 = cg_value.cg_field_p_2;
+    cg_result.cg_TEXCOORD1 = cg_value.cg_field_a_3;
+    cg_result.cg_TEXCOORD0 = cg_value.cg_field_b_4;
+    cg_result.cg_TEXCOORD2 = cg_value.cg_field_tag_5;
     return cg_result;
 }
 // End of program

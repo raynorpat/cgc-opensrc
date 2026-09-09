@@ -1,0 +1,1 @@
+struct I { float a; float b[2]; }; struct O { I i; float c; }; float4 main(void):COLOR0 { O o={{2,{3,4}},5}; return float4(o.i.a,o.i.b[0],o.i.b[1],o.c); }
